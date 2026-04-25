@@ -12,10 +12,12 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
+axum.workspace = true
 clap.workspace = true
 gitcortex-core.workspace = true
 gitcortex-indexer.workspace = true
 gitcortex-store.workspace = true
+open.workspace = true
 rmcp.workspace = true
 schemars.workspace = true
 serde.workspace = true

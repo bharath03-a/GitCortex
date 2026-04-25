@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>GitCortex — Knowledge Graph</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #1e1e2e; color: #cdd6f4; font-family: 'JetBrains Mono', Menlo, monospace; overflow: hidden; }
+svg#graph { width: 100vw; height: 100vh; display: block; }
+.panel {
+  pointer-events: all; position: fixed;
+  background: rgba(24,24,37,0.93); border: 1px solid #313244;
+  border-radius: 8px; padding: 14px;
+}
+#stats { top: 16px; left: 16px; font-size: 11px; color: #6c7086; min-width: 120px; line-height: 1.7; }
+#stats b { color: #cdd6f4; }
+#inspector { top: 16px; right: 16px; width: 260px; display: none; }
+#inspector .badge {
+  display: inline-block; padding: 2px 9px; border-radius: 99px;
+  font-size: 10px; font-weight: bold; margin-bottom: 10px; color: #1e1e2e;
+}
+.field { margin: 5px 0; }
+.field-label { color: #6c7086; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; }
+.field-val { color: #cdd6f4; font-size: 11px; word-break: break-all; }
+#legend { bottom: 16px; left: 16px; font-size: 11px; }
+#legend h3, #edge-legend h3 {
+  color: #6c7086; font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.06em; margin-bottom: 8px;
+}
+.li { display: flex; align-items: center; gap: 7px; margin: 3px 0; color: #a6adc8; }
+.dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+#edge-legend { bottom: 16px; right: 16px; font-size: 11px; }
+.edge-li { display: flex; align-items: center; gap: 7px; margin: 3px 0; color: #a6adc8; }
+.edge-swatch { width: 22px; height: 2px; flex-shrink: 0; }
+#loading {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  color: #6c7086; font-size: 14px;
+}
+#hint {
+  position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+  color: #45475a; font-size: 10px;
+}
+</style>
+</head>
+<body>
+<div id="loading">Loading graph&#8230;</div>
+
+<svg id="graph">
+  <defs>
+    <marker id="arr"            viewBox="0 0 10 10" refX="10" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#585b70"/></marker>
+    <marker id="arr-calls"      viewBox="0 0 10 10" refX="10" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#f38ba8"/></marker>
+    <marker id="arr-implements" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#fab387"/></marker>
+    <marker id="arr-uses"       viewBox="0 0 10 10" refX="10" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#89dceb"/></marker>
+    <marker id="arr-imports"    viewBox="0 0 10 10" refX="10" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#a6e3a1"/></marker>
+  </defs>
+  <g id="root">
+    <g id="edges"></g>
+    <g id="nodes"></g>
+  </g>
+</svg>
+
+<div class="panel" id="stats">
+  <div>Nodes: <b id="nc">&#8211;</b></div>
+  <div>Edges: <b id="ec">&#8211;</b></div>
+</div>
+
+<div class="panel" id="inspector"></div>
+
+<div class="panel" id="legend">
+  <h3>Node kinds</h3>
+</div>
+
+<div class="panel" id="edge-legend">
+  <h3>Edge kinds</h3>
+  <div class="edge-li"><div class="edge-swatch" style="background:#585b70"></div>contains</div>
+  <div class="edge-li"><div class="edge-swatch" style="background:#f38ba8"></div>calls</div>
+  <div class="edge-li"><div class="edge-swatch" style="background:#fab387"></div>implements</div>
+  <div class="edge-li"><div class="edge-swatch" style="background:#89dceb"></div>uses</div>
+  <div class="edge-li"><div class="edge-swatch" style="background:#a6e3a1"></div>imports</div>
+</div>
+
+<div id="hint">scroll to zoom &nbsp;&middot;&nbsp; drag background to pan &nbsp;&middot;&nbsp; drag node to pin &nbsp;&middot;&nbsp; click node to inspect</div>
+
+<script>
+// ── Constants ────────────────────────────────────────────────────────────────
+const NODE_COLORS = {
+  file:       '#6c7086',
+  module:     '#cba6f7',
+  struct:     '#a6e3a1',
+  enum:       '#94e2d5',
+  trait:      '#fab387',
+  type_alias: '#f38ba8',
+  function:   '#89b4fa',
+  method:     '#74c7ec',
+  constant:   '#f9e2af',
+  macro:      '#cdd6f4',
+};
+const EDGE_COLORS = {
+  contains:   '#585b70',
+  calls:      '#f38ba8',
+  implements: '#fab387',
+  uses:       '#89dceb',
+  imports:    '#a6e3a1',
+};
+const RADIUS = {
+  file:8, module:7, struct:6, enum:6, trait:6,
+  type_alias:5, function:5, method:4, constant:4, macro:5,
+};
+const DEFAULT_R = 5;
+
+// Simulation parameters
+const SPRING_LEN  = 200;
+const SPRING_K    = 0.04;
+const REPULSION   = 9000;
+const GRAVITY     = 0.015;
+const DAMPING     = 0.82;
+
+// ── Build node-kind legend ───────────────────────────────────────────────────
+const legEl = document.getElementById('legend');
+legEl.innerHTML = '<h3>Node kinds</h3>' +
+  Object.entries(NODE_COLORS)
+    .map(([k, c]) => `<div class="li"><div class="dot" style="background:${c}"></div>${k.replace('_', ' ')}</div>`)
+    .join('');
+
+// ── State ────────────────────────────────────────────────────────────────────
+let nodes = [], edges = [], nodeMap = {};
+let simRunning = false;
+
+// ── SVG pan / zoom ───────────────────────────────────────────────────────────
+const svg   = document.getElementById('graph');
+const root  = document.getElementById('root');
+let tx = 0, ty = 0, scale = 1;
+let panning = false, pinned = null;
+let panX0 = 0, panY0 = 0, tx0 = 0, ty0 = 0;
+
+function applyTransform() {
+  root.setAttribute('transform', `translate(${tx},${ty}) scale(${scale})`);
+}
+
+svg.addEventListener('wheel', e => {
+  e.preventDefault();
+  const f = e.deltaY > 0 ? 0.9 : 1.1;
+  const rect = svg.getBoundingClientRect();
+  const px = e.clientX - rect.left, py = e.clientY - rect.top;
+  tx = px - (px - tx) * f;
+  ty = py - (py - ty) * f;
+  scale *= f;
+  applyTransform();
+}, { passive: false });
+
+svg.addEventListener('mousedown', e => {
+  if (pinned) return;
+  panning = true;
+  panX0 = e.clientX; panY0 = e.clientY;
+  tx0 = tx; ty0 = ty;
+});
+window.addEventListener('mousemove', e => {
+  if (panning && !pinned) {
+    tx = tx0 + e.clientX - panX0;
+    ty = ty0 + e.clientY - panY0;
+    applyTransform();
+  }
+  if (pinned) {
+    const rect = svg.getBoundingClientRect();
+    pinned.x = (e.clientX - rect.left - tx) / scale;
+    pinned.y = (e.clientY - rect.top  - ty) / scale;
+    pinned.vx = 0; pinned.vy = 0;
+    updatePositions();
+  }
+});
+window.addEventListener('mouseup', () => { panning = false; pinned = null; });
+
+// ── Force simulation ─────────────────────────────────────────────────────────
+function tick() {
+  const cx = (svg.clientWidth  / 2 - tx) / scale;
+  const cy = (svg.clientHeight / 2 - ty) / scale;
+
+  // Reset forces
+  for (const n of nodes) { n.fx = 0; n.fy = 0; }
+
+  // Gravity toward center
+  for (const n of nodes) {
+    n.fx += (cx - n.x) * GRAVITY;
+    n.fy += (cy - n.y) * GRAVITY;
+  }
+
+  // Pairwise repulsion
+  for (let i = 0; i < nodes.length; i++) {
+    const a = nodes[i];
+    for (let j = i + 1; j < nodes.length; j++) {
+      const b = nodes[j];
+      const dx = a.x - b.x, dy = a.y - b.y;
+      const d2 = dx * dx + dy * dy + 1;
+      const d  = Math.sqrt(d2);
+      const f  = REPULSION / d2;
+      const fx = (dx / d) * f, fy = (dy / d) * f;
+      a.fx += fx; a.fy += fy;
+      b.fx -= fx; b.fy -= fy;
+    }
+  }
+
+  // Spring along edges
+  for (const e of edges) {
+    const a = nodeMap[e.src], b = nodeMap[e.dst];
+    if (!a || !b) continue;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const d  = Math.sqrt(dx * dx + dy * dy) || 1;
+    const f  = (d - SPRING_LEN) * SPRING_K;
+    const fx = (dx / d) * f, fy = (dy / d) * f;
+    a.fx += fx; a.fy += fy;
+    b.fx -= fx; b.fy -= fy;
+  }
+
+  // Integrate
+  let energy = 0;
+  for (const n of nodes) {
+    if (n === pinned) continue;
+    n.vx = (n.vx + n.fx) * DAMPING;
+    n.vy = (n.vy + n.fy) * DAMPING;
+    n.x += n.vx;
+    n.y += n.vy;
+    energy += n.vx * n.vx + n.vy * n.vy;
+  }
+
+  updatePositions();
+
+  if (energy > 0.05) {
+    requestAnimationFrame(tick);
+  } else {
+    simRunning = false;
+  }
+}
+
+function kickSim() {
+  if (!simRunning) { simRunning = true; requestAnimationFrame(tick); }
+}
+
+// ── DOM helpers ──────────────────────────────────────────────────────────────
+function updatePositions() {
+  const edgesEl = document.getElementById('edges');
+  const nodesEl = document.getElementById('nodes');
+
+  let i = 0;
+  for (const line of edgesEl.querySelectorAll('line')) {
+    const e = edges[i++];
+    const a = nodeMap[e.src], b = nodeMap[e.dst];
+    if (!a || !b) continue;
+    const r  = RADIUS[b.kind] || DEFAULT_R;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const d  = Math.sqrt(dx * dx + dy * dy) || 1;
+    line.setAttribute('x1', a.x);
+    line.setAttribute('y1', a.y);
+    line.setAttribute('x2', b.x - (dx / d) * (r + 1));
+    line.setAttribute('y2', b.y - (dy / d) * (r + 1));
+  }
+
+  for (const g of nodesEl.querySelectorAll('g.node')) {
+    const n = nodeMap[g.dataset.id];
+    if (n) g.setAttribute('transform', `translate(${n.x},${n.y})`);
+  }
+}
+
+function buildDOM() {
+  const edgesEl = document.getElementById('edges');
+  const nodesEl = document.getElementById('nodes');
+  edgesEl.innerHTML = '';
+  nodesEl.innerHTML = '';
+
+  for (const e of edges) {
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    const col  = EDGE_COLORS[e.kind] || '#585b70';
+    const mid  = e.kind === 'contains' ? 'arr' : `arr-${e.kind}`;
+    line.style.cssText = `stroke:${col};stroke-width:1;opacity:0.45;`;
+    line.setAttribute('marker-end', `url(#${mid})`);
+    edgesEl.appendChild(line);
+  }
+
+  for (const n of nodes) {
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.classList.add('node');
+    g.dataset.id = n.id;
+    g.style.cursor = 'pointer';
+
+    const r    = RADIUS[n.kind] || DEFAULT_R;
+    const col  = NODE_COLORS[n.kind] || '#cdd6f4';
+    const circ = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circ.setAttribute('r', r);
+    circ.setAttribute('fill', col);
+    circ.setAttribute('stroke', '#181825');
+    circ.setAttribute('stroke-width', '1.5');
+
+    const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    lbl.style.cssText = 'font-size:8px;fill:#a6adc8;pointer-events:none;';
+    lbl.setAttribute('text-anchor', 'middle');
+    lbl.setAttribute('dominant-baseline', 'middle');
+    lbl.setAttribute('dy', r + 9);
+    lbl.textContent = n.name.length > 18 ? n.name.slice(0, 16) + '…' : n.name;
+
+    g.addEventListener('mousedown', ev => {
+      ev.stopPropagation();
+      pinned = n;
+    });
+    g.addEventListener('click', ev => {
+      ev.stopPropagation();
+      showInspector(n, col);
+      // Give a small kick so the simulation notices the pinned node moved
+      kickSim();
+    });
+    g.addEventListener('mouseenter', () => { circ.setAttribute('r', r * 1.45); });
+    g.addEventListener('mouseleave', () => { circ.setAttribute('r', r); });
+
+    g.appendChild(circ);
+    g.appendChild(lbl);
+    nodesEl.appendChild(g);
+  }
+}
+
+function showInspector(n, color) {
+  const insp = document.getElementById('inspector');
+  insp.innerHTML = `
+    <div class="badge" style="background:${color}">${n.kind.replace('_', ' ')}</div>
+    <div class="field">
+      <div class="field-label">name</div>
+      <div class="field-val">${esc(n.name)}</div>
+    </div>
+    <div class="field">
+      <div class="field-label">qualified name</div>
+      <div class="field-val">${esc(n.qualified_name)}</div>
+    </div>
+    <div class="field">
+      <div class="field-label">location</div>
+      <div class="field-val">${esc(n.file)}:${n.start_line}</div>
+    </div>
+  `;
+  insp.style.display = 'block';
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+svg.addEventListener('click', () => {
+  document.getElementById('inspector').style.display = 'none';
+});
+
+// ── Bootstrap ────────────────────────────────────────────────────────────────
+fetch('/data')
+  .then(r => r.json())
+  .then(data => {
+    document.getElementById('loading').remove();
+    document.getElementById('nc').textContent = data.nodes.length;
+    document.getElementById('ec').textContent = data.edges.length;
+
+    const w = svg.clientWidth, h = svg.clientHeight;
+    nodes = data.nodes.map(n => ({
+      ...n,
+      x:  w / 2 + (Math.random() - 0.5) * 400,
+      y:  h / 2 + (Math.random() - 0.5) * 400,
+      vx: 0, vy: 0, fx: 0, fy: 0,
+    }));
+    nodeMap = Object.fromEntries(nodes.map(n => [n.id, n]));
+    edges   = data.edges;
+
+    tx = 0; ty = 0; scale = 1;
+    applyTransform();
+    buildDOM();
+    updatePositions();
+    kickSim();
+  })
+  .catch(err => {
+    const el = document.getElementById('loading');
+    el.style.color = '#f38ba8';
+    el.textContent = 'Failed to load graph: ' + err.message;
+  });
+</script>
+</body>
+</html>

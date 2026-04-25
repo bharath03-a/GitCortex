@@ -2,7 +2,7 @@ use std::path::Path;
 
 use crate::{
     error::Result,
-    graph::{GraphDiff, Node},
+    graph::{Edge, GraphDiff, Node},
 };
 
 /// Backend-agnostic interface for the knowledge graph store.
@@ -27,6 +27,12 @@ pub trait GraphStore: Send + Sync {
 
     /// List all top-level definitions in `file` on `branch`.
     fn list_definitions(&self, branch: &str, file: &Path) -> Result<Vec<Node>>;
+
+    /// Return all nodes in `branch`'s graph.
+    fn list_all_nodes(&self, branch: &str) -> Result<Vec<Node>>;
+
+    /// Return all edges in `branch`'s graph.
+    fn list_all_edges(&self, branch: &str) -> Result<Vec<Edge>>;
 
     /// Return the graph delta between two branches as a `GraphDiff`.
     /// Nodes/edges present in `to` but not `from` are in `added_*`.

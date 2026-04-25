@@ -2,8 +2,8 @@ use std::path::{Path, PathBuf};
 
 use gitcortex_core::{
     error::{GitCortexError, Result},
-    graph::{GraphDiff, Node, NodeId, NodeMetadata, Span},
-    schema::{NodeKind, Visibility},
+    graph::{Edge, GraphDiff, Node, NodeId, NodeMetadata, Span},
+    schema::{EdgeKind, NodeKind, Visibility},
     store::GraphStore,
 };
 use kuzu::{Connection, Database, SystemConfig, Value};
@@ -234,6 +234,43 @@ impl GraphStore for KuzuGraphStore {
         Ok(diff)
     }
 
+    fn list_all_nodes(&self, branch: &str) -> Result<Vec<Node>> {
+        self.ensure_branch(branch)?;
+        let nt = db_schema::node_table(branch);
+        let conn = self.conn()?;
+        let mut result = conn
+            .query(&format!("MATCH (n:{nt}) RETURN {NODE_COLS}"))
+            .map_err(|e| GitCortexError::Store(e.to_string()))?;
+        rows_to_nodes(&mut result)
+    }
+
+    fn list_all_edges(&self, branch: &str) -> Result<Vec<Edge>> {
+        self.ensure_branch(branch)?;
+        let nt = db_schema::node_table(branch);
+        let et = db_schema::edge_table(branch);
+        let conn = self.conn()?;
+        let mut result = conn
+            .query(&format!(
+                "MATCH (s:{nt})-[e:{et}]->(d:{nt}) RETURN s.id, d.id, e.kind"
+            ))
+            .map_err(|e| GitCortexError::Store(e.to_string()))?;
+
+        let mut out = Vec::new();
+        while let Some(row) = result.next() {
+            let src_str = str_val(&row[0])?;
+            let dst_str = str_val(&row[1])?;
+            let kind_str = str_val(&row[2])?;
+            out.push(Edge {
+                src: NodeId::try_from(src_str.as_str())
+                    .map_err(|e| GitCortexError::Store(format!("bad src id: {e}")))?,
+                dst: NodeId::try_from(dst_str.as_str())
+                    .map_err(|e| GitCortexError::Store(format!("bad dst id: {e}")))?,
+                kind: edge_kind_from_str(&kind_str),
+            });
+        }
+        Ok(out)
+    }
+
     // ── Indexing state ────────────────────────────────────────────────────────
 
     fn last_indexed_sha(&self, branch_name: &str) -> Result<Option<String>> {
@@ -343,6 +380,16 @@ fn kind_from_str(s: &str) -> NodeKind {
         "constant" => NodeKind::Constant,
         "macro" => NodeKind::Macro,
         _ => NodeKind::Function,
+    }
+}
+
+fn edge_kind_from_str(s: &str) -> EdgeKind {
+    match s {
+        "calls" => EdgeKind::Calls,
+        "implements" => EdgeKind::Implements,
+        "uses" => EdgeKind::Uses,
+        "imports" => EdgeKind::Imports,
+        _ => EdgeKind::Contains,
     }
 }
 
