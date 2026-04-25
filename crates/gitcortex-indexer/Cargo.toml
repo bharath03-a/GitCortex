@@ -1,0 +1,15 @@
+[package]
+name = "gitcortex-indexer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+git2.workspace = true
+gitcortex-core.workspace = true
+ignore.workspace = true
+rayon.workspace = true
+tree-sitter.workspace = true
+tree-sitter-rust.workspace = true

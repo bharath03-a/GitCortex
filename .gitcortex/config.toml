@@ -1,0 +1,11 @@
+[index]
+languages = ["rust"]      # v0.2 adds "typescript", "python"
+max_file_size_kb = 500
+
+[lld]
+enabled = false            # pass-2 LLD annotation (v0.2)
+srp_method_threshold = 10
+isp_method_threshold = 7
+
+[store]
+backend = "local"          # "local" | "remote" (future)

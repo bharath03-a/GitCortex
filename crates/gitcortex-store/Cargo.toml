@@ -1,0 +1,15 @@
+[package]
+name = "gitcortex-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+dashmap.workspace = true
+gitcortex-core.workspace = true
+kuzu.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -1,0 +1,49 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/gitcortex-core",
+    "crates/gitcortex-indexer",
+    "crates/gitcortex-store",
+    "crates/gitcortex-mcp",
+]
+
+[workspace.package]
+version      = "0.1.0"
+edition      = "2021"
+license      = "MIT"
+repository   = "https://github.com/bharathvelamala/gitcortex"
+rust-version = "1.80"
+
+# Declare all shared dep versions once here.
+# Member crates reference these with `{ workspace = true }`.
+[workspace.dependencies]
+gitcortex-core    = { path = "crates/gitcortex-core" }
+gitcortex-indexer = { path = "crates/gitcortex-indexer" }
+gitcortex-store   = { path = "crates/gitcortex-store" }
+
+serde              = { version = "1",   features = ["derive"] }
+schemars           = "1"
+thiserror          = "2"
+uuid               = { version = "1",   features = ["v4", "serde"] }
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow             = "1"
+tokio              = { version = "1",   features = ["full"] }
+clap               = { version = "4",   features = ["derive"] }
+petgraph           = { version = "0.6", features = ["serde-1"] }
+rayon              = "1"
+git2               = { version = "0.20", default-features = false }
+ignore             = "0.4"
+tree-sitter        = "0.25"
+tree-sitter-rust   = "0.23"
+dashmap            = { version = "6", features = ["serde"] }
+kuzu               = "0.11"
+tempfile           = "3"
+serde_json         = "1"
+rmcp               = { version = "1.5", features = ["server", "transport-io"] }
+
+[profile.release]
+opt-level     = 3
+lto           = "thin"
+codegen-units = 1
+strip         = "symbols"

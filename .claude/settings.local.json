@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rustc --version)",
+      "Bash(cargo --version)",
+      "Bash(cargo init *)",
+      "Bash(cargo add *)",
+      "Bash(chmod +x '/Users/bharathvelamala/Documents/Open Source/GitCortex/hooks/post-commit' '/Users/bharathvelamala/Documents/Open Source/GitCortex/hooks/post-merge' '/Users/bharathvelamala/Documents/Open Source/GitCortex/hooks/post-rewrite' '/Users/bharathvelamala/Documents/Open Source/GitCortex/hooks/post-checkout')",
+      "Bash(cargo build *)",
+      "Bash(cmake --version)",
+      "Bash(brew install *)",
+      "Bash(cargo update *)",
+      "Bash(cargo test *)",
+      "Bash(cargo clippy *)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(cargo check *)",
+      "Bash(cargo fix *)",
+      "Bash(wait)",
+      "Bash(nm \"/Users/bharathvelamala/Documents/Open Source/GitCortex/target/debug/build/kuzu-7a3441ed9c8723c3/out/libkuzu_rs.a\")",
+      "Bash(cargo clean *)",
+      "Bash(cargo metadata *)",
+      "Bash(python3 -c \"import sys,json; m=json.load\\(sys.stdin\\); [print\\(p['id']\\) for p in m['packages'] if 'cxx' in p['name']]\")",
+      "Bash(python3 -c ' *)",
+      "Bash(cargo search *)",
+      "Bash(mkdir -p /tmp/probe_rmcp)",
+      "Read(//tmp/**)",
+      "Bash(./target/release/gcx --help)",
+      "Bash(grep -v '\\\\.d$\\\\|\\\\.rlib$\\\\|incremental\\\\|deps\\\\|build')",
+      "Bash(\"/Users/bharathvelamala/Documents/Open Source/GitCortex/target/release/gitcortex-mcp\" --help)",
+      "Bash(./target/debug/gcx --help)"
+    ]
+  }
+}
