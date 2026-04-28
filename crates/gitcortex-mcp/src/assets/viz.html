@@ -7,13 +7,37 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { background: #1e1e2e; color: #cdd6f4; font-family: 'JetBrains Mono', Menlo, monospace; overflow: hidden; }
 svg#graph { width: 100vw; height: 100vh; display: block; }
+
+/* Smooth fade-in during reveal, smooth dim on focus/search */
+.node { transition: opacity 0.35s ease; }
+#edges line { transition: opacity 0.5s ease; }
+
 .panel {
   pointer-events: all; position: fixed;
   background: rgba(24,24,37,0.93); border: 1px solid #313244;
   border-radius: 8px; padding: 14px;
 }
-#stats { top: 16px; left: 16px; font-size: 11px; color: #6c7086; min-width: 120px; line-height: 1.7; }
+#stats { top: 16px; left: 16px; font-size: 11px; color: #6c7086; min-width: 130px; line-height: 1.7; }
 #stats b { color: #cdd6f4; }
+
+/* ── Search bar ──────────────────────────────────────────────────────────── */
+#search-bar {
+  top: 16px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px; padding: 8px 14px;
+}
+#search-input {
+  background: transparent; border: none; outline: none;
+  color: #cdd6f4; font-family: inherit; font-size: 12px;
+  width: 220px;
+}
+#search-input::placeholder { color: #45475a; }
+#search-clear {
+  background: none; border: none; color: #6c7086; cursor: pointer;
+  font-size: 14px; padding: 0 2px; display: none; font-family: inherit;
+}
+#search-count { color: #6c7086; font-size: 10px; white-space: nowrap; }
+
+/* ── Inspector ───────────────────────────────────────────────────────────── */
 #inspector { top: 16px; right: 16px; width: 260px; display: none; }
 #inspector .badge {
   display: inline-block; padding: 2px 9px; border-radius: 99px;
@@ -22,15 +46,52 @@ svg#graph { width: 100vw; height: 100vh; display: block; }
 .field { margin: 5px 0; }
 .field-label { color: #6c7086; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; }
 .field-val { color: #cdd6f4; font-size: 11px; word-break: break-all; }
+.field-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
+.tag {
+  padding: 1px 7px; border-radius: 99px; font-size: 9px;
+  background: #313244; color: #a6adc8; border: 1px solid #45475a;
+}
+.tag.async  { background: #89b4fa22; color: #89b4fa; border-color: #89b4fa44; }
+.tag.unsafe { background: #f38ba822; color: #f38ba8; border-color: #f38ba844; }
+.tag.pub    { background: #a6e3a122; color: #a6e3a1; border-color: #a6e3a144; }
+
+/* ── Focus depth (inside inspector) ──────────────────────────────────────── */
+.focus-section { margin-top: 12px; border-top: 1px solid #313244; padding-top: 10px; }
+.hop-btns { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+.hop-btn {
+  padding: 3px 10px; border-radius: 4px; font-size: 11px; cursor: pointer;
+  background: #313244; color: #a6adc8; border: 1px solid #45475a;
+  font-family: inherit;
+}
+.hop-btn.active { background: #cba6f7; color: #1e1e2e; border-color: #cba6f7; }
+.clear-focus-btn {
+  margin-top: 8px; width: 100%; padding: 4px 0; border-radius: 4px;
+  font-size: 11px; cursor: pointer; background: #313244; color: #f38ba8;
+  border: 1px solid #45475a; font-family: inherit;
+}
+
+/* ── Legends ─────────────────────────────────────────────────────────────── */
 #legend { bottom: 16px; left: 16px; font-size: 11px; }
 #legend h3, #edge-legend h3 {
   color: #6c7086; font-size: 10px; text-transform: uppercase;
   letter-spacing: 0.06em; margin-bottom: 8px;
 }
-.li { display: flex; align-items: center; gap: 7px; margin: 3px 0; color: #a6adc8; }
+.li {
+  display: flex; align-items: center; gap: 7px; margin: 3px 0;
+  color: #a6adc8; cursor: pointer; user-select: none; border-radius: 4px;
+  padding: 1px 4px; transition: background 0.1s;
+}
+.li:hover { background: rgba(49,50,68,0.6); }
+.li.muted { opacity: 0.35; }
 .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 #edge-legend { bottom: 16px; right: 16px; font-size: 11px; }
-.edge-li { display: flex; align-items: center; gap: 7px; margin: 3px 0; color: #a6adc8; }
+.edge-li {
+  display: flex; align-items: center; gap: 7px; margin: 3px 0;
+  color: #a6adc8; cursor: pointer; user-select: none; border-radius: 4px;
+  padding: 1px 4px; transition: background 0.1s;
+}
+.edge-li:hover { background: rgba(49,50,68,0.6); }
+.edge-li.muted { opacity: 0.35; }
 .edge-swatch { width: 22px; height: 2px; flex-shrink: 0; }
 #loading {
   position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
@@ -59,31 +120,42 @@ svg#graph { width: 100vw; height: 100vh; display: block; }
   </g>
 </svg>
 
+<!-- Stats -->
 <div class="panel" id="stats">
   <div>Nodes: <b id="nc">&#8211;</b></div>
   <div>Edges: <b id="ec">&#8211;</b></div>
+  <div id="filtered-line" style="display:none">Showing: <b id="fc">&#8211;</b></div>
 </div>
 
+<!-- Search bar -->
+<div class="panel" id="search-bar">
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6c7086" stroke-width="2">
+    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+  </svg>
+  <input id="search-input" type="text" placeholder="Search nodes…" spellcheck="false" autocomplete="off">
+  <span id="search-count"></span>
+  <button id="search-clear" title="Clear">✕</button>
+</div>
+
+<!-- Inspector -->
 <div class="panel" id="inspector"></div>
 
+<!-- Node kind legend (clickable toggles) -->
 <div class="panel" id="legend">
   <h3>Node kinds</h3>
 </div>
 
+<!-- Edge kind legend (clickable toggles) -->
 <div class="panel" id="edge-legend">
   <h3>Edge kinds</h3>
-  <div class="edge-li"><div class="edge-swatch" style="background:#585b70"></div>contains</div>
-  <div class="edge-li"><div class="edge-swatch" style="background:#f38ba8"></div>calls</div>
-  <div class="edge-li"><div class="edge-swatch" style="background:#fab387"></div>implements</div>
-  <div class="edge-li"><div class="edge-swatch" style="background:#89dceb"></div>uses</div>
-  <div class="edge-li"><div class="edge-swatch" style="background:#a6e3a1"></div>imports</div>
 </div>
 
-<div id="hint">scroll to zoom &nbsp;&middot;&nbsp; drag background to pan &nbsp;&middot;&nbsp; drag node to pin &nbsp;&middot;&nbsp; click node to inspect</div>
+<div id="hint">scroll to zoom &nbsp;&middot;&nbsp; drag to pan &nbsp;&middot;&nbsp; drag node to pin &nbsp;&middot;&nbsp; click node to focus &nbsp;&middot;&nbsp; click legend to toggle</div>
 
 <script>
 // ── Constants ────────────────────────────────────────────────────────────────
 const NODE_COLORS = {
+  folder:     '#45475a',
   file:       '#6c7086',
   module:     '#cba6f7',
   struct:     '#a6e3a1',
@@ -103,34 +175,256 @@ const EDGE_COLORS = {
   imports:    '#a6e3a1',
 };
 const RADIUS = {
-  file:8, module:7, struct:6, enum:6, trait:6,
+  folder:12, file:9, module:7, struct:6, enum:6, trait:6,
   type_alias:5, function:5, method:4, constant:4, macro:5,
 };
 const DEFAULT_R = 5;
 
-// Simulation parameters
-const SPRING_LEN  = 200;
-const SPRING_K    = 0.04;
-const REPULSION   = 9000;
-const GRAVITY     = 0.015;
-const DAMPING     = 0.82;
+// ── Visibility state ─────────────────────────────────────────────────────────
+const hiddenKinds = new Set();
+const hiddenEdges = new Set();
 
-// ── Build node-kind legend ───────────────────────────────────────────────────
-const legEl = document.getElementById('legend');
-legEl.innerHTML = '<h3>Node kinds</h3>' +
-  Object.entries(NODE_COLORS)
-    .map(([k, c]) => `<div class="li"><div class="dot" style="background:${c}"></div>${k.replace('_', ' ')}</div>`)
-    .join('');
+function buildLegends() {
+  const presentNodeKinds = [...new Set(nodes.map(n => n.kind))]
+    .filter(k => NODE_COLORS[k])
+    .sort((a, b) => Object.keys(NODE_COLORS).indexOf(a) - Object.keys(NODE_COLORS).indexOf(b));
+
+  const presentEdgeKinds = [...new Set(edges.map(e => e.kind))]
+    .filter(k => EDGE_COLORS[k])
+    .sort((a, b) => Object.keys(EDGE_COLORS).indexOf(a) - Object.keys(EDGE_COLORS).indexOf(b));
+
+  const legEl = document.getElementById('legend');
+  legEl.innerHTML = '<h3>Node kinds</h3>' +
+    presentNodeKinds.map(k =>
+      `<div class="li" data-kind="${k}" onclick="toggleKind('${k}',this)">` +
+      `<div class="dot" style="background:${NODE_COLORS[k]}"></div>${k.replace('_', ' ')}</div>`
+    ).join('');
+
+  const edgeLegEl = document.getElementById('edge-legend');
+  edgeLegEl.innerHTML = '<h3>Edge kinds</h3>' +
+    presentEdgeKinds.map(k =>
+      `<div class="edge-li" data-kind="${k}" onclick="toggleEdge('${k}',this)">` +
+      `<div class="edge-swatch" style="background:${EDGE_COLORS[k]}"></div>${k}</div>`
+    ).join('');
+}
+
+function toggleKind(kind, el) {
+  if (hiddenKinds.has(kind)) { hiddenKinds.delete(kind); el.classList.remove('muted'); }
+  else                        { hiddenKinds.add(kind);    el.classList.add('muted'); }
+  applyVisibility();
+}
+function toggleEdge(kind, el) {
+  if (hiddenEdges.has(kind)) { hiddenEdges.delete(kind); el.classList.remove('muted'); }
+  else                        { hiddenEdges.add(kind);    el.classList.add('muted'); }
+  applyVisibility();
+}
+
+// ── Simulation constants ──────────────────────────────────────────────────────
+const SPRING_LEN  = 180;
+const SPRING_K    = 0.02;
+const REPULSION   = 7000;
+const GRAVITY     = 0.012;
+const DAMPING     = 0.88;
+const ALPHA_DECAY = 0.022;
+const ALPHA_MIN   = 0.001;
+const ALPHA_KICK  = 0.3;
+
+// Tiers reveal as alpha drops through these thresholds.
+// Higher-level nodes appear first; leaves last.
+// With ALPHA_DECAY=0.022 and alpha starting at 1.0, thresholds map to:
+//   0.65 → ~18 frames (~0.3s)   0.55 → ~27 frames (~0.45s)
+//   0.44 → ~38 frames (~0.63s)  0.34 → ~48 frames (~0.8s)
+//   0.24 → ~63 frames (~1.05s)  0.14 → ~88 frames (~1.47s)
+//   0.07 → ~121 frames (~2.0s)
+const REVEAL_SCHEDULE = [
+  { alpha: 0.65, kinds: ['folder'] },
+  { alpha: 0.55, kinds: ['file'] },
+  { alpha: 0.44, kinds: ['module'] },
+  { alpha: 0.34, kinds: ['struct', 'enum', 'trait', 'type_alias'] },
+  { alpha: 0.24, kinds: ['function'] },
+  { alpha: 0.14, kinds: ['method'] },
+  { alpha: 0.07, kinds: ['constant', 'macro'] },
+];
 
 // ── State ────────────────────────────────────────────────────────────────────
 let nodes = [], edges = [], nodeMap = {};
 let simRunning = false;
+let alpha      = 1.0;
+
+const revealedKinds = new Set();
+let nextTierIdx = 0;
+
+// Focus state
+let focusedId  = null;
+let focusHops  = 1;
+let focusedSet = null;
+
+// Search state
+let searchQuery = '';
+let searchSet   = null;
+
+// ── Search ───────────────────────────────────────────────────────────────────
+const searchInput = document.getElementById('search-input');
+const searchClear = document.getElementById('search-clear');
+const searchCount = document.getElementById('search-count');
+
+searchInput.addEventListener('input', () => {
+  searchQuery = searchInput.value.trim().toLowerCase();
+  searchClear.style.display = searchQuery ? 'block' : 'none';
+  applySearch();
+});
+
+searchClear.addEventListener('click', () => {
+  searchInput.value = '';
+  searchQuery = '';
+  searchClear.style.display = 'none';
+  searchSet = null;
+  searchCount.textContent = '';
+  document.getElementById('filtered-line').style.display = 'none';
+  applyVisibility();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === '/' && document.activeElement !== searchInput) {
+    e.preventDefault();
+    searchInput.focus();
+  }
+  if (e.key === 'Escape') {
+    searchInput.blur();
+    searchInput.value = '';
+    searchQuery = '';
+    searchClear.style.display = 'none';
+    searchSet = null;
+    searchCount.textContent = '';
+    document.getElementById('filtered-line').style.display = 'none';
+    clearFocus();
+    applyVisibility();
+  }
+});
+
+function applySearch() {
+  if (!searchQuery) {
+    searchSet = null;
+    searchCount.textContent = '';
+    document.getElementById('filtered-line').style.display = 'none';
+  } else {
+    searchSet = new Set(
+      nodes
+        .filter(n => n.name.toLowerCase().includes(searchQuery)
+                  || (n.qualified_name || '').toLowerCase().includes(searchQuery))
+        .map(n => n.id)
+    );
+    const count = searchSet.size;
+    searchCount.textContent = count === 0 ? 'no matches' : `${count} match${count === 1 ? '' : 'es'}`;
+    document.getElementById('filtered-line').style.display = 'block';
+    document.getElementById('fc').textContent = count;
+  }
+  applyVisibility();
+}
+
+// ── N-hop neighborhood ───────────────────────────────────────────────────────
+function buildAdjacency() {
+  const adj = {};
+  for (const n of nodes) adj[n.id] = new Set();
+  for (const e of edges) {
+    if (adj[e.src]) adj[e.src].add(e.dst);
+    if (adj[e.dst]) adj[e.dst].add(e.src);
+  }
+  return adj;
+}
+
+function nHopSet(startId, hops, adj) {
+  const visited = new Set([startId]);
+  let frontier  = new Set([startId]);
+  for (let h = 0; h < hops; h++) {
+    const next = new Set();
+    for (const id of frontier) {
+      for (const nb of (adj[id] || [])) {
+        if (!visited.has(nb)) { visited.add(nb); next.add(nb); }
+      }
+    }
+    frontier = next;
+    if (frontier.size === 0) break;
+  }
+  return visited;
+}
+
+function applyFocus() {
+  if (!focusedId) { focusedSet = null; applyVisibility(); return; }
+  const adj = buildAdjacency();
+  focusedSet = nHopSet(focusedId, focusHops, adj);
+  applyVisibility();
+}
+
+// ── Combined visibility ───────────────────────────────────────────────────────
+function applyVisibility() {
+  const nodesEl = document.getElementById('nodes');
+  const edgesEl = document.getElementById('edges');
+
+  for (const g of nodesEl.querySelectorAll('g.node')) {
+    const id   = g.dataset.id;
+    const node = nodeMap[id];
+    if (!node) continue;
+    const notRevealed  = !revealedKinds.has(node.kind);
+    const kindHidden   = hiddenKinds.has(node.kind);
+    const focusHidden  = focusedSet && !focusedSet.has(id);
+    const searchHidden = searchSet  && !searchSet.has(id);
+    if (notRevealed || kindHidden) {
+      g.style.opacity       = '0';
+      g.style.pointerEvents = 'none';
+    } else if (focusHidden || searchHidden) {
+      g.style.opacity       = focusHidden ? '0.2' : '0.12';
+      g.style.pointerEvents = 'none';
+    } else {
+      g.style.opacity       = '1';
+      g.style.pointerEvents = '';
+    }
+  }
+
+  let i = 0;
+  for (const line of edgesEl.querySelectorAll('line')) {
+    const e       = edges[i++];
+    const srcKind = (nodeMap[e.src] || {}).kind;
+    const dstKind = (nodeMap[e.dst] || {}).kind;
+    const notRevealed  = !revealedKinds.has(srcKind) || !revealedKinds.has(dstKind);
+    const kindHidden   = hiddenEdges.has(e.kind);
+    const srcHidden    = hiddenKinds.has(srcKind);
+    const dstHidden    = hiddenKinds.has(dstKind);
+    const focusHidden  = focusedSet && !(focusedSet.has(e.src) && focusedSet.has(e.dst));
+    const searchHidden = searchSet  && !(searchSet.has(e.src)  || searchSet.has(e.dst));
+    if (notRevealed || kindHidden || srcHidden || dstHidden) {
+      line.style.opacity = '0';
+    } else if (focusHidden) {
+      line.style.opacity = '0.04';
+    } else if (searchHidden) {
+      line.style.opacity = '0.06';
+    } else {
+      line.style.opacity = '0.45';
+    }
+  }
+}
+
+function setHops(h) {
+  focusHops = h === 0 ? Infinity : h;
+  applyFocus();
+  document.querySelectorAll('.hop-btn').forEach(btn => {
+    const bh = parseInt(btn.textContent) || 0;
+    btn.classList.toggle('active', bh === (focusHops === Infinity ? 0 : focusHops));
+  });
+}
+
+function clearFocus() {
+  focusedId  = null;
+  focusedSet = null;
+  document.getElementById('inspector').style.display = 'none';
+  applyVisibility();
+}
 
 // ── SVG pan / zoom ───────────────────────────────────────────────────────────
-const svg   = document.getElementById('graph');
-const root  = document.getElementById('root');
+const svg  = document.getElementById('graph');
+const root = document.getElementById('root');
 let tx = 0, ty = 0, scale = 1;
-let panning = false, pinned = null;
+let panning = false, pinned = null, didDrag = false;
 let panX0 = 0, panY0 = 0, tx0 = 0, ty0 = 0;
 
 function applyTransform() {
@@ -139,9 +433,9 @@ function applyTransform() {
 
 svg.addEventListener('wheel', e => {
   e.preventDefault();
-  const f = e.deltaY > 0 ? 0.9 : 1.1;
+  const f    = e.deltaY > 0 ? 0.9 : 1.1;
   const rect = svg.getBoundingClientRect();
-  const px = e.clientX - rect.left, py = e.clientY - rect.top;
+  const px   = e.clientX - rect.left, py = e.clientY - rect.top;
   tx = px - (px - tx) * f;
   ty = py - (py - ty) * f;
   scale *= f;
@@ -161,78 +455,137 @@ window.addEventListener('mousemove', e => {
     applyTransform();
   }
   if (pinned) {
+    didDrag = true;
     const rect = svg.getBoundingClientRect();
-    pinned.x = (e.clientX - rect.left - tx) / scale;
-    pinned.y = (e.clientY - rect.top  - ty) / scale;
+    pinned.x  = (e.clientX - rect.left - tx) / scale;
+    pinned.y  = (e.clientY - rect.top  - ty) / scale;
     pinned.vx = 0; pinned.vy = 0;
     updatePositions();
   }
 });
-window.addEventListener('mouseup', () => { panning = false; pinned = null; });
+window.addEventListener('mouseup', () => {
+  panning = false;
+  if (pinned && didDrag) kickSim(ALPHA_KICK);
+  pinned  = null;
+  didDrag = false;
+});
 
 // ── Force simulation ─────────────────────────────────────────────────────────
 function tick() {
+  alpha *= (1 - ALPHA_DECAY);
+
+  if (alpha < ALPHA_MIN) {
+    for (const n of nodes) { n.vx = 0; n.vy = 0; }
+    // Reveal any tiers that haven't appeared yet (edge case: very small graphs).
+    while (nextTierIdx < REVEAL_SCHEDULE.length) {
+      for (const k of REVEAL_SCHEDULE[nextTierIdx].kinds) revealedKinds.add(k);
+      nextTierIdx++;
+    }
+    updatePositions();
+    applyVisibility();
+    simRunning = false;
+    return;
+  }
+
   const cx = (svg.clientWidth  / 2 - tx) / scale;
   const cy = (svg.clientHeight / 2 - ty) / scale;
 
-  // Reset forces
   for (const n of nodes) { n.fx = 0; n.fy = 0; }
 
-  // Gravity toward center
   for (const n of nodes) {
-    n.fx += (cx - n.x) * GRAVITY;
-    n.fy += (cy - n.y) * GRAVITY;
+    n.fx += (cx - n.x) * GRAVITY * alpha;
+    n.fy += (cy - n.y) * GRAVITY * alpha;
   }
 
-  // Pairwise repulsion
   for (let i = 0; i < nodes.length; i++) {
     const a = nodes[i];
     for (let j = i + 1; j < nodes.length; j++) {
-      const b = nodes[j];
+      const b  = nodes[j];
       const dx = a.x - b.x, dy = a.y - b.y;
       const d2 = dx * dx + dy * dy + 1;
       const d  = Math.sqrt(d2);
-      const f  = REPULSION / d2;
+      const f  = (REPULSION / d2) * alpha;
       const fx = (dx / d) * f, fy = (dy / d) * f;
       a.fx += fx; a.fy += fy;
       b.fx -= fx; b.fy -= fy;
     }
   }
 
-  // Spring along edges
   for (const e of edges) {
     const a = nodeMap[e.src], b = nodeMap[e.dst];
     if (!a || !b) continue;
     const dx = b.x - a.x, dy = b.y - a.y;
     const d  = Math.sqrt(dx * dx + dy * dy) || 1;
-    const f  = (d - SPRING_LEN) * SPRING_K;
+    const f  = (d - SPRING_LEN) * SPRING_K * alpha;
     const fx = (dx / d) * f, fy = (dy / d) * f;
     a.fx += fx; a.fy += fy;
     b.fx -= fx; b.fy -= fy;
   }
 
-  // Integrate
-  let energy = 0;
   for (const n of nodes) {
     if (n === pinned) continue;
     n.vx = (n.vx + n.fx) * DAMPING;
     n.vy = (n.vy + n.fy) * DAMPING;
     n.x += n.vx;
     n.y += n.vy;
-    energy += n.vx * n.vx + n.vy * n.vy;
+  }
+
+  // Reveal tiers as alpha crosses each threshold.
+  // CSS transitions on .node handle the smooth fade-in.
+  while (nextTierIdx < REVEAL_SCHEDULE.length &&
+         alpha <= REVEAL_SCHEDULE[nextTierIdx].alpha) {
+    for (const k of REVEAL_SCHEDULE[nextTierIdx].kinds) revealedKinds.add(k);
+    nextTierIdx++;
+    applyVisibility();
   }
 
   updatePositions();
-
-  if (energy > 0.05) {
-    requestAnimationFrame(tick);
-  } else {
-    simRunning = false;
-  }
+  requestAnimationFrame(tick);
 }
 
-function kickSim() {
+function kickSim(newAlpha = 1.0) {
+  alpha = Math.max(alpha, newAlpha);
   if (!simRunning) { simRunning = true; requestAnimationFrame(tick); }
+}
+
+// Place nodes hierarchically so physics starts near equilibrium.
+function initPositions() {
+  const cx = svg.clientWidth / 2, cy = svg.clientHeight / 2;
+  const parentOf = {};
+  for (const e of edges) { if (e.kind === 'contains') parentOf[e.dst] = e.src; }
+
+  const placed = new Set();
+  const queue  = [];
+
+  const roots  = nodes.filter(n => !parentOf[n.id]);
+  const rCount = Math.max(roots.length, 1);
+  roots.forEach((n, i) => {
+    const angle = (i / rCount) * 2 * Math.PI;
+    n.x = cx + Math.cos(angle) * 220;
+    n.y = cy + Math.sin(angle) * 220;
+    placed.add(n.id);
+    queue.push(n);
+  });
+
+  for (let qi = 0; qi < queue.length; qi++) {
+    const parent   = queue[qi];
+    const children = nodes.filter(n => parentOf[n.id] === parent.id && !placed.has(n.id));
+    const cCount   = Math.max(children.length, 1);
+    children.forEach((child, i) => {
+      const angle = (i / cCount) * 2 * Math.PI;
+      child.x = parent.x + Math.cos(angle) * 55;
+      child.y = parent.y + Math.sin(angle) * 55;
+      placed.add(child.id);
+      queue.push(child);
+    });
+  }
+
+  for (const n of nodes) {
+    if (!placed.has(n.id)) {
+      n.x = cx + (Math.random() - 0.5) * 100;
+      n.y = cy + (Math.random() - 0.5) * 100;
+    }
+  }
 }
 
 // ── DOM helpers ──────────────────────────────────────────────────────────────
@@ -270,7 +623,7 @@ function buildDOM() {
     const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
     const col  = EDGE_COLORS[e.kind] || '#585b70';
     const mid  = e.kind === 'contains' ? 'arr' : `arr-${e.kind}`;
-    line.style.cssText = `stroke:${col};stroke-width:1;opacity:0.45;`;
+    line.style.cssText = `stroke:${col};stroke-width:1;opacity:0;`;
     line.setAttribute('marker-end', `url(#${mid})`);
     edgesEl.appendChild(line);
   }
@@ -279,7 +632,7 @@ function buildDOM() {
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     g.classList.add('node');
     g.dataset.id = n.id;
-    g.style.cursor = 'pointer';
+    g.style.cssText = 'cursor:pointer;opacity:0;';
 
     const r    = RADIUS[n.kind] || DEFAULT_R;
     const col  = NODE_COLORS[n.kind] || '#cdd6f4';
@@ -296,18 +649,16 @@ function buildDOM() {
     lbl.setAttribute('dy', r + 9);
     lbl.textContent = n.name.length > 18 ? n.name.slice(0, 16) + '…' : n.name;
 
-    g.addEventListener('mousedown', ev => {
-      ev.stopPropagation();
-      pinned = n;
-    });
+    g.addEventListener('mousedown', ev => { ev.stopPropagation(); pinned = n; didDrag = false; });
     g.addEventListener('click', ev => {
       ev.stopPropagation();
+      focusedId = n.id;
+      focusHops = 1;
+      applyFocus();
       showInspector(n, col);
-      // Give a small kick so the simulation notices the pinned node moved
-      kickSim();
     });
-    g.addEventListener('mouseenter', () => { circ.setAttribute('r', r * 1.45); });
-    g.addEventListener('mouseleave', () => { circ.setAttribute('r', r); });
+    g.addEventListener('mouseenter', () => circ.setAttribute('r', r * 1.45));
+    g.addEventListener('mouseleave', () => circ.setAttribute('r', r));
 
     g.appendChild(circ);
     g.appendChild(lbl);
@@ -317,8 +668,23 @@ function buildDOM() {
 
 function showInspector(n, color) {
   const insp = document.getElementById('inspector');
+
+  const flags = [];
+  if (n.visibility === 'pub') flags.push('<span class="tag pub">pub</span>');
+  if (n.is_async)             flags.push('<span class="tag async">async</span>');
+  if (n.is_unsafe)            flags.push('<span class="tag unsafe">unsafe</span>');
+
+  const callerCount = edges.filter(e => e.dst === n.id && e.kind === 'calls').length;
+  const calleeCount = edges.filter(e => e.src === n.id && e.kind === 'calls').length;
+
+  const hopLabels = ['All', '1 hop', '2 hops', '3 hops'];
+  const hopValues = [0, 1, 2, 3];
+  const hopBtns = hopValues.map((h, i) =>
+    `<button class="hop-btn${focusHops === h || (h === 0 && focusHops === Infinity) ? ' active' : ''}" onclick="setHops(${h})">${hopLabels[i]}</button>`
+  ).join('');
+
   insp.innerHTML = `
-    <div class="badge" style="background:${color}">${n.kind.replace('_', ' ')}</div>
+    <div class="badge" style="background:${color}">${n.kind.replace('_', ' ')}</div>
     <div class="field">
       <div class="field-label">name</div>
       <div class="field-val">${esc(n.name)}</div>
@@ -329,21 +695,31 @@ function showInspector(n, color) {
     </div>
     <div class="field">
       <div class="field-label">location</div>
-      <div class="field-val">${esc(n.file)}:${n.start_line}</div>
+      <div class="field-val">${esc(n.file)}:${n.start_line}–${n.end_line}</div>
+    </div>
+    ${n.loc ? `<div class="field"><div class="field-label">LOC</div><div class="field-val">${n.loc}</div></div>` : ''}
+    ${flags.length ? `<div class="field"><div class="field-label">flags</div><div class="field-tags">${flags.join('')}</div></div>` : ''}
+    ${(callerCount + calleeCount) > 0 ? `
+    <div class="field">
+      <div class="field-label">calls</div>
+      <div class="field-val">${calleeCount} out · ${callerCount} in</div>
+    </div>` : ''}
+    <div class="focus-section">
+      <div class="field-label">focus depth</div>
+      <div class="hop-btns">${hopBtns}</div>
+      <button class="clear-focus-btn" onclick="clearFocus()">Clear focus</button>
     </div>
   `;
   insp.style.display = 'block';
 }
 
 function esc(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 svg.addEventListener('click', () => {
-  document.getElementById('inspector').style.display = 'none';
+  if (searchQuery) return;
+  clearFocus();
 });
 
 // ── Bootstrap ────────────────────────────────────────────────────────────────
@@ -354,21 +730,22 @@ fetch('/data')
     document.getElementById('nc').textContent = data.nodes.length;
     document.getElementById('ec').textContent = data.edges.length;
 
-    const w = svg.clientWidth, h = svg.clientHeight;
-    nodes = data.nodes.map(n => ({
-      ...n,
-      x:  w / 2 + (Math.random() - 0.5) * 400,
-      y:  h / 2 + (Math.random() - 0.5) * 400,
-      vx: 0, vy: 0, fx: 0, fy: 0,
-    }));
-    nodeMap = Object.fromEntries(nodes.map(n => [n.id, n]));
-    edges   = data.edges;
+    nodes = data.nodes.map(n => ({ ...n, x: 0, y: 0, vx: 0, vy: 0, fx: 0, fy: 0 }));
+    nodeMap  = Object.fromEntries(nodes.map(n => [n.id, n]));
+    edges    = data.edges;
+
+    // Reset reveal state.
+    revealedKinds.clear();
+    nextTierIdx = 0;
 
     tx = 0; ty = 0; scale = 1;
     applyTransform();
+    buildLegends();
+    initPositions();   // structured hierarchical starting positions
     buildDOM();
-    updatePositions();
-    kickSim();
+    applyVisibility(); // everything opacity:0 (CSS transition will animate reveals)
+    updatePositions(); // write initial positions into SVG before first paint
+    kickSim();         // start physics; tick() will reveal tiers as alpha decays
   })
   .catch(err => {
     const el = document.getElementById('loading');
