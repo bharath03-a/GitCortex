@@ -6,6 +6,8 @@ use gitcortex_core::store::GraphStore;
 use gitcortex_indexer::IncrementalIndexer;
 use gitcortex_store::kuzu::KuzuGraphStore;
 
+use crate::cmd::export;
+
 pub fn run(branch_switch: bool) -> Result<()> {
     let t0 = Instant::now();
     let repo_root = repo_root()?;
@@ -42,17 +44,23 @@ pub fn run(branch_switch: bool) -> Result<()> {
         .context("failed to persist sha")?;
 
     let elapsed = t0.elapsed().as_millis();
-    tracing::info!(
-        branch,
-        added_nodes = diff.added_nodes.len(),
-        added_edges = diff.added_edges.len(),
-        removed_files = diff.removed_files.len(),
-        elapsed_ms = elapsed,
-        "indexed"
+    let added_n = diff.added_nodes.len();
+    let added_e = diff.added_edges.len();
+    let removed = diff.removed_files.len();
+
+    // Brief summary visible to the user after every commit.
+    eprintln!(
+        "gcx  [{branch}]  +{added_n} nodes  +{added_e} edges  -{removed} files  ({elapsed}ms)"
     );
+
+    tracing::info!(branch, added_nodes = added_n, added_edges = added_e,
+        removed_files = removed, elapsed_ms = elapsed, "indexed");
     if elapsed > 500 {
         tracing::warn!(elapsed_ms = elapsed, "hook exceeded 500ms budget");
     }
+
+    // Regenerate context.md if it was previously exported (opt-in).
+    export::refresh_if_exists(&repo_root, &store, &branch);
 
     Ok(())
 }
