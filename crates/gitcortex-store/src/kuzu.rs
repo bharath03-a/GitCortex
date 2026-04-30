@@ -66,6 +66,12 @@ impl GraphStore for KuzuGraphStore {
         let et = db_schema::edge_table(branch);
         let conn = self.conn()?;
 
+        // Use explicit transactions so Phase 1 (node inserts) is committed and
+        // visible before Phase 2 (edge MATCHes) begins — required for KuzuDB's
+        // MVCC snapshot isolation to work correctly.
+        conn.query("BEGIN TRANSACTION")
+            .map_err(|e| GitCortexError::Store(format!("begin transaction: {e}")))?;
+
         // 1. Remove all nodes (and their edges) for deleted/replaced files.
         for file in &diff.removed_files {
             let file_str = esc(file.to_string_lossy().as_ref());
@@ -122,6 +128,13 @@ impl GraphStore for KuzuGraphStore {
             .map_err(|e| GitCortexError::Store(format!("insert node '{name}': {e}")))?;
         }
 
+        // Commit node inserts so the edge MATCH queries in steps 5–6 see them.
+        conn.query("COMMIT")
+            .map_err(|e| GitCortexError::Store(format!("commit nodes: {e}")))?;
+
+        conn.query("BEGIN TRANSACTION")
+            .map_err(|e| GitCortexError::Store(format!("begin edge transaction: {e}")))?;
+
         // 5. Insert new edges. If either endpoint is absent (cross-file), MATCH
         //    yields no rows and the CREATE is silently skipped — correct behaviour.
         for edge in &diff.added_edges {
@@ -135,6 +148,50 @@ impl GraphStore for KuzuGraphStore {
             ))
             .map_err(|e| GitCortexError::Store(format!("insert edge: {e}")))?;
         }
+
+        // 6. Resolve cross-file deferred edges against the full store.
+        //    The diff-local pass couldn't find these callees/types because they
+        //    live in unchanged files. We match by name here — best-effort without
+        //    full type inference, filtered to the correct node kinds to reduce noise.
+
+        for (caller_id, callee_name) in &diff.deferred_calls {
+            let caller = esc(&caller_id.as_str());
+            let callee = esc(callee_name);
+            conn.query(&format!(
+                "MATCH (caller:{nt} {{id: '{caller}'}}), (callee:{nt}) \
+                 WHERE callee.name = '{callee}' \
+                 AND (callee.kind = 'function' OR callee.kind = 'method') \
+                 CREATE (caller)-[:{et} {{kind: 'calls'}}]->(callee)"
+            ))
+            .map_err(|e| GitCortexError::Store(format!("deferred call '{callee_name}': {e}")))?;
+        }
+
+        for (fn_id, type_name) in &diff.deferred_uses {
+            let fn_esc = esc(&fn_id.as_str());
+            let ty = esc(type_name);
+            conn.query(&format!(
+                "MATCH (fn_node:{nt} {{id: '{fn_esc}'}}), (ty:{nt}) \
+                 WHERE ty.name = '{ty}' \
+                 AND (ty.kind = 'struct' OR ty.kind = 'enum' \
+                      OR ty.kind = 'trait' OR ty.kind = 'type_alias') \
+                 CREATE (fn_node)-[:{et} {{kind: 'uses'}}]->(ty)"
+            ))
+            .map_err(|e| GitCortexError::Store(format!("deferred use '{type_name}': {e}")))?;
+        }
+
+        for (struct_id, trait_name) in &diff.deferred_implements {
+            let s = esc(&struct_id.as_str());
+            let t = esc(trait_name);
+            conn.query(&format!(
+                "MATCH (st:{nt} {{id: '{s}'}}), (tr:{nt}) \
+                 WHERE tr.name = '{t}' AND tr.kind = 'trait' \
+                 CREATE (st)-[:{et} {{kind: 'implements'}}]->(tr)"
+            ))
+            .map_err(|e| GitCortexError::Store(format!("deferred impl '{trait_name}': {e}")))?;
+        }
+
+        conn.query("COMMIT")
+            .map_err(|e| GitCortexError::Store(format!("commit edges: {e}")))?;
 
         Ok(())
     }
@@ -369,6 +426,7 @@ fn bool_val(v: &Value) -> Result<bool> {
 
 fn kind_from_str(s: &str) -> NodeKind {
     match s {
+        "folder" => NodeKind::Folder,
         "file" => NodeKind::File,
         "module" => NodeKind::Module,
         "struct" => NodeKind::Struct,

@@ -275,7 +275,8 @@ fn initial_index(repo_root: &Path) -> Result<(usize, usize)> {
         KuzuGraphStore::open(repo_root).context("failed to open graph store")?;
     let branch = current_branch(repo_root)?;
 
-    if store.last_indexed_sha(&branch)?.is_none() {
+    let existing_sha = store.last_indexed_sha(&branch)?;
+    if existing_sha.is_none() {
         let indexer =
             IncrementalIndexer::new(repo_root).context("failed to create indexer")?;
         let (diff, head_sha) = indexer.run(None).context("initial index failed")?;
