@@ -26,18 +26,21 @@ The graph is namespaced per branch — switching branches instantly gives you th
 ## Requirements
 
 - Git
-- No Rust toolchain required for pre-built installs
+- Rust 1.80+ (only needed for source installs — pre-built binaries require nothing)
 
 ---
 
 ## Installation
 
-**macOS / Linux — pre-built binary (recommended):**
+**macOS / Linux — pre-built binary (no Rust required):**
 
 ```bash
 curl --proto '=https' --tlsv1.2 -LsSf \
   https://github.com/bharath03-a/GitCortex/releases/latest/download/gcx-installer.sh | sh
 ```
+
+> Pre-built binaries for macOS (arm64/x86_64), Linux (x86_64/aarch64), and Windows
+> are published automatically on every release via GitHub Releases.
 
 **Cargo (from crates.io):**
 
@@ -45,7 +48,7 @@ curl --proto '=https' --tlsv1.2 -LsSf \
 cargo install gitcortex-mcp
 ```
 
-**Cargo (from source):**
+**Cargo (from git — works before crates.io publish):**
 
 ```bash
 cargo install --git https://github.com/bharath03-a/GitCortex --bin gcx
