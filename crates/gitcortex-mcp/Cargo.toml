@@ -1,10 +1,13 @@
 [package]
 name = "gitcortex-mcp"
+description = "GitCortex CLI and MCP server — branch-aware code knowledge graph for AI assistants"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+keywords = ["gitcortex", "mcp", "code-graph", "claude", "ai"]
+categories = ["development-tools", "command-line-utilities"]
 
 [[bin]]
 name = "gcx"

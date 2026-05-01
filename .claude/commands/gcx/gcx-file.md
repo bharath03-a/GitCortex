@@ -1,0 +1,1 @@
+Run `gcx query list-definitions $ARGUMENTS` and show the results. Display all definitions ordered by line number with their kind, name, visibility, and location.

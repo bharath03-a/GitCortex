@@ -236,3 +236,13 @@ vendor/
   2. [step] → verify: [check]
   ```
 - Strong success criteria let you loop independently. Weak ones ("make it work") require clarification — ask upfront.
+
+## GitCortex Knowledge Graph
+
+This repo is indexed by [GitCortex](https://github.com/bharath03-a/GitCortex).
+Use the MCP server (`gcx serve`, configured in `.mcp.json`) or these slash commands:
+
+- `/gcx-lookup <name>` — find all definitions matching a name
+- `/gcx-callers <name>` — find all callers of a function
+- `/gcx-file <path>` — list all definitions in a file
+- `/gcx-blast-radius` — show blast radius of changes vs main

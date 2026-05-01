@@ -1,0 +1,1 @@
+Run `gcx blast-radius --base main --head HEAD --format text` and show the results. Summarise which functions changed and which callers are affected, and highlight the risk level.

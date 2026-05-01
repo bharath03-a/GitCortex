@@ -1,0 +1,1 @@
+Run `gcx query find-callers $ARGUMENTS` and show the results. List every caller with its kind, name, file, and line number. Briefly describe the call chain.

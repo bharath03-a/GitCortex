@@ -1,0 +1,1 @@
+Run `gcx query lookup-symbol $ARGUMENTS` and show the results. Display each match with its kind, qualified name, file path, and line number.

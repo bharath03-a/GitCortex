@@ -1,10 +1,13 @@
 [package]
 name = "gitcortex-core"
+description = "Shared graph types and GraphStore trait for GitCortex"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+keywords = ["gitcortex", "code-graph", "ast", "knowledge-graph"]
+categories = ["development-tools"]
 
 [dependencies]
 petgraph.workspace = true
