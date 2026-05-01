@@ -4,14 +4,14 @@ use std::sync::Arc;
 use gitcortex_core::store::GraphStore;
 use gitcortex_store::kuzu::KuzuGraphStore;
 use rmcp::{
-    RoleServer,
     handler::server::wrapper::Parameters,
     model::{
-        CallToolResult, Content, GetPromptRequestParams, GetPromptResult,
-        ListPromptsResult, PaginatedRequestParams, PromptMessage, PromptMessageRole,
+        CallToolResult, Content, GetPromptRequestParams, GetPromptResult, ListPromptsResult,
+        PaginatedRequestParams, PromptMessage, PromptMessageRole,
     },
-    prompt, prompt_handler, prompt_router, service::RequestContext,
-    tool, tool_handler, tool_router,
+    prompt, prompt_handler, prompt_router,
+    service::RequestContext,
+    tool, tool_handler, tool_router, RoleServer,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -70,11 +70,10 @@ impl GitCortexServer {
 #[tool_router]
 impl GitCortexServer {
     /// Look up all nodes (functions, structs, traits, etc.) by name.
-    #[tool(description = "Look up nodes in the code knowledge graph by their unqualified name. Returns all matching symbols across files.")]
-    fn lookup_symbol(
-        &self,
-        Parameters(p): Parameters<LookupSymbolParams>,
-    ) -> CallToolResult {
+    #[tool(
+        description = "Look up nodes in the code knowledge graph by their unqualified name. Returns all matching symbols across files."
+    )]
+    fn lookup_symbol(&self, Parameters(p): Parameters<LookupSymbolParams>) -> CallToolResult {
         let branch = p.branch.as_deref().unwrap_or("main").to_owned();
         let store = match self.store.lock() {
             Ok(g) => g,
@@ -106,11 +105,10 @@ impl GitCortexServer {
     }
 
     /// Find all callers of a function or method.
-    #[tool(description = "Find all functions/methods that call the named function. Traverses `calls` edges in the knowledge graph.")]
-    fn find_callers(
-        &self,
-        Parameters(p): Parameters<FindCallersParams>,
-    ) -> CallToolResult {
+    #[tool(
+        description = "Find all functions/methods that call the named function. Traverses `calls` edges in the knowledge graph."
+    )]
+    fn find_callers(&self, Parameters(p): Parameters<FindCallersParams>) -> CallToolResult {
         let branch = p.branch.as_deref().unwrap_or("main").to_owned();
         let store = match self.store.lock() {
             Ok(g) => g,
@@ -138,11 +136,10 @@ impl GitCortexServer {
     }
 
     /// List all symbols defined in a source file, ordered by line number.
-    #[tool(description = "List all functions, structs, traits, and other definitions in a source file, ordered by line number.")]
-    fn list_definitions(
-        &self,
-        Parameters(p): Parameters<ListDefinitionsParams>,
-    ) -> CallToolResult {
+    #[tool(
+        description = "List all functions, structs, traits, and other definitions in a source file, ordered by line number."
+    )]
+    fn list_definitions(&self, Parameters(p): Parameters<ListDefinitionsParams>) -> CallToolResult {
         let branch = p.branch.as_deref().unwrap_or("main").to_owned();
         let store = match self.store.lock() {
             Ok(g) => g,
@@ -172,11 +169,10 @@ impl GitCortexServer {
     }
 
     /// Compute the graph diff between two branches.
-    #[tool(description = "Show what nodes were added or removed between two branches. Useful for understanding what changed in a feature branch vs main.")]
-    fn branch_diff_graph(
-        &self,
-        Parameters(p): Parameters<BranchDiffParams>,
-    ) -> CallToolResult {
+    #[tool(
+        description = "Show what nodes were added or removed between two branches. Useful for understanding what changed in a feature branch vs main."
+    )]
+    fn branch_diff_graph(&self, Parameters(p): Parameters<BranchDiffParams>) -> CallToolResult {
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
@@ -195,11 +191,7 @@ impl GitCortexServer {
                         })
                     })
                     .collect();
-                let removed: Vec<_> = diff
-                    .removed_node_ids
-                    .iter()
-                    .map(|id| id.as_str())
-                    .collect();
+                let removed: Vec<_> = diff.removed_node_ids.iter().map(|id| id.as_str()).collect();
                 CallToolResult::structured(json!({
                     "from": p.from_branch,
                     "to": p.to_branch,
@@ -235,11 +227,13 @@ impl GitCortexServer {
     /// Analyse the blast radius of changed files before committing.
     /// Walks the call graph from changed symbols to find all downstream callers
     /// and produces a risk assessment (LOW / MEDIUM / HIGH / CRITICAL).
-    #[prompt(name = "detect_impact",
-             description = "Pre-commit impact analysis — maps changed files to affected callers and scores risk")]
+    #[prompt(
+        name = "detect_impact",
+        description = "Pre-commit impact analysis — maps changed files to affected callers and scores risk"
+    )]
     fn detect_impact(&self, Parameters(p): Parameters<DetectImpactParams>) -> GetPromptResult {
         let branch = p.branch.as_deref().unwrap_or("main");
-        let files  = p.changed_files.trim().to_owned();
+        let files = p.changed_files.trim().to_owned();
 
         let user_msg = format!(
             r#"I am about to commit changes to these files on branch `{branch}`:
@@ -260,16 +254,19 @@ Please analyse the blast radius of these changes using the GitCortex knowledge g
 "#
         );
 
-        GetPromptResult::new(vec![
-            PromptMessage::new_text(PromptMessageRole::User, user_msg),
-        ])
+        GetPromptResult::new(vec![PromptMessage::new_text(
+            PromptMessageRole::User,
+            user_msg,
+        )])
         .with_description("Impact analysis of staged changes using the call graph")
     }
 
     /// Generate a Mermaid architecture diagram from the knowledge graph.
     /// Summarises modules, key structs/traits, and their relationships.
-    #[prompt(name = "generate_map",
-             description = "Architecture documentation — produces a Mermaid diagram of modules, types, and key relationships")]
+    #[prompt(
+        name = "generate_map",
+        description = "Architecture documentation — produces a Mermaid diagram of modules, types, and key relationships"
+    )]
     fn generate_map(&self, Parameters(p): Parameters<GenerateMapParams>) -> GetPromptResult {
         let branch = p.branch.as_deref().unwrap_or("main");
 
@@ -303,10 +300,13 @@ Any circular dependencies, large fan-outs, or architectural concerns visible in 
 "#
         );
 
-        GetPromptResult::new(vec![
-            PromptMessage::new_text(PromptMessageRole::User, user_msg),
-        ])
-        .with_description("Architecture documentation with Mermaid diagram from the knowledge graph")
+        GetPromptResult::new(vec![PromptMessage::new_text(
+            PromptMessageRole::User,
+            user_msg,
+        )])
+        .with_description(
+            "Architecture documentation with Mermaid diagram from the knowledge graph",
+        )
     }
 }
 

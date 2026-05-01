@@ -17,6 +17,14 @@ use crate::{
     parser::{parser_for_path, ParseResult},
 };
 
+type FileIndexResult = Result<(
+    GraphDiff,
+    Vec<(NodeId, String)>,
+    Vec<(NodeId, String)>,
+    Vec<(NodeId, String)>,
+    Vec<(NodeId, String)>,
+)>;
+
 // ── IncrementalIndexer ────────────────────────────────────────────────────────
 
 /// Orchestrates the differ and parser to produce a `GraphDiff` from
@@ -32,7 +40,10 @@ impl IncrementalIndexer {
     /// Reads `.gitcortex/ignore` (if present) for exclusion patterns.
     pub fn new(repo_root: &Path) -> Result<Self> {
         let ignorer = build_ignorer(repo_root);
-        Ok(Self { repo_root: repo_root.to_owned(), ignorer })
+        Ok(Self {
+            repo_root: repo_root.to_owned(),
+            ignorer,
+        })
     }
 
     /// Run an incremental index from `from_sha` (exclusive) to HEAD.
@@ -57,12 +68,12 @@ impl IncrementalIndexer {
             return Ok((GraphDiff::default(), head_sha));
         }
 
-        let (to_parse, to_delete): (Vec<_>, Vec<_>) =
-            changes.into_iter().partition(|c| !matches!(c, FileChange::Deleted(_)));
+        let (to_parse, to_delete): (Vec<_>, Vec<_>) = changes
+            .into_iter()
+            .partition(|c| !matches!(c, FileChange::Deleted(_)));
 
         // Parse added/modified files in parallel.
-        type FileResult = Result<(GraphDiff, Vec<(NodeId, String)>, Vec<(NodeId, String)>, Vec<(NodeId, String)>, Vec<(NodeId, String)>)>;
-        let per_file: Vec<FileResult> = to_parse
+        let per_file: Vec<FileIndexResult> = to_parse
             .par_iter()
             .map(|change| self.index_file(change.path()))
             .collect();
@@ -92,12 +103,32 @@ impl IncrementalIndexer {
             map
         };
 
-        merged.deferred_calls = resolve_deferred(&name_to_ids, &all_calls, EdgeKind::Calls, &mut merged.added_edges);
-        merged.deferred_uses  = resolve_deferred(&name_to_ids, &all_uses, EdgeKind::Uses, &mut merged.added_edges);
-        merged.deferred_implements = resolve_deferred(&name_to_ids, &all_implements, EdgeKind::Implements, &mut merged.added_edges);
+        merged.deferred_calls = resolve_deferred(
+            &name_to_ids,
+            &all_calls,
+            EdgeKind::Calls,
+            &mut merged.added_edges,
+        );
+        merged.deferred_uses = resolve_deferred(
+            &name_to_ids,
+            &all_uses,
+            EdgeKind::Uses,
+            &mut merged.added_edges,
+        );
+        merged.deferred_implements = resolve_deferred(
+            &name_to_ids,
+            &all_implements,
+            EdgeKind::Implements,
+            &mut merged.added_edges,
+        );
         // Imports use placeholder src IDs so we can't resolve them against the store;
         // resolve what we can locally and silently drop the rest.
-        let _ = resolve_deferred(&name_to_ids, &all_imports, EdgeKind::Imports, &mut merged.added_edges);
+        let _ = resolve_deferred(
+            &name_to_ids,
+            &all_imports,
+            EdgeKind::Imports,
+            &mut merged.added_edges,
+        );
 
         for deleted in to_delete {
             merged.removed_files.push(deleted.path().to_owned());
@@ -118,9 +149,17 @@ impl IncrementalIndexer {
         vec!["rs", "py", "ts", "tsx", "js", "jsx", "mjs", "cjs", "go"]
     }
 
-    fn index_file(&self, repo_relative_path: &Path) -> Result<(GraphDiff, Vec<(NodeId, String)>, Vec<(NodeId, String)>, Vec<(NodeId, String)>, Vec<(NodeId, String)>)> {
+    fn index_file(&self, repo_relative_path: &Path) -> FileIndexResult {
         let abs_path = self.repo_root.join(repo_relative_path);
-        let empty = || (GraphDiff::default(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        let empty = || {
+            (
+                GraphDiff::default(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+            )
+        };
 
         if self.should_ignore(repo_relative_path) {
             return Ok(empty());
@@ -140,25 +179,41 @@ impl IncrementalIndexer {
             None => return Ok(empty()),
         };
 
-        let ParseResult { nodes, edges, deferred_calls, deferred_uses, deferred_implements, deferred_imports } =
-            parser.parse(repo_relative_path, &source)?;
+        let ParseResult {
+            nodes,
+            edges,
+            deferred_calls,
+            deferred_uses,
+            deferred_implements,
+            deferred_imports,
+        } = parser.parse(repo_relative_path, &source)?;
 
         let mut diff = GraphDiff::default();
         // Remove old code nodes for this file and old structural nodes for
         // every ancestor folder (they'll be re-synthesised after merging).
         diff.removed_files.push(repo_relative_path.to_owned());
         for ancestor in repo_relative_path.ancestors().skip(1) {
-            if ancestor == Path::new("") || ancestor == Path::new(".") { break; }
+            if ancestor == Path::new("") || ancestor == Path::new(".") {
+                break;
+            }
             diff.removed_files.push(ancestor.to_path_buf());
         }
         diff.added_nodes = nodes;
         diff.added_edges = edges;
 
-        Ok((diff, deferred_calls, deferred_uses, deferred_implements, deferred_imports))
+        Ok((
+            diff,
+            deferred_calls,
+            deferred_uses,
+            deferred_implements,
+            deferred_imports,
+        ))
     }
 
     fn should_ignore(&self, path: &Path) -> bool {
-        self.ignorer.matched_path_or_any_parents(path, false).is_ignore()
+        self.ignorer
+            .matched_path_or_any_parents(path, false)
+            .is_ignore()
     }
 }
 
@@ -179,7 +234,11 @@ fn resolve_deferred(
     for (src_id, target_name) in deferred {
         if let Some(dst_ids) = name_to_ids.get(target_name.as_str()) {
             for dst_id in dst_ids {
-                let edge = Edge { src: src_id.clone(), dst: (*dst_id).clone(), kind: kind.clone() };
+                let edge = Edge {
+                    src: src_id.clone(),
+                    dst: (*dst_id).clone(),
+                    kind: kind.clone(),
+                };
                 if !edges.contains(&edge) {
                     edges.push(edge);
                 }
@@ -196,13 +255,16 @@ fn resolve_deferred(
 ///   - Creates one `File` node (kind = File, file = the_file_path).
 ///   - Creates `Folder` nodes for every ancestor directory component.
 ///   - Adds Contains edges: folder→subfolder, folder→file, file→top-level nodes.
+///
 /// Top-level nodes are code nodes that are NOT already the `dst` of a Contains
 /// edge within the same file (i.e. not already contained by a module/struct).
 fn build_structural_nodes(diff: &GraphDiff) -> (Vec<Node>, Vec<Edge>) {
     use std::collections::HashSet;
 
     // Which code node IDs already have an incoming Contains edge?
-    let contained: HashSet<&NodeId> = diff.added_edges.iter()
+    let contained: HashSet<&NodeId> = diff
+        .added_edges
+        .iter()
         .filter(|e| e.kind == EdgeKind::Contains)
         .map(|e| &e.dst)
         .collect();
@@ -222,7 +284,8 @@ fn build_structural_nodes(diff: &GraphDiff) -> (Vec<Node>, Vec<Edge>) {
     let mut file_ids: HashMap<&Path, NodeId> = HashMap::new();
     for (file_path, code_nodes) in &by_file {
         let file_id = NodeId::new();
-        let name = file_path.file_name()
+        let name = file_path
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("")
             .to_owned();
@@ -232,29 +295,41 @@ fn build_structural_nodes(diff: &GraphDiff) -> (Vec<Node>, Vec<Edge>) {
             kind: NodeKind::File,
             qualified_name: file_path.to_string_lossy().into_owned(),
             file: file_path.to_path_buf(),
-            span: Span { start_line: 1, end_line: 1 },
-            metadata: NodeMetadata { visibility: Visibility::Pub, ..Default::default() },
+            span: Span {
+                start_line: 1,
+                end_line: 1,
+            },
+            metadata: NodeMetadata {
+                visibility: Visibility::Pub,
+                ..Default::default()
+            },
         });
         file_ids.insert(file_path, file_id.clone());
 
         // File → top-level code node Contains edges.
         for node in code_nodes {
             if !contained.contains(&node.id) {
-                new_edges.push(Edge { src: file_id.clone(), dst: node.id.clone(), kind: EdgeKind::Contains });
+                new_edges.push(Edge {
+                    src: file_id.clone(),
+                    dst: node.id.clone(),
+                    kind: EdgeKind::Contains,
+                });
             }
         }
     }
 
     // ── Folder nodes (collect unique ancestor directories) ────────────────────
-    let unique_dirs: HashSet<PathBuf> = by_file.keys()
+    let unique_dirs: HashSet<PathBuf> = by_file
+        .keys()
         .flat_map(|p| p.ancestors().skip(1))
         .filter(|p| *p != Path::new("") && *p != Path::new("."))
         .map(|p| p.to_path_buf())
         .collect();
 
     for dir in &unique_dirs {
-        let dir_id = folder_ids.entry(dir.clone()).or_insert_with(NodeId::new).clone();
-        let name = dir.file_name()
+        let dir_id = folder_ids.entry(dir.clone()).or_default().clone();
+        let name = dir
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or(dir.to_str().unwrap_or(""))
             .to_owned();
@@ -264,8 +339,14 @@ fn build_structural_nodes(diff: &GraphDiff) -> (Vec<Node>, Vec<Edge>) {
             kind: NodeKind::Folder,
             qualified_name: dir.to_string_lossy().into_owned(),
             file: dir.clone(),
-            span: Span { start_line: 1, end_line: 1 },
-            metadata: NodeMetadata { visibility: Visibility::Pub, ..Default::default() },
+            span: Span {
+                start_line: 1,
+                end_line: 1,
+            },
+            metadata: NodeMetadata {
+                visibility: Visibility::Pub,
+                ..Default::default()
+            },
         });
     }
 
@@ -273,15 +354,26 @@ fn build_structural_nodes(diff: &GraphDiff) -> (Vec<Node>, Vec<Edge>) {
     for (file_path, file_id) in &file_ids {
         if let Some(parent) = file_path.parent().filter(|p| *p != Path::new("")) {
             if let Some(dir_id) = folder_ids.get(parent) {
-                new_edges.push(Edge { src: dir_id.clone(), dst: file_id.clone(), kind: EdgeKind::Contains });
+                new_edges.push(Edge {
+                    src: dir_id.clone(),
+                    dst: file_id.clone(),
+                    kind: EdgeKind::Contains,
+                });
             }
         }
     }
     for dir in &unique_dirs {
         let child_id = folder_ids[dir].clone();
-        if let Some(parent) = dir.parent().filter(|p| *p != Path::new("") && *p != Path::new(".")) {
+        if let Some(parent) = dir
+            .parent()
+            .filter(|p| *p != Path::new("") && *p != Path::new("."))
+        {
             if let Some(parent_id) = folder_ids.get(parent) {
-                new_edges.push(Edge { src: parent_id.clone(), dst: child_id, kind: EdgeKind::Contains });
+                new_edges.push(Edge {
+                    src: parent_id.clone(),
+                    dst: child_id,
+                    kind: EdgeKind::Contains,
+                });
             }
         }
     }

@@ -95,15 +95,18 @@ impl Differ {
         diff.foreach(
             &mut |delta, _progress| {
                 let change = match delta.status() {
-                    Delta::Added | Delta::Copied | Delta::Renamed => {
-                        delta.new_file().path().map(|p| FileChange::Added(p.to_owned()))
-                    }
-                    Delta::Modified => {
-                        delta.new_file().path().map(|p| FileChange::Modified(p.to_owned()))
-                    }
-                    Delta::Deleted => {
-                        delta.old_file().path().map(|p| FileChange::Deleted(p.to_owned()))
-                    }
+                    Delta::Added | Delta::Copied | Delta::Renamed => delta
+                        .new_file()
+                        .path()
+                        .map(|p| FileChange::Added(p.to_owned())),
+                    Delta::Modified => delta
+                        .new_file()
+                        .path()
+                        .map(|p| FileChange::Modified(p.to_owned())),
+                    Delta::Deleted => delta
+                        .old_file()
+                        .path()
+                        .map(|p| FileChange::Deleted(p.to_owned())),
                     _ => None,
                 };
 

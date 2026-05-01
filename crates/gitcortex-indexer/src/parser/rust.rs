@@ -20,28 +20,38 @@ pub struct RustParser {
 
 impl RustParser {
     pub fn new() -> Self {
-        Self { language: tree_sitter_rust::LANGUAGE.into() }
+        Self {
+            language: tree_sitter_rust::LANGUAGE.into(),
+        }
     }
 }
 
 impl Default for RustParser {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl LanguageParser for RustParser {
-    fn extensions(&self) -> &[&str] { &["rs"] }
+    fn extensions(&self) -> &[&str] {
+        &["rs"]
+    }
 
     fn parse(&self, path: &Path, source: &str) -> Result<ParseResult> {
         let mut parser = Parser::new();
-        parser.set_language(&self.language).map_err(|e| GitCortexError::Parse {
-            file: path.to_owned(),
-            message: e.to_string(),
-        })?;
+        parser
+            .set_language(&self.language)
+            .map_err(|e| GitCortexError::Parse {
+                file: path.to_owned(),
+                message: e.to_string(),
+            })?;
 
-        let tree = parser.parse(source, None).ok_or_else(|| GitCortexError::Parse {
-            file: path.to_owned(),
-            message: "tree-sitter returned no parse tree".into(),
-        })?;
+        let tree = parser
+            .parse(source, None)
+            .ok_or_else(|| GitCortexError::Parse {
+                file: path.to_owned(),
+                message: "tree-sitter returned no parse tree".into(),
+            })?;
 
         let mut visitor = FileVisitor::new(path, source);
         // Pass 1 — pre-allocate NodeIds for all named items so forward
@@ -118,7 +128,11 @@ impl<'src> FileVisitor<'src> {
         for child in node.children(&mut cursor) {
             if child.kind() == "visibility_modifier" {
                 let t = self.text(child);
-                return if t.contains("crate") { Visibility::PubCrate } else { Visibility::Pub };
+                return if t.contains("crate") {
+                    Visibility::PubCrate
+                } else {
+                    Visibility::Pub
+                };
             }
         }
         Visibility::Private
@@ -144,7 +158,14 @@ impl<'src> FileVisitor<'src> {
         }
     }
 
-    fn make_node(&self, id: NodeId, kind: NodeKind, name: String, scope: &[String], ts_node: TsNode<'_>) -> Node {
+    fn make_node(
+        &self,
+        id: NodeId,
+        kind: NodeKind,
+        name: String,
+        scope: &[String],
+        ts_node: TsNode<'_>,
+    ) -> Node {
         Node {
             id,
             qualified_name: Self::qualified(scope, &name),
@@ -165,9 +186,15 @@ impl<'src> FileVisitor<'src> {
     fn type_name(&self, node: TsNode<'_>) -> Option<String> {
         match node.kind() {
             "type_identifier" => Some(self.text(node).to_owned()),
-            "generic_type" => node.child_by_field_name("type").map(|n| self.text(n).to_owned()),
-            "scoped_type_identifier" => node.child_by_field_name("name").map(|n| self.text(n).to_owned()),
-            "reference_type" => node.child_by_field_name("type").and_then(|n| self.type_name(n)),
+            "generic_type" => node
+                .child_by_field_name("type")
+                .map(|n| self.text(n).to_owned()),
+            "scoped_type_identifier" => node
+                .child_by_field_name("name")
+                .map(|n| self.text(n).to_owned()),
+            "reference_type" => node
+                .child_by_field_name("type")
+                .and_then(|n| self.type_name(n)),
             "mutable_specifier" => None,
             _ => Some(self.text(node).to_owned()),
         }
@@ -182,12 +209,12 @@ impl<'src> FileVisitor<'src> {
             match child.kind() {
                 "struct_item" | "enum_item" | "trait_item" => {
                     if let Some(name) = self.field_text(child, "name") {
-                        self.type_index.entry(name).or_insert_with(NodeId::new);
+                        self.type_index.entry(name).or_default();
                     }
                 }
                 "function_item" => {
                     if let Some(name) = self.field_text(child, "name") {
-                        self.fn_index.entry(name).or_insert_with(NodeId::new);
+                        self.fn_index.entry(name).or_default();
                     }
                 }
                 "impl_item" => {
@@ -217,14 +244,14 @@ impl<'src> FileVisitor<'src> {
 
     fn visit_item(&mut self, node: TsNode<'_>, scope: &[String], container_id: Option<NodeId>) {
         match node.kind() {
-            "function_item"    => self.visit_function(node, scope, container_id, NodeKind::Function),
-            "struct_item"      => self.visit_type_item(node, scope, container_id, NodeKind::Struct),
-            "enum_item"        => self.visit_type_item(node, scope, container_id, NodeKind::Enum),
-            "trait_item"       => self.visit_trait(node, scope, container_id),
-            "impl_item"        => self.visit_impl(node, scope),
-            "mod_item"         => self.visit_mod(node, scope, container_id),
+            "function_item" => self.visit_function(node, scope, container_id, NodeKind::Function),
+            "struct_item" => self.visit_type_item(node, scope, container_id, NodeKind::Struct),
+            "enum_item" => self.visit_type_item(node, scope, container_id, NodeKind::Enum),
+            "trait_item" => self.visit_trait(node, scope, container_id),
+            "impl_item" => self.visit_impl(node, scope),
+            "mod_item" => self.visit_mod(node, scope, container_id),
             "const_item" | "static_item" => self.visit_const(node, scope, container_id),
-            "type_item"        => self.visit_type_alias(node, scope, container_id),
+            "type_item" => self.visit_type_alias(node, scope, container_id),
             "macro_definition" => self.visit_macro_def(node, scope, container_id),
             _ => {}
         }
@@ -237,19 +264,28 @@ impl<'src> FileVisitor<'src> {
         container_id: Option<NodeId>,
         kind: NodeKind,
     ) {
-        let Some(name) = self.field_text(node, "name") else { return };
+        let Some(name) = self.field_text(node, "name") else {
+            return;
+        };
         // Methods always get a fresh ID — same method name can appear in multiple
         // impl blocks (e.g. `fmt` in Display and Debug) and bare-name call resolution
         // doesn't apply to methods. Free functions use the fn_index for deferred calls.
         let id = if kind == NodeKind::Method {
             NodeId::new()
         } else {
-            self.fn_index.get(&name).cloned().unwrap_or_else(NodeId::new)
+            self.fn_index
+                .get(&name)
+                .cloned()
+                .unwrap_or_else(NodeId::new)
         };
         let graph_node = self.make_node(id.clone(), kind, name, scope, node);
 
         if let Some(cid) = container_id {
-            self.edges.push(Edge { src: cid, dst: id.clone(), kind: EdgeKind::Contains });
+            self.edges.push(Edge {
+                src: cid,
+                dst: id.clone(),
+                kind: EdgeKind::Contains,
+            });
         }
 
         // Uses edges: parameter types and return type referencing same-file types.
@@ -289,11 +325,19 @@ impl<'src> FileVisitor<'src> {
 
         for tname in type_names {
             if let Some(tid) = self.type_index.get(&tname).cloned() {
-                self.edges.push(Edge { src: fn_id.clone(), dst: tid, kind: EdgeKind::Uses });
-            } else if !tname.is_empty() && !is_primitive(&tname) {
-                if !self.deferred_uses.iter().any(|(id, n)| id == fn_id && n == &tname) {
-                    self.deferred_uses.push((fn_id.clone(), tname));
-                }
+                self.edges.push(Edge {
+                    src: fn_id.clone(),
+                    dst: tid,
+                    kind: EdgeKind::Uses,
+                });
+            } else if !tname.is_empty()
+                && !is_primitive(&tname)
+                && !self
+                    .deferred_uses
+                    .iter()
+                    .any(|(id, n)| id == fn_id && n == &tname)
+            {
+                self.deferred_uses.push((fn_id.clone(), tname));
             }
         }
     }
@@ -365,13 +409,23 @@ impl<'src> FileVisitor<'src> {
 
     /// Resolve a call: create an intra-file edge or push to deferred list.
     fn record_call(&mut self, caller_id: NodeId, callee_name: String) {
-        if callee_name.is_empty() { return; }
+        if callee_name.is_empty() {
+            return;
+        }
         if let Some(callee_id) = self.fn_index.get(&callee_name).cloned() {
-            let edge = Edge { src: caller_id, dst: callee_id, kind: EdgeKind::Calls };
+            let edge = Edge {
+                src: caller_id,
+                dst: callee_id,
+                kind: EdgeKind::Calls,
+            };
             if !self.edges.contains(&edge) {
                 self.edges.push(edge);
             }
-        } else if !self.deferred_calls.iter().any(|(c, n)| c == &caller_id && n == &callee_name) {
+        } else if !self
+            .deferred_calls
+            .iter()
+            .any(|(c, n)| c == &caller_id && n == &callee_name)
+        {
             self.deferred_calls.push((caller_id, callee_name));
         }
     }
@@ -383,21 +437,41 @@ impl<'src> FileVisitor<'src> {
         container_id: Option<NodeId>,
         kind: NodeKind,
     ) {
-        let Some(name) = self.field_text(node, "name") else { return };
-        let id = self.type_index.get(&name).cloned().unwrap_or_else(NodeId::new);
+        let Some(name) = self.field_text(node, "name") else {
+            return;
+        };
+        let id = self
+            .type_index
+            .get(&name)
+            .cloned()
+            .unwrap_or_else(NodeId::new);
         let graph_node = self.make_node(id.clone(), kind, name, scope, node);
         if let Some(cid) = container_id {
-            self.edges.push(Edge { src: cid, dst: id.clone(), kind: EdgeKind::Contains });
+            self.edges.push(Edge {
+                src: cid,
+                dst: id.clone(),
+                kind: EdgeKind::Contains,
+            });
         }
         self.nodes.push(graph_node);
     }
 
     fn visit_trait(&mut self, node: TsNode<'_>, scope: &[String], container_id: Option<NodeId>) {
-        let Some(name) = self.field_text(node, "name") else { return };
-        let id = self.type_index.get(&name).cloned().unwrap_or_else(NodeId::new);
+        let Some(name) = self.field_text(node, "name") else {
+            return;
+        };
+        let id = self
+            .type_index
+            .get(&name)
+            .cloned()
+            .unwrap_or_else(NodeId::new);
         let graph_node = self.make_node(id.clone(), NodeKind::Trait, name.clone(), scope, node);
         if let Some(cid) = container_id {
-            self.edges.push(Edge { src: cid, dst: id.clone(), kind: EdgeKind::Contains });
+            self.edges.push(Edge {
+                src: cid,
+                dst: id.clone(),
+                kind: EdgeKind::Contains,
+            });
         }
         self.nodes.push(graph_node);
 
@@ -419,11 +493,19 @@ impl<'src> FileVisitor<'src> {
                 let trait_id = self.type_index.get(&trait_name).cloned();
                 match (type_id.clone(), trait_id) {
                     (Some(tid), Some(trid)) => {
-                        self.edges.push(Edge { src: tid, dst: trid, kind: EdgeKind::Implements });
+                        self.edges.push(Edge {
+                            src: tid,
+                            dst: trid,
+                            kind: EdgeKind::Implements,
+                        });
                     }
                     (Some(tid), None) if !is_primitive(&trait_name) => {
                         // Trait defined in another file — defer resolution.
-                        if !self.deferred_implements.iter().any(|(id, n)| id == &tid && n == &trait_name) {
+                        if !self
+                            .deferred_implements
+                            .iter()
+                            .any(|(id, n)| id == &tid && n == &trait_name)
+                        {
                             self.deferred_implements.push((tid, trait_name));
                         }
                     }
@@ -447,11 +529,17 @@ impl<'src> FileVisitor<'src> {
     }
 
     fn visit_mod(&mut self, node: TsNode<'_>, scope: &[String], container_id: Option<NodeId>) {
-        let Some(name) = self.field_text(node, "name") else { return };
+        let Some(name) = self.field_text(node, "name") else {
+            return;
+        };
         let id = NodeId::new();
         let graph_node = self.make_node(id.clone(), NodeKind::Module, name.clone(), scope, node);
         if let Some(cid) = container_id {
-            self.edges.push(Edge { src: cid, dst: id.clone(), kind: EdgeKind::Contains });
+            self.edges.push(Edge {
+                src: cid,
+                dst: id.clone(),
+                kind: EdgeKind::Contains,
+            });
         }
         self.nodes.push(graph_node);
 
@@ -463,31 +551,59 @@ impl<'src> FileVisitor<'src> {
     }
 
     fn visit_const(&mut self, node: TsNode<'_>, scope: &[String], container_id: Option<NodeId>) {
-        let Some(name) = self.field_text(node, "name") else { return };
+        let Some(name) = self.field_text(node, "name") else {
+            return;
+        };
         let id = NodeId::new();
         let graph_node = self.make_node(id.clone(), NodeKind::Constant, name, scope, node);
         if let Some(cid) = container_id {
-            self.edges.push(Edge { src: cid, dst: id.clone(), kind: EdgeKind::Contains });
+            self.edges.push(Edge {
+                src: cid,
+                dst: id.clone(),
+                kind: EdgeKind::Contains,
+            });
         }
         self.nodes.push(graph_node);
     }
 
-    fn visit_type_alias(&mut self, node: TsNode<'_>, scope: &[String], container_id: Option<NodeId>) {
-        let Some(name) = self.field_text(node, "name") else { return };
+    fn visit_type_alias(
+        &mut self,
+        node: TsNode<'_>,
+        scope: &[String],
+        container_id: Option<NodeId>,
+    ) {
+        let Some(name) = self.field_text(node, "name") else {
+            return;
+        };
         let id = NodeId::new();
         let graph_node = self.make_node(id.clone(), NodeKind::TypeAlias, name, scope, node);
         if let Some(cid) = container_id {
-            self.edges.push(Edge { src: cid, dst: id.clone(), kind: EdgeKind::Contains });
+            self.edges.push(Edge {
+                src: cid,
+                dst: id.clone(),
+                kind: EdgeKind::Contains,
+            });
         }
         self.nodes.push(graph_node);
     }
 
-    fn visit_macro_def(&mut self, node: TsNode<'_>, scope: &[String], container_id: Option<NodeId>) {
-        let Some(name) = self.field_text(node, "name") else { return };
+    fn visit_macro_def(
+        &mut self,
+        node: TsNode<'_>,
+        scope: &[String],
+        container_id: Option<NodeId>,
+    ) {
+        let Some(name) = self.field_text(node, "name") else {
+            return;
+        };
         let id = NodeId::new();
         let graph_node = self.make_node(id.clone(), NodeKind::Macro, name, scope, node);
         if let Some(cid) = container_id {
-            self.edges.push(Edge { src: cid, dst: id.clone(), kind: EdgeKind::Contains });
+            self.edges.push(Edge {
+                src: cid,
+                dst: id.clone(),
+                kind: EdgeKind::Contains,
+            });
         }
         self.nodes.push(graph_node);
     }
@@ -514,7 +630,12 @@ impl<'src> FileVisitor<'src> {
         match node.kind() {
             "identifier" | "type_identifier" => {
                 let name = self.text(node).to_owned();
-                if !name.is_empty() && !is_primitive(&name) && name != "self" && name != "super" && name != "crate" {
+                if !name.is_empty()
+                    && !is_primitive(&name)
+                    && name != "self"
+                    && name != "super"
+                    && name != "crate"
+                {
                     // Use file-level placeholder NodeId — resolved to real nodes in indexer.
                     let placeholder = NodeId::new();
                     self.deferred_imports.push((placeholder, name));
@@ -547,20 +668,68 @@ impl<'src> FileVisitor<'src> {
 fn is_primitive(name: &str) -> bool {
     matches!(
         name,
-        "bool" | "char" | "str"
-        | "i8" | "i16" | "i32" | "i64" | "i128" | "isize"
-        | "u8" | "u16" | "u32" | "u64" | "u128" | "usize"
-        | "f32" | "f64"
-        | "String" | "Vec" | "Option" | "Result" | "Box"
-        | "Rc" | "Arc" | "Cell" | "RefCell" | "Cow"
-        | "HashMap" | "HashSet" | "BTreeMap" | "BTreeSet"
-        | "PathBuf" | "Path" | "OsString" | "OsStr"
-        | "Send" | "Sync" | "Sized" | "Clone" | "Copy"
-        | "Debug" | "Display" | "Default" | "PartialEq" | "Eq"
-        | "PartialOrd" | "Ord" | "Hash" | "Iterator" | "Into"
-        | "From" | "AsRef" | "AsMut" | "Deref" | "DerefMut"
-        | "Error" | "Write" | "Read" | "Seek"
-        | "Self" | "()" | "_"
+        "bool"
+            | "char"
+            | "str"
+            | "i8"
+            | "i16"
+            | "i32"
+            | "i64"
+            | "i128"
+            | "isize"
+            | "u8"
+            | "u16"
+            | "u32"
+            | "u64"
+            | "u128"
+            | "usize"
+            | "f32"
+            | "f64"
+            | "String"
+            | "Vec"
+            | "Option"
+            | "Result"
+            | "Box"
+            | "Rc"
+            | "Arc"
+            | "Cell"
+            | "RefCell"
+            | "Cow"
+            | "HashMap"
+            | "HashSet"
+            | "BTreeMap"
+            | "BTreeSet"
+            | "PathBuf"
+            | "Path"
+            | "OsString"
+            | "OsStr"
+            | "Send"
+            | "Sync"
+            | "Sized"
+            | "Clone"
+            | "Copy"
+            | "Debug"
+            | "Display"
+            | "Default"
+            | "PartialEq"
+            | "Eq"
+            | "PartialOrd"
+            | "Ord"
+            | "Hash"
+            | "Iterator"
+            | "Into"
+            | "From"
+            | "AsRef"
+            | "AsMut"
+            | "Deref"
+            | "DerefMut"
+            | "Error"
+            | "Write"
+            | "Read"
+            | "Seek"
+            | "Self"
+            | "()"
+            | "_"
     )
 }
 
@@ -594,7 +763,10 @@ mod tests {
     #[test]
     fn parses_struct() {
         let (nodes, _) = parse("pub struct Person { pub name: String }");
-        let structs: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Struct).collect();
+        let structs: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Struct)
+            .collect();
         assert_eq!(structs.len(), 1);
         assert_eq!(structs[0].name, "Person");
     }
@@ -610,12 +782,21 @@ impl Greet for Person {
 "#;
         let (nodes, edges) = parse(src);
 
-        let traits: Vec<_>  = nodes.iter().filter(|n| n.kind == NodeKind::Trait).collect();
-        let structs: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Struct).collect();
-        let methods: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Method).collect();
-        let impl_edges: Vec<_> = edges.iter().filter(|e| e.kind == EdgeKind::Implements).collect();
+        let traits: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Trait).collect();
+        let structs: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Struct)
+            .collect();
+        let methods: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Method)
+            .collect();
+        let impl_edges: Vec<_> = edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::Implements)
+            .collect();
 
-        assert_eq!(traits.len(), 1,  "expected Greet trait");
+        assert_eq!(traits.len(), 1, "expected Greet trait");
         assert_eq!(structs.len(), 1, "expected Person struct");
         assert_eq!(methods.len(), 1, "expected greet method");
         assert_eq!(impl_edges.len(), 1, "expected Implements edge");
@@ -631,9 +812,18 @@ pub mod utils {
 "#;
         let (nodes, edges) = parse(src);
 
-        let mods: Vec<_>     = nodes.iter().filter(|n| n.kind == NodeKind::Module).collect();
-        let fns: Vec<_>      = nodes.iter().filter(|n| n.kind == NodeKind::Function).collect();
-        let contains: Vec<_> = edges.iter().filter(|e| e.kind == EdgeKind::Contains).collect();
+        let mods: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Module)
+            .collect();
+        let fns: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Function)
+            .collect();
+        let contains: Vec<_> = edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::Contains)
+            .collect();
 
         assert_eq!(mods.len(), 1, "expected utils module");
         assert_eq!(fns.len(), 1, "expected helper function");

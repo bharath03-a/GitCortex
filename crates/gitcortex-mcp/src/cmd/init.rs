@@ -20,7 +20,6 @@ const HOOK_NAMES: &[(&str, &str)] = &[
 
 const HOOK_SHEBANG: &str = "#!/usr/bin/env sh\nset -e\nexport PATH=\"$HOME/.cargo/bin:$HOME/.local/bin:/usr/local/bin:$PATH\"\n";
 
-
 const GH_WORKFLOW: &str = r#"name: GitCortex Blast Radius
 
 on:
@@ -263,14 +262,12 @@ fn install_hooks(repo_root: &Path) -> Result<usize> {
 // ── Indexing ──────────────────────────────────────────────────────────────────
 
 fn initial_index(repo_root: &Path) -> Result<(usize, usize)> {
-    let mut store =
-        KuzuGraphStore::open(repo_root).context("failed to open graph store")?;
+    let mut store = KuzuGraphStore::open(repo_root).context("failed to open graph store")?;
     let branch = current_branch(repo_root)?;
 
     let existing_sha = store.last_indexed_sha(&branch)?;
     if existing_sha.is_none() {
-        let indexer =
-            IncrementalIndexer::new(repo_root).context("failed to create indexer")?;
+        let indexer = IncrementalIndexer::new(repo_root).context("failed to create indexer")?;
         let (diff, head_sha) = indexer.run(None).context("initial index failed")?;
         store.apply_diff(&branch, &diff).context("apply diff")?;
         store

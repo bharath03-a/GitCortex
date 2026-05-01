@@ -65,8 +65,7 @@ fn write_context(
 
 fn build_context_md(nodes: &[Node], edges: &[Edge], branch: &str, sha: &str) -> String {
     // String-keyed maps to avoid NodeId lifetime complexity.
-    let node_map: HashMap<String, &Node> =
-        nodes.iter().map(|n| (n.id.as_str(), n)).collect();
+    let node_map: HashMap<String, &Node> = nodes.iter().map(|n| (n.id.as_str(), n)).collect();
 
     let mut children: HashMap<String, Vec<String>> = HashMap::new();
     let mut child_set: HashSet<String> = HashSet::new();
@@ -138,7 +137,11 @@ fn render_node(
         Visibility::Private => "",
     };
     let async_str = if node.metadata.is_async { "async " } else { "" };
-    let unsafe_str = if node.metadata.is_unsafe { "unsafe " } else { "" };
+    let unsafe_str = if node.metadata.is_unsafe {
+        "unsafe "
+    } else {
+        ""
+    };
 
     out.push_str(&format!(
         "{indent}- `{vis}{async_str}{unsafe_str}{kind} {name}` :{line}\n",

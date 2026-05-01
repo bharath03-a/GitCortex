@@ -263,8 +263,7 @@ impl GraphStore for KuzuGraphStore {
         let to_ids = collect_ids(&mut conn, &to_nt)?;
 
         // Nodes in `to` but not in `from` → added.
-        let added_ids: Vec<&String> =
-            to_ids.iter().filter(|id| !from_ids.contains(*id)).collect();
+        let added_ids: Vec<&String> = to_ids.iter().filter(|id| !from_ids.contains(*id)).collect();
 
         // Nodes in `from` but not in `to` → removed.
         let removed_ids: Vec<&String> =
@@ -306,14 +305,14 @@ impl GraphStore for KuzuGraphStore {
         let nt = db_schema::node_table(branch);
         let et = db_schema::edge_table(branch);
         let conn = self.conn()?;
-        let mut result = conn
+        let result = conn
             .query(&format!(
                 "MATCH (s:{nt})-[e:{et}]->(d:{nt}) RETURN s.id, d.id, e.kind"
             ))
             .map_err(|e| GitCortexError::Store(e.to_string()))?;
 
         let mut out = Vec::new();
-        while let Some(row) = result.next() {
+        for row in result {
             let src_str = str_val(&row[0])?;
             let dst_str = str_val(&row[1])?;
             let kind_str = str_val(&row[2])?;
@@ -343,13 +342,12 @@ impl GraphStore for KuzuGraphStore {
 
 /// Fixed column projection used in all node-returning queries.
 /// Order must match `row_to_node()`.
-const NODE_COLS: &str =
-    "n.id, n.kind, n.name, n.qualified_name, n.file, \
+const NODE_COLS: &str = "n.id, n.kind, n.name, n.qualified_name, n.file, \
      n.start_line, n.end_line, n.loc, n.visibility, n.is_async, n.is_unsafe";
 
 fn rows_to_nodes(result: &mut kuzu::QueryResult) -> Result<Vec<Node>> {
     let mut nodes = Vec::new();
-    while let Some(row) = result.next() {
+    for row in result.by_ref() {
         nodes.push(row_to_node(row)?);
     }
     Ok(nodes)
@@ -381,18 +379,27 @@ fn row_to_node(row: Vec<Value>) -> Result<Node> {
         name,
         qualified_name,
         file,
-        span: Span { start_line, end_line },
-        metadata: NodeMetadata { loc, visibility, is_async, is_unsafe, ..Default::default() },
+        span: Span {
+            start_line,
+            end_line,
+        },
+        metadata: NodeMetadata {
+            loc,
+            visibility,
+            is_async,
+            is_unsafe,
+            ..Default::default()
+        },
     })
 }
 
 fn collect_ids(conn: &mut Connection, table: &str) -> Result<Vec<String>> {
-    let mut result = conn
+    let result = conn
         .query(&format!("MATCH (n:{table}) RETURN n.id"))
         .map_err(|e| GitCortexError::Store(e.to_string()))?;
 
     let mut ids = Vec::new();
-    while let Some(row) = result.next() {
+    for row in result {
         ids.push(str_val(&row[0])?);
     }
     Ok(ids)
@@ -403,7 +410,9 @@ fn collect_ids(conn: &mut Connection, table: &str) -> Result<Vec<String>> {
 fn str_val(v: &Value) -> Result<String> {
     match v {
         Value::String(s) => Ok(s.clone()),
-        other => Err(GitCortexError::Store(format!("expected String, got {other:?}"))),
+        other => Err(GitCortexError::Store(format!(
+            "expected String, got {other:?}"
+        ))),
     }
 }
 
@@ -411,14 +420,18 @@ fn i64_val(v: &Value) -> Result<i64> {
     match v {
         Value::Int64(n) => Ok(*n),
         Value::Int32(n) => Ok(*n as i64),
-        other => Err(GitCortexError::Store(format!("expected Int64, got {other:?}"))),
+        other => Err(GitCortexError::Store(format!(
+            "expected Int64, got {other:?}"
+        ))),
     }
 }
 
 fn bool_val(v: &Value) -> Result<bool> {
     match v {
         Value::Bool(b) => Ok(*b),
-        other => Err(GitCortexError::Store(format!("expected Bool, got {other:?}"))),
+        other => Err(GitCortexError::Store(format!(
+            "expected Bool, got {other:?}"
+        ))),
     }
 }
 

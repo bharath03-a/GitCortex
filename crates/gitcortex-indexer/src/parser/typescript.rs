@@ -24,11 +24,15 @@ pub struct TypeScriptParser {
 
 impl TypeScriptParser {
     pub fn new_ts() -> Self {
-        Self { language: tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into() }
+        Self {
+            language: tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+        }
     }
 
     pub fn new_tsx() -> Self {
-        Self { language: tree_sitter_typescript::LANGUAGE_TSX.into() }
+        Self {
+            language: tree_sitter_typescript::LANGUAGE_TSX.into(),
+        }
     }
 }
 
@@ -38,16 +42,22 @@ pub struct JavaScriptParser {
 
 impl JavaScriptParser {
     pub fn new() -> Self {
-        Self { language: tree_sitter_javascript::LANGUAGE.into() }
+        Self {
+            language: tree_sitter_javascript::LANGUAGE.into(),
+        }
     }
 }
 
 impl Default for JavaScriptParser {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl LanguageParser for TypeScriptParser {
-    fn extensions(&self) -> &[&str] { &["ts", "tsx"] }
+    fn extensions(&self) -> &[&str] {
+        &["ts", "tsx"]
+    }
 
     fn parse(&self, path: &Path, source: &str) -> Result<ParseResult> {
         parse_source(&self.language, path, source)
@@ -55,24 +65,34 @@ impl LanguageParser for TypeScriptParser {
 }
 
 impl LanguageParser for JavaScriptParser {
-    fn extensions(&self) -> &[&str] { &["js", "jsx", "mjs", "cjs"] }
+    fn extensions(&self) -> &[&str] {
+        &["js", "jsx", "mjs", "cjs"]
+    }
 
     fn parse(&self, path: &Path, source: &str) -> Result<ParseResult> {
         parse_source(&self.language, path, source)
     }
 }
 
-fn parse_source(language: &tree_sitter::Language, path: &Path, source: &str) -> Result<ParseResult> {
+fn parse_source(
+    language: &tree_sitter::Language,
+    path: &Path,
+    source: &str,
+) -> Result<ParseResult> {
     let mut parser = Parser::new();
-    parser.set_language(language).map_err(|e| GitCortexError::Parse {
-        file: path.to_owned(),
-        message: e.to_string(),
-    })?;
+    parser
+        .set_language(language)
+        .map_err(|e| GitCortexError::Parse {
+            file: path.to_owned(),
+            message: e.to_string(),
+        })?;
 
-    let tree = parser.parse(source, None).ok_or_else(|| GitCortexError::Parse {
-        file: path.to_owned(),
-        message: "tree-sitter returned no parse tree".into(),
-    })?;
+    let tree = parser
+        .parse(source, None)
+        .ok_or_else(|| GitCortexError::Parse {
+            file: path.to_owned(),
+            message: "tree-sitter returned no parse tree".into(),
+        })?;
 
     let mut visitor = FileVisitor::new(path, source);
     visitor.collect_names(tree.root_node());
@@ -156,7 +176,14 @@ impl<'src> FileVisitor<'src> {
         }
     }
 
-    fn make_node(&self, id: NodeId, kind: NodeKind, name: String, scope: &[String], ts_node: TsNode<'_>) -> Node {
+    fn make_node(
+        &self,
+        id: NodeId,
+        kind: NodeKind,
+        name: String,
+        scope: &[String],
+        ts_node: TsNode<'_>,
+    ) -> Node {
         Node {
             id,
             qualified_name: Self::qualified(scope, &name),
@@ -185,19 +212,19 @@ impl<'src> FileVisitor<'src> {
                 "class_declaration" | "abstract_class_declaration" => {
                     if let Some(name_node) = actual.child_by_field_name("name") {
                         let name = self.text(name_node).to_owned();
-                        self.type_index.entry(name).or_insert_with(NodeId::new);
+                        self.type_index.entry(name).or_default();
                     }
                 }
                 "interface_declaration" | "type_alias_declaration" => {
                     if let Some(name_node) = actual.child_by_field_name("name") {
                         let name = self.text(name_node).to_owned();
-                        self.type_index.entry(name).or_insert_with(NodeId::new);
+                        self.type_index.entry(name).or_default();
                     }
                 }
                 "function_declaration" | "generator_function_declaration" => {
                     if let Some(name_node) = actual.child_by_field_name("name") {
                         let name = self.text(name_node).to_owned();
-                        self.fn_index.entry(name).or_insert_with(NodeId::new);
+                        self.fn_index.entry(name).or_default();
                     }
                 }
                 "lexical_declaration" | "variable_declaration" => {
@@ -211,12 +238,21 @@ impl<'src> FileVisitor<'src> {
     fn collect_names_from_var_decl(&mut self, node: TsNode<'_>) {
         let mut cursor = node.walk();
         for declarator in node.named_children(&mut cursor) {
-            if declarator.kind() != "variable_declarator" { continue; }
-            let Some(name_node) = declarator.child_by_field_name("name") else { continue };
-            let Some(value) = declarator.child_by_field_name("value") else { continue };
-            if matches!(value.kind(), "arrow_function" | "function" | "function_expression") {
+            if declarator.kind() != "variable_declarator" {
+                continue;
+            }
+            let Some(name_node) = declarator.child_by_field_name("name") else {
+                continue;
+            };
+            let Some(value) = declarator.child_by_field_name("value") else {
+                continue;
+            };
+            if matches!(
+                value.kind(),
+                "arrow_function" | "function" | "function_expression"
+            ) {
                 let name = self.text(name_node).to_owned();
-                self.fn_index.entry(name).or_insert_with(NodeId::new);
+                self.fn_index.entry(name).or_default();
             }
         }
     }
@@ -227,10 +263,14 @@ impl<'src> FileVisitor<'src> {
             let mut cursor = node.walk();
             for child in node.named_children(&mut cursor) {
                 match child.kind() {
-                    "class_declaration" | "abstract_class_declaration"
-                    | "function_declaration" | "generator_function_declaration"
-                    | "interface_declaration" | "type_alias_declaration"
-                    | "lexical_declaration" | "variable_declaration"
+                    "class_declaration"
+                    | "abstract_class_declaration"
+                    | "function_declaration"
+                    | "generator_function_declaration"
+                    | "interface_declaration"
+                    | "type_alias_declaration"
+                    | "lexical_declaration"
+                    | "variable_declaration"
                     | "enum_declaration" => return child,
                     _ => {}
                 }
@@ -250,7 +290,12 @@ impl<'src> FileVisitor<'src> {
         }
     }
 
-    fn visit_statement(&mut self, node: TsNode<'_>, scope: &[String], container_id: Option<NodeId>) {
+    fn visit_statement(
+        &mut self,
+        node: TsNode<'_>,
+        scope: &[String],
+        container_id: Option<NodeId>,
+    ) {
         match node.kind() {
             "function_declaration" | "generator_function_declaration" => {
                 self.visit_function(node, scope, container_id, NodeKind::Function);
@@ -281,13 +326,23 @@ impl<'src> FileVisitor<'src> {
         container_id: Option<NodeId>,
         kind: NodeKind,
     ) {
-        let Some(name_node) = node.child_by_field_name("name") else { return };
+        let Some(name_node) = node.child_by_field_name("name") else {
+            return;
+        };
         let name = self.text(name_node).to_owned();
-        let id = self.fn_index.get(&name).cloned().unwrap_or_else(NodeId::new);
+        let id = self
+            .fn_index
+            .get(&name)
+            .cloned()
+            .unwrap_or_else(NodeId::new);
         let graph_node = self.make_node(id.clone(), kind, name, scope, node);
 
         if let Some(cid) = container_id {
-            self.edges.push(Edge { src: cid, dst: id.clone(), kind: EdgeKind::Contains });
+            self.edges.push(Edge {
+                src: cid,
+                dst: id.clone(),
+                kind: EdgeKind::Contains,
+            });
         }
         self.nodes.push(graph_node);
 
@@ -297,9 +352,15 @@ impl<'src> FileVisitor<'src> {
     }
 
     fn visit_class(&mut self, node: TsNode<'_>, scope: &[String]) {
-        let Some(name_node) = node.child_by_field_name("name") else { return };
+        let Some(name_node) = node.child_by_field_name("name") else {
+            return;
+        };
         let name = self.text(name_node).to_owned();
-        let id = self.type_index.get(&name).cloned().unwrap_or_else(NodeId::new);
+        let id = self
+            .type_index
+            .get(&name)
+            .cloned()
+            .unwrap_or_else(NodeId::new);
         let graph_node = self.make_node(id.clone(), NodeKind::Struct, name.clone(), scope, node);
         self.nodes.push(graph_node);
 
@@ -322,11 +383,21 @@ impl<'src> FileVisitor<'src> {
     }
 
     fn visit_method(&mut self, node: TsNode<'_>, scope: &[String], class_id: NodeId) {
-        let Some(name_node) = node.child_by_field_name("name") else { return };
+        let Some(name_node) = node.child_by_field_name("name") else {
+            return;
+        };
         let name = self.text(name_node).to_owned();
-        let id = self.fn_index.get(&name).cloned().unwrap_or_else(NodeId::new);
+        let id = self
+            .fn_index
+            .get(&name)
+            .cloned()
+            .unwrap_or_else(NodeId::new);
         let graph_node = self.make_node(id.clone(), NodeKind::Method, name, scope, node);
-        self.edges.push(Edge { src: class_id, dst: id.clone(), kind: EdgeKind::Contains });
+        self.edges.push(Edge {
+            src: class_id,
+            dst: id.clone(),
+            kind: EdgeKind::Contains,
+        });
         self.nodes.push(graph_node);
 
         if let Some(body) = node.child_by_field_name("body") {
@@ -335,23 +406,37 @@ impl<'src> FileVisitor<'src> {
     }
 
     fn visit_interface(&mut self, node: TsNode<'_>, scope: &[String]) {
-        let Some(name_node) = node.child_by_field_name("name") else { return };
+        let Some(name_node) = node.child_by_field_name("name") else {
+            return;
+        };
         let name = self.text(name_node).to_owned();
-        let id = self.type_index.get(&name).cloned().unwrap_or_else(NodeId::new);
+        let id = self
+            .type_index
+            .get(&name)
+            .cloned()
+            .unwrap_or_else(NodeId::new);
         let graph_node = self.make_node(id.clone(), NodeKind::Trait, name, scope, node);
         self.nodes.push(graph_node);
     }
 
     fn visit_type_alias(&mut self, node: TsNode<'_>, scope: &[String]) {
-        let Some(name_node) = node.child_by_field_name("name") else { return };
+        let Some(name_node) = node.child_by_field_name("name") else {
+            return;
+        };
         let name = self.text(name_node).to_owned();
-        let id = self.type_index.get(&name).cloned().unwrap_or_else(NodeId::new);
+        let id = self
+            .type_index
+            .get(&name)
+            .cloned()
+            .unwrap_or_else(NodeId::new);
         let graph_node = self.make_node(id, NodeKind::TypeAlias, name, scope, node);
         self.nodes.push(graph_node);
     }
 
     fn visit_enum(&mut self, node: TsNode<'_>, scope: &[String]) {
-        let Some(name_node) = node.child_by_field_name("name") else { return };
+        let Some(name_node) = node.child_by_field_name("name") else {
+            return;
+        };
         let name = self.text(name_node).to_owned();
         let id = NodeId::new();
         let graph_node = self.make_node(id, NodeKind::Enum, name, scope, node);
@@ -361,15 +446,26 @@ impl<'src> FileVisitor<'src> {
     fn visit_var_decl(&mut self, node: TsNode<'_>, scope: &[String]) {
         let mut cursor = node.walk();
         for declarator in node.named_children(&mut cursor) {
-            if declarator.kind() != "variable_declarator" { continue; }
-            let Some(name_node) = declarator.child_by_field_name("name") else { continue };
-            let Some(value) = declarator.child_by_field_name("value") else { continue };
+            if declarator.kind() != "variable_declarator" {
+                continue;
+            }
+            let Some(name_node) = declarator.child_by_field_name("name") else {
+                continue;
+            };
+            let Some(value) = declarator.child_by_field_name("value") else {
+                continue;
+            };
             let name = self.text(name_node).to_owned();
 
             match value.kind() {
                 "arrow_function" | "function" | "function_expression" => {
-                    let id = self.fn_index.get(&name).cloned().unwrap_or_else(NodeId::new);
-                    let graph_node = self.make_node(id.clone(), NodeKind::Function, name, scope, value);
+                    let id = self
+                        .fn_index
+                        .get(&name)
+                        .cloned()
+                        .unwrap_or_else(NodeId::new);
+                    let graph_node =
+                        self.make_node(id.clone(), NodeKind::Function, name, scope, value);
                     self.nodes.push(graph_node);
                     if let Some(body) = value.child_by_field_name("body") {
                         self.collect_calls(body, &id);
@@ -383,7 +479,11 @@ impl<'src> FileVisitor<'src> {
                         r
                     };
                     if is_const_style
-                        && name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false)
+                        && name
+                            .chars()
+                            .next()
+                            .map(|c| c.is_uppercase())
+                            .unwrap_or(false)
                     {
                         let id = NodeId::new();
                         let graph_node =
@@ -425,13 +525,23 @@ impl<'src> FileVisitor<'src> {
     }
 
     fn record_call(&mut self, caller_id: NodeId, callee_name: String) {
-        if callee_name.is_empty() { return; }
+        if callee_name.is_empty() {
+            return;
+        }
         if let Some(callee_id) = self.fn_index.get(&callee_name).cloned() {
-            let edge = Edge { src: caller_id, dst: callee_id, kind: EdgeKind::Calls };
+            let edge = Edge {
+                src: caller_id,
+                dst: callee_id,
+                kind: EdgeKind::Calls,
+            };
             if !self.edges.contains(&edge) {
                 self.edges.push(edge);
             }
-        } else if !self.deferred_calls.iter().any(|(c, n)| c == &caller_id && n == &callee_name) {
+        } else if !self
+            .deferred_calls
+            .iter()
+            .any(|(c, n)| c == &caller_id && n == &callee_name)
+        {
             self.deferred_calls.push((caller_id, callee_name));
         }
     }
@@ -441,18 +551,32 @@ impl<'src> FileVisitor<'src> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-    use gitcortex_core::schema::{NodeKind, EdgeKind};
-    use super::{TypeScriptParser, JavaScriptParser};
+    use super::{JavaScriptParser, TypeScriptParser};
     use crate::parser::LanguageParser;
+    use gitcortex_core::schema::{EdgeKind, NodeKind};
+    use std::path::Path;
 
-    fn parse_ts(src: &str) -> (Vec<gitcortex_core::graph::Node>, Vec<gitcortex_core::graph::Edge>) {
-        let r = TypeScriptParser::new_ts().parse(Path::new("test.ts"), src).unwrap();
+    fn parse_ts(
+        src: &str,
+    ) -> (
+        Vec<gitcortex_core::graph::Node>,
+        Vec<gitcortex_core::graph::Edge>,
+    ) {
+        let r = TypeScriptParser::new_ts()
+            .parse(Path::new("test.ts"), src)
+            .unwrap();
         (r.nodes, r.edges)
     }
 
-    fn parse_js(src: &str) -> (Vec<gitcortex_core::graph::Node>, Vec<gitcortex_core::graph::Edge>) {
-        let r = JavaScriptParser::new().parse(Path::new("test.js"), src).unwrap();
+    fn parse_js(
+        src: &str,
+    ) -> (
+        Vec<gitcortex_core::graph::Node>,
+        Vec<gitcortex_core::graph::Edge>,
+    ) {
+        let r = JavaScriptParser::new()
+            .parse(Path::new("test.js"), src)
+            .unwrap();
         (r.nodes, r.edges)
     }
 
@@ -468,11 +592,20 @@ mod tests {
     fn parses_ts_class_and_method() {
         let src = "class Person { greet(): string { return 'hi'; } }";
         let (nodes, edges) = parse_ts(src);
-        let classes: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Struct).collect();
-        let methods: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Method).collect();
+        let classes: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Struct)
+            .collect();
+        let methods: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Method)
+            .collect();
         assert_eq!(classes.len(), 1);
         assert_eq!(methods.len(), 1);
-        let contains: Vec<_> = edges.iter().filter(|e| e.kind == EdgeKind::Contains).collect();
+        let contains: Vec<_> = edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::Contains)
+            .collect();
         assert!(!contains.is_empty());
     }
 
@@ -487,7 +620,10 @@ mod tests {
     #[test]
     fn parses_js_arrow_function() {
         let (nodes, _) = parse_js("const greet = (name) => name;");
-        let fns: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Function).collect();
+        let fns: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Function)
+            .collect();
         assert_eq!(fns.len(), 1);
         assert_eq!(fns[0].name, "greet");
     }

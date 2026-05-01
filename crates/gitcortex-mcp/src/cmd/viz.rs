@@ -47,7 +47,7 @@ pub fn run(branch: String, port: u16, format: VizFormat) -> Result<()> {
 
 async fn serve(state: Arc<AppState>, port: u16) -> Result<()> {
     let addr = format!("127.0.0.1:{port}");
-    let url  = format!("http://{addr}");
+    let url = format!("http://{addr}");
 
     let app = Router::new()
         .route("/", get(root_handler))
@@ -71,33 +71,43 @@ async fn root_handler() -> Html<&'static str> {
 
 async fn data_handler(State(state): State<Arc<AppState>>) -> Json<Value> {
     let branch = &state.branch;
-    let store  = match state.store.lock() {
-        Ok(s)  => s,
+    let store = match state.store.lock() {
+        Ok(s) => s,
         Err(_) => return Json(json!({"error": "store mutex poisoned"})),
     };
 
     let nodes = store.list_all_nodes(branch).unwrap_or_default();
     let edges = store.list_all_edges(branch).unwrap_or_default();
 
-    let nodes_json: Vec<Value> = nodes.iter().map(|n| json!({
-        "id":             n.id.as_str(),
-        "name":           n.name,
-        "kind":           n.kind.to_string(),
-        "file":           n.file.display().to_string(),
-        "start_line":     n.span.start_line,
-        "end_line":       n.span.end_line,
-        "qualified_name": n.qualified_name,
-        "loc":            n.metadata.loc,
-        "visibility":     n.metadata.visibility.to_string(),
-        "is_async":       n.metadata.is_async,
-        "is_unsafe":      n.metadata.is_unsafe,
-    })).collect();
+    let nodes_json: Vec<Value> = nodes
+        .iter()
+        .map(|n| {
+            json!({
+                "id":             n.id.as_str(),
+                "name":           n.name,
+                "kind":           n.kind.to_string(),
+                "file":           n.file.display().to_string(),
+                "start_line":     n.span.start_line,
+                "end_line":       n.span.end_line,
+                "qualified_name": n.qualified_name,
+                "loc":            n.metadata.loc,
+                "visibility":     n.metadata.visibility.to_string(),
+                "is_async":       n.metadata.is_async,
+                "is_unsafe":      n.metadata.is_unsafe,
+            })
+        })
+        .collect();
 
-    let edges_json: Vec<Value> = edges.iter().map(|e| json!({
-        "src":  e.src.as_str(),
-        "dst":  e.dst.as_str(),
-        "kind": e.kind.to_string(),
-    })).collect();
+    let edges_json: Vec<Value> = edges
+        .iter()
+        .map(|e| {
+            json!({
+                "src":  e.src.as_str(),
+                "dst":  e.dst.as_str(),
+                "kind": e.kind.to_string(),
+            })
+        })
+        .collect();
 
     Json(json!({ "nodes": nodes_json, "edges": edges_json }))
 }
@@ -113,10 +123,12 @@ fn build_dot(store: &KuzuGraphStore, branch: &str) -> Result<String> {
     );
 
     for n in &nodes {
-        let id    = n.id.as_str();
+        let id = n.id.as_str();
         let label = dot_escape(&format!("{}\\n{}", n.name, n.kind));
         let color = kind_dot_color(&n.kind);
-        out.push_str(&format!("  \"{id}\" [label=\"{label}\" fillcolor=\"{color}\"];\n"));
+        out.push_str(&format!(
+            "  \"{id}\" [label=\"{label}\" fillcolor=\"{color}\"];\n"
+        ));
     }
 
     for e in &edges {
@@ -136,17 +148,17 @@ fn dot_escape(s: &str) -> String {
 
 fn kind_dot_color(k: &NodeKind) -> &'static str {
     match k {
-        NodeKind::Folder     => "#45475a",
-        NodeKind::File       => "#6c7086",
-        NodeKind::Module     => "#cba6f7",
-        NodeKind::Struct     => "#a6e3a1",
-        NodeKind::Enum       => "#94e2d5",
-        NodeKind::Trait      => "#fab387",
-        NodeKind::TypeAlias  => "#f38ba8",
-        NodeKind::Function   => "#89b4fa",
-        NodeKind::Method     => "#74c7ec",
-        NodeKind::Constant   => "#f9e2af",
-        NodeKind::Macro      => "#cdd6f4",
+        NodeKind::Folder => "#45475a",
+        NodeKind::File => "#6c7086",
+        NodeKind::Module => "#cba6f7",
+        NodeKind::Struct => "#a6e3a1",
+        NodeKind::Enum => "#94e2d5",
+        NodeKind::Trait => "#fab387",
+        NodeKind::TypeAlias => "#f38ba8",
+        NodeKind::Function => "#89b4fa",
+        NodeKind::Method => "#74c7ec",
+        NodeKind::Constant => "#f9e2af",
+        NodeKind::Macro => "#cdd6f4",
     }
 }
 

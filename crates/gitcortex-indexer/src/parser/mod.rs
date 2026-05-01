@@ -44,13 +44,13 @@ pub trait LanguageParser: Send + Sync {
 pub fn parser_for_path(path: &Path) -> Option<Box<dyn LanguageParser>> {
     let ext = path.extension()?.to_str()?;
     match ext {
-        "rs"  => Some(Box::new(rust::RustParser::new())),
-        "py"  => Some(Box::new(python::PythonParser::new())),
-        "ts"  => Some(Box::new(typescript::TypeScriptParser::new_ts())),
+        "rs" => Some(Box::new(rust::RustParser::new())),
+        "py" => Some(Box::new(python::PythonParser::new())),
+        "ts" => Some(Box::new(typescript::TypeScriptParser::new_ts())),
         "tsx" => Some(Box::new(typescript::TypeScriptParser::new_tsx())),
         "js" | "mjs" | "cjs" => Some(Box::new(typescript::JavaScriptParser::new())),
         "jsx" => Some(Box::new(typescript::JavaScriptParser::new())),
-        "go"  => Some(Box::new(go::GoParser::new())),
+        "go" => Some(Box::new(go::GoParser::new())),
         _ => None,
     }
 }

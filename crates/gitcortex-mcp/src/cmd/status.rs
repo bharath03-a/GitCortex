@@ -13,7 +13,9 @@ pub fn run(branch: Option<String>) -> Result<()> {
 
     let store = KuzuGraphStore::open(&repo_root).context("failed to open graph store")?;
 
-    let last_sha = store.last_indexed_sha(&branch)?.unwrap_or_else(|| "none".into());
+    let last_sha = store
+        .last_indexed_sha(&branch)?
+        .unwrap_or_else(|| "none".into());
     let nodes = store.list_all_nodes(&branch).unwrap_or_default();
     let edges = store.list_all_edges(&branch).unwrap_or_default();
 

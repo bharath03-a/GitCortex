@@ -78,9 +78,9 @@ pub enum Visibility {
 impl std::fmt::Display for Visibility {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Visibility::Pub      => f.write_str("pub"),
+            Visibility::Pub => f.write_str("pub"),
             Visibility::PubCrate => f.write_str("pub_crate"),
-            Visibility::Private  => f.write_str("private"),
+            Visibility::Private => f.write_str("private"),
         }
     }
 }

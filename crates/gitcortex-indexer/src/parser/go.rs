@@ -18,28 +18,38 @@ pub struct GoParser {
 
 impl GoParser {
     pub fn new() -> Self {
-        Self { language: tree_sitter_go::LANGUAGE.into() }
+        Self {
+            language: tree_sitter_go::LANGUAGE.into(),
+        }
     }
 }
 
 impl Default for GoParser {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl LanguageParser for GoParser {
-    fn extensions(&self) -> &[&str] { &["go"] }
+    fn extensions(&self) -> &[&str] {
+        &["go"]
+    }
 
     fn parse(&self, path: &Path, source: &str) -> Result<ParseResult> {
         let mut parser = Parser::new();
-        parser.set_language(&self.language).map_err(|e| GitCortexError::Parse {
-            file: path.to_owned(),
-            message: e.to_string(),
-        })?;
+        parser
+            .set_language(&self.language)
+            .map_err(|e| GitCortexError::Parse {
+                file: path.to_owned(),
+                message: e.to_string(),
+            })?;
 
-        let tree = parser.parse(source, None).ok_or_else(|| GitCortexError::Parse {
-            file: path.to_owned(),
-            message: "tree-sitter returned no parse tree".into(),
-        })?;
+        let tree = parser
+            .parse(source, None)
+            .ok_or_else(|| GitCortexError::Parse {
+                file: path.to_owned(),
+                message: "tree-sitter returned no parse tree".into(),
+            })?;
 
         let mut visitor = FileVisitor::new(path, source);
         visitor.collect_names(tree.root_node());
@@ -96,7 +106,12 @@ impl<'src> FileVisitor<'src> {
 
     /// In Go, exported = first letter is uppercase.
     fn visibility(name: &str) -> Visibility {
-        if name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+        if name
+            .chars()
+            .next()
+            .map(|c| c.is_uppercase())
+            .unwrap_or(false)
+        {
             Visibility::Pub
         } else {
             Visibility::Private
@@ -111,7 +126,14 @@ impl<'src> FileVisitor<'src> {
         }
     }
 
-    fn make_node(&self, id: NodeId, kind: NodeKind, name: String, scope: &[String], ts_node: TsNode<'_>) -> Node {
+    fn make_node(
+        &self,
+        id: NodeId,
+        kind: NodeKind,
+        name: String,
+        scope: &[String],
+        ts_node: TsNode<'_>,
+    ) -> Node {
         Node {
             id,
             qualified_name: Self::qualified(scope, &name),
@@ -139,13 +161,13 @@ impl<'src> FileVisitor<'src> {
                 "function_declaration" => {
                     if let Some(name_node) = child.child_by_field_name("name") {
                         let name = self.text(name_node).to_owned();
-                        self.fn_index.entry(name).or_insert_with(NodeId::new);
+                        self.fn_index.entry(name).or_default();
                     }
                 }
                 "method_declaration" => {
                     if let Some(name_node) = child.child_by_field_name("name") {
                         let name = self.text(name_node).to_owned();
-                        self.fn_index.entry(name).or_insert_with(NodeId::new);
+                        self.fn_index.entry(name).or_default();
                     }
                 }
                 "type_declaration" => {
@@ -159,12 +181,14 @@ impl<'src> FileVisitor<'src> {
     fn collect_type_names(&mut self, decl: TsNode<'_>) {
         let mut cursor = decl.walk();
         for spec in decl.named_children(&mut cursor) {
-            if spec.kind() != "type_spec" { continue; }
+            if spec.kind() != "type_spec" {
+                continue;
+            }
             if let Some(name_node) = spec.child_by_field_name("name") {
                 let name = self.text(name_node).to_owned();
                 if let Some(type_node) = spec.child_by_field_name("type") {
                     if matches!(type_node.kind(), "struct_type" | "interface_type") {
-                        self.type_index.entry(name).or_insert_with(NodeId::new);
+                        self.type_index.entry(name).or_default();
                     }
                 }
             }
@@ -192,9 +216,15 @@ impl<'src> FileVisitor<'src> {
     }
 
     fn visit_function(&mut self, node: TsNode<'_>, scope: &[String]) {
-        let Some(name_node) = node.child_by_field_name("name") else { return };
+        let Some(name_node) = node.child_by_field_name("name") else {
+            return;
+        };
         let name = self.text(name_node).to_owned();
-        let id = self.fn_index.get(&name).cloned().unwrap_or_else(NodeId::new);
+        let id = self
+            .fn_index
+            .get(&name)
+            .cloned()
+            .unwrap_or_else(NodeId::new);
         let graph_node = self.make_node(id.clone(), NodeKind::Function, name, scope, node);
         self.nodes.push(graph_node);
 
@@ -204,7 +234,9 @@ impl<'src> FileVisitor<'src> {
     }
 
     fn visit_method(&mut self, node: TsNode<'_>) {
-        let Some(name_node) = node.child_by_field_name("name") else { return };
+        let Some(name_node) = node.child_by_field_name("name") else {
+            return;
+        };
         let name = self.text(name_node).to_owned();
 
         // Determine the receiver type name for the scope.
@@ -212,11 +244,19 @@ impl<'src> FileVisitor<'src> {
         let scope: Vec<String> = receiver_type.into_iter().collect();
 
         let container_id = scope.first().and_then(|t| self.type_index.get(t).cloned());
-        let id = self.fn_index.get(&name).cloned().unwrap_or_else(NodeId::new);
+        let id = self
+            .fn_index
+            .get(&name)
+            .cloned()
+            .unwrap_or_else(NodeId::new);
         let graph_node = self.make_node(id.clone(), NodeKind::Method, name, &scope, node);
 
         if let Some(cid) = container_id {
-            self.edges.push(Edge { src: cid, dst: id.clone(), kind: EdgeKind::Contains });
+            self.edges.push(Edge {
+                src: cid,
+                dst: id.clone(),
+                kind: EdgeKind::Contains,
+            });
         }
         self.nodes.push(graph_node);
 
@@ -231,14 +271,17 @@ impl<'src> FileVisitor<'src> {
         // The receiver is a parameter_list containing a parameter_declaration.
         let mut cursor = recv.walk();
         for param in recv.named_children(&mut cursor) {
-            if param.kind() != "parameter_declaration" { continue; }
+            if param.kind() != "parameter_declaration" {
+                continue;
+            }
             if let Some(type_node) = param.child_by_field_name("type") {
                 return match type_node.kind() {
                     "type_identifier" => Some(self.text(type_node).to_owned()),
                     "pointer_type" => {
                         // *Type → dereference to get the type identifier
                         let mut c = type_node.walk();
-                        let result = type_node.named_children(&mut c)
+                        let result = type_node
+                            .named_children(&mut c)
                             .find(|n| n.kind() == "type_identifier")
                             .map(|n| self.text(n).to_owned());
                         result
@@ -254,10 +297,16 @@ impl<'src> FileVisitor<'src> {
         let mut cursor = decl.walk();
         let specs: Vec<TsNode<'_>> = decl.named_children(&mut cursor).collect();
         for spec in specs {
-            if spec.kind() != "type_spec" { continue; }
-            let Some(name_node) = spec.child_by_field_name("name") else { continue };
+            if spec.kind() != "type_spec" {
+                continue;
+            }
+            let Some(name_node) = spec.child_by_field_name("name") else {
+                continue;
+            };
             let name = self.text(name_node).to_owned();
-            let Some(type_node) = spec.child_by_field_name("type") else { continue };
+            let Some(type_node) = spec.child_by_field_name("type") else {
+                continue;
+            };
 
             let kind = match type_node.kind() {
                 "struct_type" => NodeKind::Struct,
@@ -271,7 +320,11 @@ impl<'src> FileVisitor<'src> {
                 }
             };
 
-            let id = self.type_index.get(&name).cloned().unwrap_or_else(NodeId::new);
+            let id = self
+                .type_index
+                .get(&name)
+                .cloned()
+                .unwrap_or_else(NodeId::new);
             let graph_node = self.make_node(id, kind, name, &[], spec);
             self.nodes.push(graph_node);
         }
@@ -280,8 +333,12 @@ impl<'src> FileVisitor<'src> {
     fn visit_const_decl(&mut self, node: TsNode<'_>) {
         let mut cursor = node.walk();
         for spec in node.named_children(&mut cursor) {
-            if spec.kind() != "const_spec" { continue; }
-            let Some(name_node) = spec.child_by_field_name("name") else { continue };
+            if spec.kind() != "const_spec" {
+                continue;
+            }
+            let Some(name_node) = spec.child_by_field_name("name") else {
+                continue;
+            };
             let name = self.text(name_node).to_owned();
             let id = NodeId::new();
             let graph_node = self.make_node(id, NodeKind::Constant, name, &[], spec);
@@ -318,13 +375,23 @@ impl<'src> FileVisitor<'src> {
     }
 
     fn record_call(&mut self, caller_id: NodeId, callee_name: String) {
-        if callee_name.is_empty() { return; }
+        if callee_name.is_empty() {
+            return;
+        }
         if let Some(callee_id) = self.fn_index.get(&callee_name).cloned() {
-            let edge = Edge { src: caller_id, dst: callee_id, kind: EdgeKind::Calls };
+            let edge = Edge {
+                src: caller_id,
+                dst: callee_id,
+                kind: EdgeKind::Calls,
+            };
             if !self.edges.contains(&edge) {
                 self.edges.push(edge);
             }
-        } else if !self.deferred_calls.iter().any(|(c, n)| c == &caller_id && n == &callee_name) {
+        } else if !self
+            .deferred_calls
+            .iter()
+            .any(|(c, n)| c == &caller_id && n == &callee_name)
+        {
             self.deferred_calls.push((caller_id, callee_name));
         }
     }
@@ -334,12 +401,17 @@ impl<'src> FileVisitor<'src> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-    use gitcortex_core::schema::{NodeKind, EdgeKind};
     use super::GoParser;
     use crate::parser::LanguageParser;
+    use gitcortex_core::schema::{EdgeKind, NodeKind};
+    use std::path::Path;
 
-    fn parse(src: &str) -> (Vec<gitcortex_core::graph::Node>, Vec<gitcortex_core::graph::Edge>) {
+    fn parse(
+        src: &str,
+    ) -> (
+        Vec<gitcortex_core::graph::Node>,
+        Vec<gitcortex_core::graph::Edge>,
+    ) {
         let r = GoParser::new().parse(Path::new("test.go"), src).unwrap();
         (r.nodes, r.edges)
     }
@@ -348,7 +420,10 @@ mod tests {
     fn parses_function() {
         let src = "package main\nfunc Greet(name string) string { return name }";
         let (nodes, _) = parse(src);
-        let fns: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Function).collect();
+        let fns: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Function)
+            .collect();
         assert_eq!(fns.len(), 1);
         assert_eq!(fns[0].name, "Greet");
     }
@@ -357,11 +432,20 @@ mod tests {
     fn parses_struct_and_method() {
         let src = "package main\ntype Person struct { Name string }\nfunc (p *Person) Greet() string { return p.Name }";
         let (nodes, edges) = parse(src);
-        let structs: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Struct).collect();
-        let methods: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Method).collect();
+        let structs: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Struct)
+            .collect();
+        let methods: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Method)
+            .collect();
         assert_eq!(structs.len(), 1);
         assert_eq!(methods.len(), 1);
-        let contains: Vec<_> = edges.iter().filter(|e| e.kind == EdgeKind::Contains).collect();
+        let contains: Vec<_> = edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::Contains)
+            .collect();
         assert!(!contains.is_empty());
     }
 

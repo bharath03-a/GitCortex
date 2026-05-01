@@ -178,11 +178,17 @@ mod tests {
             name: "foo".into(),
             qualified_name: "crate::foo".into(),
             file: PathBuf::from("src/lib.rs"),
-            span: Span { start_line: 1, end_line: 3 },
+            span: Span {
+                start_line: 1,
+                end_line: 3,
+            },
             metadata: NodeMetadata::default(),
         };
         let mut base = GraphDiff::default();
-        let other = GraphDiff { added_nodes: vec![node], ..Default::default() };
+        let other = GraphDiff {
+            added_nodes: vec![node],
+            ..Default::default()
+        };
         base.merge(other);
         assert_eq!(base.added_nodes.len(), 1);
     }

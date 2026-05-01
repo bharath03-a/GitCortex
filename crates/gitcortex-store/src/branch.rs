@@ -24,7 +24,13 @@ pub fn sanitize(branch: &str) -> String {
     let expanded = branch.replace('/', "__");
     let mut s: String = expanded
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
 
     if s.starts_with(|c: char| c.is_ascii_digit()) {

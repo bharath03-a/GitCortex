@@ -14,18 +14,19 @@ pub fn run(branch_switch: bool) -> Result<()> {
 
     if branch_switch {
         // post-checkout: no re-index needed, the target branch has its own graph.
-        tracing::debug!(elapsed_ms = t0.elapsed().as_millis(), "branch-switch: no-op");
+        tracing::debug!(
+            elapsed_ms = t0.elapsed().as_millis(),
+            "branch-switch: no-op"
+        );
         return Ok(());
     }
 
     let branch = current_branch(&repo_root)?;
-    let mut store = KuzuGraphStore::open(&repo_root)
-        .context("failed to open graph store")?;
+    let mut store = KuzuGraphStore::open(&repo_root).context("failed to open graph store")?;
 
     let last_sha = store.last_indexed_sha(&branch)?;
 
-    let indexer = IncrementalIndexer::new(&repo_root)
-        .context("failed to create indexer")?;
+    let indexer = IncrementalIndexer::new(&repo_root).context("failed to create indexer")?;
 
     let (diff, head_sha) = indexer
         .run(last_sha.as_deref())
@@ -53,8 +54,14 @@ pub fn run(branch_switch: bool) -> Result<()> {
         "gcx  [{branch}]  +{added_n} nodes  +{added_e} edges  -{removed} files  ({elapsed}ms)"
     );
 
-    tracing::info!(branch, added_nodes = added_n, added_edges = added_e,
-        removed_files = removed, elapsed_ms = elapsed, "indexed");
+    tracing::info!(
+        branch,
+        added_nodes = added_n,
+        added_edges = added_e,
+        removed_files = removed,
+        elapsed_ms = elapsed,
+        "indexed"
+    );
     if elapsed > 500 {
         tracing::warn!(elapsed_ms = elapsed, "hook exceeded 500ms budget");
     }

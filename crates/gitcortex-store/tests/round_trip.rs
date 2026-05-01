@@ -14,7 +14,10 @@ fn make_node(name: &str, kind: NodeKind, file: &str, line: u32) -> Node {
         name: name.to_owned(),
         qualified_name: format!("crate::{name}"),
         file: PathBuf::from(file),
-        span: Span { start_line: line, end_line: line + 5 },
+        span: Span {
+            start_line: line,
+            end_line: line + 5,
+        },
         metadata: NodeMetadata {
             loc: 6,
             visibility: Visibility::Pub,
@@ -39,7 +42,10 @@ fn insert_and_lookup_node() {
     let node = make_node("greet", NodeKind::Function, "src/lib.rs", 1);
     let node_id = node.id.clone();
 
-    let diff = GraphDiff { added_nodes: vec![node], ..Default::default() };
+    let diff = GraphDiff {
+        added_nodes: vec![node],
+        ..Default::default()
+    };
     store.apply_diff("main", &diff).expect("apply_diff");
 
     let results = store.lookup_symbol("main", "greet").expect("lookup_symbol");
@@ -58,7 +64,10 @@ fn list_definitions_ordered_by_line() {
         make_node("foo", NodeKind::Function, "src/lib.rs", 1),
         make_node("bar", NodeKind::Struct, "src/lib.rs", 10),
     ];
-    let diff = GraphDiff { added_nodes: nodes, ..Default::default() };
+    let diff = GraphDiff {
+        added_nodes: nodes,
+        ..Default::default()
+    };
     store.apply_diff("main", &diff).expect("apply_diff");
 
     let defs = store
@@ -76,7 +85,11 @@ fn find_callers_via_calls_edge() {
 
     let caller = make_node("announce", NodeKind::Function, "src/lib.rs", 10);
     let callee = make_node("greet", NodeKind::Method, "src/lib.rs", 1);
-    let edge = Edge { src: caller.id.clone(), dst: callee.id.clone(), kind: EdgeKind::Calls };
+    let edge = Edge {
+        src: caller.id.clone(),
+        dst: callee.id.clone(),
+        kind: EdgeKind::Calls,
+    };
 
     let diff = GraphDiff {
         added_nodes: vec![caller.clone(), callee],
@@ -95,7 +108,10 @@ fn delete_file_removes_nodes() {
     let (mut store, _dir) = tmp_store();
 
     let node = make_node("old_fn", NodeKind::Function, "src/old.rs", 1);
-    let add_diff = GraphDiff { added_nodes: vec![node], ..Default::default() };
+    let add_diff = GraphDiff {
+        added_nodes: vec![node],
+        ..Default::default()
+    };
     store.apply_diff("main", &add_diff).expect("apply_diff");
 
     assert_eq!(store.lookup_symbol("main", "old_fn").unwrap().len(), 1);
@@ -104,7 +120,9 @@ fn delete_file_removes_nodes() {
         removed_files: vec![PathBuf::from("src/old.rs")],
         ..Default::default()
     };
-    store.apply_diff("main", &del_diff).expect("apply_diff remove");
+    store
+        .apply_diff("main", &del_diff)
+        .expect("apply_diff remove");
 
     assert_eq!(store.lookup_symbol("main", "old_fn").unwrap().len(), 0);
 }
@@ -115,8 +133,13 @@ fn last_indexed_sha_round_trip() {
 
     assert!(store.last_indexed_sha("main").unwrap().is_none());
 
-    store.set_last_indexed_sha("main", "abc123").expect("set sha");
-    assert_eq!(store.last_indexed_sha("main").unwrap().as_deref(), Some("abc123"));
+    store
+        .set_last_indexed_sha("main", "abc123")
+        .expect("set sha");
+    assert_eq!(
+        store.last_indexed_sha("main").unwrap().as_deref(),
+        Some("abc123")
+    );
 }
 
 #[test]
@@ -135,9 +158,13 @@ fn branch_diff_detects_added_and_removed_nodes() {
     store.apply_diff("main", &main_diff).expect("apply main");
 
     // feat has shared + only_feat
-    let feat_diff =
-        GraphDiff { added_nodes: vec![node_a, node_c.clone()], ..Default::default() };
-    store.apply_diff("feat/new", &feat_diff).expect("apply feat");
+    let feat_diff = GraphDiff {
+        added_nodes: vec![node_a, node_c.clone()],
+        ..Default::default()
+    };
+    store
+        .apply_diff("feat/new", &feat_diff)
+        .expect("apply feat");
 
     let diff = store.branch_diff("main", "feat/new").expect("branch_diff");
 

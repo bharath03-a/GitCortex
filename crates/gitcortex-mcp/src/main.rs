@@ -118,10 +118,17 @@ fn main() {
         Commands::Hook { branch_switch } => cmd::hook::run(branch_switch),
         Commands::Serve => cmd::serve::run(),
         Commands::Query(q) => cmd::query::run(q),
-        Commands::Viz { branch, format, port } => cmd::viz::run(branch, port, format),
-        Commands::BlastRadius { base, head, depth, format } => {
-            cmd::blast_radius::run(base, head, depth, format)
-        }
+        Commands::Viz {
+            branch,
+            format,
+            port,
+        } => cmd::viz::run(branch, port, format),
+        Commands::BlastRadius {
+            base,
+            head,
+            depth,
+            format,
+        } => cmd::blast_radius::run(base, head, depth, format),
         Commands::Export { branch } => cmd::export::run(branch),
         Commands::Status { branch } => cmd::status::run(branch),
         Commands::Clean => cmd::clean::run(),

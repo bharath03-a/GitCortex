@@ -18,28 +18,38 @@ pub struct PythonParser {
 
 impl PythonParser {
     pub fn new() -> Self {
-        Self { language: tree_sitter_python::LANGUAGE.into() }
+        Self {
+            language: tree_sitter_python::LANGUAGE.into(),
+        }
     }
 }
 
 impl Default for PythonParser {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl LanguageParser for PythonParser {
-    fn extensions(&self) -> &[&str] { &["py"] }
+    fn extensions(&self) -> &[&str] {
+        &["py"]
+    }
 
     fn parse(&self, path: &Path, source: &str) -> Result<ParseResult> {
         let mut parser = Parser::new();
-        parser.set_language(&self.language).map_err(|e| GitCortexError::Parse {
-            file: path.to_owned(),
-            message: e.to_string(),
-        })?;
+        parser
+            .set_language(&self.language)
+            .map_err(|e| GitCortexError::Parse {
+                file: path.to_owned(),
+                message: e.to_string(),
+            })?;
 
-        let tree = parser.parse(source, None).ok_or_else(|| GitCortexError::Parse {
-            file: path.to_owned(),
-            message: "tree-sitter returned no parse tree".into(),
-        })?;
+        let tree = parser
+            .parse(source, None)
+            .ok_or_else(|| GitCortexError::Parse {
+                file: path.to_owned(),
+                message: "tree-sitter returned no parse tree".into(),
+            })?;
 
         let mut visitor = FileVisitor::new(path, source);
         visitor.collect_names(tree.root_node());
@@ -96,7 +106,11 @@ impl<'src> FileVisitor<'src> {
 
     /// In Python, public = not starting with `_`.
     fn visibility(name: &str) -> Visibility {
-        if name.starts_with('_') { Visibility::Private } else { Visibility::Pub }
+        if name.starts_with('_') {
+            Visibility::Private
+        } else {
+            Visibility::Pub
+        }
     }
 
     fn qualified(scope: &[String], name: &str) -> String {
@@ -144,7 +158,7 @@ impl<'src> FileVisitor<'src> {
                 "class_definition" => {
                     if let Some(name_node) = child.child_by_field_name("name") {
                         let name = self.text(name_node).to_owned();
-                        self.class_index.entry(name).or_insert_with(NodeId::new);
+                        self.class_index.entry(name).or_default();
                     }
                 }
                 "function_definition" | "decorated_definition" => {
@@ -156,7 +170,7 @@ impl<'src> FileVisitor<'src> {
                     if let Some(fn_node) = fn_node {
                         if let Some(name_node) = fn_node.child_by_field_name("name") {
                             let name = self.text(name_node).to_owned();
-                            self.fn_index.entry(name).or_insert_with(NodeId::new);
+                            self.fn_index.entry(name).or_default();
                         }
                     }
                 }
@@ -207,14 +221,28 @@ impl<'src> FileVisitor<'src> {
         container_id: Option<NodeId>,
         is_async: bool,
     ) {
-        let Some(name_node) = node.child_by_field_name("name") else { return };
+        let Some(name_node) = node.child_by_field_name("name") else {
+            return;
+        };
         let name = self.text(name_node).to_owned();
-        let id = self.fn_index.get(&name).cloned().unwrap_or_else(NodeId::new);
-        let kind = if container_id.is_some() { NodeKind::Method } else { NodeKind::Function };
+        let id = self
+            .fn_index
+            .get(&name)
+            .cloned()
+            .unwrap_or_else(NodeId::new);
+        let kind = if container_id.is_some() {
+            NodeKind::Method
+        } else {
+            NodeKind::Function
+        };
         let graph_node = self.make_node(id.clone(), kind, name, scope, node, is_async);
 
         if let Some(cid) = container_id {
-            self.edges.push(Edge { src: cid, dst: id.clone(), kind: EdgeKind::Contains });
+            self.edges.push(Edge {
+                src: cid,
+                dst: id.clone(),
+                kind: EdgeKind::Contains,
+            });
         }
         self.nodes.push(graph_node);
 
@@ -224,10 +252,23 @@ impl<'src> FileVisitor<'src> {
     }
 
     fn visit_class(&mut self, node: TsNode<'_>, scope: &[String]) {
-        let Some(name_node) = node.child_by_field_name("name") else { return };
+        let Some(name_node) = node.child_by_field_name("name") else {
+            return;
+        };
         let name = self.text(name_node).to_owned();
-        let id = self.class_index.get(&name).cloned().unwrap_or_else(NodeId::new);
-        let graph_node = self.make_node(id.clone(), NodeKind::Struct, name.clone(), scope, node, false);
+        let id = self
+            .class_index
+            .get(&name)
+            .cloned()
+            .unwrap_or_else(NodeId::new);
+        let graph_node = self.make_node(
+            id.clone(),
+            NodeKind::Struct,
+            name.clone(),
+            scope,
+            node,
+            false,
+        );
         self.nodes.push(graph_node);
 
         let mut class_scope = scope.to_vec();
@@ -262,7 +303,9 @@ impl<'src> FileVisitor<'src> {
                 if let Some(left) = child.child_by_field_name("left") {
                     if left.kind() == "identifier" {
                         let name = self.text(left).to_owned();
-                        if name.chars().all(|c| c.is_uppercase() || c == '_' || c.is_ascii_digit())
+                        if name
+                            .chars()
+                            .all(|c| c.is_uppercase() || c == '_' || c.is_ascii_digit())
                             && name.len() > 1
                             && !name.starts_with('_')
                         {
@@ -307,13 +350,23 @@ impl<'src> FileVisitor<'src> {
     }
 
     fn record_call(&mut self, caller_id: NodeId, callee_name: String) {
-        if callee_name.is_empty() { return; }
+        if callee_name.is_empty() {
+            return;
+        }
         if let Some(callee_id) = self.fn_index.get(&callee_name).cloned() {
-            let edge = Edge { src: caller_id, dst: callee_id, kind: EdgeKind::Calls };
+            let edge = Edge {
+                src: caller_id,
+                dst: callee_id,
+                kind: EdgeKind::Calls,
+            };
             if !self.edges.contains(&edge) {
                 self.edges.push(edge);
             }
-        } else if !self.deferred_calls.iter().any(|(c, n)| c == &caller_id && n == &callee_name) {
+        } else if !self
+            .deferred_calls
+            .iter()
+            .any(|(c, n)| c == &caller_id && n == &callee_name)
+        {
             self.deferred_calls.push((caller_id, callee_name));
         }
     }
@@ -323,13 +376,20 @@ impl<'src> FileVisitor<'src> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-    use gitcortex_core::schema::{NodeKind, EdgeKind};
     use super::PythonParser;
     use crate::parser::LanguageParser;
+    use gitcortex_core::schema::{EdgeKind, NodeKind};
+    use std::path::Path;
 
-    fn parse(src: &str) -> (Vec<gitcortex_core::graph::Node>, Vec<gitcortex_core::graph::Edge>) {
-        let r = PythonParser::new().parse(Path::new("test.py"), src).unwrap();
+    fn parse(
+        src: &str,
+    ) -> (
+        Vec<gitcortex_core::graph::Node>,
+        Vec<gitcortex_core::graph::Edge>,
+    ) {
+        let r = PythonParser::new()
+            .parse(Path::new("test.py"), src)
+            .unwrap();
         (r.nodes, r.edges)
     }
 
@@ -345,11 +405,20 @@ mod tests {
     fn parses_class_and_method() {
         let src = "class Person:\n    def greet(self):\n        pass\n";
         let (nodes, edges) = parse(src);
-        let classes: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Struct).collect();
-        let methods: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Method).collect();
+        let classes: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Struct)
+            .collect();
+        let methods: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Method)
+            .collect();
         assert_eq!(classes.len(), 1);
         assert_eq!(methods.len(), 1);
-        let contains: Vec<_> = edges.iter().filter(|e| e.kind == EdgeKind::Contains).collect();
+        let contains: Vec<_> = edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::Contains)
+            .collect();
         assert!(!contains.is_empty());
     }
 
