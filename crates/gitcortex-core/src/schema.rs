@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NodeKind {
+    Folder,
     File,
     Module,
     Struct,
@@ -19,6 +20,7 @@ pub enum NodeKind {
 impl std::fmt::Display for NodeKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
+            NodeKind::Folder => "folder",
             NodeKind::File => "file",
             NodeKind::Module => "module",
             NodeKind::Struct => "struct",
@@ -71,6 +73,16 @@ pub enum Visibility {
     Private,
     PubCrate,
     Pub,
+}
+
+impl std::fmt::Display for Visibility {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Visibility::Pub      => f.write_str("pub"),
+            Visibility::PubCrate => f.write_str("pub_crate"),
+            Visibility::Private  => f.write_str("private"),
+        }
+    }
 }
 
 // ── LLD labels ──────────────────────────────────────────────────────────────

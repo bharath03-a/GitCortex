@@ -85,7 +85,12 @@ async fn data_handler(State(state): State<Arc<AppState>>) -> Json<Value> {
         "kind":           n.kind.to_string(),
         "file":           n.file.display().to_string(),
         "start_line":     n.span.start_line,
+        "end_line":       n.span.end_line,
         "qualified_name": n.qualified_name,
+        "loc":            n.metadata.loc,
+        "visibility":     n.metadata.visibility.to_string(),
+        "is_async":       n.metadata.is_async,
+        "is_unsafe":      n.metadata.is_unsafe,
     })).collect();
 
     let edges_json: Vec<Value> = edges.iter().map(|e| json!({
@@ -131,6 +136,7 @@ fn dot_escape(s: &str) -> String {
 
 fn kind_dot_color(k: &NodeKind) -> &'static str {
     match k {
+        NodeKind::Folder     => "#45475a",
         NodeKind::File       => "#6c7086",
         NodeKind::Module     => "#cba6f7",
         NodeKind::Struct     => "#a6e3a1",

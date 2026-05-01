@@ -4,9 +4,14 @@ use std::sync::Arc;
 use gitcortex_core::store::GraphStore;
 use gitcortex_store::kuzu::KuzuGraphStore;
 use rmcp::{
+    RoleServer,
     handler::server::wrapper::Parameters,
-    model::{CallToolResult, Content},
-    tool, tool_router,
+    model::{
+        CallToolResult, Content, GetPromptRequestParams, GetPromptResult,
+        ListPromptsResult, PaginatedRequestParams, PromptMessage, PromptMessageRole,
+    },
+    prompt, prompt_handler, prompt_router, service::RequestContext,
+    tool, tool_handler, tool_router,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -62,7 +67,7 @@ impl GitCortexServer {
 
 // ── Tool implementations ──────────────────────────────────────────────────────
 
-#[tool_router(server_handler)]
+#[tool_router]
 impl GitCortexServer {
     /// Look up all nodes (functions, structs, traits, etc.) by name.
     #[tool(description = "Look up nodes in the code knowledge graph by their unqualified name. Returns all matching symbols across files.")]
@@ -206,3 +211,107 @@ impl GitCortexServer {
         }
     }
 }
+
+// ── Prompt parameter types ────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct DetectImpactParams {
+    /// Comma-separated list of changed file paths (repo-relative).
+    pub changed_files: String,
+    /// Branch to query (defaults to "main").
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GenerateMapParams {
+    /// Branch to document (defaults to "main").
+    pub branch: Option<String>,
+}
+
+// ── Prompt implementations ────────────────────────────────────────────────────
+
+#[prompt_router]
+impl GitCortexServer {
+    /// Analyse the blast radius of changed files before committing.
+    /// Walks the call graph from changed symbols to find all downstream callers
+    /// and produces a risk assessment (LOW / MEDIUM / HIGH / CRITICAL).
+    #[prompt(name = "detect_impact",
+             description = "Pre-commit impact analysis — maps changed files to affected callers and scores risk")]
+    fn detect_impact(&self, Parameters(p): Parameters<DetectImpactParams>) -> GetPromptResult {
+        let branch = p.branch.as_deref().unwrap_or("main");
+        let files  = p.changed_files.trim().to_owned();
+
+        let user_msg = format!(
+            r#"I am about to commit changes to these files on branch `{branch}`:
+
+{files}
+
+Please analyse the blast radius of these changes using the GitCortex knowledge graph:
+
+1. For each changed file call `list_definitions` to identify which symbols were likely touched.
+2. For each key function or struct, call `find_callers` to find direct callers.
+3. Repeat `find_callers` one level deeper for any HIGH-traffic callers.
+4. Summarise your findings as:
+   - **Changed symbols**: list each modified function/struct with its file and line.
+   - **Direct callers**: who calls the changed code.
+   - **Transitive callers**: notable callers two hops away.
+   - **Risk level**: LOW / MEDIUM / HIGH / CRITICAL with a one-line justification.
+   - **Recommended actions**: tests to run, reviewers to notify, docs to update.
+"#
+        );
+
+        GetPromptResult::new(vec![
+            PromptMessage::new_text(PromptMessageRole::User, user_msg),
+        ])
+        .with_description("Impact analysis of staged changes using the call graph")
+    }
+
+    /// Generate a Mermaid architecture diagram from the knowledge graph.
+    /// Summarises modules, key structs/traits, and their relationships.
+    #[prompt(name = "generate_map",
+             description = "Architecture documentation — produces a Mermaid diagram of modules, types, and key relationships")]
+    fn generate_map(&self, Parameters(p): Parameters<GenerateMapParams>) -> GetPromptResult {
+        let branch = p.branch.as_deref().unwrap_or("main");
+
+        let user_msg = format!(
+            r#"Generate an architecture map of this codebase on branch `{branch}` using GitCortex.
+
+Steps:
+1. Call `list_definitions` on each major source file to collect modules, structs, traits, and functions.
+2. Call `find_callers` on the top-level entry points to understand key execution flows.
+3. Call `lookup_symbol` on core traits to find all their implementors.
+
+Then produce:
+
+## Architecture Overview
+A prose summary (3–5 sentences) of what this codebase does and how it is structured.
+
+## Module Map
+```mermaid
+graph TD
+  %% Add nodes for each module/crate and edges for depends-on relationships
+```
+
+## Key Types
+A table: | Type | Kind | Responsibility | Implemented by |
+
+## Core Flows
+Numbered list of the 2–4 most important execution paths (entry point → key functions → output).
+
+## Dependency Notes
+Any circular dependencies, large fan-outs, or architectural concerns visible in the graph.
+"#
+        );
+
+        GetPromptResult::new(vec![
+            PromptMessage::new_text(PromptMessageRole::User, user_msg),
+        ])
+        .with_description("Architecture documentation with Mermaid diagram from the knowledge graph")
+    }
+}
+
+// ── Combined ServerHandler (tools + prompts) ──────────────────────────────────
+
+#[tool_handler]
+#[prompt_handler(router = Self::prompt_router())]
+impl rmcp::ServerHandler for GitCortexServer {}

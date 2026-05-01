@@ -4,6 +4,8 @@ mod mcp;
 use clap::{Parser, Subcommand};
 use tracing_subscriber::EnvFilter;
 
+use cmd::blast_radius::BlastFormat;
+
 #[derive(Parser)]
 #[command(name = "gcx", version, about = "GitCortex knowledge-graph CLI")]
 struct Cli {
@@ -22,7 +24,11 @@ pub enum VizFormat {
 #[derive(Subcommand)]
 enum Commands {
     /// Install git hooks and run the initial index for this repo.
-    Init,
+    Init {
+        /// Also install the GitHub Actions blast-radius workflow.
+        #[arg(long)]
+        ci: bool,
+    },
     /// Incremental index triggered by a git hook.
     Hook {
         /// Called from post-checkout; records the new branch without re-indexing.
@@ -46,6 +52,35 @@ enum Commands {
         #[arg(long, default_value_t = 5678)]
         port: u16,
     },
+    /// Show the blast radius of changes between two branches.
+    BlastRadius {
+        /// Base branch (the target you're merging into).
+        #[arg(long, default_value = "main")]
+        base: String,
+        /// Head branch (the branch with changes).
+        #[arg(long, default_value = "HEAD")]
+        head: String,
+        /// BFS depth for transitive caller discovery.
+        #[arg(long, default_value_t = 2)]
+        depth: u8,
+        /// Output format.
+        #[arg(long, default_value = "text", value_enum)]
+        format: BlastFormat,
+    },
+    /// Export the knowledge graph as a readable Markdown codebase map.
+    Export {
+        /// Branch to export (defaults to current branch).
+        #[arg(long)]
+        branch: Option<String>,
+    },
+    /// Show indexed node/edge counts for the current branch.
+    Status {
+        /// Branch to inspect (defaults to current branch).
+        #[arg(long)]
+        branch: Option<String>,
+    },
+    /// Wipe the graph store for this repo so a fresh full index can run.
+    Clean,
 }
 
 #[derive(Subcommand)]
@@ -79,15 +114,21 @@ fn main() {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        Commands::Init => cmd::init::run(),
+        Commands::Init { ci } => cmd::init::run(ci),
         Commands::Hook { branch_switch } => cmd::hook::run(branch_switch),
         Commands::Serve => cmd::serve::run(),
         Commands::Query(q) => cmd::query::run(q),
         Commands::Viz { branch, format, port } => cmd::viz::run(branch, port, format),
+        Commands::BlastRadius { base, head, depth, format } => {
+            cmd::blast_radius::run(base, head, depth, format)
+        }
+        Commands::Export { branch } => cmd::export::run(branch),
+        Commands::Status { branch } => cmd::status::run(branch),
+        Commands::Clean => cmd::clean::run(),
     };
 
     if let Err(e) = result {
-        eprintln!("error: {e}");
+        eprintln!("error: {e:#}");
         std::process::exit(1);
     }
 }

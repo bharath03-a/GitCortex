@@ -120,6 +120,14 @@ pub struct GraphDiff {
     pub removed_files: Vec<PathBuf>,
     pub added_edges: Vec<Edge>,
     pub removed_edges: Vec<(NodeId, NodeId, EdgeKind)>,
+    /// Cross-file calls that couldn't be resolved against the diff-local node
+    /// set (because the callee lives in an unchanged file). The store resolves
+    /// these after inserting the new nodes, using its full existing data.
+    pub deferred_calls: Vec<(NodeId, String)>,
+    /// Same for parameter/return-type Uses edges.
+    pub deferred_uses: Vec<(NodeId, String)>,
+    /// Same for struct→trait Implements edges.
+    pub deferred_implements: Vec<(NodeId, String)>,
 }
 
 impl GraphDiff {
@@ -129,6 +137,9 @@ impl GraphDiff {
             && self.removed_files.is_empty()
             && self.added_edges.is_empty()
             && self.removed_edges.is_empty()
+            && self.deferred_calls.is_empty()
+            && self.deferred_uses.is_empty()
+            && self.deferred_implements.is_empty()
     }
 
     /// Merge another diff into this one. Used when multiple files change
@@ -140,6 +151,9 @@ impl GraphDiff {
         self.removed_files.extend(other.removed_files);
         self.added_edges.extend(other.added_edges);
         self.removed_edges.extend(other.removed_edges);
+        self.deferred_calls.extend(other.deferred_calls);
+        self.deferred_uses.extend(other.deferred_uses);
+        self.deferred_implements.extend(other.deferred_implements);
     }
 }
 
