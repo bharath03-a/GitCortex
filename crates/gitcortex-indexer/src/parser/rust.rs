@@ -499,15 +499,14 @@ impl<'src> FileVisitor<'src> {
                             kind: EdgeKind::Implements,
                         });
                     }
-                    (Some(tid), None) if !is_primitive(&trait_name) => {
-                        // Trait defined in another file — defer resolution.
-                        if !self
-                            .deferred_implements
-                            .iter()
-                            .any(|(id, n)| id == &tid && n == &trait_name)
-                        {
-                            self.deferred_implements.push((tid, trait_name));
-                        }
+                    (Some(tid), None)
+                        if !is_primitive(&trait_name)
+                            && !self
+                                .deferred_implements
+                                .iter()
+                                .any(|(id, n)| id == &tid && n == &trait_name) =>
+                    {
+                        self.deferred_implements.push((tid, trait_name));
                     }
                     _ => {}
                 }
