@@ -9,6 +9,7 @@ use anyhow::{Context, Result};
 use gitcortex_core::store::GraphStore;
 use gitcortex_indexer::IncrementalIndexer;
 use gitcortex_store::kuzu::KuzuGraphStore;
+use serde_json::{json, Value};
 
 const HOOK_NAMES: &[(&str, &str)] = &[
     ("post-commit", "gcx hook\n"),
@@ -19,15 +20,6 @@ const HOOK_NAMES: &[(&str, &str)] = &[
 
 const HOOK_SHEBANG: &str = "#!/usr/bin/env sh\nset -e\nexport PATH=\"$HOME/.cargo/bin:$HOME/.local/bin:/usr/local/bin:$PATH\"\n";
 
-const MCP_JSON: &str = r#"{
-  "mcpServers": {
-    "gitcortex": {
-      "command": "gcx",
-      "args": ["serve"]
-    }
-  }
-}
-"#;
 
 const GH_WORKFLOW: &str = r#"name: GitCortex Blast Radius
 
@@ -231,7 +223,7 @@ pub fn run(ci: bool) -> Result<()> {
     println!("GitCortex initialised  ({ms}ms)");
     println!("  Graph:    {nodes} nodes | {edges} edges");
     println!("  Hooks:    {hooks} installed");
-    println!("  MCP:      .mcp.json  (2 prompts + 4 tools)");
+    println!("  MCP:      ~/.claude.json  (gcx serve registered globally)");
     println!("  Skills:   .claude/skills/gcx/  ({skills} agent skills)");
     println!("  Commands: .claude/commands/gcx/  ({commands} slash commands)");
     if ci {
@@ -293,15 +285,30 @@ fn initial_index(repo_root: &Path) -> Result<(usize, usize)> {
 
 // ── MCP config ────────────────────────────────────────────────────────────────
 
-fn write_mcp_json(repo_root: &Path) -> Result<()> {
-    let path = repo_root.join(".mcp.json");
-    if path.exists() {
-        let existing = fs::read_to_string(&path)?;
-        if existing.contains("gitcortex") {
-            return Ok(());
-        }
+/// Merges the gitcortex MCP server entry into `~/.claude.json`.
+/// Creates the file if absent; skips if the entry already exists.
+fn write_mcp_json(_repo_root: &Path) -> Result<()> {
+    let path = home_dir().join(".claude.json");
+
+    let mut root: Value = if path.exists() {
+        let text = fs::read_to_string(&path).context("read ~/.claude.json")?;
+        serde_json::from_str(&text).unwrap_or(json!({}))
+    } else {
+        json!({})
+    };
+
+    // Already configured — nothing to do.
+    if root.pointer("/mcpServers/gitcortex").is_some() {
+        return Ok(());
     }
-    fs::write(&path, MCP_JSON).context("write .mcp.json")?;
+
+    root["mcpServers"]["gitcortex"] = json!({
+        "command": "gcx",
+        "args": ["serve"]
+    });
+
+    let text = serde_json::to_string_pretty(&root).context("serialize ~/.claude.json")?;
+    fs::write(&path, text).context("write ~/.claude.json")?;
     Ok(())
 }
 
@@ -384,6 +391,12 @@ fn repo_root() -> Result<PathBuf> {
     Ok(PathBuf::from(
         String::from_utf8(output.stdout)?.trim().to_owned(),
     ))
+}
+
+fn home_dir() -> PathBuf {
+    std::env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."))
 }
 
 fn current_branch(repo_root: &Path) -> Result<String> {
