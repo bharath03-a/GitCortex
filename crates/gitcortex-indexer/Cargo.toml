@@ -1,12 +1,12 @@
 [package]
 name = "gitcortex-indexer"
-description = "Incremental AST indexer for GitCortex (tree-sitter, git2)"
+description = "Incremental AST indexer for GitCortex — tree-sitter parsing, git diff, parallel file indexing"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-keywords = ["gitcortex", "tree-sitter", "ast", "code-index"]
+keywords = ["tree-sitter", "ast", "code-index", "git", "static-analysis"]
 categories = ["development-tools", "parser-implementations"]
 
 [dependencies]

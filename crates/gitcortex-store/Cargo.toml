@@ -1,12 +1,12 @@
 [package]
 name = "gitcortex-store"
-description = "KuzuDB-backed graph store for GitCortex"
+description = "KuzuDB-backed graph store for GitCortex — branch-namespaced, embedded, zero server process"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-keywords = ["gitcortex", "kuzu", "graph-database", "code-graph"]
+keywords = ["kuzu", "graph-database", "code-graph", "embedded-database", "static-analysis"]
 categories = ["development-tools", "database"]
 
 [dependencies]
