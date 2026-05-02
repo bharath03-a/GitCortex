@@ -638,6 +638,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "gitcortex"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "clap",
+ "gitcortex-core",
+ "gitcortex-indexer",
+ "gitcortex-store",
+ "open",
+ "rmcp",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "gitcortex-core"
 version = "0.1.0"
 dependencies = [
@@ -661,26 +681,6 @@ dependencies = [
  "tree-sitter-python",
  "tree-sitter-rust",
  "tree-sitter-typescript",
-]
-
-[[package]]
-name = "gitcortex-mcp"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "clap",
- "gitcortex-core",
- "gitcortex-indexer",
- "gitcortex-store",
- "open",
- "rmcp",
- "schemars",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

@@ -23,3 +23,4 @@ target
 # GitCortex machine-local data (never commit graph databases or state)
 *.kz
 .gitcortex.db
+.claude/settings.local.json
