@@ -39,8 +39,9 @@ curl --proto '=https' --tlsv1.2 -LsSf \
   https://github.com/bharath03-a/GitCortex/releases/latest/download/gcx-installer.sh | sh
 ```
 
-> Pre-built binaries for macOS (arm64/x86_64), Linux (x86_64/aarch64), and Windows
-> are published automatically on every release via GitHub Releases.
+> Pre-built binaries for macOS (arm64/x86_64) and Linux (x86_64/aarch64) are published
+> automatically on every release via GitHub Releases.
+> Windows users should build from source (see below) — a prebuilt binary will ship in a future release.
 
 **Cargo (from crates.io):**
 
