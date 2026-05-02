@@ -46,7 +46,7 @@ curl --proto '=https' --tlsv1.2 -LsSf \
 **Cargo (from crates.io):**
 
 ```bash
-cargo install gitcortex-mcp
+cargo install gitcortex
 ```
 
 **Cargo (from git — works before crates.io publish):**

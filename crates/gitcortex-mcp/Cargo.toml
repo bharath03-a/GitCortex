@@ -1,5 +1,5 @@
 [package]
-name = "gitcortex-mcp"
+name = "gitcortex"
 description = "GitCortex CLI and MCP server — branch-aware code knowledge graph for AI assistants"
 version.workspace = true
 edition.workspace = true
