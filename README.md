@@ -343,19 +343,37 @@ The graph database is stored locally and never committed:
 ## Architecture
 
 ```mermaid
-graph TD
-    core["<b>gitcortex-core</b><br/>shared types · GraphStore trait<br/><i>no I/O · no async</i>"]
+flowchart TD
+    subgraph repo["Your Repository"]
+        hooks["git hooks\npost-commit · post-merge · post-rewrite · post-checkout"]
+        files["Source Files — .rs · .ts · .py · .go"]
+    end
 
-    indexer["<b>gitcortex-indexer</b><br/>tree-sitter parsing · git2 diff<br/>incremental indexing"]
+    subgraph indexer["gitcortex-indexer"]
+        differ["git2 differ\nchanged files only"]
+        parsers["tree-sitter parsers\nRust · TypeScript · Python · Go"]
+        differ --> parsers
+    end
 
-    store["<b>gitcortex-store</b><br/>KuzuDB backend<br/>implements GraphStore trait"]
+    kuzu[("KuzuDB\nbranch-namespaced\ngraph store")]
 
-    mcp["<b>gitcortex-mcp</b><br/>gcx CLI · MCP server<br/>axum viz server"]
+    subgraph gcx["gitcortex-mcp  ·  gcx"]
+        server["MCP server\nlookup_symbol · find_callers\nlist_definitions · branch_diff_graph"]
+        blast["gcx blast-radius\nrisk scoring · PR comment"]
+        viz["gcx viz\nbrowser graph · DOT export"]
+    end
 
-    core --> indexer
-    core --> store
-    indexer --> mcp
-    store --> mcp
+    claude["Claude Code\nMCP tools · slash commands · skills"]
+    gh["GitHub Actions\nsticky PR blast-radius comment"]
+
+    hooks -->|"gcx hook — incremental diff"| differ
+    files --> differ
+    parsers -->|"GraphDiff\nnodes + edges"| kuzu
+    kuzu --> server
+    kuzu --> blast
+    kuzu --> viz
+    server --> claude
+    blast --> gh
 ```
 
 The `GraphStore` trait is the extensibility boundary — the local KuzuDB backend can be swapped for a remote backend without touching the indexer or MCP layer.
