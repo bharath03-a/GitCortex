@@ -1,10 +1,10 @@
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::{
     fs,
     path::{Path, PathBuf},
     time::Instant,
 };
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
 
 use anyhow::{Context, Result};
 use gitcortex_core::store::GraphStore;
