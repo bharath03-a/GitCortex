@@ -17,9 +17,9 @@ rust-version = "1.80"
 # Declare all shared dep versions once here.
 # Member crates reference these with `{ workspace = true }`.
 [workspace.dependencies]
-gitcortex-core    = { path = "crates/gitcortex-core" }
-gitcortex-indexer = { path = "crates/gitcortex-indexer" }
-gitcortex-store   = { path = "crates/gitcortex-store" }
+gitcortex-core    = { path = "crates/gitcortex-core",    version = "0.1" }
+gitcortex-indexer = { path = "crates/gitcortex-indexer", version = "0.1" }
+gitcortex-store   = { path = "crates/gitcortex-store",   version = "0.1" }
 
 serde              = { version = "1",   features = ["derive"] }
 schemars           = "1"
