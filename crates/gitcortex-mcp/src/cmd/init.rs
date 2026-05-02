@@ -1,9 +1,10 @@
 use std::{
     fs,
-    os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
     time::Instant,
 };
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 
 use anyhow::{Context, Result};
 use gitcortex_core::store::GraphStore;
@@ -251,9 +252,12 @@ fn install_hooks(repo_root: &Path) -> Result<usize> {
         } else {
             fs::write(&path, format!("{HOOK_SHEBANG}{body}"))?;
         }
-        let mut perms = fs::metadata(&path)?.permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&path, perms)?;
+        #[cfg(unix)]
+        {
+            let mut perms = fs::metadata(&path)?.permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&path, perms)?;
+        }
         installed += 1;
     }
     Ok(installed)
@@ -392,6 +396,7 @@ fn repo_root() -> Result<PathBuf> {
 
 fn home_dir() -> PathBuf {
     std::env::var("HOME")
+        .or_else(|_| std::env::var("USERPROFILE"))
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("."))
 }
