@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use gitcortex_core::store::GraphStore;
+use gitcortex_core::{schema::NodeKind, store::GraphStore};
 use gitcortex_store::kuzu::KuzuGraphStore;
 use rmcp::{
     handler::server::wrapper::Parameters,
@@ -64,6 +64,60 @@ pub struct BranchDiffParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DetectChangesParams {
     /// Branch to query (defaults to "main" if omitted).
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct FindCalleesParams {
+    /// Name of the function/method to trace callees of.
+    pub function_name: String,
+    /// How many hops to walk forward in the call graph (1–5, default 1).
+    pub depth: Option<u8>,
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct FindImplementorsParams {
+    /// Trait, interface, or abstract class name to find implementors of.
+    pub trait_name: String,
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct TracePathParams {
+    /// Starting function/method name.
+    pub from: String,
+    /// Target function/method name.
+    pub to: String,
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ListSymbolsInRangeParams {
+    /// Repo-relative path to a source file.
+    pub file: String,
+    /// Start line of the range (1-indexed, inclusive).
+    pub start_line: u32,
+    /// End line of the range (1-indexed, inclusive).
+    pub end_line: u32,
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct FindUnusedSymbolsParams {
+    /// Optional NodeKind filter: "function", "method", "struct", etc.
+    pub kind: Option<String>,
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GetSubgraphParams {
+    /// Seed symbol name (unqualified).
+    pub seed_name: String,
+    /// How many hops to expand from the seed (1–5, default 2).
+    pub depth: Option<u8>,
+    /// Direction: "in" (callers/ancestors), "out" (callees/descendants), "both" (default).
+    pub direction: Option<String>,
     pub branch: Option<String>,
 }
 
@@ -391,6 +445,218 @@ impl GitCortexServer {
             "total_affected": total_affected,
             "changed_symbols": changed_symbols,
         }))
+    }
+
+    /// Find all callees of a function/method, tracing forward through the call graph.
+    #[tool(
+        description = "Find all functions/methods that the named function calls. \
+        Inverse of find_callers — traces forward (downstream). Use depth=1..5 to walk multiple hops. \
+        Returns callees grouped by hop distance."
+    )]
+    fn find_callees(&self, Parameters(p): Parameters<FindCalleesParams>) -> CallToolResult {
+        let branch = p.branch.as_deref().unwrap_or("main").to_owned();
+        let depth = p.depth.unwrap_or(1).max(1);
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        match store.find_callees(&branch, &p.function_name, depth) {
+            Ok(result) => {
+                let hops: Vec<_> = result.hops.iter().enumerate().map(|(i, nodes)| {
+                    let callees: Vec<_> = nodes.iter().map(|n| json!({
+                        "kind": n.kind.to_string(),
+                        "name": n.name,
+                        "qualified_name": n.qualified_name,
+                        "file": n.file.display().to_string(),
+                        "start_line": n.span.start_line,
+                    })).collect();
+                    json!({ "hop": i + 1, "callees": callees })
+                }).collect();
+                CallToolResult::structured(json!({
+                    "function": p.function_name,
+                    "depth": depth,
+                    "hops": hops,
+                }))
+            }
+            Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
+        }
+    }
+
+    /// Find all structs/classes that implement a trait or interface.
+    #[tool(
+        description = "Find all concrete types (structs, classes) that implement or inherit the named \
+        trait or interface. Works for Rust traits, Java/TypeScript interfaces, and Go structural types."
+    )]
+    fn find_implementors(&self, Parameters(p): Parameters<FindImplementorsParams>) -> CallToolResult {
+        let branch = p.branch.as_deref().unwrap_or("main").to_owned();
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        match store.find_implementors(&branch, &p.trait_name) {
+            Ok(nodes) => {
+                let items: Vec<_> = nodes.iter().map(|n| json!({
+                    "kind": n.kind.to_string(),
+                    "name": n.name,
+                    "qualified_name": n.qualified_name,
+                    "file": n.file.display().to_string(),
+                    "start_line": n.span.start_line,
+                })).collect();
+                CallToolResult::structured(json!({
+                    "trait": p.trait_name,
+                    "implementors": items,
+                }))
+            }
+            Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
+        }
+    }
+
+    /// Find a call path between two symbols in the codebase.
+    #[tool(
+        description = "Find a call path from one function to another. Returns the shortest chain of \
+        calls connecting `from` to `to`. Returns an empty array if no path exists within 6 hops. \
+        Most useful for debugging 'how can A reach B?' questions."
+    )]
+    fn trace_path(&self, Parameters(p): Parameters<TracePathParams>) -> CallToolResult {
+        let branch = p.branch.as_deref().unwrap_or("main").to_owned();
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        match store.trace_path(&branch, &p.from, &p.to) {
+            Ok(path) => {
+                let nodes: Vec<_> = path.iter().map(|n| json!({
+                    "kind": n.kind.to_string(),
+                    "name": n.name,
+                    "file": n.file.display().to_string(),
+                    "start_line": n.span.start_line,
+                })).collect();
+                CallToolResult::structured(json!({
+                    "from": p.from,
+                    "to": p.to,
+                    "found": !path.is_empty(),
+                    "path": nodes,
+                }))
+            }
+            Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
+        }
+    }
+
+    /// Find all indexed symbols that overlap a line range in a file.
+    #[tool(
+        description = "List all symbols (functions, structs, etc.) in a source file whose span \
+        overlaps the given line range. Use this to map a stack trace, diff hunk, or grep result \
+        to the symbols responsible."
+    )]
+    fn list_symbols_in_range(&self, Parameters(p): Parameters<ListSymbolsInRangeParams>) -> CallToolResult {
+        let branch = p.branch.as_deref().unwrap_or("main").to_owned();
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        let path = Path::new(&p.file);
+        match store.list_symbols_in_range(&branch, path, p.start_line, p.end_line) {
+            Ok(nodes) => {
+                let items: Vec<_> = nodes.iter().map(|n| json!({
+                    "kind": n.kind.to_string(),
+                    "name": n.name,
+                    "qualified_name": n.qualified_name,
+                    "start_line": n.span.start_line,
+                    "end_line": n.span.end_line,
+                    "loc": n.metadata.loc,
+                })).collect();
+                CallToolResult::structured(json!({
+                    "file": p.file,
+                    "range": { "start": p.start_line, "end": p.end_line },
+                    "symbols": items,
+                }))
+            }
+            Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
+        }
+    }
+
+    /// Find symbols with no callers or type references — potential dead code.
+    #[tool(
+        description = "Find symbols that are never called or used as a type anywhere in the indexed \
+        codebase. Useful for identifying dead code, safe-to-rename candidates, or refactoring targets. \
+        Pass kind='function' to restrict to functions only."
+    )]
+    fn find_unused_symbols(&self, Parameters(p): Parameters<FindUnusedSymbolsParams>) -> CallToolResult {
+        let branch = p.branch.as_deref().unwrap_or("main").to_owned();
+        let kind = p.kind.as_deref().and_then(|k| match k {
+            "function" => Some(NodeKind::Function),
+            "method" => Some(NodeKind::Method),
+            "struct" => Some(NodeKind::Struct),
+            "trait" => Some(NodeKind::Trait),
+            "interface" => Some(NodeKind::Interface),
+            "enum" => Some(NodeKind::Enum),
+            "constant" => Some(NodeKind::Constant),
+            _ => None,
+        });
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        match store.find_unused_symbols(&branch, kind) {
+            Ok(nodes) => {
+                let items: Vec<_> = nodes.iter().map(|n| json!({
+                    "kind": n.kind.to_string(),
+                    "name": n.name,
+                    "qualified_name": n.qualified_name,
+                    "file": n.file.display().to_string(),
+                    "start_line": n.span.start_line,
+                    "visibility": format!("{:?}", n.metadata.visibility),
+                })).collect();
+                CallToolResult::structured(json!({
+                    "branch": branch,
+                    "unused_symbols": items,
+                    "count": nodes.len(),
+                }))
+            }
+            Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
+        }
+    }
+
+    /// Return a neighbourhood subgraph around a seed symbol.
+    #[tool(
+        description = "Return the subgraph centred on a seed symbol — all nodes and edges reachable \
+        within `depth` hops. Use direction='out' for downstream only, 'in' for upstream only, \
+        or 'both' (default) for both directions. Ideal for architecture rendering and impact analysis."
+    )]
+    fn get_subgraph(&self, Parameters(p): Parameters<GetSubgraphParams>) -> CallToolResult {
+        let branch = p.branch.as_deref().unwrap_or("main").to_owned();
+        let depth = p.depth.unwrap_or(2);
+        let direction = p.direction.as_deref().unwrap_or("both").to_owned();
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        match store.get_subgraph(&branch, &p.seed_name, depth, &direction) {
+            Ok(sg) => {
+                let nodes: Vec<_> = sg.nodes.iter().map(|n| json!({
+                    "id": n.id.as_str(),
+                    "kind": n.kind.to_string(),
+                    "name": n.name,
+                    "file": n.file.display().to_string(),
+                    "start_line": n.span.start_line,
+                })).collect();
+                let edges: Vec<_> = sg.edges.iter().map(|e| json!({
+                    "src": e.src.as_str(),
+                    "dst": e.dst.as_str(),
+                    "kind": e.kind.to_string(),
+                })).collect();
+                CallToolResult::structured(json!({
+                    "seed": p.seed_name,
+                    "depth": depth,
+                    "direction": direction,
+                    "node_count": sg.nodes.len(),
+                    "edge_count": sg.edges.len(),
+                    "nodes": nodes,
+                    "edges": edges,
+                }))
+            }
+            Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
+        }
     }
 }
 

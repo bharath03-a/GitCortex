@@ -21,6 +21,12 @@ pub struct ParseResult {
     pub deferred_uses: Vec<(NodeId, String)>,
     /// Unresolved trait implementations: (struct_id, trait_name).
     pub deferred_implements: Vec<(NodeId, String)>,
+    /// Unresolved class extends / structural inheritance: (subtype_id, supertype_name).
+    pub deferred_inherits: Vec<(NodeId, String)>,
+    /// Unresolved exception throws: (method_id, exception_type_name).
+    pub deferred_throws: Vec<(NodeId, String)>,
+    /// Unresolved decorator/annotation references: (target_id, annotation_name).
+    pub deferred_annotated: Vec<(NodeId, String)>,
     /// Unresolved use-declaration imports: (src_node_id, imported_leaf_name).
     pub deferred_imports: Vec<(NodeId, String)>,
 }

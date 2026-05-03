@@ -36,6 +36,13 @@ pub fn ensure_branch(conn: &mut Connection, branch: &str) -> Result<()> {
             visibility     STRING, \
             is_async       BOOL,   \
             is_unsafe      BOOL,   \
+            is_static      BOOL,   \
+            is_abstract    BOOL,   \
+            is_final       BOOL,   \
+            is_property    BOOL,   \
+            is_generator   BOOL,   \
+            is_const       BOOL,   \
+            generic_bounds STRING, \
             PRIMARY KEY(id)\
         )"
     ))

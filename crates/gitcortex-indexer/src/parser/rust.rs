@@ -69,6 +69,9 @@ impl LanguageParser for RustParser {
             deferred_uses: visitor.deferred_uses,
             deferred_implements: visitor.deferred_implements,
             deferred_imports: visitor.deferred_imports,
+            deferred_inherits: Vec::new(),
+            deferred_throws: Vec::new(),
+            deferred_annotated: Vec::new(),
         })
     }
 }

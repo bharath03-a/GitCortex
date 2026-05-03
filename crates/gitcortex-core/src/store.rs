@@ -3,7 +3,14 @@ use std::path::Path;
 use crate::{
     error::Result,
     graph::{Edge, GraphDiff, Node},
+    schema::NodeKind,
 };
+
+/// A subgraph centred on a seed node, returned by `get_subgraph`.
+pub struct SubGraph {
+    pub nodes: Vec<Node>,
+    pub edges: Vec<Edge>,
+}
 
 /// Callers of a symbol grouped by hop distance.
 pub struct CallersDeep {
@@ -70,6 +77,48 @@ pub trait GraphStore: Send + Sync {
     /// Nodes/edges present in `to` but not `from` are in `added_*`.
     /// Nodes/edges present in `from` but not `to` are in `removed_*`.
     fn branch_diff(&self, from: &str, to: &str) -> Result<GraphDiff>;
+
+    // ── Wave 2 tools ─────────────────────────────────────────────────────────
+
+    /// Find all functions/methods called by `function_name` up to `depth` hops.
+    /// Returns callees grouped by hop distance (1..=depth). Capped at 5.
+    fn find_callees(&self, branch: &str, function_name: &str, depth: u8)
+        -> Result<CallersDeep>;
+
+    /// Find all structs/classes that implement/inherit `trait_or_interface_name`.
+    fn find_implementors(&self, branch: &str, trait_or_interface_name: &str)
+        -> Result<Vec<Node>>;
+
+    /// Find all call paths between `from` and `to` using BFS.
+    /// Returns at most one path (the shortest), as a sequence of nodes.
+    fn trace_path(&self, branch: &str, from: &str, to: &str) -> Result<Vec<Node>>;
+
+    /// Find all nodes in `file` whose span overlaps `[start_line, end_line]`.
+    fn list_symbols_in_range(
+        &self,
+        branch: &str,
+        file: &Path,
+        start_line: u32,
+        end_line: u32,
+    ) -> Result<Vec<Node>>;
+
+    /// Find symbols with no incoming Calls or Uses edges (potential dead code).
+    /// If `kind` is provided, filters to only that NodeKind.
+    fn find_unused_symbols(
+        &self,
+        branch: &str,
+        kind: Option<NodeKind>,
+    ) -> Result<Vec<Node>>;
+
+    /// Return a subgraph centred on `seed_name` up to `depth` hops.
+    /// `direction`: "in" (callers), "out" (callees), or "both".
+    fn get_subgraph(
+        &self,
+        branch: &str,
+        seed_name: &str,
+        depth: u8,
+        direction: &str,
+    ) -> Result<SubGraph>;
 
     // ── Indexing state ───────────────────────────────────────────────────────
 

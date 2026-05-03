@@ -159,6 +159,10 @@ fn kind_dot_color(k: &NodeKind) -> &'static str {
         NodeKind::Method => "#74c7ec",
         NodeKind::Constant => "#f9e2af",
         NodeKind::Macro => "#cdd6f4",
+        NodeKind::Interface => "#89dceb",
+        NodeKind::Property => "#cba6f7",
+        NodeKind::Annotation => "#eba0ac",
+        NodeKind::EnumMember => "#a6d189",
     }
 }
 

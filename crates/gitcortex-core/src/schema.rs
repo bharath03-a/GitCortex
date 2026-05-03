@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+/// Bumped whenever the on-disk graph schema changes.
+/// Stores compare this against the persisted version and re-index on mismatch.
+pub const SCHEMA_VERSION: u32 = 3;
+
 /// Every named, referenceable syntactic entity becomes a node of one of these kinds.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -9,12 +13,21 @@ pub enum NodeKind {
     Module,
     Struct,
     Enum,
+    /// Rust trait. Languages with a separate notion of interface use [`NodeKind::Interface`].
     Trait,
+    /// Language interface (Java, TypeScript, Go) — semantically distinct from Rust traits.
+    Interface,
     TypeAlias,
     Function,
     Method,
+    /// Property (Python `@property`, TypeScript `readonly` field, getter/setter pair).
+    Property,
     Constant,
     Macro,
+    /// Decorator / annotation declaration (e.g. `@dataclass`, `@Override`, `#[derive(...)]`).
+    Annotation,
+    /// Member of an enum (`Color::Red`, `Direction.NORTH`).
+    EnumMember,
 }
 
 impl std::fmt::Display for NodeKind {
@@ -26,11 +39,15 @@ impl std::fmt::Display for NodeKind {
             NodeKind::Struct => "struct",
             NodeKind::Enum => "enum",
             NodeKind::Trait => "trait",
+            NodeKind::Interface => "interface",
             NodeKind::TypeAlias => "type_alias",
             NodeKind::Function => "function",
             NodeKind::Method => "method",
+            NodeKind::Property => "property",
             NodeKind::Constant => "constant",
             NodeKind::Macro => "macro",
+            NodeKind::Annotation => "annotation",
+            NodeKind::EnumMember => "enum_member",
         };
         f.write_str(s)
     }
@@ -44,12 +61,21 @@ pub enum EdgeKind {
     Contains,
     /// Resolved call site: Function→Function or Method→Method.
     Calls,
-    /// `impl Trait for Struct` — Struct→Trait.
+    /// `impl Trait for Struct`, `class Foo implements Bar` — Struct→Trait/Interface.
     Implements,
+    /// `class Foo extends Bar`, embedded struct in Go — subtype→supertype.
+    /// Distinct from `Implements`: this is "is-a" inheritance vs "can-do" interface
+    /// satisfaction.
+    Inherits,
     /// A type appears as a parameter or return type: fn→Struct/Trait.
     Uses,
     /// `use path::to::Thing` import.
     Imports,
+    /// A symbol is decorated/annotated by another (`@Override`, `@dataclass`,
+    /// `#[derive(Debug)]`).
+    Annotated,
+    /// Java `throws ExceptionType` — method→exception class.
+    Throws,
 }
 
 impl std::fmt::Display for EdgeKind {
@@ -58,8 +84,11 @@ impl std::fmt::Display for EdgeKind {
             EdgeKind::Contains => "contains",
             EdgeKind::Calls => "calls",
             EdgeKind::Implements => "implements",
+            EdgeKind::Inherits => "inherits",
             EdgeKind::Uses => "uses",
             EdgeKind::Imports => "imports",
+            EdgeKind::Annotated => "annotated",
+            EdgeKind::Throws => "throws",
         };
         f.write_str(s)
     }
