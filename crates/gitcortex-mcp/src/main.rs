@@ -28,8 +28,9 @@ enum Commands {
         /// Also install the GitHub Actions blast-radius workflow.
         #[arg(long)]
         ci: bool,
-        /// Target editor: claude, cursor, windsurf, copilot, antigravity, all.
-        /// Auto-detected from environment if omitted.
+        /// Editor to configure: claude, cursor, windsurf, copilot, antigravity, all.
+        /// Defaults to auto-detecting from environment variables; installs for all editors
+        /// when no editor-specific env var is found.
         #[arg(long, value_name = "EDITOR")]
         editor: Option<String>,
     },

@@ -353,6 +353,9 @@ impl<'src> FileVisitor<'src> {
             "enum_declaration" => {
                 self.visit_enum(node, scope);
             }
+            "internal_module" | "module" => {
+                self.visit_namespace(node, scope);
+            }
             "lexical_declaration" | "variable_declaration" => {
                 self.visit_var_decl(node, scope);
             }
@@ -392,6 +395,7 @@ impl<'src> FileVisitor<'src> {
 
         self.extract_param_types(node, &id);
         self.extract_return_type_annotation(node, &id);
+        self.extract_generic_constraints(node, &id);
         self.extract_decorator_annotated(node, &id);
 
         if let Some(body) = node.child_by_field_name("body") {
@@ -418,6 +422,8 @@ impl<'src> FileVisitor<'src> {
 
         // extends → Inherits edges; implements → Implements edges
         self.extract_heritage(node, &id);
+        // generic constraints → Uses edges
+        self.extract_generic_constraints(node, &id);
         // class-level decorators (@Injectable, @Component, etc.) → Annotated edges
         self.extract_decorator_annotated(node, &id);
 
@@ -516,9 +522,54 @@ impl<'src> FileVisitor<'src> {
             return;
         };
         let name = self.text(name_node).to_owned();
-        let id = NodeId::new();
-        let graph_node = self.make_node(id, NodeKind::Enum, name, scope, node);
+        let enum_id = NodeId::new();
+        let graph_node = self.make_node(enum_id.clone(), NodeKind::Enum, name.clone(), scope, node);
         self.nodes.push(graph_node);
+
+        // Emit EnumMember nodes for each variant
+        let member_scope: Vec<String> = scope.iter().cloned().chain(std::iter::once(name)).collect();
+        if let Some(body) = node.child_by_field_name("body") {
+            let mut cursor = body.walk();
+            for member in body.named_children(&mut cursor) {
+                if member.kind() != "enum_assignment" && member.kind() != "property_identifier" {
+                    continue;
+                }
+                let member_name_node = if member.kind() == "enum_assignment" {
+                    member.child_by_field_name("name").or_else(|| member.named_child(0))
+                } else {
+                    Some(member)
+                };
+                if let Some(mn) = member_name_node {
+                    let mname = self.text(mn).to_owned();
+                    let mid = NodeId::new();
+                    let mnode = self.make_node(mid.clone(), NodeKind::EnumMember, mname, &member_scope, member);
+                    self.nodes.push(mnode);
+                    self.edges.push(Edge { src: enum_id.clone(), dst: mid, kind: EdgeKind::Contains });
+                }
+            }
+        }
+    }
+
+    fn visit_namespace(&mut self, node: TsNode<'_>, scope: &[String]) {
+        let Some(name_node) = node.child_by_field_name("name") else {
+            return;
+        };
+        let name = self.text(name_node).to_owned();
+        let ns_id = NodeId::new();
+        let graph_node = self.make_node(ns_id.clone(), NodeKind::Module, name.clone(), scope, node);
+        self.nodes.push(graph_node);
+        self.edges.push(Edge { src: self.module_id.clone(), dst: ns_id.clone(), kind: EdgeKind::Contains });
+
+        // Visit namespace body
+        if let Some(body) = node.child_by_field_name("body") {
+            let child_scope: Vec<String> = scope.iter().cloned().chain(std::iter::once(name)).collect();
+            let mut cursor = body.walk();
+            let children: Vec<TsNode<'_>> = body.named_children(&mut cursor).collect();
+            for child in children {
+                let actual = self.unwrap_export(child);
+                self.visit_statement(actual, &child_scope, Some(ns_id.clone()));
+            }
+        }
     }
 
     fn visit_var_decl(&mut self, node: TsNode<'_>, scope: &[String]) {
@@ -640,6 +691,24 @@ impl<'src> FileVisitor<'src> {
     // ── Type annotation helpers ───────────────────────────────────────────────
 
     /// Extract Uses edges from function/method parameter type annotations.
+    /// Emit Uses edges for generic type constraints: `function foo<T extends Bar>()` → Uses Bar.
+    fn extract_generic_constraints(&mut self, node: TsNode<'_>, id: &NodeId) {
+        let Some(type_params) = node.child_by_field_name("type_parameters") else {
+            return;
+        };
+        let mut cursor = type_params.walk();
+        for param in type_params.named_children(&mut cursor) {
+            if param.kind() != "type_parameter" {
+                continue;
+            }
+            if let Some(constraint) = param.child_by_field_name("constraint") {
+                for name in self.collect_type_names(constraint) {
+                    self.deferred_uses.push((id.clone(), name));
+                }
+            }
+        }
+    }
+
     fn extract_param_types(&mut self, fn_node: TsNode<'_>, fn_id: &NodeId) {
         let Some(params) = fn_node.child_by_field_name("parameters") else {
             return;

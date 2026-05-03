@@ -138,6 +138,11 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text);
 }
 .insp-link:hover { background:var(--surface0); }
 .insp-empty { font-size:10px; color:var(--overlay0); font-style:italic; }
+.editor-link {
+  font-size:9px; padding:2px 7px; border-radius:4px; text-decoration:none;
+  background:var(--surface0); color:var(--subtext); border:1px solid var(--surface1);
+}
+.editor-link:hover { background:var(--surface1); color:var(--text); }
 
 /* trace-path */
 #trace-section { margin-top:10px; border-top:1px solid var(--surface0); padding-top:8px; }
@@ -222,6 +227,14 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text);
   </div>
   <div class="filter-sep"></div>
   <div>
+    <div class="filter-section-title">Cluster</div>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:2px;">
+      <button class="vis-btn active" id="cluster-all" style="font-size:9px">All</button>
+    </div>
+    <div id="cluster-btns" style="display:flex;gap:3px;flex-wrap:wrap;margin-top:3px;"></div>
+  </div>
+  <div class="filter-sep"></div>
+  <div>
     <div class="filter-section-title">Files</div>
     <input id="file-search-input" type="text" placeholder="Filter files…" spellcheck="false">
     <div id="file-list"></div>
@@ -241,6 +254,7 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text);
   <div class="insp-field">
     <div class="insp-label">File : Line</div>
     <div class="insp-val" id="insp-file"></div>
+    <div style="display:flex;gap:6px;margin-top:3px;" id="editor-links"></div>
   </div>
   <div class="insp-field">
     <div class="insp-label">LOC</div>
@@ -480,6 +494,9 @@ function runLayout(name) {
   cy.layout(opts).run();
 }
 
+// ── Filter state ───────────────────────────────────────────────────────────
+let activeCluster = null; // null = show all
+
 // ── Filter rail ────────────────────────────────────────────────────────────
 function buildFilterRail(nodes, edges) {
   // Node kinds
@@ -539,12 +556,39 @@ function buildFilterRail(nodes, edges) {
     el.addEventListener('click', () => toggleFile(f, el));
     fileList.appendChild(el);
   });
+  // Cluster filter buttons
+  const numClusters = new Set(Object.values(communityMap)).size;
+  const clusterBtns = document.getElementById('cluster-btns');
+  for (let i = 0; i < Math.min(numClusters, 16); i++) {
+    const btn = document.createElement('button');
+    btn.className = 'vis-btn';
+    btn.textContent = `C${i + 1}`;
+    btn.style.fontSize = '9px';
+    btn.dataset.cluster = i;
+    btn.addEventListener('click', () => setClusterFilter(i, btn));
+    clusterBtns.appendChild(btn);
+  }
+  document.getElementById('cluster-all').addEventListener('click', () => {
+    activeCluster = null;
+    document.getElementById('cluster-all').classList.add('active');
+    document.querySelectorAll('#cluster-btns .vis-btn').forEach(b => b.classList.remove('active'));
+    applyFilters();
+  });
+
   document.getElementById('file-search-input').addEventListener('input', e => {
     const q = e.target.value.toLowerCase();
     document.querySelectorAll('.file-toggle').forEach(el => {
       el.style.display = el.dataset.file.toLowerCase().includes(q) ? '' : 'none';
     });
   });
+}
+
+function setClusterFilter(clusterIdx, btn) {
+  activeCluster = clusterIdx;
+  document.getElementById('cluster-all').classList.remove('active');
+  document.querySelectorAll('#cluster-btns .vis-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilters();
 }
 
 function toggleKind(k, el) {
@@ -572,7 +616,8 @@ function applyFilters() {
       activeVis.has(d.vis) &&
       !hiddenFiles.has(d.file) &&
       (!flagFilterAsync  || d.is_async) &&
-      (!flagFilterUnsafe || d.is_unsafe);
+      (!flagFilterUnsafe || d.is_unsafe) &&
+      (activeCluster === null || d.cluster === activeCluster);
     n.style('display', visible ? 'element' : 'none');
   });
   cy.edges().forEach(e => {
@@ -603,6 +648,20 @@ function openInspector(node) {
   document.getElementById('insp-name').textContent = d.label;
   document.getElementById('insp-qualified').textContent = d.qualified_name;
   document.getElementById('insp-file').textContent = `${d.file}:${d.start_line}`;
+  // "Open in editor" deep links
+  const editorLinks = document.getElementById('editor-links');
+  editorLinks.innerHTML = '';
+  const fileRef = encodeURIComponent(d.file);
+  const line = d.start_line || 1;
+  [
+    { label: 'VS Code',  href: `vscode://file/${d.file}:${line}` },
+    { label: 'Cursor',   href: `cursor://file/${d.file}:${line}` },
+    { label: 'IDEA',     href: `idea://open?file=${fileRef}&line=${line}` },
+  ].forEach(({ label, href }) => {
+    const a = document.createElement('a');
+    a.className = 'editor-link'; a.textContent = label; a.href = href; a.target = '_blank';
+    editorLinks.appendChild(a);
+  });
   document.getElementById('insp-loc').textContent = d.loc ? `${d.loc} lines` : '—';
 
   const tags = document.getElementById('insp-tags');

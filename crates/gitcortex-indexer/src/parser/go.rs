@@ -730,6 +730,16 @@ impl<'src> FileVisitor<'src> {
                 if let Some(args) = child.child_by_field_name("arguments") {
                     self.collect_calls(args, caller_id);
                 }
+            } else if child.kind() == "go_statement" {
+                // `go fn()` — record the call and mark it as async via deferred_calls
+                if let Some(call) = child.named_child(0) {
+                    if call.kind() == "call_expression" {
+                        if let Some(callee) = self.callee_name(call) {
+                            // Record as a regular deferred call; the goroutine is conceptually async
+                            self.deferred_calls.push((caller_id.clone(), callee));
+                        }
+                    }
+                }
             } else {
                 self.collect_calls(child, caller_id);
             }

@@ -6,9 +6,20 @@ A local-first, branch-aware code knowledge graph for Git repositories. GitCortex
 
 ## Why
 
-When you ask Claude Code to work on a large codebase, it either scans dozens of files to build context (burning tokens) or misses the bigger picture entirely. There's no middle ground.
+When you ask an AI editor to work on a large codebase, it either scans dozens of files to build context (burning tokens) or misses the bigger picture entirely. There's no middle ground.
 
-GitCortex gives Claude a pre-built, queryable map of your repo — functions, structs, traits, call relationships, file structure — so instead of reading raw source files it can ask precise questions like "what calls this function?" or "what's defined in this file?" and get structured answers instantly. You get better context at a fraction of the token cost.
+GitCortex gives your AI editor a pre-built, queryable call graph of your repo — functions, structs, traits, interfaces, call relationships, inheritance — so instead of reading raw source files it can ask precise questions like "what calls this function?" or "what implements this trait?" and get structured answers instantly.
+
+| | GitCortex v0.2 | Others |
+|---|---|---|
+| **MCP tools** | 12, each with real query depth | 4–16 (many shallow grep wrappers) |
+| **Languages** | 5 with full edge coverage (Rust, Python, TS/JS, Go, Java) | Often 1–2, or broad but shallow |
+| **IDE support** | Cursor, Claude Code, Windsurf, Copilot, Antigravity | Usually Claude Code only |
+| **Index freshness** | Automatic on every `git commit / merge / rebase / checkout` | Manual re-run |
+| **Branch graphs** | Per-branch, instant switch — no re-index | One graph per repo |
+| **Install time** | `cargo install gitcortex` + `gcx init` — under 2 minutes | Varies |
+
+> **One sentence**: GitCortex is the knowledge graph that stays current without you thinking about it — and works in the editor you already use.
 
 ---
 
