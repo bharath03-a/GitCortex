@@ -48,7 +48,7 @@ fn insert_and_lookup_node() {
     };
     store.apply_diff("main", &diff).expect("apply_diff");
 
-    let results = store.lookup_symbol("main", "greet").expect("lookup_symbol");
+    let results = store.lookup_symbol("main", "greet", false).expect("lookup_symbol");
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].id, node_id);
     assert_eq!(results[0].name, "greet");
@@ -114,7 +114,7 @@ fn delete_file_removes_nodes() {
     };
     store.apply_diff("main", &add_diff).expect("apply_diff");
 
-    assert_eq!(store.lookup_symbol("main", "old_fn").unwrap().len(), 1);
+    assert_eq!(store.lookup_symbol("main", "old_fn", false).unwrap().len(), 1);
 
     let del_diff = GraphDiff {
         removed_files: vec![PathBuf::from("src/old.rs")],
@@ -124,7 +124,7 @@ fn delete_file_removes_nodes() {
         .apply_diff("main", &del_diff)
         .expect("apply_diff remove");
 
-    assert_eq!(store.lookup_symbol("main", "old_fn").unwrap().len(), 0);
+    assert_eq!(store.lookup_symbol("main", "old_fn", false).unwrap().len(), 0);
 }
 
 #[test]

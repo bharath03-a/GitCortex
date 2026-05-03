@@ -1,10 +1,13 @@
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+};
 
 use gitcortex_core::{
     error::{GitCortexError, Result},
     graph::{Edge, GraphDiff, Node, NodeId, NodeMetadata, Span},
     schema::{EdgeKind, NodeKind, Visibility},
-    store::GraphStore,
+    store::{CallersDeep, GraphStore, SymbolContext},
 };
 use kuzu::{Connection, Database, SystemConfig, Value};
 
@@ -198,16 +201,21 @@ impl GraphStore for KuzuGraphStore {
 
     // ── Read path ─────────────────────────────────────────────────────────────
 
-    fn lookup_symbol(&self, branch: &str, name: &str) -> Result<Vec<Node>> {
+    fn lookup_symbol(&self, branch: &str, name: &str, fuzzy: bool) -> Result<Vec<Node>> {
         self.ensure_branch(branch)?;
         let nt = db_schema::node_table(branch);
         let name_esc = esc(name);
         let conn = self.conn()?;
 
+        let condition = if fuzzy {
+            format!("contains(n.name, '{name_esc}')")
+        } else {
+            format!("n.name = '{name_esc}'")
+        };
+
         let mut result = conn
             .query(&format!(
-                "MATCH (n:{nt}) WHERE n.name = '{name_esc}' \
-                 RETURN {NODE_COLS}"
+                "MATCH (n:{nt}) WHERE {condition} RETURN {NODE_COLS}"
             ))
             .map_err(|e| GitCortexError::Store(e.to_string()))?;
 
@@ -232,6 +240,106 @@ impl GraphStore for KuzuGraphStore {
             .map_err(|e| GitCortexError::Store(e.to_string()))?;
 
         rows_to_nodes(&mut result)
+    }
+
+    fn find_callers_deep(
+        &self,
+        branch: &str,
+        function_name: &str,
+        depth: u8,
+    ) -> Result<CallersDeep> {
+        let depth = depth.min(5);
+        let mut hops: Vec<Vec<Node>> = Vec::new();
+        // Track seen node IDs to avoid cycles.
+        let mut seen: HashSet<String> = HashSet::new();
+        // The frontier holds the *names* of nodes whose callers we search next.
+        let mut frontier: Vec<String> = vec![function_name.to_owned()];
+        seen.insert(function_name.to_owned());
+
+        for _ in 0..depth {
+            if frontier.is_empty() {
+                break;
+            }
+            let mut hop_nodes: Vec<Node> = Vec::new();
+            let mut next_frontier: Vec<String> = Vec::new();
+            for target in &frontier {
+                for caller in self.find_callers(branch, target)? {
+                    let id = caller.id.as_str().to_owned();
+                    if seen.insert(id) {
+                        next_frontier.push(caller.name.clone());
+                        hop_nodes.push(caller);
+                    }
+                }
+            }
+            hops.push(hop_nodes);
+            frontier = next_frontier;
+        }
+
+        let total_affected: usize = hops.iter().map(|h| h.len()).sum();
+        let risk_level = match total_affected {
+            0..=2 => "LOW",
+            3..=10 => "MEDIUM",
+            11..=30 => "HIGH",
+            _ => "CRITICAL",
+        };
+
+        Ok(CallersDeep { hops, risk_level })
+    }
+
+    fn symbol_context(&self, branch: &str, name: &str) -> Result<SymbolContext> {
+        self.ensure_branch(branch)?;
+        let nt = db_schema::node_table(branch);
+        let et = db_schema::edge_table(branch);
+        let name_esc = esc(name);
+        let conn = self.conn()?;
+
+        // Definition — first match.
+        let mut def_result = conn
+            .query(&format!(
+                "MATCH (n:{nt}) WHERE n.name = '{name_esc}' RETURN {NODE_COLS} LIMIT 1"
+            ))
+            .map_err(|e| GitCortexError::Store(e.to_string()))?;
+        let mut defs = rows_to_nodes(&mut def_result)?;
+        if defs.is_empty() {
+            return Err(GitCortexError::Store(format!(
+                "symbol '{name}' not found on branch '{branch}'"
+            )));
+        }
+        let definition = defs.remove(0);
+
+        // Callers — who calls this symbol.
+        let callers = self.find_callers(branch, name)?;
+
+        // Callees — what this symbol calls.
+        let mut callee_result = conn
+            .query(&format!(
+                "MATCH (caller:{nt})-[:{et} {{kind: 'calls'}}]->(callee:{nt}) \
+                 WHERE caller.name = '{name_esc}' \
+                 RETURN callee.id, callee.kind, callee.name, callee.qualified_name, \
+                        callee.file, callee.start_line, callee.end_line, callee.loc, \
+                        callee.visibility, callee.is_async, callee.is_unsafe"
+            ))
+            .map_err(|e| GitCortexError::Store(e.to_string()))?;
+        let callees = rows_to_nodes(&mut callee_result)?;
+
+        // Used-by — who references this symbol via Uses edges.
+        let mut used_result = conn
+            .query(&format!(
+                "MATCH (fn:{nt})-[:{et} {{kind: 'uses'}}]->(ty:{nt}) \
+                 WHERE ty.name = '{name_esc}' \
+                 RETURN fn.id, fn.kind, fn.name, fn.qualified_name, \
+                        fn.file, fn.start_line, fn.end_line, fn.loc, \
+                        fn.visibility, fn.is_async, fn.is_unsafe"
+            ))
+            .map_err(|e| GitCortexError::Store(e.to_string()))?;
+        let used_by = rows_to_nodes(&mut used_result)?;
+
+        Ok(SymbolContext {
+            definition,
+            callers,
+            callees,
+            used_by,
+        })
     }
 
     fn list_definitions(&self, branch: &str, file: &Path) -> Result<Vec<Node>> {

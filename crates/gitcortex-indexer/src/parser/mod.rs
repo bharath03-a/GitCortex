@@ -6,6 +6,7 @@ use gitcortex_core::{
 };
 
 pub mod go;
+pub mod java;
 pub mod python;
 pub mod rust;
 pub mod typescript;
@@ -51,6 +52,7 @@ pub fn parser_for_path(path: &Path) -> Option<Box<dyn LanguageParser>> {
         "js" | "mjs" | "cjs" => Some(Box::new(typescript::JavaScriptParser::new())),
         "jsx" => Some(Box::new(typescript::JavaScriptParser::new())),
         "go" => Some(Box::new(go::GoParser::new())),
+        "java" => Some(Box::new(java::JavaParser::new())),
         _ => None,
     }
 }

@@ -5,6 +5,26 @@ use crate::{
     graph::{Edge, GraphDiff, Node},
 };
 
+/// Callers of a symbol grouped by hop distance.
+pub struct CallersDeep {
+    /// Groups indexed 0..depth-1. `hops[0]` = direct callers (hop 1).
+    pub hops: Vec<Vec<Node>>,
+    /// Risk score derived from total affected count and depth reached.
+    pub risk_level: &'static str,
+}
+
+/// 360-degree view of a single symbol.
+pub struct SymbolContext {
+    /// The node matching `name` (first match if multiple).
+    pub definition: Node,
+    /// Functions/methods that call this symbol (direct callers).
+    pub callers: Vec<Node>,
+    /// Functions/methods that this symbol calls (direct callees).
+    pub callees: Vec<Node>,
+    /// Functions/types that reference this symbol via `Uses` edges.
+    pub used_by: Vec<Node>,
+}
+
 /// Backend-agnostic interface for the knowledge graph store.
 ///
 /// The v0.1 implementation is `KuzuGraphStore` (local embedded DB).
@@ -18,12 +38,24 @@ pub trait GraphStore: Send + Sync {
 
     // ── Read operations ──────────────────────────────────────────────────────
 
-    /// Find all nodes matching `name` (exact, case-sensitive) on `branch`.
-    fn lookup_symbol(&self, branch: &str, name: &str) -> Result<Vec<Node>>;
+    /// Find all nodes matching `name` on `branch`.
+    /// When `fuzzy` is true, matches any node whose name *contains* `name`
+    /// (case-sensitive substring). When false, exact match only.
+    fn lookup_symbol(&self, branch: &str, name: &str, fuzzy: bool) -> Result<Vec<Node>>;
 
     /// Find all call-site nodes whose outgoing `Calls` edge points to a node
-    /// named `function_name` on `branch`.
+    /// named `function_name` on `branch` (single hop).
     fn find_callers(&self, branch: &str, function_name: &str) -> Result<Vec<Node>>;
+
+    /// Multi-hop BFS: find callers up to `depth` hops away.
+    /// Returns callers grouped by hop distance (1..=depth).
+    /// `depth` is capped at 5 to prevent runaway queries.
+    fn find_callers_deep(&self, branch: &str, function_name: &str, depth: u8)
+        -> Result<CallersDeep>;
+
+    /// Return a 360° view of a symbol: its definition, direct callers,
+    /// direct callees, and nodes that reference it via `Uses` edges.
+    fn symbol_context(&self, branch: &str, name: &str) -> Result<SymbolContext>;
 
     /// List all top-level definitions in `file` on `branch`.
     fn list_definitions(&self, branch: &str, file: &Path) -> Result<Vec<Node>>;

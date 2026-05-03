@@ -12,7 +12,7 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
 
     match cmd {
         QueryCmd::LookupSymbol { name, branch } => {
-            let nodes = store.lookup_symbol(&branch, &name)?;
+            let nodes = store.lookup_symbol(&branch, &name, false)?;
             if nodes.is_empty() {
                 println!("no results for '{name}' on branch '{branch}'");
             }
@@ -48,6 +48,31 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
             }
             for n in nodes {
                 println!("{:>5}  {} ({:?})", n.span.start_line, n.name, n.kind);
+            }
+        }
+        QueryCmd::Context { file, branch } => {
+            let nodes = store.list_definitions(&branch, &PathBuf::from(&file))?;
+            if nodes.is_empty() {
+                return Ok(());
+            }
+            println!("[GitCortex] {} ({})", file, branch);
+            for node in &nodes {
+                let callers = store.find_callers(&branch, &node.name).unwrap_or_default();
+                if callers.is_empty() {
+                    println!(
+                        "  {:?} {} (line {})",
+                        node.kind, node.name, node.span.start_line
+                    );
+                } else {
+                    let names: Vec<&str> = callers.iter().map(|c| c.name.as_str()).collect();
+                    println!(
+                        "  {:?} {} (line {}) ← {}",
+                        node.kind,
+                        node.name,
+                        node.span.start_line,
+                        names.join(", ")
+                    );
+                }
             }
         }
     }

@@ -103,6 +103,13 @@ enum QueryCmd {
         #[arg(long, default_value = "main")]
         branch: String,
     },
+    /// Show call-graph context for all definitions in a source file.
+    Context {
+        /// Repo-relative or absolute path to the source file.
+        file: String,
+        #[arg(long, default_value = "main")]
+        branch: String,
+    },
 }
 
 fn main() {

@@ -67,6 +67,27 @@ Use the MCP server (`gcx serve`, configured in `.mcp.json`) or these slash comma
 - `/gcx-blast-radius` — show blast radius of changes vs main
 "#;
 
+// ── PreToolUse hook ───────────────────────────────────────────────────────────
+
+const PRE_TOOL_USE_HOOK: &str = r#"#!/usr/bin/env sh
+# GitCortex PreToolUse hook — appends call-graph context when Claude reads a source file.
+set -e
+export PATH="$HOME/.cargo/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
+
+input=$(cat)
+
+# Extract file_path from the JSON input (uses python3 for reliable JSON parsing)
+file_path=$(printf '%s' "$input" | python3 -c \
+  "import sys,json; d=json.load(sys.stdin); print(d.get('tool_input',{}).get('file_path',''))" \
+  2>/dev/null || true)
+
+[ -z "$file_path" ] && exit 0
+command -v gcx >/dev/null 2>&1 || exit 0
+
+# Silent — only prints when the file is indexed; ignored otherwise
+gcx query context "$file_path" 2>/dev/null || true
+"#;
+
 // ── Agent skills ─────────────────────────────────────────────────────────────
 
 const SKILLS: &[(&str, &str)] = &[
@@ -213,6 +234,8 @@ pub fn run(ci: bool) -> Result<()> {
     let commands = write_slash_commands(&repo_root)?;
     let skills = write_skills(&repo_root)?;
     update_claude_md(&repo_root)?;
+    write_pre_tool_use_hook(&repo_root)?;
+    write_claude_settings(&repo_root)?;
 
     if ci {
         write_ci_workflow(&repo_root)?;
@@ -226,6 +249,7 @@ pub fn run(ci: bool) -> Result<()> {
     println!("  MCP:      ~/.claude.json  (gcx serve registered globally)");
     println!("  Skills:   .claude/skills/gcx/  ({skills} agent skills)");
     println!("  Commands: .claude/commands/gcx/  ({commands} slash commands)");
+    println!("  AI Hook:  .claude/hooks/pre-tool-use/gcx-context.sh (auto-context on Read)");
     if ci {
         println!("  CI:       .github/workflows/gcx-blast-radius.yml");
     }
@@ -365,6 +389,65 @@ fn update_claude_md(repo_root: &Path) -> Result<()> {
         fs::write(&path, CLAUDE_MD_SECTION.trim_start()).context("write CLAUDE.md")?;
     }
     Ok(())
+}
+
+// ── PreToolUse hook installation ──────────────────────────────────────────────
+
+fn write_pre_tool_use_hook(repo_root: &Path) -> Result<()> {
+    let dir = repo_root
+        .join(".claude")
+        .join("hooks")
+        .join("pre-tool-use");
+    fs::create_dir_all(&dir)?;
+    let path = dir.join("gcx-context.sh");
+    if !path.exists() {
+        fs::write(&path, PRE_TOOL_USE_HOOK).context("write gcx-context.sh")?;
+        #[cfg(unix)]
+        {
+            let mut perms = fs::metadata(&path)?.permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&path, perms)?;
+        }
+    }
+    Ok(())
+}
+
+fn write_claude_settings(repo_root: &Path) -> Result<()> {
+    let path = repo_root.join(".claude").join("settings.json");
+
+    if path.exists() {
+        let text = fs::read_to_string(&path).context("read .claude/settings.json")?;
+        if text.contains("gcx-context.sh") {
+            return Ok(());
+        }
+        // Merge: parse and add the hook entry
+        let mut root: Value =
+            serde_json::from_str(&text).unwrap_or(json!({}));
+        add_gcx_hook_entry(&mut root);
+        let updated = serde_json::to_string_pretty(&root)?;
+        fs::write(&path, updated).context("write .claude/settings.json")?;
+    } else {
+        let mut root = json!({});
+        add_gcx_hook_entry(&mut root);
+        let text = serde_json::to_string_pretty(&root)?;
+        fs::write(&path, text).context("write .claude/settings.json")?;
+    }
+    Ok(())
+}
+
+fn add_gcx_hook_entry(root: &mut Value) {
+    let hook = json!({
+        "matcher": "Read",
+        "hooks": [{ "type": "command", "command": ".claude/hooks/pre-tool-use/gcx-context.sh" }]
+    });
+    let arr = root["hooks"]["PreToolUse"]
+        .as_array_mut()
+        .map(|a| {
+            a.push(hook.clone());
+        });
+    if arr.is_none() {
+        root["hooks"]["PreToolUse"] = json!([hook]);
+    }
 }
 
 // ── CI workflow ───────────────────────────────────────────────────────────────
