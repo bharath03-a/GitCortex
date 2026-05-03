@@ -105,10 +105,10 @@ fn parse_source(
         deferred_calls: visitor.deferred_calls,
         deferred_uses: visitor.deferred_uses,
         deferred_implements: visitor.deferred_implements,
-        deferred_imports: visitor.deferred_imports,
-        deferred_inherits: Vec::new(),
+        deferred_inherits: visitor.deferred_inherits,
         deferred_throws: Vec::new(),
-        deferred_annotated: Vec::new(),
+        deferred_annotated: visitor.deferred_annotated,
+        deferred_imports: visitor.deferred_imports,
     })
 }
 
@@ -128,6 +128,8 @@ struct FileVisitor<'src> {
     deferred_calls: Vec<(NodeId, String)>,
     deferred_uses: Vec<(NodeId, String)>,
     deferred_implements: Vec<(NodeId, String)>,
+    deferred_inherits: Vec<(NodeId, String)>,
+    deferred_annotated: Vec<(NodeId, String)>,
     deferred_imports: Vec<(NodeId, String)>,
 }
 
@@ -169,6 +171,8 @@ impl<'src> FileVisitor<'src> {
             deferred_calls: Vec::new(),
             deferred_uses: Vec::new(),
             deferred_implements: Vec::new(),
+            deferred_inherits: Vec::new(),
+            deferred_annotated: Vec::new(),
             deferred_imports: Vec::new(),
         }
     }
@@ -372,7 +376,10 @@ impl<'src> FileVisitor<'src> {
             .get(&name)
             .cloned()
             .unwrap_or_else(NodeId::new);
-        let graph_node = self.make_node(id.clone(), kind, name, scope, node);
+        let mut graph_node = self.make_node(id.clone(), kind, name, scope, node);
+        if node.kind() == "generator_function_declaration" {
+            graph_node.metadata.is_generator = true;
+        }
 
         if let Some(cid) = container_id {
             self.edges.push(Edge {
@@ -385,7 +392,7 @@ impl<'src> FileVisitor<'src> {
 
         self.extract_param_types(node, &id);
         self.extract_return_type_annotation(node, &id);
-        self.extract_decorator_uses(node, &id);
+        self.extract_decorator_annotated(node, &id);
 
         if let Some(body) = node.child_by_field_name("body") {
             self.collect_calls(body, &id);
@@ -402,13 +409,17 @@ impl<'src> FileVisitor<'src> {
             .get(&name)
             .cloned()
             .unwrap_or_else(NodeId::new);
-        let graph_node = self.make_node(id.clone(), NodeKind::Struct, name.clone(), scope, node);
+        let mut graph_node =
+            self.make_node(id.clone(), NodeKind::Struct, name.clone(), scope, node);
+        if node.kind() == "abstract_class_declaration" {
+            graph_node.metadata.is_abstract = true;
+        }
         self.nodes.push(graph_node);
 
-        // extends + implements → Implements edges
+        // extends → Inherits edges; implements → Implements edges
         self.extract_heritage(node, &id);
-        // class-level decorators (@Injectable, @Component, etc.)
-        self.extract_decorator_uses(node, &id);
+        // class-level decorators (@Injectable, @Component, etc.) → Annotated edges
+        self.extract_decorator_annotated(node, &id);
 
         let mut class_scope = scope.to_vec();
         class_scope.push(name);
@@ -694,7 +705,8 @@ impl<'src> FileVisitor<'src> {
                 _ => None,
             };
             if let Some(name) = type_name {
-                self.deferred_implements.push((node_id.clone(), name));
+                // `extends` is always inheritance (is-a): class→class or interface→interface.
+                self.deferred_inherits.push((node_id.clone(), name));
             }
         }
     }
@@ -712,6 +724,18 @@ impl<'src> FileVisitor<'src> {
             };
             if let Some(name) = type_name {
                 self.deferred_implements.push((node_id.clone(), name));
+            }
+        }
+    }
+
+    /// Emit `deferred_annotated` entries for each decorator on a node.
+    fn extract_decorator_annotated(&mut self, node: TsNode<'_>, node_id: &NodeId) {
+        let mut c = node.walk();
+        for child in node.named_children(&mut c) {
+            if child.kind() == "decorator" {
+                if let Some(name) = self.decorator_name(child) {
+                    self.deferred_annotated.push((node_id.clone(), name));
+                }
             }
         }
     }
@@ -904,11 +928,12 @@ mod tests {
         Vec<(gitcortex_core::graph::NodeId, String)>,
         Vec<(gitcortex_core::graph::NodeId, String)>,
         Vec<(gitcortex_core::graph::NodeId, String)>,
+        Vec<(gitcortex_core::graph::NodeId, String)>,
     ) {
         let r = TypeScriptParser::new_ts()
             .parse(Path::new("test.ts"), src)
             .unwrap();
-        (r.nodes, r.edges, r.deferred_calls, r.deferred_uses, r.deferred_implements, r.deferred_imports)
+        (r.nodes, r.edges, r.deferred_calls, r.deferred_uses, r.deferred_implements, r.deferred_imports, r.deferred_inherits)
     }
 
     fn parse_js(
@@ -983,18 +1008,19 @@ mod tests {
     #[test]
     fn detects_ts_extends_implements() {
         let src = "interface Base {}\nclass Foo extends Base implements Base {}";
-        let (_, _, _, _, implements, _) = parse_ts_full(src);
-        let bases: Vec<_> = implements.iter().filter(|(_, n)| n == "Base").collect();
+        let (_, _, _, _, implements, _, inherits) = parse_ts_full(src);
+        let impl_bases: Vec<_> = implements.iter().filter(|(_, n)| n == "Base").collect();
+        let inh_bases: Vec<_> = inherits.iter().filter(|(_, n)| n == "Base").collect();
         assert!(
-            bases.len() >= 2,
-            "expected at least 2 Implements edges to Base (one extends, one implements), got: {implements:?}"
+            impl_bases.len() + inh_bases.len() >= 2,
+            "expected extends (inherits) + implements edges to Base, implements={implements:?} inherits={inherits:?}"
         );
     }
 
     #[test]
     fn detects_ts_type_annotation_uses() {
         let src = "class MyService {}\nfunction process(svc: MyService): MyService { return svc; }";
-        let (_, _, _, uses, _, _) = parse_ts_full(src);
+        let (_, _, _, uses, ..) = parse_ts_full(src);
         let svc_uses: Vec<_> = uses.iter().filter(|(_, n)| n == "MyService").collect();
         assert!(
             svc_uses.len() >= 2,
@@ -1005,7 +1031,7 @@ mod tests {
     #[test]
     fn detects_ts_named_imports() {
         let src = "import { Component, Injectable } from '@angular/core';\nfunction foo() {}";
-        let (_, _, _, _, _, imports) = parse_ts_full(src);
+        let (_, _, _, _, _, imports, ..) = parse_ts_full(src);
         assert!(
             imports.iter().any(|(_, n)| n == "Component"),
             "expected import 'Component', got: {imports:?}"

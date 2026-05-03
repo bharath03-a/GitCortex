@@ -71,7 +71,7 @@ impl LanguageParser for RustParser {
             deferred_imports: visitor.deferred_imports,
             deferred_inherits: Vec::new(),
             deferred_throws: Vec::new(),
-            deferred_annotated: Vec::new(),
+            deferred_annotated: visitor.deferred_annotated,
         })
     }
 }
@@ -89,6 +89,7 @@ struct FileVisitor<'src> {
     deferred_uses: Vec<(NodeId, String)>,
     deferred_implements: Vec<(NodeId, String)>,
     deferred_imports: Vec<(NodeId, String)>,
+    deferred_annotated: Vec<(NodeId, String)>,
 }
 
 impl<'src> FileVisitor<'src> {
@@ -104,6 +105,7 @@ impl<'src> FileVisitor<'src> {
             deferred_uses: Vec::new(),
             deferred_implements: Vec::new(),
             deferred_imports: Vec::new(),
+            deferred_annotated: Vec::new(),
         }
     }
 
@@ -153,6 +155,88 @@ impl<'src> FileVisitor<'src> {
         result
     }
 
+    fn is_const(&self, node: TsNode<'_>) -> bool {
+        let mut cursor = node.walk();
+        let result = node.children(&mut cursor).any(|c| c.kind() == "const");
+        result
+    }
+
+    /// Extract generic parameter bounds from a `type_parameters` child node.
+    /// Returns strings like `"T: Send + Sync"` for each constrained parameter.
+    fn collect_generic_bounds(&self, node: TsNode<'_>) -> Vec<String> {
+        let Some(type_params) = node.child_by_field_name("type_parameters") else {
+            return Vec::new();
+        };
+        let mut bounds = Vec::new();
+        let mut cursor = type_params.walk();
+        for child in type_params.named_children(&mut cursor) {
+            if child.kind() == "constrained_type_parameter" {
+                let bound_text = self.text(child).to_owned();
+                if !bound_text.is_empty() {
+                    bounds.push(bound_text);
+                }
+            }
+        }
+        bounds
+    }
+
+    /// Collect attribute names from outer `attribute_item` nodes that precede
+    /// `node` as siblings. Returns simple attribute names like `"derive"`,
+    /// `"tokio::main"`, `"test"`.
+    fn collect_attributes(&self, node: TsNode<'_>) -> Vec<String> {
+        let mut attrs = Vec::new();
+        let mut cursor = node.walk();
+        // Attributes are not children of the item node in tree-sitter-rust;
+        // they are preceding named siblings at the same level.
+        // Walk the parent's children to find attribute_item nodes that
+        // immediately precede this node.
+        let Some(parent) = node.parent() else {
+            return attrs;
+        };
+        let mut found = false;
+        let mut pending: Vec<String> = Vec::new();
+        for sibling in parent.named_children(&mut cursor) {
+            if sibling.id() == node.id() {
+                found = true;
+                break;
+            }
+            if sibling.kind() == "attribute_item" {
+                if let Some(attr_name) = self.extract_attribute_name(sibling) {
+                    pending.push(attr_name);
+                }
+            } else {
+                // Non-attribute sibling resets the run of attributes preceding
+                // this node (attributes must be contiguous just before the item).
+                pending.clear();
+            }
+        }
+        if found {
+            attrs.extend(pending);
+        }
+        attrs
+    }
+
+    /// Extract the printable name from an `attribute_item` node.
+    /// `#[derive(Debug)]` → `"derive"`, `#[tokio::main]` → `"tokio::main"`,
+    /// `#[test]` → `"test"`.
+    fn extract_attribute_name(&self, attr_item: TsNode<'_>) -> Option<String> {
+        // attribute_item → "#[" … "]"
+        // The inner node is typically an `attribute` which contains an
+        // identifier or scoped_identifier for the path.
+        let mut cursor = attr_item.walk();
+        for child in attr_item.named_children(&mut cursor) {
+            if child.kind() == "attribute" {
+                // First named child of attribute is the path.
+                let mut inner = child.walk();
+                let path_node = child.named_children(&mut inner).next();
+                if let Some(p) = path_node {
+                    return Some(self.text(p).to_owned());
+                }
+            }
+        }
+        None
+    }
+
     fn qualified(scope: &[String], name: &str) -> String {
         if scope.is_empty() {
             format!("crate::{name}")
@@ -181,6 +265,8 @@ impl<'src> FileVisitor<'src> {
                 visibility: self.visibility(ts_node),
                 is_async: self.is_async(ts_node),
                 is_unsafe: self.is_unsafe(ts_node),
+                is_const: self.is_const(ts_node),
+                generic_bounds: self.collect_generic_bounds(ts_node),
                 ..Default::default()
             },
         }
@@ -293,6 +379,11 @@ impl<'src> FileVisitor<'src> {
 
         // Uses edges: parameter types and return type referencing same-file types.
         self.collect_uses_edges(node, &id);
+
+        // Attribute annotations → deferred_annotated.
+        for attr_name in self.collect_attributes(node) {
+            self.deferred_annotated.push((id.clone(), attr_name));
+        }
 
         self.nodes.push(graph_node);
 
@@ -456,6 +547,9 @@ impl<'src> FileVisitor<'src> {
                 kind: EdgeKind::Contains,
             });
         }
+        for attr_name in self.collect_attributes(node) {
+            self.deferred_annotated.push((id.clone(), attr_name));
+        }
         self.nodes.push(graph_node);
     }
 
@@ -475,6 +569,9 @@ impl<'src> FileVisitor<'src> {
                 dst: id.clone(),
                 kind: EdgeKind::Contains,
             });
+        }
+        for attr_name in self.collect_attributes(node) {
+            self.deferred_annotated.push((id.clone(), attr_name));
         }
         self.nodes.push(graph_node);
 

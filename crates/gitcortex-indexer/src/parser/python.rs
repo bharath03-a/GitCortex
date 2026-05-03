@@ -65,7 +65,7 @@ impl LanguageParser for PythonParser {
             deferred_imports: visitor.deferred_imports,
             deferred_inherits: Vec::new(),
             deferred_throws: Vec::new(),
-            deferred_annotated: Vec::new(),
+            deferred_annotated: visitor.deferred_annotated,
         })
     }
 }
@@ -87,6 +87,7 @@ struct FileVisitor<'src> {
     deferred_uses: Vec<(NodeId, String)>,
     deferred_implements: Vec<(NodeId, String)>,
     deferred_imports: Vec<(NodeId, String)>,
+    deferred_annotated: Vec<(NodeId, String)>,
 }
 
 impl<'src> FileVisitor<'src> {
@@ -129,6 +130,7 @@ impl<'src> FileVisitor<'src> {
             deferred_uses: Vec::new(),
             deferred_implements: Vec::new(),
             deferred_imports: Vec::new(),
+            deferred_annotated: Vec::new(),
         }
     }
 
@@ -199,6 +201,10 @@ impl<'src> FileVisitor<'src> {
                         let name = self.text(name_node).to_owned();
                         self.class_index.entry(name).or_default();
                     }
+                    // Recurse into class body to index nested classes and methods.
+                    if let Some(body) = child.child_by_field_name("body") {
+                        self.collect_names(body);
+                    }
                 }
                 "function_definition" => {
                     if let Some(name_node) = child.child_by_field_name("name") {
@@ -220,6 +226,10 @@ impl<'src> FileVisitor<'src> {
                                 if let Some(name_node) = def.child_by_field_name("name") {
                                     let name = self.text(name_node).to_owned();
                                     self.class_index.entry(name).or_default();
+                                }
+                                // Recurse into decorated nested class body.
+                                if let Some(body) = def.child_by_field_name("body") {
+                                    self.collect_names(body);
                                 }
                             }
                             _ => {}
@@ -286,12 +296,36 @@ impl<'src> FileVisitor<'src> {
             .get(&name)
             .cloned()
             .unwrap_or_else(NodeId::new);
-        let kind = if container_id.is_some() {
+
+        // Determine kind and metadata flags from decorators.
+        let has_property = decorators.iter().any(|d| d == "property");
+        let has_staticmethod = decorators.iter().any(|d| d == "staticmethod");
+        let has_classmethod = decorators.iter().any(|d| d == "classmethod");
+
+        let kind = if has_property {
+            NodeKind::Property
+        } else if container_id.is_some() {
             NodeKind::Method
         } else {
             NodeKind::Function
         };
-        let graph_node = self.make_node(id.clone(), kind, name, scope, node, is_async);
+
+        // Check if the body contains a `yield` or `yield_from` → generator.
+        let is_generator = node
+            .child_by_field_name("body")
+            .map(|body| Self::body_has_yield(body))
+            .unwrap_or(false);
+
+        let mut graph_node = self.make_node(id.clone(), kind, name, scope, node, is_async);
+        if has_property {
+            graph_node.metadata.is_property = true;
+        }
+        if has_staticmethod || has_classmethod {
+            graph_node.metadata.is_static = true;
+        }
+        if is_generator {
+            graph_node.metadata.is_generator = true;
+        }
 
         if let Some(cid) = container_id {
             self.edges.push(Edge {
@@ -307,8 +341,10 @@ impl<'src> FileVisitor<'src> {
         self.extract_return_type(node, &id);
 
         // Decorator names → Uses edges (e.g. @property, @staticmethod, @dataclass)
+        // and → deferred_annotated edges.
         for dec in decorators {
             self.deferred_uses.push((id.clone(), dec.clone()));
+            self.deferred_annotated.push((id.clone(), dec.clone()));
         }
 
         if let Some(body) = node.child_by_field_name("body") {
@@ -326,14 +362,36 @@ impl<'src> FileVisitor<'src> {
             .get(&name)
             .cloned()
             .unwrap_or_else(NodeId::new);
-        let graph_node = self.make_node(
-            id.clone(),
-            NodeKind::Struct,
-            name.clone(),
-            scope,
-            node,
-            false,
-        );
+
+        // Determine whether this class inherits from Protocol → Interface.
+        let mut is_protocol = false;
+        if let Some(bases) = node.child_by_field_name("superclasses") {
+            let mut c = bases.walk();
+            for base in bases.named_children(&mut c) {
+                let base_name = match base.kind() {
+                    "identifier" => Some(self.text(base).to_owned()),
+                    "attribute" => base
+                        .child_by_field_name("attribute")
+                        .map(|n| self.text(n).to_owned()),
+                    _ => None,
+                };
+                if base_name.as_deref() == Some("Protocol") {
+                    is_protocol = true;
+                }
+            }
+        }
+
+        let class_kind = if is_protocol {
+            NodeKind::Interface
+        } else {
+            NodeKind::Struct
+        };
+
+        let mut graph_node =
+            self.make_node(id.clone(), class_kind, name.clone(), scope, node, false);
+        if is_protocol {
+            graph_node.metadata.is_abstract = true;
+        }
         self.nodes.push(graph_node);
 
         // Base classes → Implements edges
@@ -353,9 +411,10 @@ impl<'src> FileVisitor<'src> {
             }
         }
 
-        // Decorator names → Uses edges (e.g. @dataclass)
+        // Decorator names → Uses edges (e.g. @dataclass) and → deferred_annotated.
         for dec in decorators {
             self.deferred_uses.push((id.clone(), dec.clone()));
+            self.deferred_annotated.push((id.clone(), dec.clone()));
         }
 
         let mut class_scope = scope.to_vec();
@@ -377,14 +436,52 @@ impl<'src> FileVisitor<'src> {
                             .map(Self::fn_is_async)
                             .unwrap_or(false);
                         if let Some(def) = child.child_by_field_name("definition") {
-                            if def.kind() == "function_definition" {
-                                self.visit_function(
-                                    def,
-                                    &class_scope,
-                                    Some(id.clone()),
-                                    is_async,
-                                    &method_decorators,
-                                );
+                            match def.kind() {
+                                "function_definition" => {
+                                    self.visit_function(
+                                        def,
+                                        &class_scope,
+                                        Some(id.clone()),
+                                        is_async,
+                                        &method_decorators,
+                                    );
+                                }
+                                "class_definition" => {
+                                    self.visit_class(def, &class_scope, &method_decorators);
+                                    // Add Contains edge from parent class to nested class.
+                                    if let Some(nested_name_node) =
+                                        def.child_by_field_name("name")
+                                    {
+                                        let nested_name =
+                                            self.text(nested_name_node).to_owned();
+                                        if let Some(nested_id) =
+                                            self.class_index.get(&nested_name).cloned()
+                                        {
+                                            self.edges.push(Edge {
+                                                src: id.clone(),
+                                                dst: nested_id,
+                                                kind: EdgeKind::Contains,
+                                            });
+                                        }
+                                    }
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
+                    "class_definition" => {
+                        self.visit_class(child, &class_scope, &[]);
+                        // Add Contains edge from parent class to nested class.
+                        if let Some(nested_name_node) = child.child_by_field_name("name") {
+                            let nested_name = self.text(nested_name_node).to_owned();
+                            if let Some(nested_id) =
+                                self.class_index.get(&nested_name).cloned()
+                            {
+                                self.edges.push(Edge {
+                                    src: id.clone(),
+                                    dst: nested_id,
+                                    kind: EdgeKind::Contains,
+                                });
                             }
                         }
                     }
@@ -535,6 +632,21 @@ impl<'src> FileVisitor<'src> {
         // `async` appears as an anonymous child (keyword) before `def`
         let result = node.children(&mut c).any(|n| n.kind() == "async");
         result
+    }
+
+    /// Returns true if the body subtree contains a `yield` or `yield_from` expression.
+    fn body_has_yield(node: TsNode<'_>) -> bool {
+        if node.kind() == "yield" || node.kind() == "yield_from" {
+            return true;
+        }
+        // Don't descend into nested function definitions — their yields are not
+        // generators of the outer function.
+        if node.kind() == "function_definition" {
+            return false;
+        }
+        let mut c = node.walk();
+        let found = node.named_children(&mut c).any(Self::body_has_yield);
+        found
     }
 
     /// Extract decorator names from a `decorated_definition` node.

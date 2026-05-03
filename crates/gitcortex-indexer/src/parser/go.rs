@@ -64,7 +64,7 @@ impl LanguageParser for GoParser {
             deferred_uses: visitor.deferred_uses,
             deferred_implements: visitor.deferred_implements,
             deferred_imports: visitor.deferred_imports,
-            deferred_inherits: Vec::new(),
+            deferred_inherits: visitor.deferred_inherits,
             deferred_throws: Vec::new(),
             deferred_annotated: Vec::new(),
         })
@@ -88,6 +88,7 @@ struct FileVisitor<'src> {
     deferred_uses: Vec<(NodeId, String)>,
     deferred_implements: Vec<(NodeId, String)>,
     deferred_imports: Vec<(NodeId, String)>,
+    deferred_inherits: Vec<(NodeId, String)>,
 }
 
 impl<'src> FileVisitor<'src> {
@@ -146,6 +147,7 @@ impl<'src> FileVisitor<'src> {
             deferred_uses: Vec::new(),
             deferred_implements: Vec::new(),
             deferred_imports: Vec::new(),
+            deferred_inherits: Vec::new(),
         }
     }
 
@@ -281,7 +283,17 @@ impl<'src> FileVisitor<'src> {
             .get(&name)
             .cloned()
             .unwrap_or_else(NodeId::new);
-        let graph_node = self.make_node(id.clone(), NodeKind::Function, name, scope, node);
+        let mut graph_node = self.make_node(id.clone(), NodeKind::Function, name.clone(), scope, node);
+
+        // init and main are package-level entry points — mark them as static.
+        if name == "init" || name == "main" {
+            graph_node.metadata.is_static = true;
+        }
+
+        // Capture generic type parameter constraints (Go 1.18+).
+        // tree-sitter-go uses "type_parameters" for `func Foo[T any, U comparable]()`.
+        graph_node.metadata.generic_bounds = self.collect_generic_bounds(node);
+
         self.nodes.push(graph_node);
 
         self.extract_fn_type_uses(node, &id);
@@ -372,10 +384,12 @@ impl<'src> FileVisitor<'src> {
                         .get(&name)
                         .cloned()
                         .unwrap_or_else(NodeId::new);
-                    let graph_node =
+                    let mut graph_node =
                         self.make_node(id.clone(), NodeKind::Struct, name, &[], spec);
+                    // Capture generic type parameter constraints (Go 1.18+).
+                    graph_node.metadata.generic_bounds = self.collect_generic_bounds(spec);
                     self.nodes.push(graph_node);
-                    // Struct field types → Uses edges
+                    // Struct field types → Uses edges; embedded fields → Inherits
                     self.extract_struct_field_uses(type_node, &id);
                 }
                 "interface_type" => {
@@ -384,8 +398,10 @@ impl<'src> FileVisitor<'src> {
                         .get(&name)
                         .cloned()
                         .unwrap_or_else(NodeId::new);
-                    let graph_node =
+                    let mut graph_node =
                         self.make_node(id.clone(), NodeKind::Trait, name, &[], spec);
+                    // Capture generic type parameter constraints (Go 1.18+).
+                    graph_node.metadata.generic_bounds = self.collect_generic_bounds(spec);
                     self.nodes.push(graph_node);
                     // Interface method signatures → Method nodes
                     self.extract_interface_methods(type_node, &id);
@@ -410,7 +426,8 @@ impl<'src> FileVisitor<'src> {
             };
             let name = self.text(name_node).to_owned();
             let id = NodeId::new();
-            let graph_node = self.make_node(id, NodeKind::Constant, name, &[], spec);
+            let mut graph_node = self.make_node(id, NodeKind::Constant, name, &[], spec);
+            graph_node.metadata.is_const = true;
             self.nodes.push(graph_node);
         }
     }
@@ -577,6 +594,7 @@ impl<'src> FileVisitor<'src> {
     }
 
     /// Extract Uses edges from struct field types.
+    /// Embedded (anonymous) fields also produce Inherits edges.
     fn extract_struct_field_uses(&mut self, struct_type: TsNode<'_>, struct_id: &NodeId) {
         let mut tw = struct_type.walk();
         let top: Vec<TsNode<'_>> = struct_type.named_children(&mut tw).collect();
@@ -591,9 +609,20 @@ impl<'src> FileVisitor<'src> {
         let fields: Vec<TsNode<'_>> = field_list.named_children(&mut c).collect();
         for field in fields {
             if field.kind() == "field_declaration" {
+                // An embedded (anonymous) field has no "name" field in tree-sitter-go —
+                // only a "type" field. Detect this by checking that there are no named
+                // children with field-name "name".
+                let has_name = field.child_by_field_name("name").is_some();
                 if let Some(type_node) = field.child_by_field_name("type") {
-                    for name in self.collect_type_idents(type_node) {
-                        self.deferred_uses.push((struct_id.clone(), name));
+                    let type_names = self.collect_type_idents(type_node);
+                    for name in &type_names {
+                        self.deferred_uses.push((struct_id.clone(), name.clone()));
+                    }
+                    // Embedded field (no explicit name) → structural inheritance
+                    if !has_name {
+                        for name in type_names {
+                            self.deferred_inherits.push((struct_id.clone(), name));
+                        }
                     }
                 }
             }
@@ -627,6 +656,41 @@ impl<'src> FileVisitor<'src> {
                 self.nodes.push(graph_node);
             }
         }
+    }
+
+    /// Parse `type_parameters` of a generic function or type declaration (Go 1.18+).
+    ///
+    /// For `func Map[T any, U comparable]()` this returns `["T any", "U comparable"]`.
+    /// For `type Set[E comparable] struct {}` this returns `["E comparable"]`.
+    fn collect_generic_bounds(&self, node: TsNode<'_>) -> Vec<String> {
+        let Some(type_params) = node.child_by_field_name("type_parameters") else {
+            return Vec::new();
+        };
+        let mut bounds = Vec::new();
+        let mut cursor = type_params.walk();
+        for child in type_params.named_children(&mut cursor) {
+            // tree-sitter-go models each type parameter as a `type_parameter_declaration`
+            // with a "name" field (the type variable) and a "type" field (the constraint).
+            if child.kind() == "type_parameter_declaration" {
+                let name = child
+                    .child_by_field_name("name")
+                    .map(|n| self.text(n))
+                    .unwrap_or("");
+                let constraint = child
+                    .child_by_field_name("type")
+                    .map(|n| self.text(n))
+                    .unwrap_or("");
+                if !name.is_empty() {
+                    let bound = if constraint.is_empty() {
+                        name.to_owned()
+                    } else {
+                        format!("{name} {constraint}")
+                    };
+                    bounds.push(bound);
+                }
+            }
+        }
+        bounds
     }
 
     /// Walk a Go type expression and collect non-builtin type_identifier names.

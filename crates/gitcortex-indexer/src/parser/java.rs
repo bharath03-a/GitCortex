@@ -63,9 +63,9 @@ impl LanguageParser for JavaParser {
             deferred_uses: visitor.deferred_uses,
             deferred_implements: visitor.deferred_implements,
             deferred_imports: visitor.deferred_imports,
-            deferred_inherits: Vec::new(),
-            deferred_throws: Vec::new(),
-            deferred_annotated: Vec::new(),
+            deferred_inherits: visitor.deferred_inherits,
+            deferred_throws: visitor.deferred_throws,
+            deferred_annotated: visitor.deferred_annotated,
         })
     }
 }
@@ -87,6 +87,9 @@ struct FileVisitor<'src> {
     deferred_uses: Vec<(NodeId, String)>,
     deferred_implements: Vec<(NodeId, String)>,
     deferred_imports: Vec<(NodeId, String)>,
+    deferred_inherits: Vec<(NodeId, String)>,
+    deferred_throws: Vec<(NodeId, String)>,
+    deferred_annotated: Vec<(NodeId, String)>,
 }
 
 impl<'src> FileVisitor<'src> {
@@ -129,6 +132,9 @@ impl<'src> FileVisitor<'src> {
             deferred_uses: Vec::new(),
             deferred_implements: Vec::new(),
             deferred_imports: Vec::new(),
+            deferred_inherits: Vec::new(),
+            deferred_throws: Vec::new(),
+            deferred_annotated: Vec::new(),
         }
     }
 
@@ -166,6 +172,17 @@ impl<'src> FileVisitor<'src> {
         false
     }
 
+    /// Returns the text of the `modifiers` child node, or `""` if absent.
+    fn modifiers_text<'t>(node: TsNode<'t>, source: &'t [u8]) -> &'t str {
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "modifiers" {
+                return child.utf8_text(source).unwrap_or("");
+            }
+        }
+        ""
+    }
+
     fn qualified(scope: &[String], name: &str) -> String {
         if scope.is_empty() {
             name.to_owned()
@@ -182,6 +199,7 @@ impl<'src> FileVisitor<'src> {
         scope: &[String],
         ts_node: TsNode<'_>,
     ) -> Node {
+        let mods = Self::modifiers_text(ts_node, self.source);
         Node {
             id,
             qualified_name: Self::qualified(scope, &name),
@@ -194,6 +212,9 @@ impl<'src> FileVisitor<'src> {
                 visibility: Self::visibility(ts_node, self.source),
                 is_async: Self::is_async(ts_node),
                 is_unsafe: false,
+                is_abstract: mods.contains("abstract"),
+                is_final: mods.contains("final"),
+                is_static: mods.contains("static"),
                 ..Default::default()
             },
         }
@@ -254,11 +275,11 @@ impl<'src> FileVisitor<'src> {
         let graph_node = self.make_node(id.clone(), NodeKind::Struct, name.clone(), scope, node);
         self.nodes.push(graph_node);
 
-        // extends (super class) → Implements edge
+        // extends (super class) → Inherits edge
         if let Some(superclass) = node.child_by_field_name("superclass") {
             let type_name = self.extract_simple_type(superclass);
             if let Some(t) = type_name {
-                self.deferred_implements.push((id.clone(), t));
+                self.deferred_inherits.push((id.clone(), t));
             }
         }
 
@@ -273,7 +294,7 @@ impl<'src> FileVisitor<'src> {
             }
         }
 
-        // Annotations on the class → Uses edges
+        // Annotations on the class → Annotated edges
         self.extract_annotation_uses(node, &id);
 
         let mut class_scope = scope.to_vec();
@@ -289,10 +310,24 @@ impl<'src> FileVisitor<'src> {
                         self.visit_method(child, &class_scope, id.clone());
                     }
                     "class_declaration" => {
-                        self.visit_class(child, &class_scope);
+                        let nested_id = self.visit_class_nested(child, &class_scope);
+                        if let Some(nid) = nested_id {
+                            self.edges.push(Edge {
+                                src: id.clone(),
+                                dst: nid,
+                                kind: EdgeKind::Contains,
+                            });
+                        }
                     }
                     "interface_declaration" => {
-                        self.visit_interface(child, &class_scope);
+                        let nested_id = self.visit_interface_nested(child, &class_scope);
+                        if let Some(nid) = nested_id {
+                            self.edges.push(Edge {
+                                src: id.clone(),
+                                dst: nid,
+                                kind: EdgeKind::Contains,
+                            });
+                        }
                     }
                     "field_declaration" => {
                         self.extract_field_uses(child, &id);
@@ -301,6 +336,92 @@ impl<'src> FileVisitor<'src> {
                 }
             }
         }
+    }
+
+    /// Visit a nested class declaration, returning the new node's id.
+    fn visit_class_nested(&mut self, node: TsNode<'_>, scope: &[String]) -> Option<NodeId> {
+        let name_node = node.child_by_field_name("name")?;
+        let name = self.text(name_node).to_owned();
+        let id = self
+            .type_index
+            .get(&name)
+            .cloned()
+            .unwrap_or_else(NodeId::new);
+        let mut graph_node =
+            self.make_node(id.clone(), NodeKind::Struct, name.clone(), scope, node);
+        // make_node reads `static` from modifiers — already handled there
+        let mods = Self::modifiers_text(node, self.source);
+        graph_node.metadata.is_static = mods.contains("static");
+        self.nodes.push(graph_node);
+
+        if let Some(superclass) = node.child_by_field_name("superclass") {
+            if let Some(t) = self.extract_simple_type(superclass) {
+                self.deferred_inherits.push((id.clone(), t));
+            }
+        }
+        if let Some(interfaces) = node.child_by_field_name("interfaces") {
+            let mut c = interfaces.walk();
+            for iface in interfaces.named_children(&mut c).collect::<Vec<_>>() {
+                if let Some(t) = self.extract_simple_type(iface) {
+                    self.deferred_implements.push((id.clone(), t));
+                }
+            }
+        }
+        self.extract_annotation_uses(node, &id);
+
+        let mut nested_scope = scope.to_vec();
+        nested_scope.push(name);
+        if let Some(body) = node.child_by_field_name("body") {
+            let mut c = body.walk();
+            for child in body.named_children(&mut c).collect::<Vec<_>>() {
+                if matches!(child.kind(), "method_declaration" | "constructor_declaration") {
+                    self.visit_method(child, &nested_scope, id.clone());
+                } else if child.kind() == "field_declaration" {
+                    self.extract_field_uses(child, &id);
+                }
+            }
+        }
+        Some(id)
+    }
+
+    /// Visit a nested interface declaration, returning the new node's id.
+    fn visit_interface_nested(&mut self, node: TsNode<'_>, scope: &[String]) -> Option<NodeId> {
+        let name_node = node.child_by_field_name("name")?;
+        let name = self.text(name_node).to_owned();
+        let id = self
+            .type_index
+            .get(&name)
+            .cloned()
+            .unwrap_or_else(NodeId::new);
+        let is_functional = self.has_functional_interface_annotation(node);
+        let mut graph_node =
+            self.make_node(id.clone(), NodeKind::Interface, name.clone(), scope, node);
+        if is_functional {
+            graph_node.metadata.is_abstract = true;
+        }
+        self.nodes.push(graph_node);
+
+        if let Some(extends) = node.child_by_field_name("extends") {
+            let mut c = extends.walk();
+            for ext in extends.named_children(&mut c).collect::<Vec<_>>() {
+                if let Some(t) = self.extract_simple_type(ext) {
+                    self.deferred_implements.push((id.clone(), t));
+                }
+            }
+        }
+        self.extract_annotation_uses(node, &id);
+
+        let mut nested_scope = scope.to_vec();
+        nested_scope.push(name);
+        if let Some(body) = node.child_by_field_name("body") {
+            let mut c = body.walk();
+            for child in body.named_children(&mut c).collect::<Vec<_>>() {
+                if matches!(child.kind(), "method_declaration" | "constant_declaration") {
+                    self.visit_method(child, &nested_scope, id.clone());
+                }
+            }
+        }
+        Some(id)
     }
 
     fn visit_interface(&mut self, node: TsNode<'_>, scope: &[String]) {
@@ -313,8 +434,16 @@ impl<'src> FileVisitor<'src> {
             .get(&name)
             .cloned()
             .unwrap_or_else(NodeId::new);
-        let graph_node = self.make_node(id.clone(), NodeKind::Trait, name.clone(), scope, node);
+        let is_functional = self.has_functional_interface_annotation(node);
+        let mut graph_node =
+            self.make_node(id.clone(), NodeKind::Interface, name.clone(), scope, node);
+        if is_functional {
+            graph_node.metadata.is_abstract = true;
+        }
         self.nodes.push(graph_node);
+
+        // Annotations on the interface → Annotated edges
+        self.extract_annotation_uses(node, &id);
 
         // extends (parent interfaces) → Implements edges
         if let Some(extends) = node.child_by_field_name("extends") {
@@ -456,8 +585,18 @@ impl<'src> FileVisitor<'src> {
             }
         }
 
-        // Annotations on the method → Uses edges
+        // Annotations on the method → Annotated edges
         self.extract_annotation_uses(node, &id);
+
+        // throws clause → Throws edges
+        if let Some(throws) = node.child_by_field_name("throws") {
+            let mut c = throws.walk();
+            for exc in throws.named_children(&mut c).collect::<Vec<_>>() {
+                if let Some(t) = self.extract_simple_type(exc) {
+                    self.deferred_throws.push((id.clone(), t));
+                }
+            }
+        }
 
         // Calls in the method body
         if let Some(body) = node.child_by_field_name("body") {
@@ -496,7 +635,7 @@ impl<'src> FileVisitor<'src> {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    /// Extract annotations on a node as Uses edges.
+    /// Extract annotations on a node as Annotated edges.
     fn extract_annotation_uses(&mut self, node: TsNode<'_>, node_id: &NodeId) {
         let mut c = node.walk();
         let children: Vec<TsNode<'_>> = node.named_children(&mut c).collect();
@@ -513,13 +652,36 @@ impl<'src> FileVisitor<'src> {
                         if let Some(ann_name_node) = ann_children.first() {
                             let ann_name = self.text(*ann_name_node).to_owned();
                             if !ann_name.is_empty() {
-                                self.deferred_uses.push((node_id.clone(), ann_name));
+                                self.deferred_annotated
+                                    .push((node_id.clone(), ann_name));
                             }
                         }
                     }
                 }
             }
         }
+    }
+
+    /// Returns true when a node has a `@FunctionalInterface` annotation.
+    fn has_functional_interface_annotation(&self, node: TsNode<'_>) -> bool {
+        let mut c = node.walk();
+        for child in node.named_children(&mut c).collect::<Vec<_>>() {
+            if child.kind() == "modifiers" {
+                let mut cc = child.walk();
+                for mc in child.named_children(&mut cc).collect::<Vec<_>>() {
+                    if mc.kind() == "annotation" || mc.kind() == "marker_annotation" {
+                        let mut ccc = mc.walk();
+                        if let Some(ann) = mc.named_children(&mut ccc).collect::<Vec<_>>().first()
+                        {
+                            if self.text(*ann) == "FunctionalInterface" {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        false
     }
 
     /// Extract Uses edges from a field declaration's type.
@@ -718,11 +880,24 @@ mod tests {
         Vec<(gitcortex_core::graph::NodeId, String)>,
         Vec<(gitcortex_core::graph::NodeId, String)>,
         Vec<(gitcortex_core::graph::NodeId, String)>,
+        Vec<(gitcortex_core::graph::NodeId, String)>,
+        Vec<(gitcortex_core::graph::NodeId, String)>,
+        Vec<(gitcortex_core::graph::NodeId, String)>,
     ) {
         let r = JavaParser::new()
             .parse(Path::new("Test.java"), src)
             .unwrap();
-        (r.nodes, r.edges, r.deferred_calls, r.deferred_uses, r.deferred_implements, r.deferred_imports)
+        (
+            r.nodes,
+            r.edges,
+            r.deferred_calls,
+            r.deferred_uses,
+            r.deferred_implements,
+            r.deferred_imports,
+            r.deferred_inherits,
+            r.deferred_throws,
+            r.deferred_annotated,
+        )
     }
 
     #[test]
@@ -742,9 +917,12 @@ mod tests {
     fn parses_interface() {
         let src = "public interface Greeter { String greet(String name); }";
         let (nodes, _) = parse(src);
-        let traits: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Trait).collect();
-        assert_eq!(traits.len(), 1);
-        assert_eq!(traits[0].name, "Greeter");
+        let interfaces: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Interface || n.kind == NodeKind::Trait)
+            .collect();
+        assert_eq!(interfaces.len(), 1);
+        assert_eq!(interfaces[0].name, "Greeter");
     }
 
     #[test]
@@ -759,18 +937,19 @@ mod tests {
     #[test]
     fn detects_extends_and_implements() {
         let src = "interface Base {}\nclass Child extends Base implements Base {}";
-        let (_, _, _, _, implements, _) = parse_full(src);
-        let base_edges: Vec<_> = implements.iter().filter(|(_, n)| n == "Base").collect();
+        let (_, _, _, _, implements, _, inherits, ..) = parse_full(src);
+        let impl_edges: Vec<_> = implements.iter().filter(|(_, n)| n == "Base").collect();
+        let inh_edges: Vec<_> = inherits.iter().filter(|(_, n)| n == "Base").collect();
         assert!(
-            base_edges.len() >= 2,
-            "expected extends+implements edges to Base, got: {implements:?}"
+            impl_edges.len() + inh_edges.len() >= 2,
+            "expected extends+implements edges to Base, implements={implements:?} inherits={inherits:?}"
         );
     }
 
     #[test]
     fn detects_type_annotation_uses() {
         let src = "class Service {}\nclass Controller {\n    public Service handle(Service svc) { return svc; }\n}";
-        let (_, _, _, uses, _, _) = parse_full(src);
+        let (_, _, _, uses, ..) = parse_full(src);
         let svc_uses: Vec<_> = uses.iter().filter(|(_, n)| n == "Service").collect();
         assert!(
             svc_uses.len() >= 2,
@@ -781,7 +960,7 @@ mod tests {
     #[test]
     fn detects_import_declaration() {
         let src = "import com.example.MyService;\nimport java.util.List;\npublic class App {}";
-        let (_, _, _, _, _, imports) = parse_full(src);
+        let (_, _, _, _, _, imports, ..) = parse_full(src);
         assert!(
             imports.iter().any(|(_, n)| n == "MyService"),
             "expected import 'MyService', got: {imports:?}"
