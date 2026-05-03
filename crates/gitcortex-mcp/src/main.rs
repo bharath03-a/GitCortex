@@ -28,6 +28,10 @@ enum Commands {
         /// Also install the GitHub Actions blast-radius workflow.
         #[arg(long)]
         ci: bool,
+        /// Target editor: claude, cursor, windsurf, copilot, antigravity, all.
+        /// Auto-detected from environment if omitted.
+        #[arg(long, value_name = "EDITOR")]
+        editor: Option<String>,
     },
     /// Incremental index triggered by a git hook.
     Hook {
@@ -121,7 +125,7 @@ fn main() {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        Commands::Init { ci } => cmd::init::run(ci),
+        Commands::Init { ci, editor } => cmd::init::run(ci, editor.as_deref()),
         Commands::Hook { branch_switch } => cmd::hook::run(branch_switch),
         Commands::Serve => cmd::serve::run(),
         Commands::Query(q) => cmd::query::run(q),
