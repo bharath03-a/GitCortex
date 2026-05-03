@@ -3,755 +3,831 @@
 <head>
 <meta charset="utf-8">
 <title>GitCortex — Knowledge Graph</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { background: #1e1e2e; color: #cdd6f4; font-family: 'JetBrains Mono', Menlo, monospace; overflow: hidden; }
-svg#graph { width: 100vw; height: 100vh; display: block; }
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
 
-/* Smooth fade-in during reveal, smooth dim on focus/search */
-.node { transition: opacity 0.35s ease; }
-#edges line { transition: opacity 0.5s ease; }
-
-.panel {
-  pointer-events: all; position: fixed;
-  background: rgba(24,24,37,0.93); border: 1px solid #313244;
-  border-radius: 8px; padding: 14px;
+:root {
+  --bg:       #1e1e2e; --bg1:     #181825; --bg2:     #11111b;
+  --surface0: #313244; --surface1:#45475a; --overlay0:#6c7086;
+  --text:     #cdd6f4; --subtext: #a6adc8; --subtext0:#bac2de;
+  --blue:     #89b4fa; --sky:     #74c7ec; --sapphire:#89dceb;
+  --teal:     #94e2d5; --green:   #a6e3a1; --yellow:  #f9e2af;
+  --peach:    #fab387; --flamingo:#eba0ac; --pink:    #f5c2e7;
+  --mauve:    #cba6f7; --red:     #f38ba8; --lavender:#b4befe;
 }
-#stats { top: 16px; left: 16px; font-size: 11px; color: #6c7086; min-width: 130px; line-height: 1.7; }
-#stats b { color: #cdd6f4; }
+
+html, body { width:100%; height:100%; background:var(--bg); color:var(--text);
+  font-family:'JetBrains Mono',Menlo,Consolas,monospace; overflow:hidden; }
+
+#cy { position:fixed; inset:0; }
+
+/* ── Stats ──────────────────────────────────────────────────────────────── */
+#stats {
+  position:fixed; top:14px; left:14px; z-index:10;
+  background:rgba(24,24,37,.93); border:1px solid var(--surface0);
+  border-radius:8px; padding:10px 14px; font-size:11px; color:var(--overlay0);
+  line-height:1.8; pointer-events:none;
+}
+#stats b { color:var(--text); }
 
 /* ── Search bar ──────────────────────────────────────────────────────────── */
-#search-bar {
-  top: 16px; left: 50%; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 8px; padding: 8px 14px;
+#search-wrap {
+  position:fixed; top:14px; left:50%; transform:translateX(-50%); z-index:10;
+  background:rgba(24,24,37,.93); border:1px solid var(--surface0); border-radius:8px;
+  display:flex; align-items:center; gap:8px; padding:8px 14px; min-width:280px;
 }
 #search-input {
-  background: transparent; border: none; outline: none;
-  color: #cdd6f4; font-family: inherit; font-size: 12px;
-  width: 220px;
+  background:transparent; border:none; outline:none; color:var(--text);
+  font-family:inherit; font-size:12px; width:220px;
 }
-#search-input::placeholder { color: #45475a; }
-#search-clear {
-  background: none; border: none; color: #6c7086; cursor: pointer;
-  font-size: 14px; padding: 0 2px; display: none; font-family: inherit;
+#search-input::placeholder { color:var(--surface1); }
+#search-clear { background:none; border:none; color:var(--overlay0); cursor:pointer;
+  font-size:14px; display:none; font-family:inherit; }
+#search-count { color:var(--overlay0); font-size:10px; white-space:nowrap; }
+#search-nav { display:none; gap:4px; }
+#search-nav button {
+  background:var(--surface0); border:1px solid var(--surface1); color:var(--text);
+  border-radius:4px; padding:1px 7px; font-size:11px; cursor:pointer; font-family:inherit;
 }
-#search-count { color: #6c7086; font-size: 10px; white-space: nowrap; }
+
+/* ── Layout switcher ─────────────────────────────────────────────────────── */
+#layout-switcher {
+  position:fixed; top:14px; right:14px; z-index:10;
+  display:flex; gap:6px; align-items:center;
+}
+.layout-btn {
+  background:rgba(24,24,37,.93); border:1px solid var(--surface0); color:var(--subtext);
+  border-radius:6px; padding:5px 12px; font-size:11px; cursor:pointer; font-family:inherit;
+  transition:background .15s, color .15s;
+}
+.layout-btn.active { background:var(--mauve); color:var(--bg); border-color:var(--mauve); }
+.layout-btn:hover:not(.active) { background:var(--surface0); color:var(--text); }
+
+/* ── Filter rail ─────────────────────────────────────────────────────────── */
+#filter-rail {
+  position:fixed; top:60px; left:14px; z-index:10; width:196px;
+  background:rgba(24,24,37,.95); border:1px solid var(--surface0); border-radius:8px;
+  padding:12px; display:flex; flex-direction:column; gap:12px; max-height:calc(100vh - 80px);
+  overflow-y:auto;
+}
+#filter-rail::-webkit-scrollbar { width:4px; }
+#filter-rail::-webkit-scrollbar-thumb { background:var(--surface1); border-radius:2px; }
+.filter-section-title {
+  font-size:9px; text-transform:uppercase; letter-spacing:.08em; color:var(--overlay0);
+  margin-bottom:4px;
+}
+.filter-toggle {
+  display:flex; align-items:center; gap:6px; margin:2px 0; cursor:pointer;
+  font-size:10px; color:var(--subtext); user-select:none;
+}
+.filter-toggle:hover { color:var(--text); }
+.dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.filter-toggle.off { opacity:.35; }
+.filter-sep { height:1px; background:var(--surface0); }
+#vis-filter { display:flex; gap:4px; flex-wrap:wrap; margin-top:2px; }
+.vis-btn {
+  padding:2px 8px; border-radius:4px; font-size:9px; cursor:pointer; font-family:inherit;
+  background:var(--surface0); color:var(--subtext); border:1px solid var(--surface1);
+}
+.vis-btn.active { background:var(--mauve); color:var(--bg); border-color:var(--mauve); }
+#file-search-input {
+  width:100%; background:var(--surface0); border:1px solid var(--surface1); color:var(--text);
+  border-radius:4px; padding:4px 8px; font-size:10px; font-family:inherit; outline:none;
+  margin-bottom:4px;
+}
+#file-list { max-height:100px; overflow-y:auto; display:flex; flex-direction:column; gap:1px; }
+.file-toggle {
+  font-size:9px; color:var(--subtext); padding:2px 4px; border-radius:3px; cursor:pointer;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; user-select:none;
+}
+.file-toggle:hover { background:var(--surface0); color:var(--text); }
+.file-toggle.off { opacity:.3; }
 
 /* ── Inspector ───────────────────────────────────────────────────────────── */
-#inspector { top: 16px; right: 16px; width: 260px; display: none; }
-#inspector .badge {
-  display: inline-block; padding: 2px 9px; border-radius: 99px;
-  font-size: 10px; font-weight: bold; margin-bottom: 10px; color: #1e1e2e;
+#inspector {
+  position:fixed; top:60px; right:14px; z-index:10; width:270px;
+  background:rgba(24,24,37,.95); border:1px solid var(--surface0); border-radius:8px;
+  padding:14px; display:none; max-height:calc(100vh - 80px); overflow-y:auto;
 }
-.field { margin: 5px 0; }
-.field-label { color: #6c7086; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; }
-.field-val { color: #cdd6f4; font-size: 11px; word-break: break-all; }
-.field-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 2px; }
+#inspector::-webkit-scrollbar { width:4px; }
+#inspector::-webkit-scrollbar-thumb { background:var(--surface1); border-radius:2px; }
+.insp-badge {
+  display:inline-block; padding:2px 9px; border-radius:99px;
+  font-size:9px; font-weight:700; margin-bottom:10px; color:var(--bg);
+}
+.insp-field { margin:6px 0; }
+.insp-label { color:var(--overlay0); font-size:9px; text-transform:uppercase; letter-spacing:.06em; }
+.insp-val { color:var(--text); font-size:11px; word-break:break-all; }
+.insp-tags { display:flex; gap:4px; flex-wrap:wrap; margin-top:2px; }
 .tag {
-  padding: 1px 7px; border-radius: 99px; font-size: 9px;
-  background: #313244; color: #a6adc8; border: 1px solid #45475a;
+  padding:1px 7px; border-radius:99px; font-size:9px;
+  background:var(--surface0); color:var(--subtext); border:1px solid var(--surface1);
 }
-.tag.async  { background: #89b4fa22; color: #89b4fa; border-color: #89b4fa44; }
-.tag.unsafe { background: #f38ba822; color: #f38ba8; border-color: #f38ba844; }
-.tag.pub    { background: #a6e3a122; color: #a6e3a1; border-color: #a6e3a144; }
+.tag.async  { background:#89b4fa22; color:var(--blue);    border-color:#89b4fa44; }
+.tag.unsafe { background:#f38ba822; color:var(--red);     border-color:#f38ba844; }
+.tag.pub    { background:#a6e3a122; color:var(--green);   border-color:#a6e3a144; }
+.tag.pubcrate { background:#f9e2af22; color:var(--yellow); border-color:#f9e2af44; }
+.insp-section { margin-top:10px; border-top:1px solid var(--surface0); padding-top:8px; }
+.insp-section-title { font-size:9px; text-transform:uppercase; color:var(--overlay0);
+  letter-spacing:.06em; margin-bottom:5px; }
+.insp-list { display:flex; flex-direction:column; gap:2px; }
+.insp-link {
+  font-size:10px; color:var(--blue); cursor:pointer; padding:1px 4px; border-radius:3px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.insp-link:hover { background:var(--surface0); }
+.insp-empty { font-size:10px; color:var(--overlay0); font-style:italic; }
 
-/* ── Focus depth (inside inspector) ──────────────────────────────────────── */
-.focus-section { margin-top: 12px; border-top: 1px solid #313244; padding-top: 10px; }
-.hop-btns { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
-.hop-btn {
-  padding: 3px 10px; border-radius: 4px; font-size: 11px; cursor: pointer;
-  background: #313244; color: #a6adc8; border: 1px solid #45475a;
-  font-family: inherit;
+/* trace-path */
+#trace-section { margin-top:10px; border-top:1px solid var(--surface0); padding-top:8px; }
+.trace-row { display:flex; gap:4px; margin:3px 0; }
+.trace-input {
+  flex:1; background:var(--surface0); border:1px solid var(--surface1); color:var(--text);
+  border-radius:4px; padding:3px 6px; font-size:10px; font-family:inherit; outline:none;
 }
-.hop-btn.active { background: #cba6f7; color: #1e1e2e; border-color: #cba6f7; }
-.clear-focus-btn {
-  margin-top: 8px; width: 100%; padding: 4px 0; border-radius: 4px;
-  font-size: 11px; cursor: pointer; background: #313244; color: #f38ba8;
-  border: 1px solid #45475a; font-family: inherit;
+.trace-btn {
+  padding:3px 10px; background:var(--mauve); border:none; color:var(--bg);
+  border-radius:4px; font-size:10px; cursor:pointer; font-family:inherit; font-weight:700;
+}
+.trace-btn:hover { opacity:.85; }
+#trace-result { font-size:10px; color:var(--subtext); margin-top:4px; }
+#trace-clear {
+  font-size:9px; color:var(--red); background:none; border:none; cursor:pointer;
+  font-family:inherit; padding:0; display:none; margin-top:2px;
 }
 
-/* ── Legends ─────────────────────────────────────────────────────────────── */
-#legend { bottom: 16px; left: 16px; font-size: 11px; }
-#legend h3, #edge-legend h3 {
-  color: #6c7086; font-size: 10px; text-transform: uppercase;
-  letter-spacing: 0.06em; margin-bottom: 8px;
+/* ── Legend ──────────────────────────────────────────────────────────────── */
+#edge-legend {
+  position:fixed; bottom:14px; left:14px; z-index:10;
+  background:rgba(24,24,37,.93); border:1px solid var(--surface0); border-radius:8px;
+  padding:10px 14px; font-size:10px;
 }
-.li {
-  display: flex; align-items: center; gap: 7px; margin: 3px 0;
-  color: #a6adc8; cursor: pointer; user-select: none; border-radius: 4px;
-  padding: 1px 4px; transition: background 0.1s;
-}
-.li:hover { background: rgba(49,50,68,0.6); }
-.li.muted { opacity: 0.35; }
-.dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
-#edge-legend { bottom: 16px; right: 16px; font-size: 11px; }
-.edge-li {
-  display: flex; align-items: center; gap: 7px; margin: 3px 0;
-  color: #a6adc8; cursor: pointer; user-select: none; border-radius: 4px;
-  padding: 1px 4px; transition: background 0.1s;
-}
-.edge-li:hover { background: rgba(49,50,68,0.6); }
-.edge-li.muted { opacity: 0.35; }
-.edge-swatch { width: 22px; height: 2px; flex-shrink: 0; }
-#loading {
-  position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
-  color: #6c7086; font-size: 14px;
-}
-#hint {
-  position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
-  color: #45475a; font-size: 10px;
-}
+.legend-title { color:var(--overlay0); font-size:9px; text-transform:uppercase;
+  letter-spacing:.06em; margin-bottom:5px; }
+.legend-row { display:flex; align-items:center; gap:6px; margin:2px 0; }
+.edge-line { width:18px; height:2px; flex-shrink:0; border-radius:1px; }
+
+/* ── Cluster hull labels ──────────────────────────────────────────────────── */
+.cy-label { pointer-events:none; }
 </style>
 </head>
 <body>
-<div id="loading">Loading graph&#8230;</div>
 
-<svg id="graph">
-  <defs>
-    <marker id="arr"            viewBox="0 0 10 10" refX="10" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#585b70"/></marker>
-    <marker id="arr-calls"      viewBox="0 0 10 10" refX="10" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#f38ba8"/></marker>
-    <marker id="arr-implements" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#fab387"/></marker>
-    <marker id="arr-uses"       viewBox="0 0 10 10" refX="10" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#89dceb"/></marker>
-    <marker id="arr-imports"    viewBox="0 0 10 10" refX="10" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#a6e3a1"/></marker>
-  </defs>
-  <g id="root">
-    <g id="edges"></g>
-    <g id="nodes"></g>
-  </g>
-</svg>
+<div id="stats"><b id="s-nodes">—</b> nodes · <b id="s-edges">—</b> edges · <b id="s-clusters">—</b> clusters</div>
 
-<!-- Stats -->
-<div class="panel" id="stats">
-  <div>Nodes: <b id="nc">&#8211;</b></div>
-  <div>Edges: <b id="ec">&#8211;</b></div>
-  <div id="filtered-line" style="display:none">Showing: <b id="fc">&#8211;</b></div>
-</div>
-
-<!-- Search bar -->
-<div class="panel" id="search-bar">
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6c7086" stroke-width="2">
-    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-  </svg>
-  <input id="search-input" type="text" placeholder="Search nodes…" spellcheck="false" autocomplete="off">
+<div id="search-wrap">
+  <span style="color:var(--overlay0);font-size:12px">⌕</span>
+  <input id="search-input" type="text" placeholder="Search symbols…" autocomplete="off" spellcheck="false">
   <span id="search-count"></span>
-  <button id="search-clear" title="Clear">✕</button>
+  <span id="search-nav">
+    <button id="search-prev">↑</button>
+    <button id="search-next">↓</button>
+  </span>
+  <button id="search-clear">✕</button>
 </div>
 
-<!-- Inspector -->
-<div class="panel" id="inspector"></div>
-
-<!-- Node kind legend (clickable toggles) -->
-<div class="panel" id="legend">
-  <h3>Node kinds</h3>
+<div id="layout-switcher">
+  <button class="layout-btn active" data-layout="cose">Force</button>
+  <button class="layout-btn" data-layout="concentric">Concentric</button>
+  <button class="layout-btn" data-layout="breadthfirst">Tree</button>
 </div>
 
-<!-- Edge kind legend (clickable toggles) -->
-<div class="panel" id="edge-legend">
-  <h3>Edge kinds</h3>
+<div id="filter-rail">
+  <div>
+    <div class="filter-section-title">Node Kind</div>
+    <div id="kind-filters"></div>
+  </div>
+  <div class="filter-sep"></div>
+  <div>
+    <div class="filter-section-title">Edge Kind</div>
+    <div id="edge-filters"></div>
+  </div>
+  <div class="filter-sep"></div>
+  <div>
+    <div class="filter-section-title">Visibility</div>
+    <div id="vis-filter">
+      <button class="vis-btn active" data-vis="pub">pub</button>
+      <button class="vis-btn active" data-vis="pub(crate)">crate</button>
+      <button class="vis-btn active" data-vis="private">priv</button>
+    </div>
+  </div>
+  <div class="filter-sep"></div>
+  <div>
+    <div class="filter-section-title">Flags</div>
+    <div id="flag-filters">
+      <label class="filter-toggle" id="flag-async"><span class="dot" style="background:var(--blue)"></span>async</label>
+      <label class="filter-toggle" id="flag-unsafe"><span class="dot" style="background:var(--red)"></span>unsafe</label>
+    </div>
+  </div>
+  <div class="filter-sep"></div>
+  <div>
+    <div class="filter-section-title">Files</div>
+    <input id="file-search-input" type="text" placeholder="Filter files…" spellcheck="false">
+    <div id="file-list"></div>
+  </div>
 </div>
 
-<div id="hint">scroll to zoom &nbsp;&middot;&nbsp; drag to pan &nbsp;&middot;&nbsp; drag node to pin &nbsp;&middot;&nbsp; click node to focus &nbsp;&middot;&nbsp; click legend to toggle</div>
+<div id="inspector">
+  <span class="insp-badge" id="insp-badge"></span>
+  <div class="insp-field">
+    <div class="insp-label">Name</div>
+    <div class="insp-val" id="insp-name"></div>
+  </div>
+  <div class="insp-field">
+    <div class="insp-label">Qualified</div>
+    <div class="insp-val" id="insp-qualified"></div>
+  </div>
+  <div class="insp-field">
+    <div class="insp-label">File : Line</div>
+    <div class="insp-val" id="insp-file"></div>
+  </div>
+  <div class="insp-field">
+    <div class="insp-label">LOC</div>
+    <div class="insp-val" id="insp-loc"></div>
+  </div>
+  <div class="insp-field">
+    <div class="insp-label">Flags</div>
+    <div class="insp-tags" id="insp-tags"></div>
+  </div>
+
+  <div class="insp-section">
+    <div class="insp-section-title">Callers (<span id="insp-callers-count">0</span>)</div>
+    <div class="insp-list" id="insp-callers"></div>
+  </div>
+  <div class="insp-section">
+    <div class="insp-section-title">Callees (<span id="insp-callees-count">0</span>)</div>
+    <div class="insp-list" id="insp-callees"></div>
+  </div>
+  <div class="insp-section">
+    <div class="insp-section-title">Uses / Implements (<span id="insp-deps-count">0</span>)</div>
+    <div class="insp-list" id="insp-deps"></div>
+  </div>
+
+  <div id="trace-section">
+    <div class="insp-section-title" style="margin-bottom:6px">Trace Path to…</div>
+    <div class="trace-row">
+      <input id="trace-target" class="trace-input" type="text" placeholder="target symbol name…" autocomplete="off">
+      <button class="trace-btn" id="trace-run">→</button>
+    </div>
+    <div id="trace-result"></div>
+    <button id="trace-clear">Clear path</button>
+  </div>
+</div>
+
+<div id="edge-legend">
+  <div class="legend-title">Edge Kind</div>
+  <div id="legend-rows"></div>
+</div>
+
+<div id="cy"></div>
 
 <script>
-// ── Constants ────────────────────────────────────────────────────────────────
-const NODE_COLORS = {
-  folder:     '#45475a',
-  file:       '#6c7086',
-  module:     '#cba6f7',
-  struct:     '#a6e3a1',
-  enum:       '#94e2d5',
-  trait:      '#fab387',
-  type_alias: '#f38ba8',
-  function:   '#89b4fa',
-  method:     '#74c7ec',
-  constant:   '#f9e2af',
-  macro:      '#cdd6f4',
+// ── Palette ────────────────────────────────────────────────────────────────
+const KIND_COLOR = {
+  Function:  '#89b4fa', Method:    '#74c7ec', Struct:    '#a6e3a1',
+  Enum:      '#94e2d5', Trait:     '#fab387', Interface: '#89dceb',
+  Module:    '#cba6f7', TypeAlias: '#f38ba8', Constant:  '#f9e2af',
+  Macro:     '#cdd6f4', File:      '#6c7086', Folder:    '#45475a',
+  Property:  '#cba6f7', Annotation:'#eba0ac', EnumMember:'#a6d189',
 };
-const EDGE_COLORS = {
-  contains:   '#585b70',
-  calls:      '#f38ba8',
-  implements: '#fab387',
-  uses:       '#89dceb',
-  imports:    '#a6e3a1',
+const EDGE_COLOR = {
+  Calls:      '#89b4fa', Implements: '#eba0ac', Inherits:   '#fab387',
+  Uses:       '#cba6f7', Imports:    '#6c7086', Contains:   '#45475a',
+  Throws:     '#f38ba8', Annotated:  '#89dceb',
 };
-const RADIUS = {
-  folder:12, file:9, module:7, struct:6, enum:6, trait:6,
-  type_alias:5, function:5, method:4, constant:4, macro:5,
-};
-const DEFAULT_R = 5;
-
-// ── Visibility state ─────────────────────────────────────────────────────────
-const hiddenKinds = new Set();
-const hiddenEdges = new Set();
-
-function buildLegends() {
-  const presentNodeKinds = [...new Set(nodes.map(n => n.kind))]
-    .filter(k => NODE_COLORS[k])
-    .sort((a, b) => Object.keys(NODE_COLORS).indexOf(a) - Object.keys(NODE_COLORS).indexOf(b));
-
-  const presentEdgeKinds = [...new Set(edges.map(e => e.kind))]
-    .filter(k => EDGE_COLORS[k])
-    .sort((a, b) => Object.keys(EDGE_COLORS).indexOf(a) - Object.keys(EDGE_COLORS).indexOf(b));
-
-  const legEl = document.getElementById('legend');
-  legEl.innerHTML = '<h3>Node kinds</h3>' +
-    presentNodeKinds.map(k =>
-      `<div class="li" data-kind="${k}" onclick="toggleKind('${k}',this)">` +
-      `<div class="dot" style="background:${NODE_COLORS[k]}"></div>${k.replace('_', ' ')}</div>`
-    ).join('');
-
-  const edgeLegEl = document.getElementById('edge-legend');
-  edgeLegEl.innerHTML = '<h3>Edge kinds</h3>' +
-    presentEdgeKinds.map(k =>
-      `<div class="edge-li" data-kind="${k}" onclick="toggleEdge('${k}',this)">` +
-      `<div class="edge-swatch" style="background:${EDGE_COLORS[k]}"></div>${k}</div>`
-    ).join('');
-}
-
-function toggleKind(kind, el) {
-  if (hiddenKinds.has(kind)) { hiddenKinds.delete(kind); el.classList.remove('muted'); }
-  else                        { hiddenKinds.add(kind);    el.classList.add('muted'); }
-  applyVisibility();
-}
-function toggleEdge(kind, el) {
-  if (hiddenEdges.has(kind)) { hiddenEdges.delete(kind); el.classList.remove('muted'); }
-  else                        { hiddenEdges.add(kind);    el.classList.add('muted'); }
-  applyVisibility();
-}
-
-// ── Simulation constants ──────────────────────────────────────────────────────
-const SPRING_LEN  = 180;
-const SPRING_K    = 0.02;
-const REPULSION   = 7000;
-const GRAVITY     = 0.012;
-const DAMPING     = 0.88;
-const ALPHA_DECAY = 0.022;
-const ALPHA_MIN   = 0.001;
-const ALPHA_KICK  = 0.3;
-
-// Tiers reveal as alpha drops through these thresholds.
-// Higher-level nodes appear first; leaves last.
-// With ALPHA_DECAY=0.022 and alpha starting at 1.0, thresholds map to:
-//   0.65 → ~18 frames (~0.3s)   0.55 → ~27 frames (~0.45s)
-//   0.44 → ~38 frames (~0.63s)  0.34 → ~48 frames (~0.8s)
-//   0.24 → ~63 frames (~1.05s)  0.14 → ~88 frames (~1.47s)
-//   0.07 → ~121 frames (~2.0s)
-const REVEAL_SCHEDULE = [
-  { alpha: 0.65, kinds: ['folder'] },
-  { alpha: 0.55, kinds: ['file'] },
-  { alpha: 0.44, kinds: ['module'] },
-  { alpha: 0.34, kinds: ['struct', 'enum', 'trait', 'type_alias'] },
-  { alpha: 0.24, kinds: ['function'] },
-  { alpha: 0.14, kinds: ['method'] },
-  { alpha: 0.07, kinds: ['constant', 'macro'] },
+// Distinct cluster fill palette (Catppuccin variants)
+const CLUSTER_PALETTE = [
+  '#89b4fa18','#a6e3a118','#fab38718','#cba6f718','#94e2d518',
+  '#f9e2af18','#eba0ac18','#89dceb18','#f38ba818','#74c7ec18',
 ];
 
-// ── State ────────────────────────────────────────────────────────────────────
-let nodes = [], edges = [], nodeMap = {};
-let simRunning = false;
-let alpha      = 1.0;
+// ── Community detection (label propagation) ────────────────────────────────
+function detectCommunities(nodes, edges) {
+  const label = {};
+  nodes.forEach(n => { label[n.id] = n.id; });
 
-const revealedKinds = new Set();
-let nextTierIdx = 0;
-
-// Focus state
-let focusedId  = null;
-let focusHops  = 1;
-let focusedSet = null;
-
-// Search state
-let searchQuery = '';
-let searchSet   = null;
-
-// ── Search ───────────────────────────────────────────────────────────────────
-const searchInput = document.getElementById('search-input');
-const searchClear = document.getElementById('search-clear');
-const searchCount = document.getElementById('search-count');
-
-searchInput.addEventListener('input', () => {
-  searchQuery = searchInput.value.trim().toLowerCase();
-  searchClear.style.display = searchQuery ? 'block' : 'none';
-  applySearch();
-});
-
-searchClear.addEventListener('click', () => {
-  searchInput.value = '';
-  searchQuery = '';
-  searchClear.style.display = 'none';
-  searchSet = null;
-  searchCount.textContent = '';
-  document.getElementById('filtered-line').style.display = 'none';
-  applyVisibility();
-});
-
-document.addEventListener('keydown', e => {
-  if (e.key === '/' && document.activeElement !== searchInput) {
-    e.preventDefault();
-    searchInput.focus();
-  }
-  if (e.key === 'Escape') {
-    searchInput.blur();
-    searchInput.value = '';
-    searchQuery = '';
-    searchClear.style.display = 'none';
-    searchSet = null;
-    searchCount.textContent = '';
-    document.getElementById('filtered-line').style.display = 'none';
-    clearFocus();
-    applyVisibility();
-  }
-});
-
-function applySearch() {
-  if (!searchQuery) {
-    searchSet = null;
-    searchCount.textContent = '';
-    document.getElementById('filtered-line').style.display = 'none';
-  } else {
-    searchSet = new Set(
-      nodes
-        .filter(n => n.name.toLowerCase().includes(searchQuery)
-                  || (n.qualified_name || '').toLowerCase().includes(searchQuery))
-        .map(n => n.id)
-    );
-    const count = searchSet.size;
-    searchCount.textContent = count === 0 ? 'no matches' : `${count} match${count === 1 ? '' : 'es'}`;
-    document.getElementById('filtered-line').style.display = 'block';
-    document.getElementById('fc').textContent = count;
-  }
-  applyVisibility();
-}
-
-// ── N-hop neighborhood ───────────────────────────────────────────────────────
-function buildAdjacency() {
   const adj = {};
-  for (const n of nodes) adj[n.id] = new Set();
-  for (const e of edges) {
-    if (adj[e.src]) adj[e.src].add(e.dst);
-    if (adj[e.dst]) adj[e.dst].add(e.src);
-  }
-  return adj;
-}
-
-function nHopSet(startId, hops, adj) {
-  const visited = new Set([startId]);
-  let frontier  = new Set([startId]);
-  for (let h = 0; h < hops; h++) {
-    const next = new Set();
-    for (const id of frontier) {
-      for (const nb of (adj[id] || [])) {
-        if (!visited.has(nb)) { visited.add(nb); next.add(nb); }
-      }
-    }
-    frontier = next;
-    if (frontier.size === 0) break;
-  }
-  return visited;
-}
-
-function applyFocus() {
-  if (!focusedId) { focusedSet = null; applyVisibility(); return; }
-  const adj = buildAdjacency();
-  focusedSet = nHopSet(focusedId, focusHops, adj);
-  applyVisibility();
-}
-
-// ── Combined visibility ───────────────────────────────────────────────────────
-function applyVisibility() {
-  const nodesEl = document.getElementById('nodes');
-  const edgesEl = document.getElementById('edges');
-
-  for (const g of nodesEl.querySelectorAll('g.node')) {
-    const id   = g.dataset.id;
-    const node = nodeMap[id];
-    if (!node) continue;
-    const notRevealed  = !revealedKinds.has(node.kind);
-    const kindHidden   = hiddenKinds.has(node.kind);
-    const focusHidden  = focusedSet && !focusedSet.has(id);
-    const searchHidden = searchSet  && !searchSet.has(id);
-    if (notRevealed || kindHidden) {
-      g.style.opacity       = '0';
-      g.style.pointerEvents = 'none';
-    } else if (focusHidden || searchHidden) {
-      g.style.opacity       = focusHidden ? '0.2' : '0.12';
-      g.style.pointerEvents = 'none';
-    } else {
-      g.style.opacity       = '1';
-      g.style.pointerEvents = '';
-    }
-  }
-
-  let i = 0;
-  for (const line of edgesEl.querySelectorAll('line')) {
-    const e       = edges[i++];
-    const srcKind = (nodeMap[e.src] || {}).kind;
-    const dstKind = (nodeMap[e.dst] || {}).kind;
-    const notRevealed  = !revealedKinds.has(srcKind) || !revealedKinds.has(dstKind);
-    const kindHidden   = hiddenEdges.has(e.kind);
-    const srcHidden    = hiddenKinds.has(srcKind);
-    const dstHidden    = hiddenKinds.has(dstKind);
-    const focusHidden  = focusedSet && !(focusedSet.has(e.src) && focusedSet.has(e.dst));
-    const searchHidden = searchSet  && !(searchSet.has(e.src)  || searchSet.has(e.dst));
-    if (notRevealed || kindHidden || srcHidden || dstHidden) {
-      line.style.opacity = '0';
-    } else if (focusHidden) {
-      line.style.opacity = '0.04';
-    } else if (searchHidden) {
-      line.style.opacity = '0.06';
-    } else {
-      line.style.opacity = '0.45';
-    }
-  }
-}
-
-function setHops(h) {
-  focusHops = h === 0 ? Infinity : h;
-  applyFocus();
-  document.querySelectorAll('.hop-btn').forEach(btn => {
-    const bh = parseInt(btn.textContent) || 0;
-    btn.classList.toggle('active', bh === (focusHops === Infinity ? 0 : focusHops));
-  });
-}
-
-function clearFocus() {
-  focusedId  = null;
-  focusedSet = null;
-  document.getElementById('inspector').style.display = 'none';
-  applyVisibility();
-}
-
-// ── SVG pan / zoom ───────────────────────────────────────────────────────────
-const svg  = document.getElementById('graph');
-const root = document.getElementById('root');
-let tx = 0, ty = 0, scale = 1;
-let panning = false, pinned = null, didDrag = false;
-let panX0 = 0, panY0 = 0, tx0 = 0, ty0 = 0;
-
-function applyTransform() {
-  root.setAttribute('transform', `translate(${tx},${ty}) scale(${scale})`);
-}
-
-svg.addEventListener('wheel', e => {
-  e.preventDefault();
-  const f    = e.deltaY > 0 ? 0.9 : 1.1;
-  const rect = svg.getBoundingClientRect();
-  const px   = e.clientX - rect.left, py = e.clientY - rect.top;
-  tx = px - (px - tx) * f;
-  ty = py - (py - ty) * f;
-  scale *= f;
-  applyTransform();
-}, { passive: false });
-
-svg.addEventListener('mousedown', e => {
-  if (pinned) return;
-  panning = true;
-  panX0 = e.clientX; panY0 = e.clientY;
-  tx0 = tx; ty0 = ty;
-});
-window.addEventListener('mousemove', e => {
-  if (panning && !pinned) {
-    tx = tx0 + e.clientX - panX0;
-    ty = ty0 + e.clientY - panY0;
-    applyTransform();
-  }
-  if (pinned) {
-    didDrag = true;
-    const rect = svg.getBoundingClientRect();
-    pinned.x  = (e.clientX - rect.left - tx) / scale;
-    pinned.y  = (e.clientY - rect.top  - ty) / scale;
-    pinned.vx = 0; pinned.vy = 0;
-    updatePositions();
-  }
-});
-window.addEventListener('mouseup', () => {
-  panning = false;
-  if (pinned && didDrag) kickSim(ALPHA_KICK);
-  pinned  = null;
-  didDrag = false;
-});
-
-// ── Force simulation ─────────────────────────────────────────────────────────
-function tick() {
-  alpha *= (1 - ALPHA_DECAY);
-
-  if (alpha < ALPHA_MIN) {
-    for (const n of nodes) { n.vx = 0; n.vy = 0; }
-    // Reveal any tiers that haven't appeared yet (edge case: very small graphs).
-    while (nextTierIdx < REVEAL_SCHEDULE.length) {
-      for (const k of REVEAL_SCHEDULE[nextTierIdx].kinds) revealedKinds.add(k);
-      nextTierIdx++;
-    }
-    updatePositions();
-    applyVisibility();
-    simRunning = false;
-    return;
-  }
-
-  const cx = (svg.clientWidth  / 2 - tx) / scale;
-  const cy = (svg.clientHeight / 2 - ty) / scale;
-
-  for (const n of nodes) { n.fx = 0; n.fy = 0; }
-
-  for (const n of nodes) {
-    n.fx += (cx - n.x) * GRAVITY * alpha;
-    n.fy += (cy - n.y) * GRAVITY * alpha;
-  }
-
-  for (let i = 0; i < nodes.length; i++) {
-    const a = nodes[i];
-    for (let j = i + 1; j < nodes.length; j++) {
-      const b  = nodes[j];
-      const dx = a.x - b.x, dy = a.y - b.y;
-      const d2 = dx * dx + dy * dy + 1;
-      const d  = Math.sqrt(d2);
-      const f  = (REPULSION / d2) * alpha;
-      const fx = (dx / d) * f, fy = (dy / d) * f;
-      a.fx += fx; a.fy += fy;
-      b.fx -= fx; b.fy -= fy;
-    }
-  }
-
-  for (const e of edges) {
-    const a = nodeMap[e.src], b = nodeMap[e.dst];
-    if (!a || !b) continue;
-    const dx = b.x - a.x, dy = b.y - a.y;
-    const d  = Math.sqrt(dx * dx + dy * dy) || 1;
-    const f  = (d - SPRING_LEN) * SPRING_K * alpha;
-    const fx = (dx / d) * f, fy = (dy / d) * f;
-    a.fx += fx; a.fy += fy;
-    b.fx -= fx; b.fy -= fy;
-  }
-
-  for (const n of nodes) {
-    if (n === pinned) continue;
-    n.vx = (n.vx + n.fx) * DAMPING;
-    n.vy = (n.vy + n.fy) * DAMPING;
-    n.x += n.vx;
-    n.y += n.vy;
-  }
-
-  // Reveal tiers as alpha crosses each threshold.
-  // CSS transitions on .node handle the smooth fade-in.
-  while (nextTierIdx < REVEAL_SCHEDULE.length &&
-         alpha <= REVEAL_SCHEDULE[nextTierIdx].alpha) {
-    for (const k of REVEAL_SCHEDULE[nextTierIdx].kinds) revealedKinds.add(k);
-    nextTierIdx++;
-    applyVisibility();
-  }
-
-  updatePositions();
-  requestAnimationFrame(tick);
-}
-
-function kickSim(newAlpha = 1.0) {
-  alpha = Math.max(alpha, newAlpha);
-  if (!simRunning) { simRunning = true; requestAnimationFrame(tick); }
-}
-
-// Place nodes hierarchically so physics starts near equilibrium.
-function initPositions() {
-  const cx = svg.clientWidth / 2, cy = svg.clientHeight / 2;
-  const parentOf = {};
-  for (const e of edges) { if (e.kind === 'contains') parentOf[e.dst] = e.src; }
-
-  const placed = new Set();
-  const queue  = [];
-
-  const roots  = nodes.filter(n => !parentOf[n.id]);
-  const rCount = Math.max(roots.length, 1);
-  roots.forEach((n, i) => {
-    const angle = (i / rCount) * 2 * Math.PI;
-    n.x = cx + Math.cos(angle) * 220;
-    n.y = cy + Math.sin(angle) * 220;
-    placed.add(n.id);
-    queue.push(n);
+  nodes.forEach(n => { adj[n.id] = []; });
+  edges.forEach(e => {
+    if (adj[e.src]) adj[e.src].push(e.dst);
+    if (adj[e.dst]) adj[e.dst].push(e.src);
   });
 
-  for (let qi = 0; qi < queue.length; qi++) {
-    const parent   = queue[qi];
-    const children = nodes.filter(n => parentOf[n.id] === parent.id && !placed.has(n.id));
-    const cCount   = Math.max(children.length, 1);
-    children.forEach((child, i) => {
-      const angle = (i / cCount) * 2 * Math.PI;
-      child.x = parent.x + Math.cos(angle) * 55;
-      child.y = parent.y + Math.sin(angle) * 55;
-      placed.add(child.id);
-      queue.push(child);
-    });
-  }
-
-  for (const n of nodes) {
-    if (!placed.has(n.id)) {
-      n.x = cx + (Math.random() - 0.5) * 100;
-      n.y = cy + (Math.random() - 0.5) * 100;
+  for (let iter = 0; iter < 30; iter++) {
+    let changed = false;
+    // Shuffle for convergence stability
+    const shuffled = nodes.slice().sort(() => Math.random() - 0.5);
+    for (const n of shuffled) {
+      const nbrs = adj[n.id];
+      if (!nbrs.length) continue;
+      const counts = {};
+      nbrs.forEach(nb => {
+        const l = label[nb] || nb;
+        counts[l] = (counts[l] || 0) + 1;
+      });
+      const best = Object.entries(counts).sort((a,b) => b[1]-a[1])[0][0];
+      if (best !== label[n.id]) { label[n.id] = best; changed = true; }
     }
-  }
-}
-
-// ── DOM helpers ──────────────────────────────────────────────────────────────
-function updatePositions() {
-  const edgesEl = document.getElementById('edges');
-  const nodesEl = document.getElementById('nodes');
-
-  let i = 0;
-  for (const line of edgesEl.querySelectorAll('line')) {
-    const e = edges[i++];
-    const a = nodeMap[e.src], b = nodeMap[e.dst];
-    if (!a || !b) continue;
-    const r  = RADIUS[b.kind] || DEFAULT_R;
-    const dx = b.x - a.x, dy = b.y - a.y;
-    const d  = Math.sqrt(dx * dx + dy * dy) || 1;
-    line.setAttribute('x1', a.x);
-    line.setAttribute('y1', a.y);
-    line.setAttribute('x2', b.x - (dx / d) * (r + 1));
-    line.setAttribute('y2', b.y - (dy / d) * (r + 1));
+    if (!changed) break;
   }
 
-  for (const g of nodesEl.querySelectorAll('g.node')) {
-    const n = nodeMap[g.dataset.id];
-    if (n) g.setAttribute('transform', `translate(${n.x},${n.y})`);
-  }
+  // Remap community IDs to stable integers
+  const ids = [...new Set(Object.values(label))];
+  const idx = {};
+  ids.forEach((id, i) => { idx[id] = i; });
+  const out = {};
+  nodes.forEach(n => { out[n.id] = idx[label[n.id]]; });
+  return out;
 }
 
-function buildDOM() {
-  const edgesEl = document.getElementById('edges');
-  const nodesEl = document.getElementById('nodes');
-  edgesEl.innerHTML = '';
-  nodesEl.innerHTML = '';
+// ── Main ───────────────────────────────────────────────────────────────────
+let cy, allData, communityMap;
+let searchMatches = [], searchIdx = 0;
+let tracedEdges = null;
+const activeKinds    = new Set();
+const activeEdgeKinds= new Set();
+const activeVis      = new Set(['pub','pub(crate)','private']);
+const hiddenFiles    = new Set();
+let flagFilterAsync  = false;  // false = show all; true = async only
+let flagFilterUnsafe = false;
 
-  for (const e of edges) {
-    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    const col  = EDGE_COLORS[e.kind] || '#585b70';
-    const mid  = e.kind === 'contains' ? 'arr' : `arr-${e.kind}`;
-    line.style.cssText = `stroke:${col};stroke-width:1;opacity:0;`;
-    line.setAttribute('marker-end', `url(#${mid})`);
-    edgesEl.appendChild(line);
-  }
-
-  for (const n of nodes) {
-    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    g.classList.add('node');
-    g.dataset.id = n.id;
-    g.style.cssText = 'cursor:pointer;opacity:0;';
-
-    const r    = RADIUS[n.kind] || DEFAULT_R;
-    const col  = NODE_COLORS[n.kind] || '#cdd6f4';
-    const circ = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    circ.setAttribute('r', r);
-    circ.setAttribute('fill', col);
-    circ.setAttribute('stroke', '#181825');
-    circ.setAttribute('stroke-width', '1.5');
-
-    const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    lbl.style.cssText = 'font-size:8px;fill:#a6adc8;pointer-events:none;';
-    lbl.setAttribute('text-anchor', 'middle');
-    lbl.setAttribute('dominant-baseline', 'middle');
-    lbl.setAttribute('dy', r + 9);
-    lbl.textContent = n.name.length > 18 ? n.name.slice(0, 16) + '…' : n.name;
-
-    g.addEventListener('mousedown', ev => { ev.stopPropagation(); pinned = n; didDrag = false; });
-    g.addEventListener('click', ev => {
-      ev.stopPropagation();
-      focusedId = n.id;
-      focusHops = 1;
-      applyFocus();
-      showInspector(n, col);
-    });
-    g.addEventListener('mouseenter', () => circ.setAttribute('r', r * 1.45));
-    g.addEventListener('mouseleave', () => circ.setAttribute('r', r));
-
-    g.appendChild(circ);
-    g.appendChild(lbl);
-    nodesEl.appendChild(g);
-  }
-}
-
-function showInspector(n, color) {
-  const insp = document.getElementById('inspector');
-
-  const flags = [];
-  if (n.visibility === 'pub') flags.push('<span class="tag pub">pub</span>');
-  if (n.is_async)             flags.push('<span class="tag async">async</span>');
-  if (n.is_unsafe)            flags.push('<span class="tag unsafe">unsafe</span>');
-
-  const callerCount = edges.filter(e => e.dst === n.id && e.kind === 'calls').length;
-  const calleeCount = edges.filter(e => e.src === n.id && e.kind === 'calls').length;
-
-  const hopLabels = ['All', '1 hop', '2 hops', '3 hops'];
-  const hopValues = [0, 1, 2, 3];
-  const hopBtns = hopValues.map((h, i) =>
-    `<button class="hop-btn${focusHops === h || (h === 0 && focusHops === Infinity) ? ' active' : ''}" onclick="setHops(${h})">${hopLabels[i]}</button>`
-  ).join('');
-
-  insp.innerHTML = `
-    <div class="badge" style="background:${color}">${n.kind.replace('_', ' ')}</div>
-    <div class="field">
-      <div class="field-label">name</div>
-      <div class="field-val">${esc(n.name)}</div>
-    </div>
-    <div class="field">
-      <div class="field-label">qualified name</div>
-      <div class="field-val">${esc(n.qualified_name)}</div>
-    </div>
-    <div class="field">
-      <div class="field-label">location</div>
-      <div class="field-val">${esc(n.file)}:${n.start_line}–${n.end_line}</div>
-    </div>
-    ${n.loc ? `<div class="field"><div class="field-label">LOC</div><div class="field-val">${n.loc}</div></div>` : ''}
-    ${flags.length ? `<div class="field"><div class="field-label">flags</div><div class="field-tags">${flags.join('')}</div></div>` : ''}
-    ${(callerCount + calleeCount) > 0 ? `
-    <div class="field">
-      <div class="field-label">calls</div>
-      <div class="field-val">${calleeCount} out · ${callerCount} in</div>
-    </div>` : ''}
-    <div class="focus-section">
-      <div class="field-label">focus depth</div>
-      <div class="hop-btns">${hopBtns}</div>
-      <button class="clear-focus-btn" onclick="clearFocus()">Clear focus</button>
-    </div>
-  `;
-  insp.style.display = 'block';
-}
-
-function esc(s) {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-svg.addEventListener('click', () => {
-  if (searchQuery) return;
-  clearFocus();
-});
-
-// ── Bootstrap ────────────────────────────────────────────────────────────────
 fetch('/data')
   .then(r => r.json())
   .then(data => {
-    document.getElementById('loading').remove();
-    document.getElementById('nc').textContent = data.nodes.length;
-    document.getElementById('ec').textContent = data.edges.length;
+    allData = data;
+    const { nodes, edges } = data;
+    communityMap = detectCommunities(nodes, edges);
+    const numClusters = new Set(Object.values(communityMap)).size;
 
-    nodes = data.nodes.map(n => ({ ...n, x: 0, y: 0, vx: 0, vy: 0, fx: 0, fy: 0 }));
-    nodeMap  = Object.fromEntries(nodes.map(n => [n.id, n]));
-    edges    = data.edges;
+    // Populate kind sets
+    nodes.forEach(n => activeKinds.add(n.kind));
+    edges.forEach(e => activeEdgeKinds.add(e.kind));
 
-    // Reset reveal state.
-    revealedKinds.clear();
-    nextTierIdx = 0;
+    buildFilterRail(nodes, edges);
+    buildEdgeLegend();
+    initCytoscape(nodes, edges);
 
-    tx = 0; ty = 0; scale = 1;
-    applyTransform();
-    buildLegends();
-    initPositions();   // structured hierarchical starting positions
-    buildDOM();
-    applyVisibility(); // everything opacity:0 (CSS transition will animate reveals)
-    updatePositions(); // write initial positions into SVG before first paint
-    kickSim();         // start physics; tick() will reveal tiers as alpha decays
-  })
-  .catch(err => {
-    const el = document.getElementById('loading');
-    el.style.color = '#f38ba8';
-    el.textContent = 'Failed to load graph: ' + err.message;
+    document.getElementById('s-nodes').textContent    = nodes.length;
+    document.getElementById('s-edges').textContent    = edges.length;
+    document.getElementById('s-clusters').textContent = numClusters;
   });
+
+// ── Cytoscape init ─────────────────────────────────────────────────────────
+function buildElements(nodes, edges) {
+  const els = [];
+  const nodeSet = new Set(nodes.map(n => n.id));
+
+  nodes.forEach(n => {
+    const loc = n.loc || 0;
+    const size = Math.max(8, Math.min(36, 8 + Math.sqrt(loc) * 2.2));
+    const cluster = communityMap[n.id] ?? 0;
+    els.push({ group:'nodes', data:{
+      id: n.id, label: n.name, kind: n.kind, file: n.file,
+      qualified_name: n.qualified_name || n.name,
+      start_line: n.start_line, end_line: n.end_line,
+      loc, vis: n.visibility || 'private',
+      is_async: n.is_async || false, is_unsafe: n.is_unsafe || false,
+      cluster, color: KIND_COLOR[n.kind] || '#cdd6f4', size,
+    }});
+  });
+
+  edges.forEach(e => {
+    if (!nodeSet.has(e.src) || !nodeSet.has(e.dst)) return;
+    els.push({ group:'edges', data:{
+      id: `${e.src}→${e.dst}:${e.kind}`,
+      source: e.src, target: e.dst, kind: e.kind,
+      color: EDGE_COLOR[e.kind] || '#6c7086',
+    }});
+  });
+
+  return els;
+}
+
+function initCytoscape(nodes, edges) {
+  cy = cytoscape({
+    container: document.getElementById('cy'),
+    elements: buildElements(nodes, edges),
+    style: cyStyle(),
+    layout: coseLayout(),
+    wheelSensitivity: 0.3,
+    minZoom: 0.02, maxZoom: 8,
+  });
+
+  cy.on('tap', 'node', e => openInspector(e.target));
+  cy.on('tap', e => { if (e.target === cy) closeInspector(); });
+}
+
+function cyStyle() {
+  return [
+    {
+      selector: 'node',
+      style: {
+        'width': 'data(size)', 'height': 'data(size)',
+        'background-color': 'data(color)',
+        'border-width': 2, 'border-color': 'data(color)',
+        'border-opacity': 0.8,
+        'background-opacity': 0.25,
+        'label': 'data(label)',
+        'color': '#cdd6f4', 'font-size': 7, 'font-family': 'monospace',
+        'text-valign': 'bottom', 'text-halign': 'center',
+        'text-margin-y': 2,
+        'text-background-color': '#1e1e2e', 'text-background-opacity': 0.7,
+        'text-background-padding': '1px',
+        'text-max-width': 80,
+        'text-overflow-wrap': 'ellipsis',
+      }
+    },
+    { selector: 'node:selected', style: { 'border-width': 3, 'border-opacity': 1, 'background-opacity': 0.5 } },
+    {
+      selector: 'edge',
+      style: {
+        'width': 1, 'line-color': 'data(color)', 'opacity': 0.4,
+        'curve-style': 'bezier',
+        'target-arrow-color': 'data(color)', 'target-arrow-shape': 'triangle',
+        'arrow-scale': 0.6,
+      }
+    },
+    { selector: 'edge:selected', style: { 'opacity': 1, 'width': 2 } },
+    { selector: '.dimmed', style: { 'opacity': 0.07 } },
+    { selector: '.highlighted', style: { 'opacity': 1, 'z-index': 9999 } },
+    { selector: '.path-node', style: { 'border-width': 3, 'border-opacity': 1, 'background-opacity': 0.6, 'z-index': 9999 } },
+    { selector: '.path-edge', style: { 'opacity': 1, 'width': 3, 'z-index': 9998 } },
+  ];
+}
+
+function coseLayout() {
+  return {
+    name: 'cose',
+    animate: true, animationDuration: 800,
+    nodeOverlap: 12, idealEdgeLength: 80,
+    edgeElasticity: 80, gravity: 40,
+    numIter: 1500, initialTemp: 200,
+    coolingFactor: 0.95, minTemp: 1.0,
+    fit: true, padding: 40,
+  };
+}
+
+function runLayout(name) {
+  const layouts = {
+    cose: coseLayout(),
+    concentric: { name:'concentric', animate:true, fit:true, padding:40,
+      concentric: n => n.degree(), levelWidth: () => 3 },
+    breadthfirst: { name:'breadthfirst', animate:true, fit:true, padding:40,
+      directed:true, spacingFactor:1.1 },
+  };
+  const opts = layouts[name] || coseLayout();
+  cy.layout(opts).run();
+}
+
+// ── Filter rail ────────────────────────────────────────────────────────────
+function buildFilterRail(nodes, edges) {
+  // Node kinds
+  const kindDiv = document.getElementById('kind-filters');
+  [...activeKinds].sort().forEach(k => {
+    const el = document.createElement('label');
+    el.className = 'filter-toggle';
+    el.dataset.kind = k;
+    el.innerHTML = `<span class="dot" style="background:${KIND_COLOR[k]||'#cdd6f4'}"></span>${k}`;
+    el.addEventListener('click', () => toggleKind(k, el));
+    kindDiv.appendChild(el);
+  });
+
+  // Edge kinds
+  const edgeDiv = document.getElementById('edge-filters');
+  [...activeEdgeKinds].sort().forEach(k => {
+    const el = document.createElement('label');
+    el.className = 'filter-toggle';
+    el.dataset.ekind = k;
+    el.innerHTML = `<span class="dot" style="background:${EDGE_COLOR[k]||'#6c7086'};border-radius:0"></span>${k}`;
+    el.addEventListener('click', () => toggleEdgeKind(k, el));
+    edgeDiv.appendChild(el);
+  });
+
+  // Visibility buttons
+  document.querySelectorAll('.vis-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const v = btn.dataset.vis;
+      if (activeVis.has(v)) activeVis.delete(v);
+      else activeVis.add(v);
+      btn.classList.toggle('active', activeVis.has(v));
+      applyFilters();
+    });
+  });
+
+  // Flag toggles
+  document.getElementById('flag-async').addEventListener('click', () => {
+    flagFilterAsync = !flagFilterAsync;
+    document.getElementById('flag-async').classList.toggle('off', flagFilterAsync);
+    applyFilters();
+  });
+  document.getElementById('flag-unsafe').addEventListener('click', () => {
+    flagFilterUnsafe = !flagFilterUnsafe;
+    document.getElementById('flag-unsafe').classList.toggle('off', flagFilterUnsafe);
+    applyFilters();
+  });
+
+  // File list
+  const files = [...new Set(nodes.map(n => n.file))].sort();
+  const fileList = document.getElementById('file-list');
+  files.forEach(f => {
+    const el = document.createElement('div');
+    el.className = 'file-toggle';
+    el.textContent = f.replace(/^.*\/([^/]+\/[^/]+)$/, '…/$1');
+    el.title = f;
+    el.dataset.file = f;
+    el.addEventListener('click', () => toggleFile(f, el));
+    fileList.appendChild(el);
+  });
+  document.getElementById('file-search-input').addEventListener('input', e => {
+    const q = e.target.value.toLowerCase();
+    document.querySelectorAll('.file-toggle').forEach(el => {
+      el.style.display = el.dataset.file.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+}
+
+function toggleKind(k, el) {
+  if (activeKinds.has(k)) activeKinds.delete(k); else activeKinds.add(k);
+  el.classList.toggle('off', !activeKinds.has(k));
+  applyFilters();
+}
+function toggleEdgeKind(k, el) {
+  if (activeEdgeKinds.has(k)) activeEdgeKinds.delete(k); else activeEdgeKinds.add(k);
+  el.classList.toggle('off', !activeEdgeKinds.has(k));
+  applyFilters();
+}
+function toggleFile(f, el) {
+  if (hiddenFiles.has(f)) hiddenFiles.delete(f); else hiddenFiles.add(f);
+  el.classList.toggle('off', hiddenFiles.has(f));
+  applyFilters();
+}
+
+function applyFilters() {
+  if (!cy) return;
+  cy.nodes().forEach(n => {
+    const d = n.data();
+    const visible =
+      activeKinds.has(d.kind) &&
+      activeVis.has(d.vis) &&
+      !hiddenFiles.has(d.file) &&
+      (!flagFilterAsync  || d.is_async) &&
+      (!flagFilterUnsafe || d.is_unsafe);
+    n.style('display', visible ? 'element' : 'none');
+  });
+  cy.edges().forEach(e => {
+    const d = e.data();
+    const srcVis = e.source().style('display') !== 'none';
+    const dstVis = e.target().style('display') !== 'none';
+    e.style('display', activeEdgeKinds.has(d.kind) && srcVis && dstVis ? 'element' : 'none');
+  });
+}
+
+// ── Edge legend ────────────────────────────────────────────────────────────
+function buildEdgeLegend() {
+  const container = document.getElementById('legend-rows');
+  Object.entries(EDGE_COLOR).forEach(([kind, color]) => {
+    const row = document.createElement('div');
+    row.className = 'legend-row';
+    row.innerHTML = `<div class="edge-line" style="background:${color}"></div><span style="color:${color};font-size:10px">${kind}</span>`;
+    container.appendChild(row);
+  });
+}
+
+// ── Inspector ──────────────────────────────────────────────────────────────
+function openInspector(node) {
+  const d = node.data();
+
+  document.getElementById('insp-badge').textContent = d.kind;
+  document.getElementById('insp-badge').style.background = d.color;
+  document.getElementById('insp-name').textContent = d.label;
+  document.getElementById('insp-qualified').textContent = d.qualified_name;
+  document.getElementById('insp-file').textContent = `${d.file}:${d.start_line}`;
+  document.getElementById('insp-loc').textContent = d.loc ? `${d.loc} lines` : '—';
+
+  const tags = document.getElementById('insp-tags');
+  tags.innerHTML = '';
+  const vis = d.vis || 'private';
+  const visTag = document.createElement('span');
+  visTag.className = `tag ${vis === 'Pub' ? 'pub' : vis === 'PubCrate' ? 'pubcrate' : ''}`;
+  visTag.textContent = vis;
+  tags.appendChild(visTag);
+  if (d.is_async)  { const t = document.createElement('span'); t.className='tag async';  t.textContent='async';  tags.appendChild(t); }
+  if (d.is_unsafe) { const t = document.createElement('span'); t.className='tag unsafe'; t.textContent='unsafe'; tags.appendChild(t); }
+
+  // Callers (edges targeting this node with kind Calls)
+  const callers = cy.edges(`[target = "${d.id}"][kind = "Calls"]`)
+    .map(e => e.source().data());
+  renderInspList('insp-callers', 'insp-callers-count', callers);
+
+  // Callees (edges from this node with kind Calls)
+  const callees = cy.edges(`[source = "${d.id}"][kind = "Calls"]`)
+    .map(e => e.target().data());
+  renderInspList('insp-callees', 'insp-callees-count', callees);
+
+  // Deps (Uses / Implements edges)
+  const deps = cy.edges(`[source = "${d.id}"]`)
+    .filter(e => ['Uses','Implements','Inherits'].includes(e.data('kind')))
+    .map(e => e.target().data());
+  renderInspList('insp-deps', 'insp-deps-count', deps);
+
+  document.getElementById('inspector').style.display = 'block';
+  document.getElementById('trace-target').value = '';
+  document.getElementById('trace-result').textContent = '';
+  document.getElementById('trace-clear').style.display = 'none';
+  clearTrace();
+}
+
+function renderInspList(listId, countId, items) {
+  const list = document.getElementById(listId);
+  const count = document.getElementById(countId);
+  count.textContent = items.length;
+  list.innerHTML = '';
+  const shown = items.slice(0, 12);
+  shown.forEach(item => {
+    const el = document.createElement('div');
+    el.className = 'insp-link';
+    el.textContent = item.label;
+    el.title = item.qualified_name;
+    el.addEventListener('click', () => {
+      const n = cy.getElementById(item.id);
+      if (n.length) { cy.animate({ fit:{ eles:n, padding:80 }, duration:400 }); openInspector(n); }
+    });
+    list.appendChild(el);
+  });
+  if (!items.length) {
+    const el = document.createElement('div');
+    el.className = 'insp-empty';
+    el.textContent = 'none';
+    list.appendChild(el);
+  }
+  if (items.length > 12) {
+    const el = document.createElement('div');
+    el.className = 'insp-empty';
+    el.textContent = `+${items.length - 12} more`;
+    list.appendChild(el);
+  }
+}
+
+function closeInspector() {
+  document.getElementById('inspector').style.display = 'none';
+  clearTrace();
+}
+
+// ── Trace path (BFS client-side) ───────────────────────────────────────────
+document.getElementById('trace-run').addEventListener('click', runTrace);
+document.getElementById('trace-target').addEventListener('keydown', e => {
+  if (e.key === 'Enter') runTrace();
+});
+document.getElementById('trace-clear').addEventListener('click', () => {
+  clearTrace();
+  document.getElementById('trace-result').textContent = '';
+  document.getElementById('trace-clear').style.display = 'none';
+});
+
+function runTrace() {
+  if (!cy) return;
+  clearTrace();
+  const insp = document.getElementById('insp-name').textContent;
+  const target = document.getElementById('trace-target').value.trim();
+  if (!insp || !target) return;
+
+  const srcNodes = cy.nodes().filter(n => n.data('label') === insp || n.data('qualified_name').includes(insp));
+  const dstNodes = cy.nodes().filter(n => n.data('label') === target || n.data('qualified_name').includes(target));
+
+  if (!srcNodes.length || !dstNodes.length) {
+    document.getElementById('trace-result').textContent = 'Symbol not found.';
+    return;
+  }
+
+  const path = bfsPath(srcNodes[0].id(), dstNodes[0].id());
+  const result = document.getElementById('trace-result');
+  if (!path) {
+    result.textContent = 'No path found.';
+    return;
+  }
+  result.textContent = `Path: ${path.length - 1} hop${path.length - 2 === 1 ? '' : 's'}`;
+  document.getElementById('trace-clear').style.display = '';
+
+  // Dim everything, highlight path
+  cy.elements().addClass('dimmed');
+  tracedEdges = [];
+  for (let i = 0; i < path.length; i++) {
+    const n = cy.getElementById(path[i]);
+    n.removeClass('dimmed').addClass('path-node');
+    if (i > 0) {
+      const e = cy.edges(`[source = "${path[i-1]}"][target = "${path[i]}"]`);
+      e.removeClass('dimmed').addClass('path-edge');
+      tracedEdges.push(e);
+    }
+  }
+  const pathEles = cy.collection(path.map(id => cy.getElementById(id)));
+  cy.animate({ fit:{ eles:pathEles, padding:80 }, duration:600 });
+}
+
+function clearTrace() {
+  if (cy) {
+    cy.elements().removeClass('dimmed path-node path-edge highlighted');
+  }
+  tracedEdges = null;
+}
+
+function bfsPath(srcId, dstId) {
+  if (srcId === dstId) return [srcId];
+  const prev = {};
+  const visited = new Set([srcId]);
+  const queue = [srcId];
+  while (queue.length) {
+    const cur = queue.shift();
+    const neighbors = cy.getElementById(cur).outgoers('node');
+    for (const nb of neighbors) {
+      const nbId = nb.id();
+      if (visited.has(nbId)) continue;
+      prev[nbId] = cur;
+      if (nbId === dstId) {
+        const path = [dstId];
+        let c = dstId;
+        while (prev[c]) { c = prev[c]; path.unshift(c); }
+        return path;
+      }
+      visited.add(nbId);
+      queue.push(nbId);
+    }
+    if (visited.size > 3000) break;
+  }
+  return null;
+}
+
+// ── Search ─────────────────────────────────────────────────────────────────
+const searchInput = document.getElementById('search-input');
+const searchCount = document.getElementById('search-count');
+const searchNav   = document.getElementById('search-nav');
+const searchClear = document.getElementById('search-clear');
+
+searchInput.addEventListener('input', () => {
+  const q = searchInput.value.trim().toLowerCase();
+  searchClear.style.display = q ? '' : 'none';
+  if (!q || !cy) { clearSearch(); return; }
+  searchMatches = cy.nodes().filter(n => n.data('label').toLowerCase().includes(q) ||
+    n.data('qualified_name').toLowerCase().includes(q)).toArray();
+  searchIdx = 0;
+  updateSearchUI();
+  if (searchMatches.length) zoomToMatch(0);
+});
+
+searchInput.addEventListener('keydown', e => {
+  if (!searchMatches.length) return;
+  if (e.key === 'ArrowDown' || e.key === 'Enter') { e.preventDefault(); searchIdx = (searchIdx + 1) % searchMatches.length; zoomToMatch(searchIdx); }
+  if (e.key === 'ArrowUp') { e.preventDefault(); searchIdx = (searchIdx - 1 + searchMatches.length) % searchMatches.length; zoomToMatch(searchIdx); }
+  if (e.key === 'Escape') { clearSearch(); searchInput.value = ''; }
+});
+
+document.getElementById('search-prev').addEventListener('click', () => {
+  if (!searchMatches.length) return;
+  searchIdx = (searchIdx - 1 + searchMatches.length) % searchMatches.length;
+  zoomToMatch(searchIdx);
+});
+document.getElementById('search-next').addEventListener('click', () => {
+  if (!searchMatches.length) return;
+  searchIdx = (searchIdx + 1) % searchMatches.length;
+  zoomToMatch(searchIdx);
+});
+searchClear.addEventListener('click', () => { clearSearch(); searchInput.value = ''; });
+
+function zoomToMatch(i) {
+  const n = searchMatches[i];
+  cy.animate({ center:{ eles: n }, zoom: 2.5, duration: 300 });
+  openInspector(n);
+  updateSearchUI();
+}
+
+function updateSearchUI() {
+  if (!searchMatches.length) { clearSearch(); return; }
+  searchCount.textContent = `${searchIdx + 1}/${searchMatches.length}`;
+  searchNav.style.display = 'flex';
+  // Highlight matches
+  cy.elements().removeClass('highlighted dimmed');
+  if (searchMatches.length < cy.nodes().length) {
+    cy.elements().addClass('dimmed');
+    searchMatches.forEach(n => { n.removeClass('dimmed').addClass('highlighted'); });
+  }
+}
+
+function clearSearch() {
+  searchMatches = []; searchIdx = 0;
+  searchCount.textContent = '';
+  searchNav.style.display = 'none';
+  if (cy) cy.elements().removeClass('highlighted dimmed path-node path-edge');
+}
+
+// ── Layout switcher ────────────────────────────────────────────────────────
+document.querySelectorAll('.layout-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.layout-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    runLayout(btn.dataset.layout);
+  });
+});
 </script>
 </body>
 </html>
