@@ -76,7 +76,10 @@ async fn data_handler(State(state): State<Arc<AppState>>) -> Json<Value> {
         Err(_) => return Json(json!({"error": "store mutex poisoned"})),
     };
 
-    let nodes = store.list_all_nodes(branch).unwrap_or_default();
+    let nodes = store.list_all_nodes(branch).unwrap_or_else(|e| {
+        tracing::warn!("list_all_nodes error: {e:#}");
+        vec![]
+    });
     let edges = store.list_all_edges(branch).unwrap_or_default();
 
     let nodes_json: Vec<Value> = nodes

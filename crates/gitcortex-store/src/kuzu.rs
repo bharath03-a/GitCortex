@@ -933,6 +933,9 @@ fn i64_val(v: &Value) -> Result<i64> {
 fn bool_val(v: &Value) -> Result<bool> {
     match v {
         Value::Bool(b) => Ok(*b),
+        // Null booleans arise from legacy rows written before the column existed;
+        // treat them as false rather than failing the whole query.
+        Value::Null(_) => Ok(false),
         other => Err(GitCortexError::Store(format!(
             "expected Bool, got {other:?}"
         ))),
