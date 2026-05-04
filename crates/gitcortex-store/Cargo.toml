@@ -13,6 +13,7 @@ categories = ["development-tools", "database"]
 dashmap.workspace = true
 gitcortex-core.workspace = true
 kuzu.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

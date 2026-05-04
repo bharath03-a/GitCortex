@@ -82,11 +82,12 @@ impl GraphStore for KuzuGraphStore {
         let et = db_schema::edge_table(branch);
         let conn = self.conn()?;
 
-        // Use explicit transactions so Phase 1 (node inserts) is committed and
-        // visible before Phase 2 (edge MATCHes) begins — required for KuzuDB's
-        // MVCC snapshot isolation to work correctly.
+        // Transaction 1: commit all deletes first.
+        // KuzuDB has a quirk where DETACH DELETE + CREATE in the same transaction
+        // can produce NULL for the last STRING column in newly created nodes.
+        // Splitting into separate transactions avoids this.
         conn.query("BEGIN TRANSACTION")
-            .map_err(|e| GitCortexError::Store(format!("begin transaction: {e}")))?;
+            .map_err(|e| GitCortexError::Store(format!("begin delete transaction: {e}")))?;
 
         // 1. Remove all nodes (and their edges) for deleted/replaced files.
         for file in &diff.removed_files {
@@ -119,8 +120,15 @@ impl GraphStore for KuzuGraphStore {
             .map_err(|e| GitCortexError::Store(format!("delete edge: {e}")))?;
         }
 
-        // 4. Insert new nodes — deduplicate by ID first so a rename delta (or any
-        //    other case producing the same NodeId twice) never hits a PK violation.
+        conn.query("COMMIT")
+            .map_err(|e| GitCortexError::Store(format!("commit deletes: {e}")))?;
+
+        // Transaction 2: insert new nodes. Deduplicate by ID first so a rename
+        // delta (or any other case producing the same NodeId twice) never hits a
+        // PK violation.
+        conn.query("BEGIN TRANSACTION")
+            .map_err(|e| GitCortexError::Store(format!("begin node insert transaction: {e}")))?;
+
         let mut seen_node_ids: HashSet<String> = HashSet::new();
         for node in diff.added_nodes.iter().filter(|n| seen_node_ids.insert(n.id.as_str().to_owned())) {
             let id = esc(&node.id.as_str());
@@ -156,10 +164,11 @@ impl GraphStore for KuzuGraphStore {
             .map_err(|e| GitCortexError::Store(format!("insert node '{name}': {e}")))?;
         }
 
-        // Commit node inserts so the edge MATCH queries in steps 5–6 see them.
+        // Commit node inserts so the edge MATCH queries in step 3 see them.
         conn.query("COMMIT")
             .map_err(|e| GitCortexError::Store(format!("commit nodes: {e}")))?;
 
+        // Transaction 3: insert edges and resolve deferred references.
         conn.query("BEGIN TRANSACTION")
             .map_err(|e| GitCortexError::Store(format!("begin edge transaction: {e}")))?;
 
@@ -833,7 +842,10 @@ const NODE_COLS: &str = "n.id, n.kind, n.name, n.qualified_name, n.file, \
 fn rows_to_nodes(result: &mut kuzu::QueryResult) -> Result<Vec<Node>> {
     let mut nodes = Vec::new();
     for row in result.by_ref() {
-        nodes.push(row_to_node(row)?);
+        match row_to_node(row) {
+            Ok(n) => nodes.push(n),
+            Err(e) => tracing::debug!("skipping malformed node row: {e}"),
+        }
     }
     Ok(nodes)
 }
@@ -914,6 +926,9 @@ fn collect_ids(conn: &mut Connection, table: &str) -> Result<Vec<String>> {
 fn str_val(v: &Value) -> Result<String> {
     match v {
         Value::String(s) => Ok(s.clone()),
+        // KuzuDB returns Null(String) for empty-string columns inserted after a
+        // DETACH DELETE in a prior transaction. Treat as empty string.
+        Value::Null(_) => Ok(String::new()),
         other => Err(GitCortexError::Store(format!(
             "expected String, got {other:?}"
         ))),

@@ -692,6 +692,7 @@ dependencies = [
  "gitcortex-core",
  "kuzu",
  "tempfile",
+ "tracing",
 ]
 
 [[package]]
