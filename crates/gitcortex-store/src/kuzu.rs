@@ -119,8 +119,10 @@ impl GraphStore for KuzuGraphStore {
             .map_err(|e| GitCortexError::Store(format!("delete edge: {e}")))?;
         }
 
-        // 4. Insert new nodes.
-        for node in &diff.added_nodes {
+        // 4. Insert new nodes — deduplicate by ID first so a rename delta (or any
+        //    other case producing the same NodeId twice) never hits a PK violation.
+        let mut seen_node_ids: HashSet<String> = HashSet::new();
+        for node in diff.added_nodes.iter().filter(|n| seen_node_ids.insert(n.id.as_str().to_owned())) {
             let id = esc(&node.id.as_str());
             let kind = esc(&node.kind.to_string());
             let name = esc(&node.name);
@@ -161,9 +163,12 @@ impl GraphStore for KuzuGraphStore {
         conn.query("BEGIN TRANSACTION")
             .map_err(|e| GitCortexError::Store(format!("begin edge transaction: {e}")))?;
 
-        // 5. Insert new edges. If either endpoint is absent (cross-file), MATCH
-        //    yields no rows and the CREATE is silently skipped — correct behaviour.
-        for edge in &diff.added_edges {
+        // 5. Insert new edges. Deduplicate by (src,dst,kind) to avoid creating
+        //    parallel edges. MATCH yields nothing for missing endpoints → skip.
+        let mut seen_edges: HashSet<(String, String, String)> = HashSet::new();
+        for edge in diff.added_edges.iter().filter(|e| {
+            seen_edges.insert((e.src.as_str().to_owned(), e.dst.as_str().to_owned(), e.kind.to_string()))
+        }) {
             let s = esc(&edge.src.as_str());
             let d = esc(&edge.dst.as_str());
             let k = esc(&edge.kind.to_string());
@@ -291,7 +296,7 @@ impl GraphStore for KuzuGraphStore {
             .query(&format!(
                 "MATCH (n:{nt})-[:{et} {{kind: 'calls'}}]->(callee:{nt}) \
                  WHERE callee.name = '{name_esc}' \
-                 RETURN {NODE_COLS}"
+                 RETURN DISTINCT {NODE_COLS}"
             ))
             .map_err(|e| GitCortexError::Store(e.to_string()))?;
 

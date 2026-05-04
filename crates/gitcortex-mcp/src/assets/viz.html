@@ -67,8 +67,8 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text);
 /* ── Filter rail ─────────────────────────────────────────────────────────── */
 #filter-rail {
   position:fixed; top:60px; left:14px; z-index:10; width:196px;
-  background:rgba(24,24,37,.95); border:1px solid var(--surface0); border-radius:8px;
-  padding:12px; display:flex; flex-direction:column; gap:12px; max-height:calc(100vh - 80px);
+  background:rgba(24,24,37,.97); border:1px solid var(--surface0); border-radius:8px;
+  padding:12px; display:flex; flex-direction:column; gap:10px; max-height:calc(100vh - 80px);
   overflow-y:auto;
 }
 #filter-rail::-webkit-scrollbar { width:4px; }
@@ -83,14 +83,17 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text);
 }
 .filter-toggle:hover { color:var(--text); }
 .dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.dot-sq { width:8px; height:8px; border-radius:1px; flex-shrink:0; }
 .filter-toggle.off { opacity:.35; }
 .filter-sep { height:1px; background:var(--surface0); }
 #vis-filter { display:flex; gap:4px; flex-wrap:wrap; margin-top:2px; }
 .vis-btn {
   padding:2px 8px; border-radius:4px; font-size:9px; cursor:pointer; font-family:inherit;
   background:var(--surface0); color:var(--subtext); border:1px solid var(--surface1);
+  transition:background .12s, color .12s;
 }
 .vis-btn.active { background:var(--mauve); color:var(--bg); border-color:var(--mauve); }
+.vis-btn:hover:not(.active) { background:var(--surface1); color:var(--text); }
 #file-search-input {
   width:100%; background:var(--surface0); border:1px solid var(--surface1); color:var(--text);
   border-radius:4px; padding:4px 8px; font-size:10px; font-family:inherit; outline:none;
@@ -103,18 +106,25 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text);
 }
 .file-toggle:hover { background:var(--surface0); color:var(--text); }
 .file-toggle.off { opacity:.3; }
+#cluster-btns { display:flex; gap:3px; flex-wrap:wrap; margin-top:3px; }
+.cluster-btn {
+  padding:2px 7px; border-radius:4px; font-size:9px; cursor:pointer; font-family:inherit;
+  border:1px solid var(--surface1); color:var(--subtext); transition:all .12s;
+  background:var(--surface0);
+}
+.cluster-btn.active { color:var(--bg); border-color:transparent; }
 
 /* ── Inspector ───────────────────────────────────────────────────────────── */
 #inspector {
   position:fixed; top:60px; right:14px; z-index:10; width:270px;
-  background:rgba(24,24,37,.95); border:1px solid var(--surface0); border-radius:8px;
-  padding:14px; display:none; max-height:calc(100vh - 80px); overflow-y:auto;
+  background:rgba(24,24,37,.97); border:1px solid var(--surface0); border-radius:8px;
+  padding:14px; display:none; max-height:calc(100vh - 160px); overflow-y:auto;
 }
 #inspector::-webkit-scrollbar { width:4px; }
 #inspector::-webkit-scrollbar-thumb { background:var(--surface1); border-radius:2px; }
 .insp-badge {
   display:inline-block; padding:2px 9px; border-radius:99px;
-  font-size:9px; font-weight:700; margin-bottom:10px; color:var(--bg);
+  font-size:9px; font-weight:700; margin-bottom:10px; color:var(--bg2);
 }
 .insp-field { margin:6px 0; }
 .insp-label { color:var(--overlay0); font-size:9px; text-transform:uppercase; letter-spacing:.06em; }
@@ -162,9 +172,9 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text);
   font-family:inherit; padding:0; display:none; margin-top:2px;
 }
 
-/* ── Legend ──────────────────────────────────────────────────────────────── */
+/* ── Edge legend — bottom RIGHT ─────────────────────────────────────────── */
 #edge-legend {
-  position:fixed; bottom:14px; left:14px; z-index:10;
+  position:fixed; bottom:14px; right:14px; z-index:10;
   background:rgba(24,24,37,.93); border:1px solid var(--surface0); border-radius:8px;
   padding:10px 14px; font-size:10px;
 }
@@ -172,9 +182,6 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text);
   letter-spacing:.06em; margin-bottom:5px; }
 .legend-row { display:flex; align-items:center; gap:6px; margin:2px 0; }
 .edge-line { width:18px; height:2px; flex-shrink:0; border-radius:1px; }
-
-/* ── Cluster hull labels ──────────────────────────────────────────────────── */
-.cy-label { pointer-events:none; }
 </style>
 </head>
 <body>
@@ -193,7 +200,7 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text);
 </div>
 
 <div id="layout-switcher">
-  <button class="layout-btn active" data-layout="cose">Force</button>
+  <button class="layout-btn active" data-layout="force">Force</button>
   <button class="layout-btn" data-layout="concentric">Concentric</button>
   <button class="layout-btn" data-layout="breadthfirst">Tree</button>
 </div>
@@ -202,11 +209,6 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text);
   <div>
     <div class="filter-section-title">Node Kind</div>
     <div id="kind-filters"></div>
-  </div>
-  <div class="filter-sep"></div>
-  <div>
-    <div class="filter-section-title">Edge Kind</div>
-    <div id="edge-filters"></div>
   </div>
   <div class="filter-sep"></div>
   <div>
@@ -221,17 +223,17 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text);
   <div>
     <div class="filter-section-title">Flags</div>
     <div id="flag-filters">
-      <label class="filter-toggle" id="flag-async"><span class="dot" style="background:var(--blue)"></span>async</label>
-      <label class="filter-toggle" id="flag-unsafe"><span class="dot" style="background:var(--red)"></span>unsafe</label>
+      <label class="filter-toggle" id="flag-async"><span class="dot" style="background:var(--blue)"></span>async only</label>
+      <label class="filter-toggle" id="flag-unsafe"><span class="dot" style="background:var(--red)"></span>unsafe only</label>
     </div>
   </div>
   <div class="filter-sep"></div>
   <div>
     <div class="filter-section-title">Cluster</div>
     <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:2px;">
-      <button class="vis-btn active" id="cluster-all" style="font-size:9px">All</button>
+      <button class="cluster-btn active" id="cluster-all">All</button>
     </div>
-    <div id="cluster-btns" style="display:flex;gap:3px;flex-wrap:wrap;margin-top:3px;"></div>
+    <div id="cluster-btns"></div>
   </div>
   <div class="filter-sep"></div>
   <div>
@@ -297,56 +299,67 @@ html, body { width:100%; height:100%; background:var(--bg); color:var(--text);
 <div id="cy"></div>
 
 <script>
-// ── Palette ────────────────────────────────────────────────────────────────
+// ── Palette — keys MUST match NodeKind::to_string() (lowercase snake_case) ──
 const KIND_COLOR = {
-  Function:  '#89b4fa', Method:    '#74c7ec', Struct:    '#a6e3a1',
-  Enum:      '#94e2d5', Trait:     '#fab387', Interface: '#89dceb',
-  Module:    '#cba6f7', TypeAlias: '#f38ba8', Constant:  '#f9e2af',
-  Macro:     '#cdd6f4', File:      '#6c7086', Folder:    '#45475a',
-  Property:  '#cba6f7', Annotation:'#eba0ac', EnumMember:'#a6d189',
+  'function':    '#89b4fa',   // blue
+  'method':      '#74c7ec',   // sky
+  'struct':      '#a6e3a1',   // green
+  'enum':        '#94e2d5',   // teal
+  'trait':       '#fab387',   // peach
+  'interface':   '#89dceb',   // sapphire
+  'module':      '#cba6f7',   // mauve
+  'type_alias':  '#f38ba8',   // red
+  'constant':    '#f9e2af',   // yellow
+  'macro':       '#f5c2e7',   // pink
+  'file':        '#6c7086',   // overlay0
+  'folder':      '#45475a',   // surface1
+  'property':    '#b4befe',   // lavender
+  'annotation':  '#eba0ac',   // flamingo
+  'enum_member': '#a8d8a8',   // soft green
 };
+
+// Edge kind keys match EdgeKind::to_string() (lowercase)
 const EDGE_COLOR = {
-  Calls:      '#89b4fa', Implements: '#eba0ac', Inherits:   '#fab387',
-  Uses:       '#cba6f7', Imports:    '#6c7086', Contains:   '#45475a',
-  Throws:     '#f38ba8', Annotated:  '#89dceb',
+  'calls':      '#89b4fa',   // blue
+  'implements': '#eba0ac',   // flamingo
+  'inherits':   '#fab387',   // peach
+  'uses':       '#cba6f7',   // mauve
+  'imports':    '#6c7086',   // overlay0 (muted)
+  'contains':   '#45475a',   // surface1 (very muted)
+  'throws':     '#f38ba8',   // red
+  'annotated':  '#89dceb',   // sapphire
 };
-// Distinct cluster fill palette (Catppuccin variants)
-const CLUSTER_PALETTE = [
-  '#89b4fa18','#a6e3a118','#fab38718','#cba6f718','#94e2d518',
-  '#f9e2af18','#eba0ac18','#89dceb18','#f38ba818','#74c7ec18',
+
+// Cluster accent palette for button backgrounds
+const CLUSTER_ACCENT = [
+  '#89b4fa','#a6e3a1','#fab387','#cba6f7','#94e2d5',
+  '#f9e2af','#eba0ac','#89dceb','#f38ba8','#74c7ec',
+  '#f5c2e7','#b4befe','#a8d8a8','#cdd6f4','#45475a','#6c7086',
 ];
 
 // ── Community detection (label propagation) ────────────────────────────────
 function detectCommunities(nodes, edges) {
   const label = {};
   nodes.forEach(n => { label[n.id] = n.id; });
-
   const adj = {};
   nodes.forEach(n => { adj[n.id] = []; });
   edges.forEach(e => {
     if (adj[e.src]) adj[e.src].push(e.dst);
     if (adj[e.dst]) adj[e.dst].push(e.src);
   });
-
   for (let iter = 0; iter < 30; iter++) {
     let changed = false;
-    // Shuffle for convergence stability
     const shuffled = nodes.slice().sort(() => Math.random() - 0.5);
     for (const n of shuffled) {
       const nbrs = adj[n.id];
       if (!nbrs.length) continue;
       const counts = {};
-      nbrs.forEach(nb => {
-        const l = label[nb] || nb;
-        counts[l] = (counts[l] || 0) + 1;
-      });
+      nbrs.forEach(nb => { const l = label[nb]; counts[l] = (counts[l] || 0) + 1; });
       const best = Object.entries(counts).sort((a,b) => b[1]-a[1])[0][0];
       if (best !== label[n.id]) { label[n.id] = best; changed = true; }
     }
     if (!changed) break;
   }
-
-  // Remap community IDs to stable integers
   const ids = [...new Set(Object.values(label))];
   const idx = {};
   ids.forEach((id, i) => { idx[id] = i; });
@@ -355,16 +368,42 @@ function detectCommunities(nodes, edges) {
   return out;
 }
 
+// ── Cluster names derived from dominant file segment ───────────────────────
+function computeClusterNames(nodes, communityMap) {
+  const SKIP = new Set(['src','lib','main','mod','index','test','tests','__init__','util','utils','common']);
+  const EXT  = /\.(rs|py|ts|js|tsx|jsx|go|java|kt|cpp|cc|h)$/;
+  const segCounts = {};
+  nodes.forEach(n => {
+    const c = communityMap[n.id];
+    if (!(c in segCounts)) segCounts[c] = {};
+    const parts = (n.file || '').replace(/\\/g, '/').split('/').filter(Boolean);
+    parts.forEach((seg, i) => {
+      const s = seg.replace(EXT, '');
+      if (SKIP.has(s) || s.length < 2) return;
+      // Weight parent dirs less than the immediate containing dir
+      const w = (i === parts.length - 2) ? 3 : (i === parts.length - 1) ? 1 : 2;
+      segCounts[c][s] = (segCounts[c][s] || 0) + w;
+    });
+  });
+  const names = {};
+  Object.keys(segCounts).forEach(c => {
+    const sorted = Object.entries(segCounts[c]).sort((a,b) => b[1]-a[1]);
+    names[c] = sorted.length ? sorted[0][0] : `C${parseInt(c)+1}`;
+  });
+  return names;
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────
-let cy, allData, communityMap;
+let cy, allData, communityMap, clusterNames;
 let searchMatches = [], searchIdx = 0;
 let tracedEdges = null;
-const activeKinds    = new Set();
-const activeEdgeKinds= new Set();
-const activeVis      = new Set(['pub','pub(crate)','private']);
-const hiddenFiles    = new Set();
-let flagFilterAsync  = false;  // false = show all; true = async only
-let flagFilterUnsafe = false;
+const activeKinds     = new Set();
+const activeEdgeKinds = new Set();
+const activeVis       = new Set(['pub','pub(crate)','private']);
+const hiddenFiles     = new Set();
+let flagFilterAsync   = false;
+let flagFilterUnsafe  = false;
+let activeCluster     = null;
 
 fetch('/data')
   .then(r => r.json())
@@ -372,13 +411,13 @@ fetch('/data')
     allData = data;
     const { nodes, edges } = data;
     communityMap = detectCommunities(nodes, edges);
+    clusterNames = computeClusterNames(nodes, communityMap);
     const numClusters = new Set(Object.values(communityMap)).size;
 
-    // Populate kind sets
     nodes.forEach(n => activeKinds.add(n.kind));
     edges.forEach(e => activeEdgeKinds.add(e.kind));
 
-    buildFilterRail(nodes, edges);
+    buildFilterRail(nodes, edges, numClusters);
     buildEdgeLegend();
     initCytoscape(nodes, edges);
 
@@ -387,22 +426,24 @@ fetch('/data')
     document.getElementById('s-clusters').textContent = numClusters;
   });
 
-// ── Cytoscape init ─────────────────────────────────────────────────────────
+// ── Cytoscape ─────────────────────────────────────────────────────────────
 function buildElements(nodes, edges) {
   const els = [];
   const nodeSet = new Set(nodes.map(n => n.id));
 
   nodes.forEach(n => {
     const loc = n.loc || 0;
-    const size = Math.max(8, Math.min(36, 8 + Math.sqrt(loc) * 2.2));
+    // Size: 10–40px, sqrt-scaled by LOC
+    const size = Math.max(10, Math.min(40, 10 + Math.sqrt(loc) * 2.4));
     const cluster = communityMap[n.id] ?? 0;
+    const color   = KIND_COLOR[n.kind] || '#a6adc8';
     els.push({ group:'nodes', data:{
       id: n.id, label: n.name, kind: n.kind, file: n.file,
       qualified_name: n.qualified_name || n.name,
-      start_line: n.start_line, end_line: n.end_line,
+      start_line: n.start_line || 1, end_line: n.end_line || 1,
       loc, vis: n.visibility || 'private',
       is_async: n.is_async || false, is_unsafe: n.is_unsafe || false,
-      cluster, color: KIND_COLOR[n.kind] || '#cdd6f4', size,
+      cluster, color, size,
     }});
   });
 
@@ -423,9 +464,10 @@ function initCytoscape(nodes, edges) {
     container: document.getElementById('cy'),
     elements: buildElements(nodes, edges),
     style: cyStyle(),
-    layout: coseLayout(),
-    wheelSensitivity: 0.3,
-    minZoom: 0.02, maxZoom: 8,
+    layout: forceLayout(),
+    wheelSensitivity: 0.25,
+    minZoom: 0.02, maxZoom: 10,
+    pixelRatio: 'auto',
   });
 
   cy.on('tap', 'node', e => openInspector(e.target));
@@ -437,96 +479,133 @@ function cyStyle() {
     {
       selector: 'node',
       style: {
-        'width': 'data(size)', 'height': 'data(size)',
-        'background-color': 'data(color)',
-        'border-width': 2, 'border-color': 'data(color)',
-        'border-opacity': 0.8,
-        'background-opacity': 0.25,
+        'width':  'data(size)',
+        'height': 'data(size)',
+        // Solid fill with the kind color — background-opacity 0.88 for vivid
+        'background-color':   'data(color)',
+        'background-opacity': 0.88,
+        'border-width': 1.5,
+        'border-color': 'data(color)',
+        'border-opacity': 1,
+        // Label — hidden until zoomed in enough
         'label': 'data(label)',
-        'color': '#cdd6f4', 'font-size': 7, 'font-family': 'monospace',
-        'text-valign': 'bottom', 'text-halign': 'center',
-        'text-margin-y': 2,
-        'text-background-color': '#1e1e2e', 'text-background-opacity': 0.7,
-        'text-background-padding': '1px',
-        'text-max-width': 80,
+        'color': '#cdd6f4',
+        'font-size': 8,
+        'font-family': 'JetBrains Mono, Menlo, monospace',
+        'text-valign': 'bottom',
+        'text-halign': 'center',
+        'text-margin-y': 3,
+        'text-background-color': '#1e1e2e',
+        'text-background-opacity': 0.75,
+        'text-background-padding': '2px',
+        'text-max-width': '90px',
         'text-overflow-wrap': 'ellipsis',
+        // Hide labels when zoomed out (shows when node appears >= 8px on screen)
+        'min-zoomed-font-size': 8,
       }
     },
-    { selector: 'node:selected', style: { 'border-width': 3, 'border-opacity': 1, 'background-opacity': 0.5 } },
+    {
+      selector: 'node:selected',
+      style: {
+        'border-width': 3,
+        'border-color': '#cdd6f4',
+        'background-opacity': 1,
+      }
+    },
+    {
+      selector: 'node.hover',
+      style: {
+        'background-opacity': 1,
+        'border-width': 2,
+        'border-color': '#cdd6f4',
+      }
+    },
     {
       selector: 'edge',
       style: {
-        'width': 1, 'line-color': 'data(color)', 'opacity': 0.4,
+        'width': 0.8,
+        'line-color': 'data(color)',
+        'opacity': 0.35,
         'curve-style': 'bezier',
-        'target-arrow-color': 'data(color)', 'target-arrow-shape': 'triangle',
-        'arrow-scale': 0.6,
+        'target-arrow-color': 'data(color)',
+        'target-arrow-shape': 'triangle',
+        'arrow-scale': 0.5,
       }
     },
     { selector: 'edge:selected', style: { 'opacity': 1, 'width': 2 } },
-    { selector: '.dimmed', style: { 'opacity': 0.07 } },
+    { selector: '.dimmed',  style: { 'opacity': 0.06 } },
     { selector: '.highlighted', style: { 'opacity': 1, 'z-index': 9999 } },
-    { selector: '.path-node', style: { 'border-width': 3, 'border-opacity': 1, 'background-opacity': 0.6, 'z-index': 9999 } },
-    { selector: '.path-edge', style: { 'opacity': 1, 'width': 3, 'z-index': 9998 } },
+    { selector: '.path-node', style: { 'border-width': 3, 'border-color': '#cdd6f4', 'background-opacity': 1, 'z-index': 9999 } },
+    { selector: '.path-edge', style: { 'opacity': 1, 'width': 2.5, 'z-index': 9998 } },
   ];
 }
 
-function coseLayout() {
+function forceLayout() {
   return {
     name: 'cose',
-    animate: true, animationDuration: 800,
-    nodeOverlap: 12, idealEdgeLength: 80,
-    edgeElasticity: 80, gravity: 40,
-    numIter: 1500, initialTemp: 200,
-    coolingFactor: 0.95, minTemp: 1.0,
-    fit: true, padding: 40,
+    animate: true,
+    animationDuration: 1200,
+    animationEasing: 'ease-in-out-cubic',
+    fit: true,
+    padding: 80,
+    randomize: true,
+    // HIGH repulsion + LOW gravity = wide spread
+    nodeRepulsion: () => 450000,
+    nodeOverlap: 30,
+    idealEdgeLength: () => 160,
+    edgeElasticity: () => 40,
+    nestingFactor: 1.2,
+    gravity: 5,
+    numIter: 2500,
+    initialTemp: 300,
+    coolingFactor: 0.97,
+    minTemp: 1.0,
+    componentSpacing: 80,
   };
 }
 
 function runLayout(name) {
-  const layouts = {
-    cose: coseLayout(),
-    concentric: { name:'concentric', animate:true, fit:true, padding:40,
-      concentric: n => n.degree(), levelWidth: () => 3 },
-    breadthfirst: { name:'breadthfirst', animate:true, fit:true, padding:40,
-      directed:true, spacingFactor:1.1 },
+  const opts = {
+    force: forceLayout(),
+    concentric: {
+      name: 'concentric',
+      animate: true, fit: true, padding: 60,
+      animationDuration: 800,
+      concentric: n => n.degree(),
+      levelWidth: () => 4,
+      minNodeSpacing: 30,
+    },
+    breadthfirst: {
+      name: 'breadthfirst',
+      animate: true, fit: true, padding: 60,
+      animationDuration: 800,
+      directed: true,
+      spacingFactor: 1.4,
+      grid: false,
+    },
   };
-  const opts = layouts[name] || coseLayout();
-  cy.layout(opts).run();
+  (cy.layout(opts[name] || opts.force)).run();
 }
 
-// ── Filter state ───────────────────────────────────────────────────────────
-let activeCluster = null; // null = show all
-
 // ── Filter rail ────────────────────────────────────────────────────────────
-function buildFilterRail(nodes, edges) {
-  // Node kinds
+function buildFilterRail(nodes, edges, numClusters) {
+  // Node kind toggles
   const kindDiv = document.getElementById('kind-filters');
   [...activeKinds].sort().forEach(k => {
     const el = document.createElement('label');
     el.className = 'filter-toggle';
     el.dataset.kind = k;
-    el.innerHTML = `<span class="dot" style="background:${KIND_COLOR[k]||'#cdd6f4'}"></span>${k}`;
+    const color = KIND_COLOR[k] || '#a6adc8';
+    el.innerHTML = `<span class="dot" style="background:${color}"></span>${k}`;
     el.addEventListener('click', () => toggleKind(k, el));
     kindDiv.appendChild(el);
   });
 
-  // Edge kinds
-  const edgeDiv = document.getElementById('edge-filters');
-  [...activeEdgeKinds].sort().forEach(k => {
-    const el = document.createElement('label');
-    el.className = 'filter-toggle';
-    el.dataset.ekind = k;
-    el.innerHTML = `<span class="dot" style="background:${EDGE_COLOR[k]||'#6c7086'};border-radius:0"></span>${k}`;
-    el.addEventListener('click', () => toggleEdgeKind(k, el));
-    edgeDiv.appendChild(el);
-  });
-
-  // Visibility buttons
+  // Visibility
   document.querySelectorAll('.vis-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const v = btn.dataset.vis;
-      if (activeVis.has(v)) activeVis.delete(v);
-      else activeVis.add(v);
+      if (activeVis.has(v)) activeVis.delete(v); else activeVis.add(v);
       btn.classList.toggle('active', activeVis.has(v));
       applyFilters();
     });
@@ -544,6 +623,37 @@ function buildFilterRail(nodes, edges) {
     applyFilters();
   });
 
+  // Cluster filter — named buttons
+  const clusterBtns = document.getElementById('cluster-btns');
+  for (let i = 0; i < Math.min(numClusters, 16); i++) {
+    const btn = document.createElement('button');
+    btn.className = 'cluster-btn';
+    const name = clusterNames[i] || `C${i + 1}`;
+    btn.textContent = name;
+    btn.title = `Cluster ${i + 1}`;
+    btn.dataset.cluster = i;
+    const accent = CLUSTER_ACCENT[i % CLUSTER_ACCENT.length];
+    btn.dataset.accent = accent;
+    btn.addEventListener('click', () => setClusterFilter(i, btn, accent));
+    clusterBtns.appendChild(btn);
+  }
+  document.getElementById('cluster-all').addEventListener('click', () => {
+    activeCluster = null;
+    document.getElementById('cluster-all').classList.add('active');
+    document.getElementById('cluster-all').style.background = 'var(--mauve)';
+    document.getElementById('cluster-all').style.color = 'var(--bg)';
+    document.querySelectorAll('#cluster-btns .cluster-btn').forEach(b => {
+      b.classList.remove('active');
+      b.style.background = '';
+      b.style.color = '';
+    });
+    applyFilters();
+  });
+  // Style the "All" button
+  const allBtn = document.getElementById('cluster-all');
+  allBtn.style.background = 'var(--mauve)';
+  allBtn.style.color = 'var(--bg2)';
+
   // File list
   const files = [...new Set(nodes.map(n => n.file))].sort();
   const fileList = document.getElementById('file-list');
@@ -556,25 +666,6 @@ function buildFilterRail(nodes, edges) {
     el.addEventListener('click', () => toggleFile(f, el));
     fileList.appendChild(el);
   });
-  // Cluster filter buttons
-  const numClusters = new Set(Object.values(communityMap)).size;
-  const clusterBtns = document.getElementById('cluster-btns');
-  for (let i = 0; i < Math.min(numClusters, 16); i++) {
-    const btn = document.createElement('button');
-    btn.className = 'vis-btn';
-    btn.textContent = `C${i + 1}`;
-    btn.style.fontSize = '9px';
-    btn.dataset.cluster = i;
-    btn.addEventListener('click', () => setClusterFilter(i, btn));
-    clusterBtns.appendChild(btn);
-  }
-  document.getElementById('cluster-all').addEventListener('click', () => {
-    activeCluster = null;
-    document.getElementById('cluster-all').classList.add('active');
-    document.querySelectorAll('#cluster-btns .vis-btn').forEach(b => b.classList.remove('active'));
-    applyFilters();
-  });
-
   document.getElementById('file-search-input').addEventListener('input', e => {
     const q = e.target.value.toLowerCase();
     document.querySelectorAll('.file-toggle').forEach(el => {
@@ -583,22 +674,25 @@ function buildFilterRail(nodes, edges) {
   });
 }
 
-function setClusterFilter(clusterIdx, btn) {
+function setClusterFilter(clusterIdx, btn, accent) {
   activeCluster = clusterIdx;
   document.getElementById('cluster-all').classList.remove('active');
-  document.querySelectorAll('#cluster-btns .vis-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('cluster-all').style.background = '';
+  document.getElementById('cluster-all').style.color = '';
+  document.querySelectorAll('#cluster-btns .cluster-btn').forEach(b => {
+    b.classList.remove('active');
+    b.style.background = '';
+    b.style.color = '';
+  });
   btn.classList.add('active');
+  btn.style.background = accent;
+  btn.style.color = '#1e1e2e';
   applyFilters();
 }
 
 function toggleKind(k, el) {
   if (activeKinds.has(k)) activeKinds.delete(k); else activeKinds.add(k);
   el.classList.toggle('off', !activeKinds.has(k));
-  applyFilters();
-}
-function toggleEdgeKind(k, el) {
-  if (activeEdgeKinds.has(k)) activeEdgeKinds.delete(k); else activeEdgeKinds.add(k);
-  el.classList.toggle('off', !activeEdgeKinds.has(k));
   applyFilters();
 }
 function toggleFile(f, el) {
@@ -609,32 +703,35 @@ function toggleFile(f, el) {
 
 function applyFilters() {
   if (!cy) return;
-  cy.nodes().forEach(n => {
-    const d = n.data();
-    const visible =
-      activeKinds.has(d.kind) &&
-      activeVis.has(d.vis) &&
-      !hiddenFiles.has(d.file) &&
-      (!flagFilterAsync  || d.is_async) &&
-      (!flagFilterUnsafe || d.is_unsafe) &&
-      (activeCluster === null || d.cluster === activeCluster);
-    n.style('display', visible ? 'element' : 'none');
-  });
-  cy.edges().forEach(e => {
-    const d = e.data();
-    const srcVis = e.source().style('display') !== 'none';
-    const dstVis = e.target().style('display') !== 'none';
-    e.style('display', activeEdgeKinds.has(d.kind) && srcVis && dstVis ? 'element' : 'none');
+  cy.batch(() => {
+    cy.nodes().forEach(n => {
+      const d = n.data();
+      const visible =
+        activeKinds.has(d.kind) &&
+        activeVis.has(d.vis) &&
+        !hiddenFiles.has(d.file) &&
+        (!flagFilterAsync  || d.is_async) &&
+        (!flagFilterUnsafe || d.is_unsafe) &&
+        (activeCluster === null || d.cluster === activeCluster);
+      n.style('display', visible ? 'element' : 'none');
+    });
+    cy.edges().forEach(e => {
+      const d  = e.data();
+      const ok = e.source().style('display') !== 'none' &&
+                 e.target().style('display') !== 'none';
+      e.style('display', ok ? 'element' : 'none');
+    });
   });
 }
 
-// ── Edge legend ────────────────────────────────────────────────────────────
+// ── Edge legend (bottom right) ─────────────────────────────────────────────
 function buildEdgeLegend() {
   const container = document.getElementById('legend-rows');
   Object.entries(EDGE_COLOR).forEach(([kind, color]) => {
     const row = document.createElement('div');
     row.className = 'legend-row';
-    row.innerHTML = `<div class="edge-line" style="background:${color}"></div><span style="color:${color};font-size:10px">${kind}</span>`;
+    row.innerHTML = `<div class="edge-line" style="background:${color}"></div>`
+                  + `<span style="color:${color};font-size:10px">${kind}</span>`;
     container.appendChild(row);
   });
 }
@@ -643,50 +740,49 @@ function buildEdgeLegend() {
 function openInspector(node) {
   const d = node.data();
 
-  document.getElementById('insp-badge').textContent = d.kind;
-  document.getElementById('insp-badge').style.background = d.color;
+  const badge = document.getElementById('insp-badge');
+  badge.textContent = d.kind;
+  badge.style.background = d.color || '#a6adc8';
+
   document.getElementById('insp-name').textContent = d.label;
   document.getElementById('insp-qualified').textContent = d.qualified_name;
   document.getElementById('insp-file').textContent = `${d.file}:${d.start_line}`;
+
   // "Open in editor" deep links
   const editorLinks = document.getElementById('editor-links');
   editorLinks.innerHTML = '';
-  const fileRef = encodeURIComponent(d.file);
   const line = d.start_line || 1;
+  const fileEnc = encodeURIComponent(d.file);
   [
-    { label: 'VS Code',  href: `vscode://file/${d.file}:${line}` },
-    { label: 'Cursor',   href: `cursor://file/${d.file}:${line}` },
-    { label: 'IDEA',     href: `idea://open?file=${fileRef}&line=${line}` },
+    { label: 'VS Code', href: `vscode://file/${d.file}:${line}` },
+    { label: 'Cursor',  href: `cursor://file/${d.file}:${line}` },
+    { label: 'IDEA',    href: `idea://open?file=${fileEnc}&line=${line}` },
   ].forEach(({ label, href }) => {
     const a = document.createElement('a');
     a.className = 'editor-link'; a.textContent = label; a.href = href; a.target = '_blank';
     editorLinks.appendChild(a);
   });
+
   document.getElementById('insp-loc').textContent = d.loc ? `${d.loc} lines` : '—';
 
   const tags = document.getElementById('insp-tags');
   tags.innerHTML = '';
   const vis = d.vis || 'private';
   const visTag = document.createElement('span');
-  visTag.className = `tag ${vis === 'Pub' ? 'pub' : vis === 'PubCrate' ? 'pubcrate' : ''}`;
+  visTag.className = `tag ${vis === 'pub' ? 'pub' : vis === 'pub(crate)' ? 'pubcrate' : ''}`;
   visTag.textContent = vis;
   tags.appendChild(visTag);
   if (d.is_async)  { const t = document.createElement('span'); t.className='tag async';  t.textContent='async';  tags.appendChild(t); }
   if (d.is_unsafe) { const t = document.createElement('span'); t.className='tag unsafe'; t.textContent='unsafe'; tags.appendChild(t); }
 
-  // Callers (edges targeting this node with kind Calls)
-  const callers = cy.edges(`[target = "${d.id}"][kind = "Calls"]`)
-    .map(e => e.source().data());
+  const callers = cy.edges(`[target = "${d.id}"][kind = "calls"]`).map(e => e.source().data());
   renderInspList('insp-callers', 'insp-callers-count', callers);
 
-  // Callees (edges from this node with kind Calls)
-  const callees = cy.edges(`[source = "${d.id}"][kind = "Calls"]`)
-    .map(e => e.target().data());
+  const callees = cy.edges(`[source = "${d.id}"][kind = "calls"]`).map(e => e.target().data());
   renderInspList('insp-callees', 'insp-callees-count', callees);
 
-  // Deps (Uses / Implements edges)
   const deps = cy.edges(`[source = "${d.id}"]`)
-    .filter(e => ['Uses','Implements','Inherits'].includes(e.data('kind')))
+    .filter(e => ['uses','implements','inherits'].includes(e.data('kind')))
     .map(e => e.target().data());
   renderInspList('insp-deps', 'insp-deps-count', deps);
 
@@ -698,12 +794,11 @@ function openInspector(node) {
 }
 
 function renderInspList(listId, countId, items) {
-  const list = document.getElementById(listId);
+  const list  = document.getElementById(listId);
   const count = document.getElementById(countId);
   count.textContent = items.length;
   list.innerHTML = '';
-  const shown = items.slice(0, 12);
-  shown.forEach(item => {
+  items.slice(0, 12).forEach(item => {
     const el = document.createElement('div');
     el.className = 'insp-link';
     el.textContent = item.label;
@@ -715,14 +810,10 @@ function renderInspList(listId, countId, items) {
     list.appendChild(el);
   });
   if (!items.length) {
-    const el = document.createElement('div');
-    el.className = 'insp-empty';
-    el.textContent = 'none';
+    const el = document.createElement('div'); el.className='insp-empty'; el.textContent='none';
     list.appendChild(el);
-  }
-  if (items.length > 12) {
-    const el = document.createElement('div');
-    el.className = 'insp-empty';
+  } else if (items.length > 12) {
+    const el = document.createElement('div'); el.className='insp-empty';
     el.textContent = `+${items.length - 12} more`;
     list.appendChild(el);
   }
@@ -747,7 +838,7 @@ document.getElementById('trace-clear').addEventListener('click', () => {
 function runTrace() {
   if (!cy) return;
   clearTrace();
-  const insp = document.getElementById('insp-name').textContent;
+  const insp   = document.getElementById('insp-name').textContent;
   const target = document.getElementById('trace-target').value.trim();
   if (!insp || !target) return;
 
@@ -761,14 +852,11 @@ function runTrace() {
 
   const path = bfsPath(srcNodes[0].id(), dstNodes[0].id());
   const result = document.getElementById('trace-result');
-  if (!path) {
-    result.textContent = 'No path found.';
-    return;
-  }
+  if (!path) { result.textContent = 'No path found.'; return; }
+
   result.textContent = `Path: ${path.length - 1} hop${path.length - 2 === 1 ? '' : 's'}`;
   document.getElementById('trace-clear').style.display = '';
 
-  // Dim everything, highlight path
   cy.elements().addClass('dimmed');
   tracedEdges = [];
   for (let i = 0; i < path.length; i++) {
@@ -780,39 +868,31 @@ function runTrace() {
       tracedEdges.push(e);
     }
   }
-  const pathEles = cy.collection(path.map(id => cy.getElementById(id)));
-  cy.animate({ fit:{ eles:pathEles, padding:80 }, duration:600 });
+  cy.animate({ fit:{ eles: cy.collection(path.map(id => cy.getElementById(id))), padding:80 }, duration:600 });
 }
 
 function clearTrace() {
-  if (cy) {
-    cy.elements().removeClass('dimmed path-node path-edge highlighted');
-  }
+  if (cy) cy.elements().removeClass('dimmed path-node path-edge highlighted');
   tracedEdges = null;
 }
 
 function bfsPath(srcId, dstId) {
   if (srcId === dstId) return [srcId];
-  const prev = {};
-  const visited = new Set([srcId]);
-  const queue = [srcId];
+  const prev = {}, visited = new Set([srcId]), queue = [srcId];
   while (queue.length) {
     const cur = queue.shift();
-    const neighbors = cy.getElementById(cur).outgoers('node');
-    for (const nb of neighbors) {
+    for (const nb of cy.getElementById(cur).outgoers('node')) {
       const nbId = nb.id();
       if (visited.has(nbId)) continue;
       prev[nbId] = cur;
       if (nbId === dstId) {
-        const path = [dstId];
-        let c = dstId;
+        const path = [dstId]; let c = dstId;
         while (prev[c]) { c = prev[c]; path.unshift(c); }
         return path;
       }
-      visited.add(nbId);
-      queue.push(nbId);
+      visited.add(nbId); queue.push(nbId);
     }
-    if (visited.size > 3000) break;
+    if (visited.size > 4000) break;
   }
   return null;
 }
@@ -827,20 +907,24 @@ searchInput.addEventListener('input', () => {
   const q = searchInput.value.trim().toLowerCase();
   searchClear.style.display = q ? '' : 'none';
   if (!q || !cy) { clearSearch(); return; }
-  searchMatches = cy.nodes().filter(n => n.data('label').toLowerCase().includes(q) ||
-    n.data('qualified_name').toLowerCase().includes(q)).toArray();
+  searchMatches = cy.nodes().filter(n =>
+    n.data('label').toLowerCase().includes(q) ||
+    n.data('qualified_name').toLowerCase().includes(q)
+  ).toArray();
   searchIdx = 0;
   updateSearchUI();
   if (searchMatches.length) zoomToMatch(0);
 });
-
 searchInput.addEventListener('keydown', e => {
   if (!searchMatches.length) return;
-  if (e.key === 'ArrowDown' || e.key === 'Enter') { e.preventDefault(); searchIdx = (searchIdx + 1) % searchMatches.length; zoomToMatch(searchIdx); }
-  if (e.key === 'ArrowUp') { e.preventDefault(); searchIdx = (searchIdx - 1 + searchMatches.length) % searchMatches.length; zoomToMatch(searchIdx); }
+  if (e.key === 'ArrowDown' || e.key === 'Enter') {
+    e.preventDefault(); searchIdx = (searchIdx + 1) % searchMatches.length; zoomToMatch(searchIdx);
+  }
+  if (e.key === 'ArrowUp') {
+    e.preventDefault(); searchIdx = (searchIdx - 1 + searchMatches.length) % searchMatches.length; zoomToMatch(searchIdx);
+  }
   if (e.key === 'Escape') { clearSearch(); searchInput.value = ''; }
 });
-
 document.getElementById('search-prev').addEventListener('click', () => {
   if (!searchMatches.length) return;
   searchIdx = (searchIdx - 1 + searchMatches.length) % searchMatches.length;
@@ -855,23 +939,20 @@ searchClear.addEventListener('click', () => { clearSearch(); searchInput.value =
 
 function zoomToMatch(i) {
   const n = searchMatches[i];
-  cy.animate({ center:{ eles: n }, zoom: 2.5, duration: 300 });
+  cy.animate({ center:{ eles: n }, zoom: 3, duration: 300 });
   openInspector(n);
   updateSearchUI();
 }
-
 function updateSearchUI() {
   if (!searchMatches.length) { clearSearch(); return; }
   searchCount.textContent = `${searchIdx + 1}/${searchMatches.length}`;
   searchNav.style.display = 'flex';
-  // Highlight matches
   cy.elements().removeClass('highlighted dimmed');
   if (searchMatches.length < cy.nodes().length) {
     cy.elements().addClass('dimmed');
-    searchMatches.forEach(n => { n.removeClass('dimmed').addClass('highlighted'); });
+    searchMatches.forEach(n => n.removeClass('dimmed').addClass('highlighted'));
   }
 }
-
 function clearSearch() {
   searchMatches = []; searchIdx = 0;
   searchCount.textContent = '';
