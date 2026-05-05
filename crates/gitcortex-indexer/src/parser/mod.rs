@@ -6,6 +6,7 @@ use gitcortex_core::{
 };
 
 pub mod go;
+pub mod java;
 pub mod python;
 pub mod rust;
 pub mod typescript;
@@ -20,6 +21,12 @@ pub struct ParseResult {
     pub deferred_uses: Vec<(NodeId, String)>,
     /// Unresolved trait implementations: (struct_id, trait_name).
     pub deferred_implements: Vec<(NodeId, String)>,
+    /// Unresolved class extends / structural inheritance: (subtype_id, supertype_name).
+    pub deferred_inherits: Vec<(NodeId, String)>,
+    /// Unresolved exception throws: (method_id, exception_type_name).
+    pub deferred_throws: Vec<(NodeId, String)>,
+    /// Unresolved decorator/annotation references: (target_id, annotation_name).
+    pub deferred_annotated: Vec<(NodeId, String)>,
     /// Unresolved use-declaration imports: (src_node_id, imported_leaf_name).
     pub deferred_imports: Vec<(NodeId, String)>,
 }
@@ -51,6 +58,7 @@ pub fn parser_for_path(path: &Path) -> Option<Box<dyn LanguageParser>> {
         "js" | "mjs" | "cjs" => Some(Box::new(typescript::JavaScriptParser::new())),
         "jsx" => Some(Box::new(typescript::JavaScriptParser::new())),
         "go" => Some(Box::new(go::GoParser::new())),
+        "java" => Some(Box::new(java::JavaParser::new())),
         _ => None,
     }
 }

@@ -28,6 +28,11 @@ enum Commands {
         /// Also install the GitHub Actions blast-radius workflow.
         #[arg(long)]
         ci: bool,
+        /// Editor to configure: claude, cursor, windsurf, copilot, antigravity, all.
+        /// Defaults to auto-detecting from environment variables; installs for all editors
+        /// when no editor-specific env var is found.
+        #[arg(long, value_name = "EDITOR")]
+        editor: Option<String>,
     },
     /// Incremental index triggered by a git hook.
     Hook {
@@ -103,6 +108,13 @@ enum QueryCmd {
         #[arg(long, default_value = "main")]
         branch: String,
     },
+    /// Show call-graph context for all definitions in a source file.
+    Context {
+        /// Repo-relative or absolute path to the source file.
+        file: String,
+        #[arg(long, default_value = "main")]
+        branch: String,
+    },
 }
 
 fn main() {
@@ -114,7 +126,7 @@ fn main() {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        Commands::Init { ci } => cmd::init::run(ci),
+        Commands::Init { ci, editor } => cmd::init::run(ci, editor.as_deref()),
         Commands::Hook { branch_switch } => cmd::hook::run(branch_switch),
         Commands::Serve => cmd::serve::run(),
         Commands::Query(q) => cmd::query::run(q),

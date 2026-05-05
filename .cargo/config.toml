@@ -1,0 +1,4 @@
+[env]
+# KuzuDB C++ static libs compile against the current macOS SDK.
+# Set deployment target to match so the release linker doesn't drop kuzu symbols.
+MACOSX_DEPLOYMENT_TARGET = "26.0"

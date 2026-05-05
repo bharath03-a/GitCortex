@@ -13,6 +13,8 @@ installers = ["shell"]
 # Windows excluded: kuzu's bundled C++ libs conflict with the MSVC CRT on windows-msvc.
 # Windows users should build from source: cargo install --git https://github.com/bharath03-a/GitCortex --bin gcx
 targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu"]
+# Build artifacts on PRs to verify cross-platform builds before merge
+pr-run-mode = "upload"
 
 [dist.github-custom-runners]
 x86_64-unknown-linux-gnu = "ubuntu-24.04"

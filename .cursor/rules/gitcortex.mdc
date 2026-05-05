@@ -1,0 +1,36 @@
+---
+description: GitCortex knowledge graph — use these MCP tools to navigate the codebase
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# GitCortex Agent Guide
+
+This repository is indexed by GitCortex. The `gitcortex` MCP server is registered
+in `.cursor/mcp.json`. Use these tools instead of grep or file search for structural
+questions.
+
+## Key Tools
+
+| Tool | When to use |
+|------|-------------|
+| `lookup_symbol` | Find any function, struct, class, or trait by name |
+| `find_callers` | Who calls this function? (backward trace) |
+| `find_callees` | What does this function call? (forward trace) |
+| `list_definitions` | All symbols in a file — faster than reading the whole file |
+| `find_implementors` | All implementations of a trait or interface |
+| `trace_path` | Is there a call path from A to B? |
+| `find_unused_symbols` | Dead code candidates |
+| `get_subgraph` | Everything within N hops of a symbol |
+
+## Workflows
+
+**Navigating unfamiliar code**: `lookup_symbol` → `list_definitions` → `get_subgraph`
+
+**Debugging a crash**: `lookup_symbol` on the failing function → `find_callers` upstream
+
+**Impact analysis before refactoring**: `find_callers` + `get_subgraph(direction: "in")`
+
+**Finding dead code**: `find_unused_symbols` filtered by kind
+
+See `.gitcortex/AGENT_GUIDE.md` for the full reference.

@@ -75,6 +75,35 @@ pub fn last_sha_path(repo_id: &str, branch: &str) -> PathBuf {
     data_dir(repo_id).join(format!("{}.sha", sanitize(branch)))
 }
 
+/// Path to the persisted schema version marker for a repo.
+pub fn schema_version_path(repo_id: &str) -> PathBuf {
+    data_dir(repo_id).join("schema_version")
+}
+
+/// Read the persisted schema version, returning 0 if not present.
+pub fn read_schema_version(repo_id: &str) -> u32 {
+    let path = schema_version_path(repo_id);
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0)
+}
+
+/// Write the schema version marker.
+pub fn write_schema_version(repo_id: &str, version: u32) -> Result<()> {
+    let path = schema_version_path(repo_id);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&path, version.to_string()).map_err(GitCortexError::Io)
+}
+
+/// Wipe all per-repo data (DB + SHA files) so a fresh full index can run.
+pub fn wipe_repo_data(repo_id: &str) {
+    let dir = data_dir(repo_id);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 // ── last_sha persistence ──────────────────────────────────────────────────────
 
 pub fn read_last_sha(repo_id: &str, branch: &str) -> Result<Option<String>> {

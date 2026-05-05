@@ -75,6 +75,21 @@ pub struct NodeMetadata {
     pub visibility: Visibility,
     pub is_async: bool,
     pub is_unsafe: bool,
+    /// Java `static`, Python `@staticmethod`, Go package-level functions.
+    pub is_static: bool,
+    /// Java/TypeScript `abstract`, Python NotImplemented stubs, sealed traits.
+    pub is_abstract: bool,
+    /// Java `final` class/method, Rust sealed types, TypeScript `readonly`.
+    pub is_final: bool,
+    /// Python `@property`, TypeScript getter/setter, Rust associated `const`.
+    pub is_property: bool,
+    /// Python generators (`yield`), TypeScript `function*`, async generators.
+    pub is_generator: bool,
+    /// Rust `const fn`, TypeScript `const` assertion, Java `static final` fields.
+    pub is_const: bool,
+    /// Captured generic constraints, e.g. `["T: Send", "T: 'static"]` or
+    /// `["T extends Base", "K extends keyof T"]`.
+    pub generic_bounds: Vec<String>,
     /// Pass-2 LLD annotations. Empty until pass 2 runs.
     pub lld: LldLabels,
 }
@@ -128,6 +143,12 @@ pub struct GraphDiff {
     pub deferred_uses: Vec<(NodeId, String)>,
     /// Same for struct→trait Implements edges.
     pub deferred_implements: Vec<(NodeId, String)>,
+    /// Same for `extends` / inheritance edges.
+    pub deferred_inherits: Vec<(NodeId, String)>,
+    /// Same for `throws ExceptionType` edges.
+    pub deferred_throws: Vec<(NodeId, String)>,
+    /// Same for decorator/annotation references.
+    pub deferred_annotated: Vec<(NodeId, String)>,
 }
 
 impl GraphDiff {
@@ -140,6 +161,9 @@ impl GraphDiff {
             && self.deferred_calls.is_empty()
             && self.deferred_uses.is_empty()
             && self.deferred_implements.is_empty()
+            && self.deferred_inherits.is_empty()
+            && self.deferred_throws.is_empty()
+            && self.deferred_annotated.is_empty()
     }
 
     /// Merge another diff into this one. Used when multiple files change
@@ -154,6 +178,9 @@ impl GraphDiff {
         self.deferred_calls.extend(other.deferred_calls);
         self.deferred_uses.extend(other.deferred_uses);
         self.deferred_implements.extend(other.deferred_implements);
+        self.deferred_inherits.extend(other.deferred_inherits);
+        self.deferred_throws.extend(other.deferred_throws);
+        self.deferred_annotated.extend(other.deferred_annotated);
     }
 }
 

@@ -19,10 +19,13 @@ use crate::{
 
 type FileIndexResult = Result<(
     GraphDiff,
-    Vec<(NodeId, String)>,
-    Vec<(NodeId, String)>,
-    Vec<(NodeId, String)>,
-    Vec<(NodeId, String)>,
+    Vec<(NodeId, String)>, // deferred_calls
+    Vec<(NodeId, String)>, // deferred_uses
+    Vec<(NodeId, String)>, // deferred_implements
+    Vec<(NodeId, String)>, // deferred_imports
+    Vec<(NodeId, String)>, // deferred_inherits
+    Vec<(NodeId, String)>, // deferred_throws
+    Vec<(NodeId, String)>, // deferred_annotated
 )>;
 
 // ── IncrementalIndexer ────────────────────────────────────────────────────────
@@ -84,13 +87,19 @@ impl IncrementalIndexer {
         let mut all_uses: Vec<(NodeId, String)> = Vec::new();
         let mut all_implements: Vec<(NodeId, String)> = Vec::new();
         let mut all_imports: Vec<(NodeId, String)> = Vec::new();
+        let mut all_inherits: Vec<(NodeId, String)> = Vec::new();
+        let mut all_throws: Vec<(NodeId, String)> = Vec::new();
+        let mut all_annotated: Vec<(NodeId, String)> = Vec::new();
         for result in per_file {
-            let (diff, calls, uses, implements, imports) = result?;
+            let (diff, calls, uses, implements, imports, inherits, throws, annotated) = result?;
             merged.merge(diff);
             all_calls.extend(calls);
             all_uses.extend(uses);
             all_implements.extend(implements);
             all_imports.extend(imports);
+            all_inherits.extend(inherits);
+            all_throws.extend(throws);
+            all_annotated.extend(annotated);
         }
 
         // Build name → NodeId index from all nodes added in this diff.
@@ -129,6 +138,24 @@ impl IncrementalIndexer {
             EdgeKind::Imports,
             &mut merged.added_edges,
         );
+        merged.deferred_inherits = resolve_deferred(
+            &name_to_ids,
+            &all_inherits,
+            EdgeKind::Inherits,
+            &mut merged.added_edges,
+        );
+        merged.deferred_throws = resolve_deferred(
+            &name_to_ids,
+            &all_throws,
+            EdgeKind::Throws,
+            &mut merged.added_edges,
+        );
+        merged.deferred_annotated = resolve_deferred(
+            &name_to_ids,
+            &all_annotated,
+            EdgeKind::Annotated,
+            &mut merged.added_edges,
+        );
 
         for deleted in to_delete {
             merged.removed_files.push(deleted.path().to_owned());
@@ -154,10 +181,13 @@ impl IncrementalIndexer {
         let empty = || {
             (
                 GraphDiff::default(),
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
-                Vec::new(),
+                Vec::<(NodeId, String)>::new(),
+                Vec::<(NodeId, String)>::new(),
+                Vec::<(NodeId, String)>::new(),
+                Vec::<(NodeId, String)>::new(),
+                Vec::<(NodeId, String)>::new(),
+                Vec::<(NodeId, String)>::new(),
+                Vec::<(NodeId, String)>::new(),
             )
         };
 
@@ -186,6 +216,9 @@ impl IncrementalIndexer {
             deferred_uses,
             deferred_implements,
             deferred_imports,
+            deferred_inherits,
+            deferred_throws,
+            deferred_annotated,
         } = parser.parse(repo_relative_path, &source)?;
 
         let mut diff = GraphDiff::default();
@@ -207,6 +240,9 @@ impl IncrementalIndexer {
             deferred_uses,
             deferred_implements,
             deferred_imports,
+            deferred_inherits,
+            deferred_throws,
+            deferred_annotated,
         ))
     }
 

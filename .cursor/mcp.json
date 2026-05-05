@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "gitcortex": {
+      "args": [
+        "serve"
+      ],
+      "command": "gcx"
+    }
+  }
+}

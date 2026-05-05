@@ -1,14 +1,25 @@
 # GitCortex
 
-A local-first, branch-aware code knowledge graph for Git repositories. GitCortex (`gcx`) indexes your codebase incrementally on every commit using tree-sitter AST parsing, persists the graph in an embedded KuzuDB database, and exposes it to AI coding assistants via an MCP server.
+A local-first, branch-aware code knowledge graph for Git repositories. GitCortex (`gcx`) indexes your codebase incrementally on every commit using tree-sitter AST parsing, persists the graph in an embedded KuzuDB database, and exposes it to AI coding assistants via an MCP server — in Cursor, Claude Code, Windsurf, GitHub Copilot, and Google Antigravity.
 
 ---
 
 ## Why
 
-When you ask Claude Code to work on a large codebase, it either scans dozens of files to build context (burning tokens) or misses the bigger picture entirely. There's no middle ground.
+When you ask an AI editor to work on a large codebase, it either scans dozens of files to build context (burning tokens) or misses the bigger picture entirely. There's no middle ground.
 
-GitCortex gives Claude a pre-built, queryable map of your repo — functions, structs, traits, call relationships, file structure — so instead of reading raw source files it can ask precise questions like "what calls this function?" or "what's defined in this file?" and get structured answers instantly. You get better context at a fraction of the token cost.
+GitCortex gives your AI editor a pre-built, queryable call graph of your repo — functions, structs, traits, interfaces, call relationships, inheritance — so instead of reading raw source files it can ask precise questions like "what calls this function?" or "what implements this trait?" and get structured answers instantly.
+
+| | GitCortex v0.2 | Others |
+|---|---|---|
+| **MCP tools** | 12, each with real query depth | 4–16 (many shallow grep wrappers) |
+| **Languages** | 5 with full edge coverage (Rust, Python, TS/JS, Go, Java) | Often 1–2, or broad but shallow |
+| **IDE support** | Cursor, Claude Code, Windsurf, Copilot, Antigravity | Usually Claude Code only |
+| **Index freshness** | Automatic on every `git commit / merge / rebase / checkout` | Manual re-run |
+| **Branch graphs** | Per-branch, instant switch — no re-index | One graph per repo |
+| **Install time** | `cargo install gitcortex` + `gcx init` — under 2 minutes | Varies |
+
+> **One sentence**: GitCortex is the knowledge graph that stays current without you thinking about it — and works in the editor you already use.
 
 ---
 
@@ -81,22 +92,31 @@ That installs the git hooks and indexes the current branch. Every subsequent com
 
 ### `gcx init`
 
-Installs four git hooks, runs the initial full index, registers the MCP server globally in `~/.claude.json`, and installs Claude Code slash commands and agent skills.
+Installs four git hooks, runs the initial full index, registers the MCP server in the detected editor(s), and writes `.gitcortex/AGENT_GUIDE.md` as a universal context file.
 
 ```bash
-gcx init            # hooks + index + MCP + slash commands + skills
-gcx init --ci       # also writes .github/workflows/gcx-blast-radius.yml
+gcx init                      # auto-detects editor(s) from environment
+gcx init --editor cursor      # explicit target: claude, cursor, windsurf, copilot, antigravity
+gcx init --editor all         # write configs for every supported editor
+gcx init --ci                 # also writes .github/workflows/gcx-blast-radius.yml
 ```
 
 Output:
 ```
-GitCortex initialised  (1240ms)
-  Graph:    312 nodes | 847 edges
-  Hooks:    4 installed
-  MCP:      ~/.claude.json  (gcx serve registered globally)
-  Skills:   .claude/skills/gcx/  (4 agent skills)
-  Commands: .claude/commands/gcx/  (4 slash commands)
+GitCortex initialised  (820ms)
+  Graph:     2 141 nodes | 5 328 edges
+  Hooks:     4 git hooks installed
+  Editors:   Cursor, Claude Code (auto-detected)
+  Universal: .gitcortex/AGENT_GUIDE.md
 ```
+
+| Editor | Files written |
+|--------|--------------|
+| Claude Code | `.claude/hooks/`, `.claude/settings.json`, `.claude/skills/`, `.claude/commands/`, `~/.claude.json` |
+| Cursor | `.cursor/rules/gitcortex.mdc`, `.cursor/mcp.json` |
+| Windsurf | `.windsurfrules`, `~/.codeium/windsurf/mcp_config.json` |
+| Copilot | `.github/copilot-instructions.md` |
+| Antigravity | `~/.antigravity/mcp.json` |
 
 ### `gcx hook`
 
@@ -137,7 +157,14 @@ gcx viz --format dot > graph.dot   # export Graphviz DOT to stdout
 dot -Tsvg graph.dot -o graph.svg   # render with Graphviz
 ```
 
-The browser UI is fully self-contained (no CDN) with a dark theme, force-directed layout, pan/zoom, a click-to-inspect panel, and N-hop focus mode — click any node to dim everything outside its 1/2/3-hop neighborhood.
+The browser UI is built on **Cytoscape.js** with a Catppuccin dark theme. Features:
+- **Community detection** — nodes grouped by label-propagation clusters, each cluster shaded a distinct fill
+- **Node sizing** by LOC (lines of code); **edge colour** by edge kind
+- **Filter rail** — NodeKind toggles, EdgeKind toggles, visibility (pub / pub(crate) / private), file list, async/unsafe flag toggles
+- **Search bar** — fuzzy match by name or qualified name, ↑/↓/Enter keyboard navigation
+- **Inspector panel** — callers, callees, and uses/implements lists with click-to-navigate
+- **Trace path** — type any target symbol; BFS path highlighted with animation
+- **Layout switcher** — Force (cose), Concentric, Tree (breadthfirst)
 
 ### `gcx blast-radius`
 
@@ -249,9 +276,17 @@ This writes `.github/workflows/gcx-blast-radius.yml`. On every pull request it r
 | Tool | Description |
 |---|---|
 | `lookup_symbol` | Find all nodes matching a name across the codebase |
-| `find_callers` | Find all functions that call a given function |
-| `list_definitions` | List all definitions in a source file ordered by line |
-| `branch_diff_graph` | Show nodes added or removed between two branches |
+| `find_callers` | All functions that call a given function (backward trace) |
+| `find_callees` | All functions called by a given function (forward trace, configurable depth) |
+| `list_definitions` | All definitions in a source file ordered by line |
+| `find_implementors` | All structs/classes that implement a trait or interface |
+| `trace_path` | Every call path between two symbols (up to 6 hops) |
+| `list_symbols_in_range` | Symbols whose span overlaps a file + line range |
+| `find_unused_symbols` | Symbols with zero callers — dead code candidates |
+| `get_subgraph` | All nodes + edges within N hops of a seed symbol (in/out/both) |
+| `branch_diff_graph` | Nodes added or removed between two branches |
+| `detect_changes` | Changed symbols + blast radius vs a base branch |
+| `symbol_context` | Callers, callees, and used-by for a symbol |
 
 All tools accept an optional `branch` parameter (defaults to `"main"`).
 
@@ -303,28 +338,39 @@ build/
 
 ### Node kinds
 
-| Kind | Description |
-|---|---|
-| `file` | Source file |
-| `module` | `mod foo { }` |
-| `struct` | `struct Foo { }` |
-| `enum` | `enum Bar { }` |
-| `trait` | `trait Baz { }` |
-| `type_alias` | `type Alias = ...` |
-| `function` | Free-standing `fn` |
-| `method` | `fn` inside an `impl` block |
-| `constant` | `const` / `static` |
-| `macro` | `macro_rules!` or proc-macro |
+| Kind | Languages | Description |
+|---|---|---|
+| `File` | all | Source file |
+| `Module` | all | `mod foo { }`, Python module, Go package |
+| `Struct` | Rust/Go/TS/Java | `struct Foo`, `class Foo` |
+| `Enum` | all | `enum Bar` |
+| `Trait` | Rust/Python | `trait Baz`, `Protocol` |
+| `Interface` | TS/Go/Java | `interface Foo`, structural interface |
+| `TypeAlias` | Rust/TS/Python | `type Alias = ...` |
+| `Function` | all | Free-standing function |
+| `Method` | all | Method inside a class / impl block |
+| `Constant` | all | `const` / `static` |
+| `Macro` | Rust | `macro_rules!` or proc-macro |
+| `Property` | TS/Python | Class property, `@property` |
+| `Annotation` | Java | `@interface` annotation type |
+| `EnumMember` | all | Variant inside an enum |
 
 ### Edge kinds
 
 | Kind | Description |
 |---|---|
-| `contains` | Parent–child: `File→Module`, `Struct→Method` |
-| `calls` | Resolved call site: `Function→Function` |
-| `implements` | `impl Trait for Struct` → `Struct→Trait` |
-| `uses` | Type appears as parameter or return type |
-| `imports` | `use path::to::Thing` |
+| `Contains` | Parent–child: `File→Module`, `Struct→Method` |
+| `Calls` | Resolved call site: `Function→Function` |
+| `Implements` | `impl Trait for Struct`, class implements interface |
+| `Inherits` | `extends` / embedded struct / sealed permits |
+| `Uses` | Type appears as parameter or return type |
+| `Imports` | `use path::to::Thing`, `import` |
+| `Throws` | Java `throws` clause → exception type |
+| `Annotated` | Node decorated by `#[attr]`, `@decorator`, `@annotation` |
+
+### Node metadata flags
+
+Every node carries: `loc`, `visibility` (Pub / PubCrate / Private), `is_async`, `is_unsafe`, `is_static`, `is_abstract`, `is_final`, `is_const`, `is_property`, `is_generator`, and `generic_bounds`.
 
 ---
 

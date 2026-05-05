@@ -19,7 +19,7 @@ pub fn run() -> Result<()> {
         .with_context(|| format!("failed to remove {}", data_dir.display()))?;
 
     println!("cleaned: {}", data_dir.display());
-    println!("run `gcx init` or commit to trigger a fresh full index");
+    println!("run `gcx init` or make a commit to trigger a fresh full index");
     Ok(())
 }
 
