@@ -874,6 +874,7 @@ mod tests {
         (r.nodes, r.edges)
     }
 
+    #[allow(clippy::type_complexity)]
     fn parse_full(
         src: &str,
     ) -> (

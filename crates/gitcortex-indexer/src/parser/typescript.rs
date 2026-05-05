@@ -1007,6 +1007,7 @@ mod tests {
         (r.nodes, r.edges)
     }
 
+    #[allow(clippy::type_complexity)]
     fn parse_ts_full(
         src: &str,
     ) -> (
