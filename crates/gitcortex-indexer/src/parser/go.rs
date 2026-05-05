@@ -283,7 +283,8 @@ impl<'src> FileVisitor<'src> {
             .get(&name)
             .cloned()
             .unwrap_or_else(NodeId::new);
-        let mut graph_node = self.make_node(id.clone(), NodeKind::Function, name.clone(), scope, node);
+        let mut graph_node =
+            self.make_node(id.clone(), NodeKind::Function, name.clone(), scope, node);
 
         // init and main are package-level entry points — mark them as static.
         if name == "init" || name == "main" {
@@ -464,7 +465,9 @@ impl<'src> FileVisitor<'src> {
 
     fn record_import_spec(&mut self, spec: TsNode<'_>) {
         // If there's an explicit alias (name field), use it. Otherwise derive from path.
-        let alias = spec.child_by_field_name("name").map(|n| self.text(n).to_owned());
+        let alias = spec
+            .child_by_field_name("name")
+            .map(|n| self.text(n).to_owned());
 
         // Skip blank imports (`import _ "pkg"`)
         if alias.as_deref() == Some("_") {
@@ -481,7 +484,8 @@ impl<'src> FileVisitor<'src> {
             return;
         };
 
-        self.deferred_imports.push((self.package_id.clone(), pkg_name));
+        self.deferred_imports
+            .push((self.package_id.clone(), pkg_name));
     }
 
     // ── Pass 4: detect explicit interface assertions ──────────────────────────
@@ -506,9 +510,7 @@ impl<'src> FileVisitor<'src> {
                 if spec_children.len() < 3 {
                     continue;
                 }
-                if spec_children[0].kind() != "identifier"
-                    || self.text(spec_children[0]) != "_"
-                {
+                if spec_children[0].kind() != "identifier" || self.text(spec_children[0]) != "_" {
                     continue;
                 }
                 if spec_children[1].kind() != "type_identifier" {
@@ -828,7 +830,9 @@ mod tests {
         (r.nodes, r.edges)
     }
 
-    fn parse_full(src: &str) -> (
+    fn parse_full(
+        src: &str,
+    ) -> (
         Vec<gitcortex_core::graph::Node>,
         Vec<gitcortex_core::graph::Edge>,
         Vec<(gitcortex_core::graph::NodeId, String)>,
@@ -837,7 +841,14 @@ mod tests {
         Vec<(gitcortex_core::graph::NodeId, String)>,
     ) {
         let r = GoParser::new().parse(Path::new("test.go"), src).unwrap();
-        (r.nodes, r.edges, r.deferred_calls, r.deferred_uses, r.deferred_implements, r.deferred_imports)
+        (
+            r.nodes,
+            r.edges,
+            r.deferred_calls,
+            r.deferred_uses,
+            r.deferred_implements,
+            r.deferred_imports,
+        )
     }
 
     #[test]
@@ -905,7 +916,10 @@ mod tests {
     fn package_node_is_emitted() {
         let src = "package mypackage\nfunc Foo() {}";
         let (nodes, _) = parse(src);
-        let modules: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Module).collect();
+        let modules: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Module)
+            .collect();
         assert_eq!(modules.len(), 1);
         assert_eq!(modules[0].name, "mypackage");
     }
@@ -952,9 +966,19 @@ mod tests {
     fn captures_interface_methods() {
         let src = "package main\ntype Greeter interface { Greet() string\nGetName() string }";
         let (nodes, edges) = parse(src);
-        let methods: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Method).collect();
+        let methods: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Method)
+            .collect();
         assert_eq!(methods.len(), 2, "expected 2 interface method specs");
-        let contains: Vec<_> = edges.iter().filter(|e| e.kind == EdgeKind::Contains).collect();
-        assert_eq!(contains.len(), 2, "expected 2 Contains edges from interface to methods");
+        let contains: Vec<_> = edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::Contains)
+            .collect();
+        assert_eq!(
+            contains.len(),
+            2,
+            "expected 2 Contains edges from interface to methods"
+        );
     }
 }

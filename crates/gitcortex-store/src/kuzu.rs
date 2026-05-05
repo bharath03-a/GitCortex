@@ -133,7 +133,11 @@ impl GraphStore for KuzuGraphStore {
         // Contains edges to sibling files are preserved.
         // Use the same connection (no open transaction between tx1 COMMIT and tx2 BEGIN).
         let mut id_remap: HashMap<String, String> = HashMap::new();
-        for node in diff.added_nodes.iter().filter(|n| n.kind == NodeKind::Folder) {
+        for node in diff
+            .added_nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Folder)
+        {
             let path_esc = esc(node.file.to_string_lossy().as_ref());
             let mut check = conn
                 .query(&format!(
@@ -143,9 +147,7 @@ impl GraphStore for KuzuGraphStore {
                 .map_err(|e| GitCortexError::Store(e.to_string()))?;
             if let Some(row) = check.by_ref().next() {
                 if let Ok(existing_id) = str_val(&row[0]) {
-                    tracing::debug!(
-                        "folder remap: {} → {}", node.file.display(), existing_id
-                    );
+                    tracing::debug!("folder remap: {} → {}", node.file.display(), existing_id);
                     id_remap.insert(node.id.as_str().to_owned(), existing_id);
                 }
             }
@@ -158,7 +160,11 @@ impl GraphStore for KuzuGraphStore {
             .map_err(|e| GitCortexError::Store(format!("begin node insert transaction: {e}")))?;
 
         let mut seen_node_ids: HashSet<String> = HashSet::new();
-        for node in diff.added_nodes.iter().filter(|n| seen_node_ids.insert(n.id.as_str().to_owned())) {
+        for node in diff
+            .added_nodes
+            .iter()
+            .filter(|n| seen_node_ids.insert(n.id.as_str().to_owned()))
+        {
             // Folder node remapped to an existing DB node — skip INSERT.
             if id_remap.contains_key(&node.id.as_str().to_owned()) {
                 continue;
@@ -209,12 +215,22 @@ impl GraphStore for KuzuGraphStore {
         //    MATCH yields nothing for missing endpoints → skip silently.
         let mut seen_edges: HashSet<(String, String, String)> = HashSet::new();
         for edge in diff.added_edges.iter().filter(|e| {
-            seen_edges.insert((e.src.as_str().to_owned(), e.dst.as_str().to_owned(), e.kind.to_string()))
+            seen_edges.insert((
+                e.src.as_str().to_owned(),
+                e.dst.as_str().to_owned(),
+                e.kind.to_string(),
+            ))
         }) {
             let src_raw = edge.src.as_str().to_owned();
             let dst_raw = edge.dst.as_str().to_owned();
-            let s = esc(id_remap.get(&src_raw).map(String::as_str).unwrap_or(&src_raw));
-            let d = esc(id_remap.get(&dst_raw).map(String::as_str).unwrap_or(&dst_raw));
+            let s = esc(id_remap
+                .get(&src_raw)
+                .map(String::as_str)
+                .unwrap_or(&src_raw));
+            let d = esc(id_remap
+                .get(&dst_raw)
+                .map(String::as_str)
+                .unwrap_or(&dst_raw));
             let k = esc(&edge.kind.to_string());
 
             conn.query(&format!(
@@ -274,7 +290,9 @@ impl GraphStore for KuzuGraphStore {
                  AND (sup.kind = 'struct' OR sup.kind = 'interface' OR sup.kind = 'trait') \
                  CREATE (sub)-[:{et} {{kind: 'inherits'}}]->(sup)"
             ))
-            .map_err(|e| GitCortexError::Store(format!("deferred inherits '{supertype_name}': {e}")))?;
+            .map_err(|e| {
+                GitCortexError::Store(format!("deferred inherits '{supertype_name}': {e}"))
+            })?;
         }
 
         for (method_id, exception_name) in &diff.deferred_throws {
@@ -285,7 +303,9 @@ impl GraphStore for KuzuGraphStore {
                  WHERE ex.name = '{e_name}' \
                  CREATE (m)-[:{et} {{kind: 'throws'}}]->(ex)"
             ))
-            .map_err(|e| GitCortexError::Store(format!("deferred throws '{exception_name}': {e}")))?;
+            .map_err(|e| {
+                GitCortexError::Store(format!("deferred throws '{exception_name}': {e}"))
+            })?;
         }
 
         for (target_id, annotation_name) in &diff.deferred_annotated {
@@ -297,7 +317,9 @@ impl GraphStore for KuzuGraphStore {
                  AND (ann.kind = 'annotation' OR ann.kind = 'macro' OR ann.kind = 'function') \
                  CREATE (target)-[:{et} {{kind: 'annotated'}}]->(ann)"
             ))
-            .map_err(|e| GitCortexError::Store(format!("deferred annotated '{annotation_name}': {e}")))?;
+            .map_err(|e| {
+                GitCortexError::Store(format!("deferred annotated '{annotation_name}': {e}"))
+            })?;
         }
 
         conn.query("COMMIT")
@@ -644,7 +666,8 @@ impl GraphStore for KuzuGraphStore {
         }
 
         // BFS: queue of (current_name, path_so_far)
-        let mut queue: std::collections::VecDeque<(String, Vec<String>)> = std::collections::VecDeque::new();
+        let mut queue: std::collections::VecDeque<(String, Vec<String>)> =
+            std::collections::VecDeque::new();
         queue.push_back((from.to_owned(), vec![from.to_owned()]));
         let mut visited: HashSet<String> = HashSet::new();
         visited.insert(from.to_owned());
@@ -762,7 +785,10 @@ impl GraphStore for KuzuGraphStore {
             .map_err(|e| GitCortexError::Store(e.to_string()))?;
         let seed_nodes = rows_to_nodes(&mut seed_result)?;
         if seed_nodes.is_empty() {
-            return Ok(SubGraph { nodes: Vec::new(), edges: Vec::new() });
+            return Ok(SubGraph {
+                nodes: Vec::new(),
+                edges: Vec::new(),
+            });
         }
 
         let mut all_node_ids: HashSet<String> = HashSet::new();
@@ -822,7 +848,10 @@ impl GraphStore for KuzuGraphStore {
         }
 
         // Collect edges between the nodes in the subgraph
-        let ids_list: Vec<String> = all_node_ids.iter().map(|id| format!("'{}'", esc(id))).collect();
+        let ids_list: Vec<String> = all_node_ids
+            .iter()
+            .map(|id| format!("'{}'", esc(id)))
+            .collect();
         let ids_str = ids_list.join(", ");
         let all_edges = if ids_list.is_empty() {
             Vec::new()
@@ -851,7 +880,10 @@ impl GraphStore for KuzuGraphStore {
             edges
         };
 
-        Ok(SubGraph { nodes: all_nodes, edges: all_edges })
+        Ok(SubGraph {
+            nodes: all_nodes,
+            edges: all_edges,
+        })
     }
 
     // ── Indexing state ────────────────────────────────────────────────────────

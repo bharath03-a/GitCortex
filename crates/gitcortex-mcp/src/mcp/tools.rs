@@ -462,16 +462,26 @@ impl GitCortexServer {
         };
         match store.find_callees(&branch, &p.function_name, depth) {
             Ok(result) => {
-                let hops: Vec<_> = result.hops.iter().enumerate().map(|(i, nodes)| {
-                    let callees: Vec<_> = nodes.iter().map(|n| json!({
-                        "kind": n.kind.to_string(),
-                        "name": n.name,
-                        "qualified_name": n.qualified_name,
-                        "file": n.file.display().to_string(),
-                        "start_line": n.span.start_line,
-                    })).collect();
-                    json!({ "hop": i + 1, "callees": callees })
-                }).collect();
+                let hops: Vec<_> = result
+                    .hops
+                    .iter()
+                    .enumerate()
+                    .map(|(i, nodes)| {
+                        let callees: Vec<_> = nodes
+                            .iter()
+                            .map(|n| {
+                                json!({
+                                    "kind": n.kind.to_string(),
+                                    "name": n.name,
+                                    "qualified_name": n.qualified_name,
+                                    "file": n.file.display().to_string(),
+                                    "start_line": n.span.start_line,
+                                })
+                            })
+                            .collect();
+                        json!({ "hop": i + 1, "callees": callees })
+                    })
+                    .collect();
                 CallToolResult::structured(json!({
                     "function": p.function_name,
                     "depth": depth,
@@ -487,7 +497,10 @@ impl GitCortexServer {
         description = "Find all concrete types (structs, classes) that implement or inherit the named \
         trait or interface. Works for Rust traits, Java/TypeScript interfaces, and Go structural types."
     )]
-    fn find_implementors(&self, Parameters(p): Parameters<FindImplementorsParams>) -> CallToolResult {
+    fn find_implementors(
+        &self,
+        Parameters(p): Parameters<FindImplementorsParams>,
+    ) -> CallToolResult {
         let branch = p.branch.as_deref().unwrap_or("main").to_owned();
         let store = match self.store.lock() {
             Ok(g) => g,
@@ -495,13 +508,18 @@ impl GitCortexServer {
         };
         match store.find_implementors(&branch, &p.trait_name) {
             Ok(nodes) => {
-                let items: Vec<_> = nodes.iter().map(|n| json!({
-                    "kind": n.kind.to_string(),
-                    "name": n.name,
-                    "qualified_name": n.qualified_name,
-                    "file": n.file.display().to_string(),
-                    "start_line": n.span.start_line,
-                })).collect();
+                let items: Vec<_> = nodes
+                    .iter()
+                    .map(|n| {
+                        json!({
+                            "kind": n.kind.to_string(),
+                            "name": n.name,
+                            "qualified_name": n.qualified_name,
+                            "file": n.file.display().to_string(),
+                            "start_line": n.span.start_line,
+                        })
+                    })
+                    .collect();
                 CallToolResult::structured(json!({
                     "trait": p.trait_name,
                     "implementors": items,
@@ -525,12 +543,17 @@ impl GitCortexServer {
         };
         match store.trace_path(&branch, &p.from, &p.to) {
             Ok(path) => {
-                let nodes: Vec<_> = path.iter().map(|n| json!({
-                    "kind": n.kind.to_string(),
-                    "name": n.name,
-                    "file": n.file.display().to_string(),
-                    "start_line": n.span.start_line,
-                })).collect();
+                let nodes: Vec<_> = path
+                    .iter()
+                    .map(|n| {
+                        json!({
+                            "kind": n.kind.to_string(),
+                            "name": n.name,
+                            "file": n.file.display().to_string(),
+                            "start_line": n.span.start_line,
+                        })
+                    })
+                    .collect();
                 CallToolResult::structured(json!({
                     "from": p.from,
                     "to": p.to,
@@ -548,7 +571,10 @@ impl GitCortexServer {
         overlaps the given line range. Use this to map a stack trace, diff hunk, or grep result \
         to the symbols responsible."
     )]
-    fn list_symbols_in_range(&self, Parameters(p): Parameters<ListSymbolsInRangeParams>) -> CallToolResult {
+    fn list_symbols_in_range(
+        &self,
+        Parameters(p): Parameters<ListSymbolsInRangeParams>,
+    ) -> CallToolResult {
         let branch = p.branch.as_deref().unwrap_or("main").to_owned();
         let store = match self.store.lock() {
             Ok(g) => g,
@@ -557,14 +583,19 @@ impl GitCortexServer {
         let path = Path::new(&p.file);
         match store.list_symbols_in_range(&branch, path, p.start_line, p.end_line) {
             Ok(nodes) => {
-                let items: Vec<_> = nodes.iter().map(|n| json!({
-                    "kind": n.kind.to_string(),
-                    "name": n.name,
-                    "qualified_name": n.qualified_name,
-                    "start_line": n.span.start_line,
-                    "end_line": n.span.end_line,
-                    "loc": n.metadata.loc,
-                })).collect();
+                let items: Vec<_> = nodes
+                    .iter()
+                    .map(|n| {
+                        json!({
+                            "kind": n.kind.to_string(),
+                            "name": n.name,
+                            "qualified_name": n.qualified_name,
+                            "start_line": n.span.start_line,
+                            "end_line": n.span.end_line,
+                            "loc": n.metadata.loc,
+                        })
+                    })
+                    .collect();
                 CallToolResult::structured(json!({
                     "file": p.file,
                     "range": { "start": p.start_line, "end": p.end_line },
@@ -581,7 +612,10 @@ impl GitCortexServer {
         codebase. Useful for identifying dead code, safe-to-rename candidates, or refactoring targets. \
         Pass kind='function' to restrict to functions only."
     )]
-    fn find_unused_symbols(&self, Parameters(p): Parameters<FindUnusedSymbolsParams>) -> CallToolResult {
+    fn find_unused_symbols(
+        &self,
+        Parameters(p): Parameters<FindUnusedSymbolsParams>,
+    ) -> CallToolResult {
         let branch = p.branch.as_deref().unwrap_or("main").to_owned();
         let kind = p.kind.as_deref().and_then(|k| match k {
             "function" => Some(NodeKind::Function),
@@ -599,14 +633,19 @@ impl GitCortexServer {
         };
         match store.find_unused_symbols(&branch, kind) {
             Ok(nodes) => {
-                let items: Vec<_> = nodes.iter().map(|n| json!({
-                    "kind": n.kind.to_string(),
-                    "name": n.name,
-                    "qualified_name": n.qualified_name,
-                    "file": n.file.display().to_string(),
-                    "start_line": n.span.start_line,
-                    "visibility": format!("{:?}", n.metadata.visibility),
-                })).collect();
+                let items: Vec<_> = nodes
+                    .iter()
+                    .map(|n| {
+                        json!({
+                            "kind": n.kind.to_string(),
+                            "name": n.name,
+                            "qualified_name": n.qualified_name,
+                            "file": n.file.display().to_string(),
+                            "start_line": n.span.start_line,
+                            "visibility": format!("{:?}", n.metadata.visibility),
+                        })
+                    })
+                    .collect();
                 CallToolResult::structured(json!({
                     "branch": branch,
                     "unused_symbols": items,
@@ -633,18 +672,30 @@ impl GitCortexServer {
         };
         match store.get_subgraph(&branch, &p.seed_name, depth, &direction) {
             Ok(sg) => {
-                let nodes: Vec<_> = sg.nodes.iter().map(|n| json!({
-                    "id": n.id.as_str(),
-                    "kind": n.kind.to_string(),
-                    "name": n.name,
-                    "file": n.file.display().to_string(),
-                    "start_line": n.span.start_line,
-                })).collect();
-                let edges: Vec<_> = sg.edges.iter().map(|e| json!({
-                    "src": e.src.as_str(),
-                    "dst": e.dst.as_str(),
-                    "kind": e.kind.to_string(),
-                })).collect();
+                let nodes: Vec<_> = sg
+                    .nodes
+                    .iter()
+                    .map(|n| {
+                        json!({
+                            "id": n.id.as_str(),
+                            "kind": n.kind.to_string(),
+                            "name": n.name,
+                            "file": n.file.display().to_string(),
+                            "start_line": n.span.start_line,
+                        })
+                    })
+                    .collect();
+                let edges: Vec<_> = sg
+                    .edges
+                    .iter()
+                    .map(|e| {
+                        json!({
+                            "src": e.src.as_str(),
+                            "dst": e.dst.as_str(),
+                            "kind": e.kind.to_string(),
+                        })
+                    })
+                    .collect();
                 CallToolResult::structured(json!({
                     "seed": p.seed_name,
                     "depth": depth,

@@ -374,7 +374,10 @@ impl<'src> FileVisitor<'src> {
         if let Some(body) = node.child_by_field_name("body") {
             let mut c = body.walk();
             for child in body.named_children(&mut c).collect::<Vec<_>>() {
-                if matches!(child.kind(), "method_declaration" | "constructor_declaration") {
+                if matches!(
+                    child.kind(),
+                    "method_declaration" | "constructor_declaration"
+                ) {
                     self.visit_method(child, &nested_scope, id.clone());
                 } else if child.kind() == "field_declaration" {
                     self.extract_field_uses(child, &id);
@@ -464,10 +467,7 @@ impl<'src> FileVisitor<'src> {
             let mut c = body.walk();
             let body_children: Vec<TsNode<'_>> = body.named_children(&mut c).collect();
             for child in body_children {
-                if matches!(
-                    child.kind(),
-                    "method_declaration" | "constant_declaration"
-                ) {
+                if matches!(child.kind(), "method_declaration" | "constant_declaration") {
                     self.visit_method(child, &iface_scope, id.clone());
                 }
             }
@@ -647,13 +647,11 @@ impl<'src> FileVisitor<'src> {
                     if mc.kind() == "annotation" || mc.kind() == "marker_annotation" {
                         // Annotation name is the first named child (type_identifier or identifier)
                         let mut ccc = mc.walk();
-                        let ann_children: Vec<TsNode<'_>> =
-                            mc.named_children(&mut ccc).collect();
+                        let ann_children: Vec<TsNode<'_>> = mc.named_children(&mut ccc).collect();
                         if let Some(ann_name_node) = ann_children.first() {
                             let ann_name = self.text(*ann_name_node).to_owned();
                             if !ann_name.is_empty() {
-                                self.deferred_annotated
-                                    .push((node_id.clone(), ann_name));
+                                self.deferred_annotated.push((node_id.clone(), ann_name));
                             }
                         }
                     }
@@ -671,8 +669,7 @@ impl<'src> FileVisitor<'src> {
                 for mc in child.named_children(&mut cc).collect::<Vec<_>>() {
                     if mc.kind() == "annotation" || mc.kind() == "marker_annotation" {
                         let mut ccc = mc.walk();
-                        if let Some(ann) = mc.named_children(&mut ccc).collect::<Vec<_>>().first()
-                        {
+                        if let Some(ann) = mc.named_children(&mut ccc).collect::<Vec<_>>().first() {
                             if self.text(*ann) == "FunctionalInterface" {
                                 return true;
                             }
@@ -765,15 +762,17 @@ impl<'src> FileVisitor<'src> {
             "method_invocation" => call_expr
                 .child_by_field_name("name")
                 .map(|n| self.text(n).to_owned()),
-            "object_creation_expression" => call_expr
-                .child_by_field_name("type")
-                .and_then(|t| match t.kind() {
-                    "type_identifier" => Some(self.text(t).to_owned()),
-                    "generic_type" => t
-                        .child_by_field_name("name")
-                        .map(|n| self.text(n).to_owned()),
-                    _ => None,
-                }),
+            "object_creation_expression" => {
+                call_expr
+                    .child_by_field_name("type")
+                    .and_then(|t| match t.kind() {
+                        "type_identifier" => Some(self.text(t).to_owned()),
+                        "generic_type" => t
+                            .child_by_field_name("name")
+                            .map(|n| self.text(n).to_owned()),
+                        _ => None,
+                    })
+            }
             _ => None,
         }
     }
@@ -863,7 +862,9 @@ mod tests {
     use gitcortex_core::schema::{EdgeKind, NodeKind};
     use std::path::Path;
 
-    fn parse(src: &str) -> (
+    fn parse(
+        src: &str,
+    ) -> (
         Vec<gitcortex_core::graph::Node>,
         Vec<gitcortex_core::graph::Edge>,
     ) {
@@ -873,7 +874,9 @@ mod tests {
         (r.nodes, r.edges)
     }
 
-    fn parse_full(src: &str) -> (
+    fn parse_full(
+        src: &str,
+    ) -> (
         Vec<gitcortex_core::graph::Node>,
         Vec<gitcortex_core::graph::Edge>,
         Vec<(gitcortex_core::graph::NodeId, String)>,
@@ -904,12 +907,21 @@ mod tests {
     fn parses_class_and_method() {
         let src = "public class Greeter { public String greet(String name) { return name; } }";
         let (nodes, edges) = parse(src);
-        let classes: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Struct).collect();
-        let methods: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Method).collect();
+        let classes: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Struct)
+            .collect();
+        let methods: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Method)
+            .collect();
         assert_eq!(classes.len(), 1, "expected 1 class");
         assert_eq!(classes[0].name, "Greeter");
         assert_eq!(methods.len(), 1, "expected 1 method");
-        let contains: Vec<_> = edges.iter().filter(|e| e.kind == EdgeKind::Contains).collect();
+        let contains: Vec<_> = edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::Contains)
+            .collect();
         assert!(!contains.is_empty(), "expected Contains edge");
     }
 
@@ -971,7 +983,10 @@ mod tests {
     fn module_node_is_emitted() {
         let src = "public class App {}";
         let (nodes, _) = parse(src);
-        let modules: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Module).collect();
+        let modules: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Module)
+            .collect();
         assert_eq!(modules.len(), 1);
         assert_eq!(modules[0].name, "Test"); // from "Test.java"
     }

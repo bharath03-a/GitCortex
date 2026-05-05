@@ -449,11 +449,9 @@ impl<'src> FileVisitor<'src> {
                                 "class_definition" => {
                                     self.visit_class(def, &class_scope, &method_decorators);
                                     // Add Contains edge from parent class to nested class.
-                                    if let Some(nested_name_node) =
-                                        def.child_by_field_name("name")
+                                    if let Some(nested_name_node) = def.child_by_field_name("name")
                                     {
-                                        let nested_name =
-                                            self.text(nested_name_node).to_owned();
+                                        let nested_name = self.text(nested_name_node).to_owned();
                                         if let Some(nested_id) =
                                             self.class_index.get(&nested_name).cloned()
                                         {
@@ -474,9 +472,7 @@ impl<'src> FileVisitor<'src> {
                         // Add Contains edge from parent class to nested class.
                         if let Some(nested_name_node) = child.child_by_field_name("name") {
                             let nested_name = self.text(nested_name_node).to_owned();
-                            if let Some(nested_id) =
-                                self.class_index.get(&nested_name).cloned()
-                            {
+                            if let Some(nested_id) = self.class_index.get(&nested_name).cloned() {
                                 self.edges.push(Edge {
                                     src: id.clone(),
                                     dst: nested_id,
@@ -547,8 +543,7 @@ impl<'src> FileVisitor<'src> {
                     // Named children: first is the source module (dotted_name or
                     // relative_import), the rest are the imported names.
                     let mut c = child.walk();
-                    let all_children: Vec<TsNode<'_>> =
-                        child.named_children(&mut c).collect();
+                    let all_children: Vec<TsNode<'_>> = child.named_children(&mut c).collect();
                     for name_node in all_children.iter().skip(1) {
                         let leaf = match name_node.kind() {
                             "dotted_name" => {
@@ -667,15 +662,15 @@ impl<'src> FileVisitor<'src> {
             "attribute" => child
                 .child_by_field_name("attribute")
                 .map(|n| self.text(n).to_owned()),
-            "call" => child.child_by_field_name("function").and_then(|f| {
-                match f.kind() {
+            "call" => child
+                .child_by_field_name("function")
+                .and_then(|f| match f.kind() {
                     "identifier" => Some(self.text(f).to_owned()),
                     "attribute" => f
                         .child_by_field_name("attribute")
                         .map(|n| self.text(n).to_owned()),
                     _ => None,
-                }
-            }),
+                }),
             _ => None,
         }
     }
@@ -689,9 +684,7 @@ impl<'src> FileVisitor<'src> {
         let mut c = params.walk();
         for param in params.named_children(&mut c) {
             let type_node = match param.kind() {
-                "typed_parameter" | "typed_default_parameter" => {
-                    param.child_by_field_name("type")
-                }
+                "typed_parameter" | "typed_default_parameter" => param.child_by_field_name("type"),
                 _ => None,
             };
             if let Some(t) = type_node {
@@ -842,7 +835,10 @@ mod tests {
         let (nodes, _) = parse("def greet(name):\n    return name\n");
         // Module node + Function node
         assert_eq!(nodes.len(), 2);
-        let fns: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Function).collect();
+        let fns: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Function)
+            .collect();
         assert_eq!(fns.len(), 1);
         assert_eq!(fns[0].name, "greet");
     }
@@ -938,7 +934,10 @@ mod tests {
     #[test]
     fn module_node_is_emitted() {
         let (nodes, _) = parse("x = 1\n");
-        let modules: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Module).collect();
+        let modules: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Module)
+            .collect();
         assert_eq!(modules.len(), 1);
         assert_eq!(modules[0].name, "test");
     }
@@ -947,7 +946,10 @@ mod tests {
     fn async_function_flagged() {
         let src = "async def fetch():\n    pass\n";
         let (nodes, _) = parse(src);
-        let fns: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Function).collect();
+        let fns: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Function)
+            .collect();
         assert_eq!(fns.len(), 1);
         assert!(fns[0].metadata.is_async);
     }

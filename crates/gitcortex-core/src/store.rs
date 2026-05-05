@@ -57,8 +57,12 @@ pub trait GraphStore: Send + Sync {
     /// Multi-hop BFS: find callers up to `depth` hops away.
     /// Returns callers grouped by hop distance (1..=depth).
     /// `depth` is capped at 5 to prevent runaway queries.
-    fn find_callers_deep(&self, branch: &str, function_name: &str, depth: u8)
-        -> Result<CallersDeep>;
+    fn find_callers_deep(
+        &self,
+        branch: &str,
+        function_name: &str,
+        depth: u8,
+    ) -> Result<CallersDeep>;
 
     /// Return a 360° view of a symbol: its definition, direct callers,
     /// direct callees, and nodes that reference it via `Uses` edges.
@@ -82,12 +86,10 @@ pub trait GraphStore: Send + Sync {
 
     /// Find all functions/methods called by `function_name` up to `depth` hops.
     /// Returns callees grouped by hop distance (1..=depth). Capped at 5.
-    fn find_callees(&self, branch: &str, function_name: &str, depth: u8)
-        -> Result<CallersDeep>;
+    fn find_callees(&self, branch: &str, function_name: &str, depth: u8) -> Result<CallersDeep>;
 
     /// Find all structs/classes that implement/inherit `trait_or_interface_name`.
-    fn find_implementors(&self, branch: &str, trait_or_interface_name: &str)
-        -> Result<Vec<Node>>;
+    fn find_implementors(&self, branch: &str, trait_or_interface_name: &str) -> Result<Vec<Node>>;
 
     /// Find all call paths between `from` and `to` using BFS.
     /// Returns at most one path (the shortest), as a sequence of nodes.
@@ -104,11 +106,7 @@ pub trait GraphStore: Send + Sync {
 
     /// Find symbols with no incoming Calls or Uses edges (potential dead code).
     /// If `kind` is provided, filters to only that NodeKind.
-    fn find_unused_symbols(
-        &self,
-        branch: &str,
-        kind: Option<NodeKind>,
-    ) -> Result<Vec<Node>>;
+    fn find_unused_symbols(&self, branch: &str, kind: Option<NodeKind>) -> Result<Vec<Node>>;
 
     /// Return a subgraph centred on `seed_name` up to `depth` hops.
     /// `direction`: "in" (callers), "out" (callees), or "both".

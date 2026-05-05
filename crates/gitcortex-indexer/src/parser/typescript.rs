@@ -527,7 +527,8 @@ impl<'src> FileVisitor<'src> {
         self.nodes.push(graph_node);
 
         // Emit EnumMember nodes for each variant
-        let member_scope: Vec<String> = scope.iter().cloned().chain(std::iter::once(name)).collect();
+        let member_scope: Vec<String> =
+            scope.iter().cloned().chain(std::iter::once(name)).collect();
         if let Some(body) = node.child_by_field_name("body") {
             let mut cursor = body.walk();
             for member in body.named_children(&mut cursor) {
@@ -535,16 +536,28 @@ impl<'src> FileVisitor<'src> {
                     continue;
                 }
                 let member_name_node = if member.kind() == "enum_assignment" {
-                    member.child_by_field_name("name").or_else(|| member.named_child(0))
+                    member
+                        .child_by_field_name("name")
+                        .or_else(|| member.named_child(0))
                 } else {
                     Some(member)
                 };
                 if let Some(mn) = member_name_node {
                     let mname = self.text(mn).to_owned();
                     let mid = NodeId::new();
-                    let mnode = self.make_node(mid.clone(), NodeKind::EnumMember, mname, &member_scope, member);
+                    let mnode = self.make_node(
+                        mid.clone(),
+                        NodeKind::EnumMember,
+                        mname,
+                        &member_scope,
+                        member,
+                    );
                     self.nodes.push(mnode);
-                    self.edges.push(Edge { src: enum_id.clone(), dst: mid, kind: EdgeKind::Contains });
+                    self.edges.push(Edge {
+                        src: enum_id.clone(),
+                        dst: mid,
+                        kind: EdgeKind::Contains,
+                    });
                 }
             }
         }
@@ -558,11 +571,16 @@ impl<'src> FileVisitor<'src> {
         let ns_id = NodeId::new();
         let graph_node = self.make_node(ns_id.clone(), NodeKind::Module, name.clone(), scope, node);
         self.nodes.push(graph_node);
-        self.edges.push(Edge { src: self.module_id.clone(), dst: ns_id.clone(), kind: EdgeKind::Contains });
+        self.edges.push(Edge {
+            src: self.module_id.clone(),
+            dst: ns_id.clone(),
+            kind: EdgeKind::Contains,
+        });
 
         // Visit namespace body
         if let Some(body) = node.child_by_field_name("body") {
-            let child_scope: Vec<String> = scope.iter().cloned().chain(std::iter::once(name)).collect();
+            let child_scope: Vec<String> =
+                scope.iter().cloned().chain(std::iter::once(name)).collect();
             let mut cursor = body.walk();
             let children: Vec<TsNode<'_>> = body.named_children(&mut cursor).collect();
             for child in children {
@@ -647,8 +665,7 @@ impl<'src> FileVisitor<'src> {
 
             // import_clause contains: identifier (default), namespace_import, named_imports
             let mut cc = import_clause.walk();
-            let clause_members: Vec<TsNode<'_>> =
-                import_clause.named_children(&mut cc).collect();
+            let clause_members: Vec<TsNode<'_>> = import_clause.named_children(&mut cc).collect();
             for member in clause_members {
                 match member.kind() {
                     "identifier" => {
@@ -659,8 +676,7 @@ impl<'src> FileVisitor<'src> {
                     "namespace_import" => {
                         // import * as x from 'module' — binding is the identifier
                         let mut c2 = member.walk();
-                        let idents: Vec<TsNode<'_>> =
-                            member.named_children(&mut c2).collect();
+                        let idents: Vec<TsNode<'_>> = member.named_children(&mut c2).collect();
                         if let Some(ident) =
                             idents.iter().find(|n| n.kind() == "identifier").copied()
                         {
@@ -671,8 +687,7 @@ impl<'src> FileVisitor<'src> {
                     "named_imports" => {
                         // import { foo, bar as baz } from 'module'
                         let mut c2 = member.walk();
-                        let specifiers: Vec<TsNode<'_>> =
-                            member.named_children(&mut c2).collect();
+                        let specifiers: Vec<TsNode<'_>> = member.named_children(&mut c2).collect();
                         for specifier in specifiers {
                             if specifier.kind() == "import_specifier" {
                                 let orig =
@@ -830,15 +845,17 @@ impl<'src> FileVisitor<'src> {
             "member_expression" => child
                 .child_by_field_name("property")
                 .map(|n| self.text(n).to_owned()),
-            "call_expression" => child.child_by_field_name("function").and_then(|f| {
-                match f.kind() {
-                    "identifier" => Some(self.text(f).to_owned()),
-                    "member_expression" => f
-                        .child_by_field_name("property")
-                        .map(|n| self.text(n).to_owned()),
-                    _ => None,
-                }
-            }),
+            "call_expression" => {
+                child
+                    .child_by_field_name("function")
+                    .and_then(|f| match f.kind() {
+                        "identifier" => Some(self.text(f).to_owned()),
+                        "member_expression" => f
+                            .child_by_field_name("property")
+                            .map(|n| self.text(n).to_owned()),
+                        _ => None,
+                    })
+            }
             _ => None,
         }
     }
@@ -990,7 +1007,9 @@ mod tests {
         (r.nodes, r.edges)
     }
 
-    fn parse_ts_full(src: &str) -> (
+    fn parse_ts_full(
+        src: &str,
+    ) -> (
         Vec<gitcortex_core::graph::Node>,
         Vec<gitcortex_core::graph::Edge>,
         Vec<(gitcortex_core::graph::NodeId, String)>,
@@ -1002,7 +1021,15 @@ mod tests {
         let r = TypeScriptParser::new_ts()
             .parse(Path::new("test.ts"), src)
             .unwrap();
-        (r.nodes, r.edges, r.deferred_calls, r.deferred_uses, r.deferred_implements, r.deferred_imports, r.deferred_inherits)
+        (
+            r.nodes,
+            r.edges,
+            r.deferred_calls,
+            r.deferred_uses,
+            r.deferred_implements,
+            r.deferred_imports,
+            r.deferred_inherits,
+        )
     }
 
     fn parse_js(
@@ -1021,7 +1048,10 @@ mod tests {
     fn parses_ts_function() {
         let (nodes, _) = parse_ts("function greet(name: string): string { return name; }");
         // Module node + Function node
-        let fns: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Function).collect();
+        let fns: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Function)
+            .collect();
         assert_eq!(fns.len(), 1);
         assert_eq!(fns[0].name, "greet");
     }
@@ -1114,7 +1144,10 @@ mod tests {
     #[test]
     fn module_node_is_emitted() {
         let (nodes, _) = parse_ts("const x = 1;");
-        let modules: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Module).collect();
+        let modules: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Module)
+            .collect();
         assert_eq!(modules.len(), 1);
         assert_eq!(modules[0].name, "test");
     }

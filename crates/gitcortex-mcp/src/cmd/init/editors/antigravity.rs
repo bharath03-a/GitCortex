@@ -27,8 +27,7 @@ fn write_antigravity_mcp() -> Result<()> {
     }
 
     root["mcpServers"]["gitcortex"] = json!({ "command": "gcx", "args": ["serve"] });
-    let text =
-        serde_json::to_string_pretty(&root).context("serialize ~/.antigravity/mcp.json")?;
+    let text = serde_json::to_string_pretty(&root).context("serialize ~/.antigravity/mcp.json")?;
     fs::write(path, text).context("write ~/.antigravity/mcp.json")?;
     Ok(())
 }

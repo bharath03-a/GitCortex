@@ -56,9 +56,7 @@ fn write_windsurf_rules(repo_root: &Path) -> Result<()> {
 }
 
 fn write_windsurf_mcp() -> Result<()> {
-    let dir = home_dir()
-        .join(".codeium")
-        .join("windsurf");
+    let dir = home_dir().join(".codeium").join("windsurf");
     fs::create_dir_all(&dir)?;
     let path = dir.join("mcp_config.json");
 
@@ -74,8 +72,7 @@ fn write_windsurf_mcp() -> Result<()> {
     }
 
     root["mcpServers"]["gitcortex"] = json!({ "command": "gcx", "args": ["serve"] });
-    let text =
-        serde_json::to_string_pretty(&root).context("serialize windsurf mcp_config.json")?;
+    let text = serde_json::to_string_pretty(&root).context("serialize windsurf mcp_config.json")?;
     fs::write(path, text).context("write windsurf mcp_config.json")?;
     Ok(())
 }
