@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
 };
 
@@ -89,8 +89,13 @@ impl GraphStore for KuzuGraphStore {
         conn.query("BEGIN TRANSACTION")
             .map_err(|e| GitCortexError::Store(format!("begin delete transaction: {e}")))?;
 
-        // 1. Remove all nodes (and their edges) for deleted/replaced files.
+        // 1. Remove nodes for deleted/replaced files.
+        //    Skip directory paths (no extension) — folder nodes are reused across
+        //    incremental updates to preserve their Contains edges to sibling files.
         for file in &diff.removed_files {
+            if file.extension().is_none() {
+                continue;
+            }
             let file_str = esc(file.to_string_lossy().as_ref());
             conn.query(&format!(
                 "MATCH (n:{nt}) WHERE n.file = '{file_str}' DETACH DELETE n"
@@ -123,14 +128,41 @@ impl GraphStore for KuzuGraphStore {
         conn.query("COMMIT")
             .map_err(|e| GitCortexError::Store(format!("commit deletes: {e}")))?;
 
+        // Build a remap table: for each Folder node in the diff, if a folder at
+        // that path already exists in the DB, reuse its ID so that existing
+        // Contains edges to sibling files are preserved.
+        // Use the same connection (no open transaction between tx1 COMMIT and tx2 BEGIN).
+        let mut id_remap: HashMap<String, String> = HashMap::new();
+        for node in diff.added_nodes.iter().filter(|n| n.kind == NodeKind::Folder) {
+            let path_esc = esc(node.file.to_string_lossy().as_ref());
+            let mut check = conn
+                .query(&format!(
+                    "MATCH (n:{nt}) WHERE n.file = '{path_esc}' AND n.kind = 'folder' \
+                     RETURN n.id LIMIT 1"
+                ))
+                .map_err(|e| GitCortexError::Store(e.to_string()))?;
+            if let Some(row) = check.by_ref().next() {
+                if let Ok(existing_id) = str_val(&row[0]) {
+                    tracing::debug!(
+                        "folder remap: {} → {}", node.file.display(), existing_id
+                    );
+                    id_remap.insert(node.id.as_str().to_owned(), existing_id);
+                }
+            }
+        }
+
         // Transaction 2: insert new nodes. Deduplicate by ID first so a rename
         // delta (or any other case producing the same NodeId twice) never hits a
-        // PK violation.
+        // PK violation. Folder nodes remapped to existing DB nodes are skipped.
         conn.query("BEGIN TRANSACTION")
             .map_err(|e| GitCortexError::Store(format!("begin node insert transaction: {e}")))?;
 
         let mut seen_node_ids: HashSet<String> = HashSet::new();
         for node in diff.added_nodes.iter().filter(|n| seen_node_ids.insert(n.id.as_str().to_owned())) {
+            // Folder node remapped to an existing DB node — skip INSERT.
+            if id_remap.contains_key(&node.id.as_str().to_owned()) {
+                continue;
+            }
             let id = esc(&node.id.as_str());
             let kind = esc(&node.kind.to_string());
             let name = esc(&node.name);
@@ -172,14 +204,17 @@ impl GraphStore for KuzuGraphStore {
         conn.query("BEGIN TRANSACTION")
             .map_err(|e| GitCortexError::Store(format!("begin edge transaction: {e}")))?;
 
-        // 5. Insert new edges. Deduplicate by (src,dst,kind) to avoid creating
-        //    parallel edges. MATCH yields nothing for missing endpoints → skip.
+        // 4. Insert new edges. Deduplicate by (src,dst,kind) to avoid creating
+        //    parallel edges. Remap folder IDs to existing DB nodes where applicable.
+        //    MATCH yields nothing for missing endpoints → skip silently.
         let mut seen_edges: HashSet<(String, String, String)> = HashSet::new();
         for edge in diff.added_edges.iter().filter(|e| {
             seen_edges.insert((e.src.as_str().to_owned(), e.dst.as_str().to_owned(), e.kind.to_string()))
         }) {
-            let s = esc(&edge.src.as_str());
-            let d = esc(&edge.dst.as_str());
+            let src_raw = edge.src.as_str().to_owned();
+            let dst_raw = edge.dst.as_str().to_owned();
+            let s = esc(id_remap.get(&src_raw).map(String::as_str).unwrap_or(&src_raw));
+            let d = esc(id_remap.get(&dst_raw).map(String::as_str).unwrap_or(&dst_raw));
             let k = esc(&edge.kind.to_string());
 
             conn.query(&format!(

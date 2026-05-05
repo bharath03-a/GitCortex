@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": ".claude/hooks/pre-tool-use/gcx-context.sh",
+            "type": "command"
+          }
+        ],
+        "matcher": "Read"
+      }
+    ]
+  }
+}
