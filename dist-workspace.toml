@@ -8,7 +8,9 @@ cargo-dist-version = "0.31.0"
 # CI backends to support
 ci = "github"
 # The installers to generate for each app
-installers = ["shell"]
+installers = ["shell", "homebrew"]
+tap = "bharath03-a/homebrew-tap"
+publish-jobs = ["homebrew"]
 # Target platforms to build apps for (Rust target-triple syntax)
 # Windows excluded: kuzu's bundled C++ libs conflict with the MSVC CRT on windows-msvc.
 # Windows users should build from source: cargo install --git https://github.com/bharath03-a/GitCortex --bin gcx

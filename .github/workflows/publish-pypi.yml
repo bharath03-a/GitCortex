@@ -1,0 +1,104 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  build-wheels:
+    name: Build wheel (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            platform_tag: linux_x86_64
+            archive_suffix: x86_64-unknown-linux-gnu.tar.gz
+          - target: aarch64-unknown-linux-gnu
+            platform_tag: linux_aarch64
+            archive_suffix: aarch64-unknown-linux-gnu.tar.gz
+          - target: x86_64-apple-darwin
+            platform_tag: macosx_10_12_x86_64
+            archive_suffix: x86_64-apple-darwin.tar.gz
+          - target: aarch64-apple-darwin
+            platform_tag: macosx_11_0_arm64
+            archive_suffix: aarch64-apple-darwin.tar.gz
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tools
+        run: pip install hatchling build wheel
+
+      - name: Download binary from release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          # Strip leading 'v' if present
+          VERSION="${VERSION#v}"
+          ARCHIVE="gcx-${{ matrix.archive_suffix }}"
+          gh release download "${{ github.event.release.tag_name }}" \
+            --repo "${{ github.repository }}" \
+            --pattern "$ARCHIVE" \
+            --output "$ARCHIVE"
+          tar -xzf "$ARCHIVE"
+          # cargo-dist puts the binary in gcx-<target>/gcx
+          cp "gcx-${{ matrix.target }}/gcx" python/src/gitcortex/_bin/gcx
+          chmod +x python/src/gitcortex/_bin/gcx
+
+      - name: Update version in __init__.py
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+          sed -i "s/__version__ = \".*\"/__version__ = \"$VERSION\"/" \
+            python/src/gitcortex/__init__.py
+
+      - name: Build wheel
+        working-directory: python
+        run: python -m build --wheel --no-isolation
+
+      - name: Retag wheel with correct platform
+        working-directory: python
+        run: |
+          # Rename the generic wheel to the correct platform tag
+          WHEEL=$(ls dist/*.whl)
+          # Strip the 'none-any' tag and replace with platform-specific tag
+          NEW_WHEEL=$(echo "$WHEEL" | sed 's/py3-none-any/py3-none-${{ matrix.platform_tag }}/')
+          mv "$WHEEL" "$NEW_WHEEL"
+          echo "Wheel: $NEW_WHEEL"
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.platform_tag }}
+          path: python/dist/*.whl
+
+  publish:
+    name: Publish to PyPI
+    needs: build-wheels
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+      - name: Download all wheels
+        uses: actions/download-artifact@v4
+        with:
+          pattern: wheel-*
+          path: dist/
+          merge-multiple: true
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          packages-dir: dist/
+          skip-existing: true

@@ -10,16 +10,18 @@ When you ask an AI editor to work on a large codebase, it either scans dozens of
 
 GitCortex gives your AI editor a pre-built, queryable call graph of your repo — functions, structs, traits, interfaces, call relationships, inheritance — so instead of reading raw source files it can ask precise questions like "what calls this function?" or "what implements this trait?" and get structured answers instantly.
 
-| | GitCortex v0.2 | Others |
-|---|---|---|
-| **MCP tools** | 12, each with real query depth | 4–16 (many shallow grep wrappers) |
-| **Languages** | 5 with full edge coverage (Rust, Python, TS/JS, Go, Java) | Often 1–2, or broad but shallow |
-| **IDE support** | Cursor, Claude Code, Windsurf, Copilot, Antigravity | Usually Claude Code only |
-| **Index freshness** | Automatic on every `git commit / merge / rebase / checkout` | Manual re-run |
-| **Branch graphs** | Per-branch, instant switch — no re-index | One graph per repo |
-| **Install time** | `cargo install gitcortex` + `gcx init` — under 2 minutes | Varies |
+| | GitCortex v0.2 | GitNexus | codebase-memory-mcp |
+|---|---|---|---|
+| **License** | **MIT** (commercial-friendly) | PolyForm Noncommercial | MIT |
+| **MCP tools** | **12** with real query depth | 7 + 2 prompts | 14 |
+| **Languages** | **5 — full edge coverage** (Rust, Python, TS/JS, Go, Java) | 14 (uneven depth) | 155 (shallow) |
+| **IDE support** | Cursor, Claude Code, Windsurf, Copilot, Antigravity | Claude Code, Cursor, Windsurf | Varies |
+| **Index freshness** | **Auto on every git op** (<500ms) | Manual `npx analyze` | Manual |
+| **Branch graphs** | **Per-branch, instant switch** | No | No |
+| **Runtime dep** | **None** — single static binary | Node.js required | None |
+| **Install** | `brew install`, `pip install`, `curl \| sh` | `npm install -g gitnexus` | `curl \| sh` |
 
-> **One sentence**: GitCortex is the knowledge graph that stays current without you thinking about it — and works in the editor you already use.
+> **One sentence**: GitCortex is the only MIT-licensed, zero-runtime-dependency code knowledge graph that stays current automatically and works in every major AI editor.
 
 ---
 
@@ -43,7 +45,21 @@ The graph is namespaced per branch — switching branches instantly gives you th
 
 ## Installation
 
-**macOS / Linux — pre-built binary (no Rust required):**
+**Homebrew (macOS / Linux — recommended, no Rust required):**
+
+```bash
+brew install bharath03-a/tap/gcx
+```
+
+**pip / pipx (anywhere Python is available):**
+
+```bash
+pipx install gitcortex
+# or
+pip install gitcortex
+```
+
+**macOS / Linux — curl installer (no Rust required):**
 
 ```bash
 curl --proto '=https' --tlsv1.2 -LsSf \
@@ -58,12 +74,6 @@ curl --proto '=https' --tlsv1.2 -LsSf \
 
 ```bash
 cargo install gitcortex
-```
-
-**Cargo (from git — works before crates.io publish):**
-
-```bash
-cargo install --git https://github.com/bharath03-a/GitCortex --bin gcx
 ```
 
 **Build from source:**

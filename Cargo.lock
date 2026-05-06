@@ -639,7 +639,7 @@ dependencies = [
 
 [[package]]
 name = "gitcortex"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "anyhow",
  "axum",
@@ -659,7 +659,7 @@ dependencies = [
 
 [[package]]
 name = "gitcortex-core"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "petgraph",
  "serde",
@@ -669,7 +669,7 @@ dependencies = [
 
 [[package]]
 name = "gitcortex-indexer"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "git2",
  "gitcortex-core",
@@ -686,7 +686,7 @@ dependencies = [
 
 [[package]]
 name = "gitcortex-store"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "dashmap",
  "gitcortex-core",
