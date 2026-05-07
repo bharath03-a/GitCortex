@@ -50,7 +50,7 @@ fn fetch_latest_version() -> Option<String> {
         .split("\"tag_name\"")
         .nth(1)?
         .split('"')
-        .nth(2)?
+        .nth(1)?
         .trim_start_matches('v')
         .to_owned();
 

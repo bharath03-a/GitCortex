@@ -152,7 +152,7 @@ fn check_editor_mcp(repo_root: &Path, all_ok: &mut bool) {
             ok(&format!("MCP registered  ({name})"));
             any_registered = true;
         } else {
-            info(&format!("MCP not configured for {name}  (run: gcx init --editor {}))",
+            info(&format!("MCP not configured for {name}  (run: gcx init --editor {})",
                 name.to_ascii_lowercase().replace(' ', "-")));
         }
     }
