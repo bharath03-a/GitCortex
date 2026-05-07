@@ -58,9 +58,11 @@ yarn global add gitcortex
 **pip / pipx / uv (Python — no Rust required):**
 
 ```bash
-uv tool install gitcortex
-# or
+pip install gitcortex
+# or (isolated, recommended for CLI tools)
 pipx install gitcortex
+# or
+uv tool install gitcortex
 ```
 
 **macOS / Linux — curl installer:**
