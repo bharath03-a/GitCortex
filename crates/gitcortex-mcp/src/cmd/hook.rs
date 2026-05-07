@@ -33,7 +33,9 @@ pub fn run(branch_switch: bool) -> Result<()> {
         .context("incremental index failed")?;
 
     if diff.is_empty() {
-        tracing::debug!(elapsed_ms = t0.elapsed().as_millis(), "no changes");
+        let elapsed = t0.elapsed().as_millis();
+        eprintln!("gcx  [{branch}]  (no changes)  ({elapsed}ms)");
+        tracing::debug!(elapsed_ms = elapsed, "no changes");
         return Ok(());
     }
 
