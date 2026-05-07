@@ -1,0 +1,111 @@
+name: Publish to npm
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  build-platform-packages:
+    name: Publish npm platform package (${{ matrix.pkg }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - pkg: gitcortex-darwin-arm64
+            archive_suffix: aarch64-apple-darwin.tar.gz
+            cargo_target: aarch64-apple-darwin
+          - pkg: gitcortex-darwin-x64
+            archive_suffix: x86_64-apple-darwin.tar.gz
+            cargo_target: x86_64-apple-darwin
+          - pkg: gitcortex-linux-x64
+            archive_suffix: x86_64-unknown-linux-gnu.tar.gz
+            cargo_target: x86_64-unknown-linux-gnu
+          - pkg: gitcortex-linux-arm64
+            archive_suffix: aarch64-unknown-linux-gnu.tar.gz
+            cargo_target: aarch64-unknown-linux-gnu
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Set version
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Download binary from release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ARCHIVE="gcx-${{ matrix.archive_suffix }}"
+          gh release download "${{ github.event.release.tag_name }}" \
+            --repo "${{ github.repository }}" \
+            --pattern "$ARCHIVE" \
+            --output "$ARCHIVE"
+          tar -xzf "$ARCHIVE"
+          cp "gcx-${{ matrix.cargo_target }}/gcx" \
+            "npm/packages/${{ matrix.pkg }}/bin/gcx"
+          chmod +x "npm/packages/${{ matrix.pkg }}/bin/gcx"
+
+      - name: Update version in package.json
+        working-directory: npm/packages/${{ matrix.pkg }}
+        run: |
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = process.env.VERSION;
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+      - name: Publish platform package
+        working-directory: npm/packages/${{ matrix.pkg }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
+
+  publish-main-package:
+    name: Publish main gitcortex npm package
+    needs: build-platform-packages
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Set version
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Update version in package.json (main + optionalDeps)
+        working-directory: npm/packages/gitcortex
+        run: |
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = process.env.VERSION;
+            for (const dep of Object.keys(pkg.optionalDependencies || {})) {
+              pkg.optionalDependencies[dep] = process.env.VERSION;
+            }
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+      - name: Publish main package
+        working-directory: npm/packages/gitcortex
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public

@@ -19,7 +19,7 @@ GitCortex gives your AI editor a pre-built, queryable call graph of your repo �
 | **Index freshness** | **Auto on every git op** (<500ms) | Manual `npx analyze` | Manual |
 | **Branch graphs** | **Per-branch, instant switch** | No | No |
 | **Runtime dep** | **None** — single static binary | Node.js required | None |
-| **Install** | `brew install`, `pip install`, `curl \| sh` | `npm install -g gitnexus` | `curl \| sh` |
+| **Install** | `npm install -g`, `pip install`, `curl \| sh`, `cargo install` | `npm install -g gitnexus` | `curl \| sh` |
 
 > **One sentence**: GitCortex is the only MIT-licensed, zero-runtime-dependency code knowledge graph that stays current automatically and works in every major AI editor.
 
@@ -45,21 +45,25 @@ The graph is namespaced per branch — switching branches instantly gives you th
 
 ## Installation
 
-**Homebrew (macOS / Linux — recommended, no Rust required):**
+**npm / pnpm / yarn (Node.js — no Rust required):**
 
 ```bash
-brew install bharath03-a/tap/gcx
-```
-
-**pip / pipx (anywhere Python is available):**
-
-```bash
-pipx install gitcortex
+npm install -g gitcortex
 # or
-pip install gitcortex
+pnpm add -g gitcortex
+# or
+yarn global add gitcortex
 ```
 
-**macOS / Linux — curl installer (no Rust required):**
+**pip / pipx / uv (Python — no Rust required):**
+
+```bash
+uv tool install gitcortex
+# or
+pipx install gitcortex
+```
+
+**macOS / Linux — curl installer:**
 
 ```bash
 curl --proto '=https' --tlsv1.2 -LsSf \

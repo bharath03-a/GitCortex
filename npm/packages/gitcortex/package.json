@@ -1,0 +1,24 @@
+{
+  "name": "gitcortex",
+  "version": "0.2.3",
+  "description": "Git-aware code knowledge graph — incremental AST indexing on every commit, MCP server for AI assistants",
+  "keywords": ["mcp", "code-graph", "tree-sitter", "git", "ai"],
+  "homepage": "https://github.com/bharath03-a/GitCortex",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bharath03-a/GitCortex.git"
+  },
+  "license": "MIT",
+  "bin": {
+    "gcx": "bin/gcx.js"
+  },
+  "engines": {
+    "node": ">=14"
+  },
+  "optionalDependencies": {
+    "@gitcortex/gcx-darwin-arm64": "0.2.3",
+    "@gitcortex/gcx-darwin-x64": "0.2.3",
+    "@gitcortex/gcx-linux-x64": "0.2.3",
+    "@gitcortex/gcx-linux-arm64": "0.2.3"
+  }
+}
