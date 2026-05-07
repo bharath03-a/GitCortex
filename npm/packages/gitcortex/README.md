@@ -5,14 +5,14 @@ A code knowledge graph for Git repositories. GitCortex indexes your codebase on 
 ## Install
 
 ```bash
-pip install gitcortex
+npm install -g gitcortex
 # or
-pipx install gitcortex
+pnpm add -g gitcortex
 # or
-uv tool install gitcortex
+yarn global add gitcortex
 ```
 
-Supports macOS (Apple Silicon + Intel) and Linux (x86_64 + arm64). No Rust or compiler required — a pre-built binary is bundled in the wheel.
+Supports macOS (Apple Silicon + Intel) and Linux (x86_64 + arm64). A pre-built binary is bundled — no Rust or compiler required.
 
 ## Quick start
 
@@ -62,7 +62,7 @@ Query the graph from the terminal without an AI assistant.
 ```bash
 gcx query lookup-symbol MyStruct
 gcx query find-callers process_request
-gcx query list-definitions src/lib.rs
+gcx query list-definitions src/auth.ts
 ```
 
 ### `gcx blast-radius`
@@ -113,12 +113,12 @@ gcx clean
 
 | Tool | What it answers |
 |---|---|
-| `lookup_symbol` | Where is `MyStruct` defined? |
-| `find_callers` | What calls `process_request`? |
-| `find_callees` | What does `handle_request` call? |
-| `list_definitions` | What's defined in `src/auth.rs`? |
+| `lookup_symbol` | Where is `MyClass` defined? |
+| `find_callers` | What calls `processRequest`? |
+| `find_callees` | What does `handleRequest` call? |
+| `list_definitions` | What's defined in `src/auth.ts`? |
 | `find_implementors` | What implements `AuthProvider`? |
-| `trace_path` | How do you get from `main` to `validate_token`? |
+| `trace_path` | How do you get from `main` to `validateToken`? |
 | `find_unused_symbols` | What's never called (dead code candidates)? |
 | `get_subgraph` | Everything within 2 hops of `UserService` |
 | `detect_changes` | What changed + who's affected vs main? |
@@ -132,16 +132,16 @@ All tools accept an optional `branch` parameter.
 
 ```toml
 [index]
-languages = ["rust", "typescript", "python", "go"]
+languages = ["typescript", "python", "go", "rust"]
 max_file_size_kb = 500
 ```
 
 `.gitcortex/ignore` (`.gitignore` syntax — files to exclude from indexing):
 
 ```
-target/
-build/
-**/*.generated.rs
+node_modules/
+dist/
+**/*.generated.ts
 ```
 
 ## License

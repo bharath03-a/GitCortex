@@ -9,6 +9,7 @@
     "url": "https://github.com/bharath03-a/GitCortex.git"
   },
   "license": "MIT",
+  "readme": "README.md",
   "bin": {
     "gcx": "bin/gcx.js"
   },
