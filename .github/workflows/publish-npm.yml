@@ -18,15 +18,23 @@ jobs:
           - pkg: gitcortex-darwin-arm64
             archive_suffix: aarch64-apple-darwin.tar.gz
             cargo_target: aarch64-apple-darwin
+            binary_name: gcx
           - pkg: gitcortex-darwin-x64
             archive_suffix: x86_64-apple-darwin.tar.gz
             cargo_target: x86_64-apple-darwin
+            binary_name: gcx
           - pkg: gitcortex-linux-x64
             archive_suffix: x86_64-unknown-linux-gnu.tar.gz
             cargo_target: x86_64-unknown-linux-gnu
+            binary_name: gcx
           - pkg: gitcortex-linux-arm64
             archive_suffix: aarch64-unknown-linux-gnu.tar.gz
             cargo_target: aarch64-unknown-linux-gnu
+            binary_name: gcx
+          - pkg: gitcortex-win32-x64
+            archive_suffix: x86_64-pc-windows-msvc.zip
+            cargo_target: x86_64-pc-windows-msvc
+            binary_name: gcx.exe
 
     steps:
       - uses: actions/checkout@v4
@@ -51,10 +59,14 @@ jobs:
             --repo "${{ github.repository }}" \
             --pattern "$ARCHIVE" \
             --output "$ARCHIVE"
-          tar -xzf "$ARCHIVE"
-          cp "gcx-${{ matrix.cargo_target }}/gcx" \
-            "npm/packages/${{ matrix.pkg }}/bin/gcx"
-          chmod +x "npm/packages/${{ matrix.pkg }}/bin/gcx"
+          if [[ "$ARCHIVE" == *.zip ]]; then
+            unzip -q "$ARCHIVE"
+          else
+            tar -xzf "$ARCHIVE"
+          fi
+          cp "gcx-${{ matrix.cargo_target }}/${{ matrix.binary_name }}" \
+            "npm/packages/${{ matrix.pkg }}/bin/${{ matrix.binary_name }}"
+          chmod +x "npm/packages/${{ matrix.pkg }}/bin/${{ matrix.binary_name }}"
 
       - name: Update version in package.json
         working-directory: npm/packages/${{ matrix.pkg }}

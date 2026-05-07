@@ -12,7 +12,7 @@ pipx install gitcortex
 uv tool install gitcortex
 ```
 
-Supports macOS (Apple Silicon + Intel) and Linux (x86_64 + arm64). No Rust or compiler required — a pre-built binary is bundled in the wheel.
+Supports macOS (Apple Silicon + Intel), Linux (x86_64 + arm64), and Windows (x64). No Rust or compiler required — a pre-built binary is bundled in the wheel.
 
 ## Quick start
 

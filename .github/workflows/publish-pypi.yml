@@ -18,15 +18,23 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             platform_tag: linux_x86_64
             archive_suffix: x86_64-unknown-linux-gnu.tar.gz
+            binary_name: gcx
           - target: aarch64-unknown-linux-gnu
             platform_tag: linux_aarch64
             archive_suffix: aarch64-unknown-linux-gnu.tar.gz
+            binary_name: gcx
           - target: x86_64-apple-darwin
             platform_tag: macosx_10_12_x86_64
             archive_suffix: x86_64-apple-darwin.tar.gz
+            binary_name: gcx
           - target: aarch64-apple-darwin
             platform_tag: macosx_11_0_arm64
             archive_suffix: aarch64-apple-darwin.tar.gz
+            binary_name: gcx
+          - target: x86_64-pc-windows-msvc
+            platform_tag: win_amd64
+            archive_suffix: x86_64-pc-windows-msvc.zip
+            binary_name: gcx.exe
 
     steps:
       - uses: actions/checkout@v4
@@ -51,10 +59,14 @@ jobs:
             --repo "${{ github.repository }}" \
             --pattern "$ARCHIVE" \
             --output "$ARCHIVE"
-          tar -xzf "$ARCHIVE"
-          # cargo-dist puts the binary in gcx-<target>/gcx
-          cp "gcx-${{ matrix.target }}/gcx" python/src/gitcortex/_bin/gcx
-          chmod +x python/src/gitcortex/_bin/gcx
+          if [[ "$ARCHIVE" == *.zip ]]; then
+            unzip -q "$ARCHIVE"
+          else
+            tar -xzf "$ARCHIVE"
+          fi
+          cp "gcx-${{ matrix.target }}/${{ matrix.binary_name }}" \
+            "python/src/gitcortex/_bin/${{ matrix.binary_name }}"
+          chmod +x "python/src/gitcortex/_bin/${{ matrix.binary_name }}"
 
       - name: Update version in __init__.py
         run: |

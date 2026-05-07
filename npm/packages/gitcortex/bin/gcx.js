@@ -9,7 +9,10 @@ const PLATFORM_PACKAGES = {
   "darwin-x64":   "@gitcortex/gcx-darwin-x64",
   "linux-x64":    "@gitcortex/gcx-linux-x64",
   "linux-arm64":  "@gitcortex/gcx-linux-arm64",
+  "win32-x64":    "@gitcortex/gcx-win32-x64",
 };
+
+const BINARY_NAME = process.platform === "win32" ? "gcx.exe" : "gcx";
 
 function findBinary() {
   const key = `${process.platform}-${process.arch}`;
@@ -22,7 +25,7 @@ function findBinary() {
     );
   }
   try {
-    return require.resolve(`${pkg}/bin/gcx`);
+    return require.resolve(`${pkg}/bin/${BINARY_NAME}`);
   } catch {
     throw new Error(
       `gcx: platform package ${pkg} not found.\n` +

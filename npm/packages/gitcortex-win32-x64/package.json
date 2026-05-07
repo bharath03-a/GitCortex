@@ -1,0 +1,15 @@
+{
+  "name": "@gitcortex/gcx-win32-x64",
+  "version": "0.2.3",
+  "description": "gcx binary for Windows x64",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bharath03-a/GitCortex.git"
+  },
+  "license": "MIT",
+  "os": ["win32"],
+  "cpu": ["x64"],
+  "bin": {
+    "gcx": "bin/gcx.exe"
+  }
+}

@@ -86,6 +86,10 @@ enum Commands {
     },
     /// Wipe the graph store for this repo so a fresh full index can run.
     Clean,
+    /// Diagnose setup issues: hooks, store, index freshness, MCP registration.
+    Doctor,
+    /// Check for a newer release and print the right update command.
+    Update,
 }
 
 #[derive(Subcommand)]
@@ -144,6 +148,8 @@ fn main() {
         Commands::Export { branch } => cmd::export::run(branch),
         Commands::Status { branch } => cmd::status::run(branch),
         Commands::Clean => cmd::clean::run(),
+        Commands::Doctor => cmd::doctor::run(),
+        Commands::Update => cmd::update::run(),
     };
 
     if let Err(e) = result {

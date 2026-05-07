@@ -72,9 +72,8 @@ curl --proto '=https' --tlsv1.2 -LsSf \
   https://github.com/bharath03-a/GitCortex/releases/latest/download/gcx-installer.sh | sh
 ```
 
-> Pre-built binaries for macOS (arm64/x86_64) and Linux (x86_64/aarch64) are published
-> automatically on every release via GitHub Releases.
-> Windows users should build from source (see below) — a prebuilt binary will ship in a future release.
+> Pre-built binaries for macOS (arm64/x86_64), Linux (x86_64/aarch64), and Windows (x86_64) are published
+> automatically on every release via GitHub Releases. Windows users can also install via `npm install -g gitcortex` or `pip install gitcortex`.
 
 **Cargo (from crates.io):**
 
@@ -269,6 +268,51 @@ Wipe the graph store for this repo so the next `gcx init` or commit triggers a f
 
 ```bash
 gcx clean
+```
+
+### `gcx doctor`
+
+Diagnose setup issues: hooks installed, MCP registered, store accessible, index current.
+
+```bash
+gcx doctor
+```
+
+Example output:
+```
+gcx doctor
+
+  [ok] gcx v0.2.3 on PATH (/usr/local/bin/gcx)
+  [ok] git repository detected
+  [ok] post-commit hook installed
+  [ok] post-merge hook installed
+  [ok] post-rewrite hook installed
+  [ok] post-checkout hook installed
+  [ok] graph store accessible  (1 842 nodes, 4 217 edges on main)
+  [ok] index is current  (HEAD abc1234)
+  [ok] MCP registered  (Claude Code)
+  [--] MCP not configured for Cursor  (run: gcx init --editor cursor)
+
+All checks passed.
+```
+
+### `gcx update`
+
+Check for a newer release and print the right update command for your install method.
+
+```bash
+gcx update
+```
+
+```
+gcx update
+
+  current version:  0.2.3
+  latest version:   0.2.3
+  you are up to date.
+
+  To update (cargo):
+    cargo install gitcortex
 ```
 
 ---

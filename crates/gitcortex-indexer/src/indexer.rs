@@ -173,7 +173,7 @@ impl IncrementalIndexer {
     // ── Private helpers ───────────────────────────────────────────────────────
 
     fn supported_extensions(&self) -> Vec<&'static str> {
-        vec!["rs", "py", "ts", "tsx", "js", "jsx", "mjs", "cjs", "go"]
+        vec!["rs", "py", "ts", "tsx", "js", "jsx", "mjs", "cjs", "go", "java"]
     }
 
     fn index_file(&self, repo_relative_path: &Path) -> FileIndexResult {

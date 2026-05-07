@@ -12,7 +12,7 @@ pnpm add -g gitcortex
 yarn global add gitcortex
 ```
 
-Supports macOS (Apple Silicon + Intel) and Linux (x86_64 + arm64). A pre-built binary is bundled — no Rust or compiler required.
+Supports macOS (Apple Silicon + Intel), Linux (x86_64 + arm64), and Windows (x64). A pre-built binary is bundled — no Rust or compiler required.
 
 ## Quick start
 
