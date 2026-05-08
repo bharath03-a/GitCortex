@@ -100,9 +100,11 @@ enum QueryCmd {
         #[arg(long, default_value = "main")]
         branch: String,
     },
-    /// Find all callers of a function.
+    /// Find all callers of a function. Use --depth for multi-hop traversal (1–5).
     FindCallers {
         name: String,
+        #[arg(long, default_value_t = 1)]
+        depth: u8,
         #[arg(long, default_value = "main")]
         branch: String,
     },
@@ -112,10 +114,49 @@ enum QueryCmd {
         #[arg(long, default_value = "main")]
         branch: String,
     },
-    /// Show call-graph context for all definitions in a source file.
-    Context {
-        /// Repo-relative or absolute path to the source file.
-        file: String,
+    /// 360° view of a symbol: definition, callers, callees, and type usages.
+    SymbolContext {
+        name: String,
+        #[arg(long, default_value = "main")]
+        branch: String,
+    },
+    /// Find all functions/methods called by a function. Use --depth for multi-hop (1–5).
+    FindCallees {
+        name: String,
+        #[arg(long, default_value_t = 1)]
+        depth: u8,
+        #[arg(long, default_value = "main")]
+        branch: String,
+    },
+    /// Find all types that implement or inherit a trait or interface.
+    FindImplementors {
+        name: String,
+        #[arg(long, default_value = "main")]
+        branch: String,
+    },
+    /// Find the shortest call path between two functions (max 6 hops).
+    TracePath {
+        from: String,
+        to: String,
+        #[arg(long, default_value = "main")]
+        branch: String,
+    },
+    /// Find symbols with no callers or type references (dead code candidates).
+    FindUnused {
+        /// Optional kind filter: function, method, struct, trait, interface, enum, constant.
+        #[arg(long)]
+        kind: Option<String>,
+        #[arg(long, default_value = "main")]
+        branch: String,
+    },
+    /// Show all nodes and edges within N hops of a seed symbol.
+    GetSubgraph {
+        name: String,
+        #[arg(long, default_value_t = 2)]
+        depth: u8,
+        /// Direction: in (callers/ancestors), out (callees/descendants), both.
+        #[arg(long, default_value = "both")]
+        direction: String,
         #[arg(long, default_value = "main")]
         branch: String,
     },

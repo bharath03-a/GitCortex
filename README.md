@@ -348,7 +348,16 @@ This writes `.github/workflows/gcx-blast-radius.yml`. On every pull request it r
 | `detect_changes` | Changed symbols + blast radius vs a base branch |
 | `symbol_context` | Callers, callees, and used-by for a symbol |
 
-All tools accept an optional `branch` parameter (defaults to `"main"`).
+All tools accept an optional `branch` parameter. Defaults to the branch active when `gcx serve` was started (auto-detected from `git symbolic-ref HEAD`).
+
+### MCP prompts
+
+| Prompt | What it does |
+|---|---|
+| `detect_impact` | Pre-commit impact analysis — maps a list of changed files to affected callers and scores risk LOW / MEDIUM / HIGH / CRITICAL |
+| `generate_map` | Architecture diagram — produces a Mermaid module map, key types table, and core execution flows |
+
+Prompts are multi-step workflows your AI assistant executes automatically using the tools above. In Claude Code, invoke them via the prompt picker or with `/mcp__gitcortex__detect_impact`.
 
 ### Claude Code slash commands
 

@@ -109,10 +109,12 @@ fn check_hook(repo_root: &Path, hook: &str, all_ok: &mut bool) {
     }
 }
 
+type EditorCheck = (&'static str, Box<dyn Fn() -> bool>);
+
 fn check_editor_mcp(repo_root: &Path, all_ok: &mut bool) {
     let home = dirs_home();
 
-    let editors: &[(&str, Box<dyn Fn() -> bool>)] = &[
+    let editors: &[EditorCheck] = &[
         ("Claude Code", Box::new({
             let home = home.clone();
             move || {

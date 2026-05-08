@@ -611,32 +611,7 @@ impl GraphStore for KuzuGraphStore {
         let et = db_schema::edge_table(branch);
         let name_esc = esc(trait_or_interface_name);
         let conn = self.conn()?;
-
         let mut result = conn
-            .query(&format!(
-                "MATCH (n:{nt})-[:{et}]->(trait_node:{nt}) \
-                 WHERE trait_node.name = '{name_esc}' \
-                 AND (e.kind = 'implements' OR e.kind = 'inherits') \
-                 RETURN {NODE_COLS}"
-            ))
-            .map_err(|e| GitCortexError::Store(e.to_string()))?;
-
-        // Fallback: try without aliasing the edge (KuzuQL requires the edge alias for filtering)
-        if result.by_ref().count() == 0 {
-            let conn2 = self.conn()?;
-            let mut r2 = conn2
-                .query(&format!(
-                    "MATCH (n:{nt})-[e:{et}]->(trait_node:{nt}) \
-                     WHERE trait_node.name = '{name_esc}' \
-                     AND (e.kind = 'implements' OR e.kind = 'inherits') \
-                     RETURN {NODE_COLS}"
-                ))
-                .map_err(|e| GitCortexError::Store(e.to_string()))?;
-            return rows_to_nodes(&mut r2);
-        }
-        // Re-query since we consumed the iterator
-        let conn3 = self.conn()?;
-        let mut r3 = conn3
             .query(&format!(
                 "MATCH (n:{nt})-[e:{et}]->(trait_node:{nt}) \
                  WHERE trait_node.name = '{name_esc}' \
@@ -644,7 +619,7 @@ impl GraphStore for KuzuGraphStore {
                  RETURN {NODE_COLS}"
             ))
             .map_err(|e| GitCortexError::Store(e.to_string()))?;
-        rows_to_nodes(&mut r3)
+        rows_to_nodes(&mut result)
     }
 
     fn trace_path(&self, branch: &str, from: &str, to: &str) -> Result<Vec<Node>> {
