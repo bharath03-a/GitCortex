@@ -413,8 +413,8 @@ build/
 | `Module` | all | `mod foo { }`, Python module, Go package |
 | `Struct` | Rust/Go/TS/Java | `struct Foo`, `class Foo` |
 | `Enum` | all | `enum Bar` |
-| `Trait` | Rust/Python | `trait Baz`, `Protocol` |
-| `Interface` | TS/Go/Java | `interface Foo`, structural interface |
+| `Trait` | Rust/Python | `trait Baz`, abstract base class |
+| `Interface` | TS/Go/Java/Python | `interface Foo`, structural interface, `Protocol` subclass |
 | `TypeAlias` | Rust/TS/Python | `type Alias = ...` |
 | `Function` | all | Free-standing function |
 | `Method` | all | Method inside a class / impl block |
@@ -436,6 +436,23 @@ build/
 | `Imports` | `use path::to::Thing`, `import` |
 | `Throws` | Java `throws` clause → exception type |
 | `Annotated` | Node decorated by `#[attr]`, `@decorator`, `@annotation` |
+
+### Python indexing detail
+
+The Python parser fully resolves the following patterns:
+
+| Pattern | NodeKind emitted | Metadata set |
+|---|---|---|
+| `class Foo(Protocol):` | `Interface` | `is_abstract = true` |
+| `class Foo:` / `@dataclass class Foo:` | `Struct` | — |
+| `@property def bar(self):` | `Property` | `is_property = true` |
+| `@staticmethod def fn():` | `Method` | `is_static = true` |
+| `@classmethod def fn(cls):` | `Method` | `is_static = true` |
+| `async def fn():` | `Function` / `Method` | `is_async = true` |
+| `def fn(): yield …` | `Function` | `is_generator = true` |
+| `async def fn(): yield …` | `Function` | `is_async = true`, `is_generator = true` |
+| `UPPER_SNAKE_CASE = …` at module level | `Constant` | — |
+| Nested `class Inner:` inside `class Outer:` | `Struct` | `Contains` edge from `Outer` |
 
 ### Node metadata flags
 
