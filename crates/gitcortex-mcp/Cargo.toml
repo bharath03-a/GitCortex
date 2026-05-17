@@ -11,6 +11,8 @@ homepage = "https://github.com/bharath03-a/GitCortex"
 keywords = ["mcp", "code-graph", "tree-sitter", "claude", "ai"]
 categories = ["development-tools", "command-line-utilities"]
 
+build = "build.rs"
+
 [[bin]]
 name = "gcx"
 path = "src/main.rs"

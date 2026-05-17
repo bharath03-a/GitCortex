@@ -172,14 +172,19 @@ gcx viz --format dot > graph.dot   # export Graphviz DOT to stdout
 dot -Tsvg graph.dot -o graph.svg   # render with Graphviz
 ```
 
-The browser UI is built on **Cytoscape.js** with a Catppuccin dark theme. Features:
-- **Community detection** — nodes grouped by label-propagation clusters, each cluster shaded a distinct fill
-- **Node sizing** by LOC (lines of code); **edge colour** by edge kind
-- **Filter rail** — NodeKind toggles, EdgeKind toggles, visibility (pub / pub(crate) / private), file list, async/unsafe flag toggles
-- **Search bar** — fuzzy match by name or qualified name, ↑/↓/Enter keyboard navigation
-- **Inspector panel** — callers, callees, and uses/implements lists with click-to-navigate
-- **Trace path** — type any target symbol; BFS path highlighted with animation
-- **Layout switcher** — Force (cose), Concentric, Tree (breadthfirst)
+The browser UI is a React 18 + Vite + Tailwind v4 single-page app, rendered by **Cosmograph** (`@cosmos.gl/graph`) — a WebGL/GPGPU force-directed graph engine that runs the entire simulation on the GPU. The whole bundle is embedded in the `gcx` binary via `include_bytes!`, so there is no runtime dependency beyond a browser.
+
+Features:
+- **GPGPU force layout** — clusters form naturally on first paint, smooth at 60fps even on thousands of nodes
+- **Three-pane shell** — FilterRail (left) · Cosmograph canvas (center) · Inspector (right) · StatusBar (bottom)
+- **Density modes** in the header: `Focused` (only semantically connected nodes), `Public API` (only `pub` symbols), `Full` (all)
+- **Cmd+K search palette** — fuzzy match on name and qualified_name, ↑/↓/Enter keyboard navigation, click zooms-to-node
+- **Inspector tabs** — local Callers/Callees/Uses (computed client-side from the live graph), plus a **Deep Callers** tab backed by MCP `find_callers_deep` with risk scoring (LOW / MEDIUM / HIGH / CRITICAL)
+- **Branch diff overlay** — pick a branch from the header dropdown; added nodes glow emerald, removed nodes glow red, with a live legend
+- **NodeKind + EdgeKind filter toggles** in the left rail, with per-kind counts
+- **Floating canvas controls** — zoom in/out, fit, focus selected, play/pause simulation
+- **Catppuccin dark theme** with custom Tailwind v4 design tokens (`--color-void`, `--color-accent`, etc.)
+- **Editor links** — clicking a node opens it in VS Code/Cursor/IDEA via `file:line` URI
 
 ### `gcx blast-radius`
 
