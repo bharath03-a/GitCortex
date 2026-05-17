@@ -3,16 +3,16 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use axum::{
+    Router,
     extract::{Path, Query, State},
     http::header,
     response::{IntoResponse, Json, Response},
     routing::get,
-    Router,
 };
 use gitcortex_core::{graph::Node, schema::NodeKind, store::GraphStore};
 use gitcortex_store::kuzu::KuzuGraphStore;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::VizFormat;
 
@@ -21,6 +21,10 @@ static VIZ_JS: &[u8] = include_bytes!("../../dist-viz/assets/main.js");
 static VIZ_CSS: &[u8] = include_bytes!("../../dist-viz/assets/main.css");
 static VIZ_WEBGL: &[u8] = include_bytes!("../../dist-viz/assets/webgl-device.js");
 
+/// Shared app state. `KuzuGraphStore` is held behind a `std::sync::Mutex` because
+/// the underlying `kuzu::Connection` is not `Send`-safe across `.await`; all access
+/// is gated through `tokio::task::spawn_blocking`, so the std mutex is correct and
+/// won't be held across an await point.
 struct AppState {
     store: std::sync::Mutex<KuzuGraphStore>,
     branch: String,
@@ -41,7 +45,8 @@ pub fn run(branch: String, port: u16, format: VizFormat) -> Result<()> {
                 branch,
             });
 
-            let rt = tokio::runtime::Builder::new_current_thread()
+            // Multi-thread runtime so spawn_blocking has a real worker pool to fall back to.
+            let rt = tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()?;
             rt.block_on(serve(state, port))?;
@@ -71,12 +76,15 @@ async fn serve(state: Arc<AppState>, port: u16) -> Result<()> {
         .await
         .with_context(|| format!("bind {addr}"))?;
 
+    tracing::info!(url = %url, "GitCortex viz listening");
     eprintln!("GitCortex Viz → {url}  (Ctrl-C to stop)");
     let _ = open::that(&url);
 
     axum::serve(listener, app).await.context("axum serve")?;
     Ok(())
 }
+
+// ─── Static asset handlers ────────────────────────────────────────────────────
 
 async fn root_handler() -> Response {
     static_response(VIZ_INDEX, "text/html; charset=utf-8")
@@ -98,33 +106,42 @@ fn static_response(bytes: &'static [u8], content_type: &'static str) -> Response
     ([(header::CONTENT_TYPE, content_type)], bytes).into_response()
 }
 
-async fn data_handler(State(state): State<Arc<AppState>>) -> Json<Value> {
-    let branch = &state.branch;
-    let store = match state.store.lock() {
-        Ok(s) => s,
-        Err(_) => return Json(json!({"error": "store mutex poisoned"})),
-    };
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-    let nodes = store.list_all_nodes(branch).unwrap_or_else(|e| {
-        tracing::warn!("list_all_nodes error: {e:#}");
-        vec![]
-    });
-    let edges = store.list_all_edges(branch).unwrap_or_default();
+/// Run a closure on the blocking task pool. Returns either the closure's result
+/// or a typed error response. Centralises:
+///   - converting `JoinError` (panic/cancel) into a 500-ish JSON
+///   - converting any `anyhow::Error` from the closure into a 500-ish JSON
+///   - structured tracing of both paths
+async fn run_blocking<F, R>(label: &'static str, f: F) -> Result<R, Json<Value>>
+where
+    F: FnOnce() -> Result<R, anyhow::Error> + Send + 'static,
+    R: Send + 'static,
+{
+    match tokio::task::spawn_blocking(f).await {
+        Ok(Ok(r)) => Ok(r),
+        Ok(Err(e)) => {
+            tracing::warn!(error = format!("{e:#}").as_str(), "{label} failed");
+            Err(Json(json!({ "error": format!("{e:#}") })))
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "{label} task panicked or was cancelled");
+            Err(Json(json!({ "error": "internal task error" })))
+        }
+    }
+}
 
-    let nodes_json: Vec<Value> = nodes.iter().map(node_json).collect();
-
-    let edges_json: Vec<Value> = edges
-        .iter()
-        .map(|e| {
-            json!({
-                "src":  e.src.as_str(),
-                "dst":  e.dst.as_str(),
-                "kind": e.kind.to_string(),
-            })
-        })
-        .collect();
-
-    Json(json!({ "nodes": nodes_json, "edges": edges_json }))
+/// Common pattern: open a sync lock on the store inside a blocking task.
+/// Returns the locked guard via a closure to keep `&dyn GraphStore` lifetimes tidy.
+fn with_locked_store<F, R>(state: &AppState, f: F) -> Result<R, anyhow::Error>
+where
+    F: FnOnce(&KuzuGraphStore) -> Result<R, anyhow::Error>,
+{
+    let store = state
+        .store
+        .lock()
+        .map_err(|_| anyhow::anyhow!("store mutex poisoned"))?;
+    f(&store)
 }
 
 fn node_json(n: &Node) -> Value {
@@ -143,6 +160,42 @@ fn node_json(n: &Node) -> Value {
     })
 }
 
+// ─── /data ────────────────────────────────────────────────────────────────────
+
+#[tracing::instrument(skip(state), fields(branch = %state.branch))]
+async fn data_handler(State(state): State<Arc<AppState>>) -> Json<Value> {
+    let s = state.clone();
+    let result = run_blocking("data_handler", move || {
+        with_locked_store(&s, |store| {
+            let nodes = store.list_all_nodes(&s.branch)?;
+            let edges = store.list_all_edges(&s.branch)?;
+            Ok((nodes, edges))
+        })
+    })
+    .await;
+
+    let (nodes, edges) = match result {
+        Ok(v) => v,
+        Err(j) => return j,
+    };
+
+    let nodes_json: Vec<Value> = nodes.iter().map(node_json).collect();
+    let edges_json: Vec<Value> = edges
+        .iter()
+        .map(|e| {
+            json!({
+                "src":  e.src.as_str(),
+                "dst":  e.dst.as_str(),
+                "kind": e.kind.to_string(),
+            })
+        })
+        .collect();
+
+    Json(json!({ "nodes": nodes_json, "edges": edges_json }))
+}
+
+// ─── /api/* ───────────────────────────────────────────────────────────────────
+
 #[derive(Debug, Deserialize)]
 struct DepthQuery {
     #[serde(default)]
@@ -151,20 +204,28 @@ struct DepthQuery {
     branch: Option<String>,
 }
 
+#[tracing::instrument(skip(state), fields(name = %name))]
 async fn symbol_context_handler(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
     Query(q): Query<DepthQuery>,
 ) -> Json<Value> {
-    let branch = q.branch.as_deref().unwrap_or(&state.branch).to_owned();
-    let store = match state.store.lock() {
-        Ok(s) => s,
-        Err(_) => return Json(json!({"error": "store mutex poisoned"})),
+    let branch = q.branch.unwrap_or_else(|| state.branch.clone());
+    let s = state.clone();
+    let name_for_closure = name.clone();
+    let result = run_blocking("symbol_context_handler", move || {
+        with_locked_store(&s, |store| {
+            let ctx = store.symbol_context(&branch, &name_for_closure)?;
+            Ok(ctx)
+        })
+    })
+    .await;
+
+    let ctx = match result {
+        Ok(v) => v,
+        Err(j) => return j,
     };
-    let ctx = match store.symbol_context(&branch, &name) {
-        Ok(c) => c,
-        Err(e) => return Json(json!({"error": format!("{e:#}")})),
-    };
+
     Json(json!({
         "definition": node_json(&ctx.definition),
         "callers":    ctx.callers.iter().map(node_json).collect::<Vec<_>>(),
@@ -173,22 +234,30 @@ async fn symbol_context_handler(
     }))
 }
 
+#[tracing::instrument(skip(state), fields(name = %name, depth = q.depth.unwrap_or(2)))]
 async fn callers_handler(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
     Query(q): Query<DepthQuery>,
 ) -> Json<Value> {
     let depth = q.depth.unwrap_or(2).min(5);
-    let branch = q.branch.as_deref().unwrap_or(&state.branch).to_owned();
-    let store = match state.store.lock() {
-        Ok(s) => s,
-        Err(_) => return Json(json!({"error": "store mutex poisoned"})),
+    let branch = q.branch.unwrap_or_else(|| state.branch.clone());
+    let s = state.clone();
+    let name_for_closure = name.clone();
+    let result = run_blocking("callers_handler", move || {
+        with_locked_store(&s, |store| {
+            let r = store.find_callers_deep(&branch, &name_for_closure, depth)?;
+            Ok(r)
+        })
+    })
+    .await;
+
+    let result_val = match result {
+        Ok(v) => v,
+        Err(j) => return j,
     };
-    let result = match store.find_callers_deep(&branch, &name, depth) {
-        Ok(r) => r,
-        Err(e) => return Json(json!({"error": format!("{e:#}")})),
-    };
-    let hops: Vec<Value> = result
+
+    let hops: Vec<Value> = result_val
         .hops
         .iter()
         .enumerate()
@@ -202,19 +271,27 @@ async fn callers_handler(
     Json(json!({
         "name":       name,
         "depth":      depth,
-        "risk_level": result.risk_level,
+        "risk_level": result_val.risk_level,
         "hops":       hops,
     }))
 }
 
+#[tracing::instrument(skip(state))]
 async fn branches_handler(State(state): State<Arc<AppState>>) -> Json<Value> {
     let active = state.branch.clone();
-    let branches = list_local_branches().unwrap_or_default();
-    let last_sha = state
-        .store
-        .lock()
-        .ok()
-        .and_then(|s| s.last_indexed_sha(&active).ok().flatten());
+
+    // git for-each-ref is I/O — use async tokio::process
+    let branches = list_local_branches_async().await.unwrap_or_default();
+
+    let s = state.clone();
+    let active_for_closure = active.clone();
+    let last_sha = run_blocking("branches_handler", move || {
+        with_locked_store(&s, |store| Ok(store.last_indexed_sha(&active_for_closure)?))
+    })
+    .await
+    .ok()
+    .flatten();
+
     Json(json!({
         "active":   active,
         "branches": branches,
@@ -230,20 +307,24 @@ struct UnusedQuery {
     branch: Option<String>,
 }
 
+#[tracing::instrument(skip(state), fields(kind = ?q.kind))]
 async fn unused_handler(
     State(state): State<Arc<AppState>>,
     Query(q): Query<UnusedQuery>,
 ) -> Json<Value> {
-    let branch = q.branch.as_deref().unwrap_or(&state.branch).to_owned();
+    let branch = q.branch.unwrap_or_else(|| state.branch.clone());
     let kind = q.kind.as_deref().and_then(parse_node_kind);
-    let store = match state.store.lock() {
-        Ok(s) => s,
-        Err(_) => return Json(json!({"error": "store mutex poisoned"})),
+    let s = state.clone();
+    let result = run_blocking("unused_handler", move || {
+        with_locked_store(&s, |store| Ok(store.find_unused_symbols(&branch, kind)?))
+    })
+    .await;
+
+    let nodes = match result {
+        Ok(v) => v,
+        Err(j) => return j,
     };
-    let nodes = match store.find_unused_symbols(&branch, kind) {
-        Ok(ns) => ns,
-        Err(e) => return Json(json!({"error": format!("{e:#}")})),
-    };
+
     Json(json!({
         "count": nodes.len(),
         "nodes": nodes.iter().map(node_json).collect::<Vec<_>>(),
@@ -256,18 +337,24 @@ struct BranchDiffQuery {
     head: String,
 }
 
+#[tracing::instrument(skip(state), fields(base = %q.base, head = %q.head))]
 async fn branch_diff_handler(
     State(state): State<Arc<AppState>>,
     Query(q): Query<BranchDiffQuery>,
 ) -> Json<Value> {
-    let store = match state.store.lock() {
-        Ok(s) => s,
-        Err(_) => return Json(json!({"error": "store mutex poisoned"})),
+    let s = state.clone();
+    let base = q.base.clone();
+    let head = q.head.clone();
+    let result = run_blocking("branch_diff_handler", move || {
+        with_locked_store(&s, |store| Ok(store.branch_diff(&base, &head)?))
+    })
+    .await;
+
+    let diff = match result {
+        Ok(v) => v,
+        Err(j) => return j,
     };
-    let diff = match store.branch_diff(&q.base, &q.head) {
-        Ok(d) => d,
-        Err(e) => return Json(json!({"error": format!("{e:#}")})),
-    };
+
     Json(json!({
         "base":             q.base,
         "head":             q.head,
@@ -297,16 +384,18 @@ fn parse_node_kind(s: &str) -> Option<NodeKind> {
     })
 }
 
-fn list_local_branches() -> Result<Vec<String>> {
-    let out = std::process::Command::new("git")
+/// Async version using `tokio::process::Command` — safe to call from an async route.
+async fn list_local_branches_async() -> Result<Vec<String>> {
+    let out = tokio::process::Command::new("git")
         .args(["for-each-ref", "--format=%(refname:short)", "refs/heads/"])
         .output()
+        .await
         .context("git for-each-ref failed")?;
     let stdout = String::from_utf8(out.stdout)?;
     Ok(stdout.lines().map(|s| s.trim().to_owned()).collect())
 }
 
-// ── DOT export ────────────────────────────────────────────────────────────────
+// ─── DOT export (sync — called from `run` before tokio runtime exists) ────────
 
 fn build_dot(store: &KuzuGraphStore, branch: &str) -> Result<String> {
     let nodes = store.list_all_nodes(branch)?;
@@ -360,7 +449,7 @@ fn kind_dot_color(k: &NodeKind) -> &'static str {
     }
 }
 
-// ── Utility ───────────────────────────────────────────────────────────────────
+// ─── Sync utility — only used at startup before the runtime exists ────────────
 
 fn repo_root() -> Result<PathBuf> {
     let out = std::process::Command::new("git")
