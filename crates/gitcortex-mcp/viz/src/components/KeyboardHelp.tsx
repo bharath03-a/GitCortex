@@ -47,9 +47,7 @@ export function KeyboardHelp({ onClose }: Props) {
               key={s.desc}
               className="flex items-center justify-between rounded px-2 py-1.5 hover:bg-(--color-void)"
             >
-              <span className="text-[12px] text-(--color-text-muted)">
-                {s.desc}
-              </span>
+              <span className="text-[12px] text-(--color-text-muted)">{s.desc}</span>
               <span className="flex items-center gap-1">
                 {s.keys.map((k) => (
                   <kbd

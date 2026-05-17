@@ -1,0 +1,61 @@
+name: Bug report
+description: Something is broken or behaves unexpectedly
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please run `gcx doctor` and paste its output below if relevant.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `gcx --version`
+      placeholder: gcx 0.2.3
+    validations:
+      required: true
+  - type: dropdown
+    id: domain
+    attributes:
+      label: Which surface is affected?
+      multiple: false
+      options:
+        - "gcx CLI"
+        - "MCP server (gcx serve)"
+        - "Viz HTTP server (gcx viz)"
+        - "Frontend / viz UI"
+        - "Indexer / parser (specific language)"
+        - "Git hooks"
+        - "Other"
+    validations:
+      required: true
+  - type: input
+    id: language
+    attributes:
+      label: If indexer/parser — which language?
+      placeholder: Rust / Python / TypeScript / Go / Java
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Steps to reproduce, what you expected, what you saw.
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: `gcx doctor` output
+      render: shell
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Run with `RUST_LOG=gcx=debug` for verbose output.
+      render: shell
+  - type: input
+    id: os
+    attributes:
+      label: OS / arch
+      placeholder: macOS 14 arm64 / Ubuntu 22.04 x86_64 / Windows 11
+    validations:
+      required: true

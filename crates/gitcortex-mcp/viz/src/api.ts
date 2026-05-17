@@ -41,13 +41,8 @@ export interface DeepCallersResult {
   hops: DeepCallersHop[];
 }
 
-export async function fetchDeepCallers(
-  name: string,
-  depth = 3,
-): Promise<DeepCallersResult> {
-  const r = await fetch(
-    `/api/callers/${encodeURIComponent(name)}?depth=${depth}`,
-  );
+export async function fetchDeepCallers(name: string, depth = 3): Promise<DeepCallersResult> {
+  const r = await fetch(`/api/callers/${encodeURIComponent(name)}?depth=${depth}`);
   if (!r.ok) throw new Error(`/api/callers returned ${r.status}`);
   return r.json();
 }
@@ -85,10 +80,7 @@ export interface BranchDiffResult {
   removed_node_ids: string[];
 }
 
-export async function fetchBranchDiff(
-  base: string,
-  head: string,
-): Promise<BranchDiffResult> {
+export async function fetchBranchDiff(base: string, head: string): Promise<BranchDiffResult> {
   const params = new URLSearchParams({ base, head });
   const r = await fetch(`/api/branch-diff?${params.toString()}`);
   if (!r.ok) throw new Error(`/api/branch-diff returned ${r.status}`);

@@ -8,26 +8,15 @@ export const DENSITY_LABEL: Record<DensityMode, string> = {
   full: "Full graph",
 };
 
-const SEMANTIC_EDGE_KINDS = new Set([
-  "calls",
-  "implements",
-  "inherits",
-  "uses",
-  "throws",
-]);
+const SEMANTIC_EDGE_KINDS = new Set(["calls", "implements", "inherits", "uses", "throws"]);
 
 const STRUCTURAL_KINDS = new Set(["folder", "file", "module"]);
 
-export function applyDensity(
-  data: GraphData,
-  mode: DensityMode,
-): GraphData {
+export function applyDensity(data: GraphData, mode: DensityMode): GraphData {
   if (mode === "full") return data;
 
   if (mode === "public") {
-    const keep = new Set(
-      data.nodes.filter((n) => n.visibility === "pub").map((n) => n.id),
-    );
+    const keep = new Set(data.nodes.filter((n) => n.visibility === "pub").map((n) => n.id));
     return filterByIds(data, keep);
   }
 
@@ -47,8 +36,6 @@ export function applyDensity(
 
 function filterByIds(data: GraphData, keep: Set<string>): GraphData {
   const nodes: RawNode[] = data.nodes.filter((n) => keep.has(n.id));
-  const edges: RawEdge[] = data.edges.filter(
-    (e) => keep.has(e.src) && keep.has(e.dst),
-  );
+  const edges: RawEdge[] = data.edges.filter((e) => keep.has(e.src) && keep.has(e.dst));
   return { nodes, edges };
 }

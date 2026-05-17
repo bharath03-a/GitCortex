@@ -1,13 +1,5 @@
 import { useState, type RefObject } from "react";
-import {
-  Focus,
-  Maximize2,
-  Pause,
-  Play,
-  RotateCcw,
-  ZoomIn,
-  ZoomOut,
-} from "lucide-react";
+import { Focus, Maximize2, Pause, Play, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
 import type { CosmographRef } from "@cosmograph/react";
 
 interface Props {
@@ -66,15 +58,8 @@ export function CanvasControls({ cosmoRef }: Props) {
       >
         <Focus className="size-4" />
       </Btn>
-      <Btn
-        title={playing ? "Pause layout" : "Resume layout"}
-        onClick={togglePlay}
-      >
-        {playing ? (
-          <Pause className="size-4" />
-        ) : (
-          <Play className="size-4" />
-        )}
+      <Btn title={playing ? "Pause layout" : "Resume layout"} onClick={togglePlay}>
+        {playing ? <Pause className="size-4" /> : <Play className="size-4" />}
       </Btn>
       <Btn title="Restart layout" onClick={() => c()?.start(1)}>
         <RotateCcw className="size-4" />

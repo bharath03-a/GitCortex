@@ -1,0 +1,74 @@
+version: 2
+updates:
+  # Cargo workspace
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: "America/Phoenix"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - rust
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      tree-sitter:
+        patterns:
+          - "tree-sitter*"
+      tracing:
+        patterns:
+          - "tracing"
+          - "tracing-*"
+      tokio:
+        patterns:
+          - "tokio"
+          - "tokio-*"
+
+  # Frontend (viz)
+  - package-ecosystem: npm
+    directory: "/crates/gitcortex-mcp/viz"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: "America/Phoenix"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - frontend
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+      cosmograph:
+        patterns:
+          - "@cosmograph/*"
+          - "@cosmos.gl/*"
+      vite:
+        patterns:
+          - "vite"
+          - "@vitejs/*"
+      tailwind:
+        patterns:
+          - "tailwindcss"
+          - "@tailwindcss/*"
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+      - ci
+    commit-message:
+      prefix: "chore(ci)"

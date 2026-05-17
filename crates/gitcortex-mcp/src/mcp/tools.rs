@@ -153,7 +153,11 @@ fn detect_current_branch(repo_root: &Path) -> Option<String> {
     if out.status.success() {
         let s = String::from_utf8(out.stdout).ok()?;
         let b = s.trim().to_owned();
-        if b.is_empty() { None } else { Some(b) }
+        if b.is_empty() {
+            None
+        } else {
+            Some(b)
+        }
     } else {
         None
     }
@@ -168,7 +172,11 @@ impl GitCortexServer {
         description = "Look up nodes in the code knowledge graph by name. Set fuzzy=true for substring matching (e.g. 'auth' finds 'validate_auth', 'auth_middleware'). Default is exact match."
     )]
     fn lookup_symbol(&self, Parameters(p): Parameters<LookupSymbolParams>) -> CallToolResult {
-        let branch = p.branch.as_deref().unwrap_or(&self.default_branch).to_owned();
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
         let fuzzy = p.fuzzy.unwrap_or(false);
         let store = match self.store.lock() {
             Ok(g) => g,
@@ -206,7 +214,11 @@ impl GitCortexServer {
         multiple hops. Returns callers grouped by hop distance with a risk level."
     )]
     fn find_callers(&self, Parameters(p): Parameters<FindCallersParams>) -> CallToolResult {
-        let branch = p.branch.as_deref().unwrap_or(&self.default_branch).to_owned();
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
         let depth = p.depth.unwrap_or(1).max(1);
         let store = match self.store.lock() {
             Ok(g) => g,
@@ -285,7 +297,11 @@ impl GitCortexServer {
         Use this instead of chaining lookup_symbol + find_callers separately."
     )]
     fn symbol_context(&self, Parameters(p): Parameters<SymbolContextParams>) -> CallToolResult {
-        let branch = p.branch.as_deref().unwrap_or(&self.default_branch).to_owned();
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
@@ -326,7 +342,11 @@ impl GitCortexServer {
         description = "List all functions, structs, traits, and other definitions in a source file, ordered by line number."
     )]
     fn list_definitions(&self, Parameters(p): Parameters<ListDefinitionsParams>) -> CallToolResult {
-        let branch = p.branch.as_deref().unwrap_or(&self.default_branch).to_owned();
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
@@ -414,7 +434,11 @@ impl GitCortexServer {
         and a risk level. Use this before committing to understand blast radius automatically."
     )]
     fn detect_changes(&self, Parameters(p): Parameters<DetectChangesParams>) -> CallToolResult {
-        let branch = p.branch.as_deref().unwrap_or(&self.default_branch).to_owned();
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
 
         let diff_text = run_git_diff(&self.repo_root, &["diff", "--staged"])
             .filter(|s| !s.trim().is_empty())
@@ -490,7 +514,11 @@ impl GitCortexServer {
         Returns callees grouped by hop distance."
     )]
     fn find_callees(&self, Parameters(p): Parameters<FindCalleesParams>) -> CallToolResult {
-        let branch = p.branch.as_deref().unwrap_or(&self.default_branch).to_owned();
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
         let depth = p.depth.unwrap_or(1).max(1);
         let store = match self.store.lock() {
             Ok(g) => g,
@@ -537,7 +565,11 @@ impl GitCortexServer {
         &self,
         Parameters(p): Parameters<FindImplementorsParams>,
     ) -> CallToolResult {
-        let branch = p.branch.as_deref().unwrap_or(&self.default_branch).to_owned();
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
@@ -572,7 +604,11 @@ impl GitCortexServer {
         Most useful for debugging 'how can A reach B?' questions."
     )]
     fn trace_path(&self, Parameters(p): Parameters<TracePathParams>) -> CallToolResult {
-        let branch = p.branch.as_deref().unwrap_or(&self.default_branch).to_owned();
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
@@ -611,7 +647,11 @@ impl GitCortexServer {
         &self,
         Parameters(p): Parameters<ListSymbolsInRangeParams>,
     ) -> CallToolResult {
-        let branch = p.branch.as_deref().unwrap_or(&self.default_branch).to_owned();
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
@@ -652,7 +692,11 @@ impl GitCortexServer {
         &self,
         Parameters(p): Parameters<FindUnusedSymbolsParams>,
     ) -> CallToolResult {
-        let branch = p.branch.as_deref().unwrap_or(&self.default_branch).to_owned();
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
         let kind = p.kind.as_deref().and_then(|k| match k {
             "function" => Some(NodeKind::Function),
             "method" => Some(NodeKind::Method),
@@ -699,7 +743,11 @@ impl GitCortexServer {
         or 'both' (default) for both directions. Ideal for architecture rendering and impact analysis."
     )]
     fn get_subgraph(&self, Parameters(p): Parameters<GetSubgraphParams>) -> CallToolResult {
-        let branch = p.branch.as_deref().unwrap_or(&self.default_branch).to_owned();
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
         let depth = p.depth.unwrap_or(2);
         let direction = p.direction.as_deref().unwrap_or("both").to_owned();
         let store = match self.store.lock() {

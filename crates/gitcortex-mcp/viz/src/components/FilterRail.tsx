@@ -42,8 +42,7 @@ export function FilterRail({
     const edgeCounts: Record<string, number> = {};
     const visCounts: Record<string, number> = { pub: 0, pub_crate: 0, private: 0 };
     const flagCounts: Record<string, number> = { async: 0, unsafe: 0 };
-    if (!data)
-      return { kindCounts, edgeCounts, visCounts, flagCounts };
+    if (!data) return { kindCounts, edgeCounts, visCounts, flagCounts };
     for (const n of data.nodes) {
       kindCounts[n.kind] = (kindCounts[n.kind] ?? 0) + 1;
       if (visCounts[n.visibility] != null) visCounts[n.visibility] += 1;
@@ -56,11 +55,7 @@ export function FilterRail({
     return { kindCounts, edgeCounts, visCounts, flagCounts };
   }, [data]);
 
-  const toggle = <T extends string>(
-    set: Set<T>,
-    key: T,
-    apply: (s: Set<T>) => void,
-  ) => {
+  const toggle = <T extends string>(set: Set<T>, key: T, apply: (s: Set<T>) => void) => {
     const next = new Set(set);
     if (next.has(key)) next.delete(key);
     else next.add(key);
@@ -108,9 +103,7 @@ export function FilterRail({
               key={v}
               checked={!hiddenVisibility.has(v)}
               onChange={() => toggle(hiddenVisibility, v, setHiddenVisibility)}
-              swatchColor={
-                v === "pub" ? "#a6e3a1" : v === "pub_crate" ? "#f9e2af" : "#6c7086"
-              }
+              swatchColor={v === "pub" ? "#a6e3a1" : v === "pub_crate" ? "#f9e2af" : "#6c7086"}
               label={VIS_LABEL[v]}
               count={visCounts[v] ?? 0}
             />
@@ -152,13 +145,7 @@ export function FilterRail({
   );
 }
 
-function FilterSection({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+function FilterSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="mb-5">
       <h3 className="mb-2 text-[10px] font-semibold tracking-widest text-(--color-text-dim) uppercase">
@@ -193,17 +180,11 @@ function FilterRow({
         className="accent-(--color-accent)"
       />
       <span
-        className={
-          swatchKind === "dot"
-            ? "size-2.5 rounded-full"
-            : "h-0.5 w-3 rounded"
-        }
+        className={swatchKind === "dot" ? "size-2.5 rounded-full" : "h-0.5 w-3 rounded"}
         style={{ background: swatchColor }}
       />
       <span className="flex-1 text-[12px] capitalize">{label}</span>
-      <span className="font-mono text-[10px] text-(--color-text-dim)">
-        {count}
-      </span>
+      <span className="font-mono text-[10px] text-(--color-text-dim)">{count}</span>
     </label>
   );
 }

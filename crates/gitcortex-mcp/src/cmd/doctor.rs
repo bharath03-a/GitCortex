@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
-use gitcortex_store::kuzu::KuzuGraphStore;
 use gitcortex_core::store::GraphStore;
+use gitcortex_store::kuzu::KuzuGraphStore;
 
 pub fn run() -> Result<()> {
     eprintln!("gcx doctor\n");
@@ -11,10 +11,7 @@ pub fn run() -> Result<()> {
 
     // 1. Binary version
     let exe = std::env::current_exe().ok();
-    let exe_display = exe
-        .as_deref()
-        .and_then(|p| p.to_str())
-        .unwrap_or("unknown");
+    let exe_display = exe.as_deref().and_then(|p| p.to_str()).unwrap_or("unknown");
     ok(&format!(
         "gcx v{} on PATH ({})",
         env!("CARGO_PKG_VERSION"),
@@ -28,7 +25,11 @@ pub fn run() -> Result<()> {
             r
         }
         None => {
-            fail("not inside a git repository", "cd into a git repo first", &mut all_ok);
+            fail(
+                "not inside a git repository",
+                "cd into a git repo first",
+                &mut all_ok,
+            );
             print_summary(all_ok);
             return Ok(());
         }
@@ -52,7 +53,10 @@ pub fn run() -> Result<()> {
             // 5. Index freshness
             match (store.last_indexed_sha(&branch), head_sha(&repo_root)) {
                 (Ok(Some(indexed)), Ok(head)) if indexed == head => {
-                    ok(&format!("index is current  (HEAD {})", &head[..7.min(head.len())]));
+                    ok(&format!(
+                        "index is current  (HEAD {})",
+                        &head[..7.min(head.len())]
+                    ));
                 }
                 (Ok(Some(indexed)), Ok(head)) => {
                     let msg = format!(
@@ -60,10 +64,18 @@ pub fn run() -> Result<()> {
                         &indexed[..7.min(indexed.len())],
                         &head[..7.min(head.len())]
                     );
-                    fail(&msg, "run: git commit --allow-empty  or  gcx hook", &mut all_ok);
+                    fail(
+                        &msg,
+                        "run: git commit --allow-empty  or  gcx hook",
+                        &mut all_ok,
+                    );
                 }
                 (Ok(None), _) => {
-                    fail("no index found for this branch", "run: gcx init", &mut all_ok);
+                    fail(
+                        "no index found for this branch",
+                        "run: gcx init",
+                        &mut all_ok,
+                    );
                 }
                 _ => {
                     warn("could not determine index freshness");
@@ -101,11 +113,7 @@ fn check_hook(repo_root: &Path, hook: &str, all_ok: &mut bool) {
             );
         }
     } else {
-        fail(
-            &format!("{hook} hook missing"),
-            "run: gcx init",
-            all_ok,
-        );
+        fail(&format!("{hook} hook missing"), "run: gcx init", all_ok);
     }
 }
 
@@ -115,37 +123,58 @@ fn check_editor_mcp(repo_root: &Path, all_ok: &mut bool) {
     let home = dirs_home();
 
     let editors: &[EditorCheck] = &[
-        ("Claude Code", Box::new({
-            let home = home.clone();
-            move || {
-                home.as_ref()
-                    .map(|h| {
-                        let p = h.join(".claude.json");
-                        p.exists() && {
-                            std::fs::read_to_string(&p)
-                                .map(|s| s.contains("gcx"))
-                                .unwrap_or(false)
-                        }
-                    })
-                    .unwrap_or(false)
-            }
-        })),
-        ("Cursor", Box::new({
-            let root = repo_root.to_path_buf();
-            move || root.join(".cursor").join("mcp.json").exists()
-        })),
-        ("Windsurf", Box::new({
-            let home = home.clone();
-            move || {
-                home.as_ref()
-                    .map(|h| h.join(".codeium").join("windsurf").join("mcp_config.json").exists())
-                    .unwrap_or(false)
-            }
-        })),
-        ("Copilot", Box::new({
-            let root = repo_root.to_path_buf();
-            move || root.join(".github").join("copilot-instructions.md").exists()
-        })),
+        (
+            "Claude Code",
+            Box::new({
+                let home = home.clone();
+                move || {
+                    home.as_ref()
+                        .map(|h| {
+                            let p = h.join(".claude.json");
+                            p.exists() && {
+                                std::fs::read_to_string(&p)
+                                    .map(|s| s.contains("gcx"))
+                                    .unwrap_or(false)
+                            }
+                        })
+                        .unwrap_or(false)
+                }
+            }),
+        ),
+        (
+            "Cursor",
+            Box::new({
+                let root = repo_root.to_path_buf();
+                move || root.join(".cursor").join("mcp.json").exists()
+            }),
+        ),
+        (
+            "Windsurf",
+            Box::new({
+                let home = home.clone();
+                move || {
+                    home.as_ref()
+                        .map(|h| {
+                            h.join(".codeium")
+                                .join("windsurf")
+                                .join("mcp_config.json")
+                                .exists()
+                        })
+                        .unwrap_or(false)
+                }
+            }),
+        ),
+        (
+            "Copilot",
+            Box::new({
+                let root = repo_root.to_path_buf();
+                move || {
+                    root.join(".github")
+                        .join("copilot-instructions.md")
+                        .exists()
+                }
+            }),
+        ),
     ];
 
     let mut any_registered = false;
@@ -154,17 +183,15 @@ fn check_editor_mcp(repo_root: &Path, all_ok: &mut bool) {
             ok(&format!("MCP registered  ({name})"));
             any_registered = true;
         } else {
-            info(&format!("MCP not configured for {name}  (run: gcx init --editor {})",
-                name.to_ascii_lowercase().replace(' ', "-")));
+            info(&format!(
+                "MCP not configured for {name}  (run: gcx init --editor {})",
+                name.to_ascii_lowercase().replace(' ', "-")
+            ));
         }
     }
 
     if !any_registered {
-        fail(
-            "MCP not registered for any editor",
-            "run: gcx init",
-            all_ok,
-        );
+        fail("MCP not registered for any editor", "run: gcx init", all_ok);
     }
 }
 

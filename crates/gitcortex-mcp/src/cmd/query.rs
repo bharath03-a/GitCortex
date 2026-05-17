@@ -27,7 +27,11 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
             }
         }
 
-        QueryCmd::FindCallers { name, depth, branch } => {
+        QueryCmd::FindCallers {
+            name,
+            depth,
+            branch,
+        } => {
             if depth <= 1 {
                 let nodes = store.find_callers(&branch, &name)?;
                 if nodes.is_empty() {
@@ -124,7 +128,11 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
             }
         }
 
-        QueryCmd::FindCallees { name, depth, branch } => {
+        QueryCmd::FindCallees {
+            name,
+            depth,
+            branch,
+        } => {
             let result = store.find_callees(&branch, &name, depth)?;
             if result.hops.iter().all(|h| h.is_empty()) {
                 println!("no callees of '{name}' on branch '{branch}'");
@@ -201,7 +209,12 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
             }
         }
 
-        QueryCmd::GetSubgraph { name, depth, direction, branch } => {
+        QueryCmd::GetSubgraph {
+            name,
+            depth,
+            direction,
+            branch,
+        } => {
             let sg = store.get_subgraph(&branch, &name, depth, &direction)?;
             if sg.nodes.is_empty() {
                 println!("no subgraph for '{name}' on branch '{branch}'");
@@ -228,14 +241,14 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
 
 fn parse_node_kind(s: &str) -> Option<NodeKind> {
     match s {
-        "function"  => Some(NodeKind::Function),
-        "method"    => Some(NodeKind::Method),
-        "struct"    => Some(NodeKind::Struct),
-        "trait"     => Some(NodeKind::Trait),
+        "function" => Some(NodeKind::Function),
+        "method" => Some(NodeKind::Method),
+        "struct" => Some(NodeKind::Struct),
+        "trait" => Some(NodeKind::Trait),
         "interface" => Some(NodeKind::Interface),
-        "enum"      => Some(NodeKind::Enum),
-        "constant"  => Some(NodeKind::Constant),
-        _           => None,
+        "enum" => Some(NodeKind::Enum),
+        "constant" => Some(NodeKind::Constant),
+        _ => None,
     }
 }
 

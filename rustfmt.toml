@@ -1,0 +1,10 @@
+# Project-wide rustfmt config.
+# Stable-channel-safe options only — unstable ones would break CI on stable.
+
+edition = "2021"
+max_width = 100
+hard_tabs = false
+tab_spaces = 4
+newline_style = "Unix"
+use_field_init_shorthand = true
+use_try_shorthand = true

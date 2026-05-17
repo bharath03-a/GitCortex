@@ -2,12 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { Cosmograph, CosmographProvider } from "@cosmograph/react";
 import type { CosmographRef } from "@cosmograph/react";
 import type { GraphData, RawNode } from "../api";
-import {
-  EDGE_COLOR,
-  EDGE_WIDTH,
-  KIND_COLOR,
-  dimColor,
-} from "../theme/colors";
+import { EDGE_COLOR, EDGE_WIDTH, KIND_COLOR, dimColor } from "../theme/colors";
 import { CanvasControls } from "./CanvasControls";
 import type { DiffOverlay } from "../hooks/useBranchDiff";
 
@@ -53,43 +48,42 @@ export function CosmosCanvas({
 }: Props) {
   const ref = useRef<CosmographRef>(null);
 
-  const { points, links, nodeIndexById, indexToNode, neighbors } =
-    useMemo(() => {
-      const points: PointRow[] = [];
-      const nodeIndexById = new Map<string, number>();
-      const indexToNode = new Map<number, RawNode>();
-      data.nodes.forEach((n, i) => {
-        nodeIndexById.set(n.id, i);
-        indexToNode.set(i, n);
-        points.push({
-          id: n.id,
-          index: i,
-          kind: n.kind,
-          name: n.name,
-          loc: n.loc,
-        });
+  const { points, links, nodeIndexById, indexToNode, neighbors } = useMemo(() => {
+    const points: PointRow[] = [];
+    const nodeIndexById = new Map<string, number>();
+    const indexToNode = new Map<number, RawNode>();
+    data.nodes.forEach((n, i) => {
+      nodeIndexById.set(n.id, i);
+      indexToNode.set(i, n);
+      points.push({
+        id: n.id,
+        index: i,
+        kind: n.kind,
+        name: n.name,
+        loc: n.loc,
       });
+    });
 
-      const links: LinkRow[] = [];
-      const neighbors = new Map<string, Set<string>>();
-      for (const e of data.edges) {
-        const si = nodeIndexById.get(e.src);
-        const ti = nodeIndexById.get(e.dst);
-        if (si == null || ti == null) continue;
-        links.push({
-          source: e.src,
-          target: e.dst,
-          sourceIndex: si,
-          targetIndex: ti,
-          kind: e.kind,
-        });
-        if (!neighbors.has(e.src)) neighbors.set(e.src, new Set());
-        if (!neighbors.has(e.dst)) neighbors.set(e.dst, new Set());
-        neighbors.get(e.src)!.add(e.dst);
-        neighbors.get(e.dst)!.add(e.src);
-      }
-      return { points, links, nodeIndexById, indexToNode, neighbors };
-    }, [data]);
+    const links: LinkRow[] = [];
+    const neighbors = new Map<string, Set<string>>();
+    for (const e of data.edges) {
+      const si = nodeIndexById.get(e.src);
+      const ti = nodeIndexById.get(e.dst);
+      if (si == null || ti == null) continue;
+      links.push({
+        source: e.src,
+        target: e.dst,
+        sourceIndex: si,
+        targetIndex: ti,
+        kind: e.kind,
+      });
+      if (!neighbors.has(e.src)) neighbors.set(e.src, new Set());
+      if (!neighbors.has(e.dst)) neighbors.set(e.dst, new Set());
+      neighbors.get(e.src)!.add(e.dst);
+      neighbors.get(e.dst)!.add(e.src);
+    }
+    return { points, links, nodeIndexById, indexToNode, neighbors };
+  }, [data]);
 
   const highlightSet = useMemo(() => {
     if (!selected) return null;
@@ -170,14 +164,11 @@ export function CosmosCanvas({
           const link = index != null ? links[index] : undefined;
           if (!link) return base;
           const lit =
-            highlightSet.has(String(link.source)) &&
-            highlightSet.has(String(link.target));
+            highlightSet.has(String(link.source)) && highlightSet.has(String(link.target));
           return lit ? base : dimColor(base, 0.82);
         }}
         linkWidthBy="kind"
-        linkWidthByFn={(value: unknown): number =>
-          EDGE_WIDTH[String(value)] ?? 1
-        }
+        linkWidthByFn={(value: unknown): number => EDGE_WIDTH[String(value)] ?? 1}
         linkArrowsSizeScale={0.6}
         backgroundColor="rgba(0,0,0,0)"
         spaceSize={4096}

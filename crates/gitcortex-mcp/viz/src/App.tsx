@@ -20,9 +20,7 @@ export default function App() {
   const [hiddenEdgeKinds, setHiddenEdgeKinds] = useState<Set<string>>(
     new Set(["contains", "imports"]),
   );
-  const [hiddenVisibility, setHiddenVisibility] = useState<Set<Visibility>>(
-    new Set(),
-  );
+  const [hiddenVisibility, setHiddenVisibility] = useState<Set<Visibility>>(new Set());
   const [flagFilter, setFlagFilter] = useState<Set<Flag>>(new Set());
   const [railOpen, setRailOpen] = useState(true);
   const [density, setDensity] = useState<DensityMode>("focused");
@@ -49,8 +47,7 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const isInput =
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement;
+        e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
       const meta = e.metaKey || e.ctrlKey;
       if (meta && e.key.toLowerCase() === "k") {
         e.preventDefault();
@@ -211,9 +208,7 @@ export default function App() {
           {unusedIds && unusedIds.size > 0 && !diffOverlay && (
             <div className="animate-fade-in absolute top-3 right-3 z-10 flex items-center gap-2 rounded-lg border border-(--color-border-subtle) bg-(--color-elevated)/90 px-3 py-1.5 font-mono text-[11px] backdrop-blur-sm">
               <span className="size-2 rounded-full bg-(--color-warn)" />
-              <span className="text-(--color-warn)">
-                {unusedIds.size} unused symbols
-              </span>
+              <span className="text-(--color-warn)">{unusedIds.size} unused symbols</span>
               <button
                 onClick={() => setUnusedIds(null)}
                 className="ml-1 text-(--color-text-dim) hover:text-(--color-text-primary)"

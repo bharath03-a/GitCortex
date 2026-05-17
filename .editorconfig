@@ -1,0 +1,23 @@
+# EditorConfig — https://editorconfig.org
+# Top-level marker — stops cascading from parent dirs.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{rs,toml}]
+indent_size = 4
+
+[*.{js,jsx,ts,tsx,json,html,css,yml,yaml,md}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false   # markdown line-break uses two trailing spaces
+
+[Makefile]
+indent_style = tab

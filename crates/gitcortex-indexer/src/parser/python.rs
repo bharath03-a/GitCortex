@@ -967,7 +967,10 @@ mod tests {
             .collect();
         assert_eq!(ifaces.len(), 1, "expected 1 Interface, got: {ifaces:?}");
         assert_eq!(ifaces[0].name, "MyProto");
-        assert!(ifaces[0].metadata.is_abstract, "Protocol should be is_abstract");
+        assert!(
+            ifaces[0].metadata.is_abstract,
+            "Protocol should be is_abstract"
+        );
     }
 
     #[test]
@@ -987,7 +990,8 @@ mod tests {
 
     #[test]
     fn property_decorator_yields_property_kind() {
-        let src = "class Foo:\n    @property\n    def bar(self) -> str:\n        return self._bar\n";
+        let src =
+            "class Foo:\n    @property\n    def bar(self) -> str:\n        return self._bar\n";
         let (nodes, _) = parse(src);
         let props: Vec<_> = nodes
             .iter()
@@ -1008,7 +1012,10 @@ mod tests {
             .collect();
         assert_eq!(methods.len(), 1);
         assert_eq!(methods[0].name, "create");
-        assert!(methods[0].metadata.is_static, "staticmethod should set is_static");
+        assert!(
+            methods[0].metadata.is_static,
+            "staticmethod should set is_static"
+        );
     }
 
     #[test]
@@ -1021,7 +1028,10 @@ mod tests {
             .collect();
         assert_eq!(methods.len(), 1);
         assert_eq!(methods[0].name, "from_str");
-        assert!(methods[0].metadata.is_static, "classmethod should set is_static");
+        assert!(
+            methods[0].metadata.is_static,
+            "classmethod should set is_static"
+        );
     }
 
     #[test]
@@ -1047,7 +1057,10 @@ mod tests {
             .filter(|n| n.kind == NodeKind::Function)
             .collect();
         assert_eq!(fns.len(), 1);
-        assert!(fns[0].metadata.is_generator, "yield fn should be is_generator");
+        assert!(
+            fns[0].metadata.is_generator,
+            "yield fn should be is_generator"
+        );
         assert!(!fns[0].metadata.is_async);
     }
 
@@ -1060,8 +1073,14 @@ mod tests {
             .filter(|n| n.kind == NodeKind::Function)
             .collect();
         assert_eq!(fns.len(), 1);
-        assert!(fns[0].metadata.is_async, "async generator should be is_async");
-        assert!(fns[0].metadata.is_generator, "async generator should be is_generator");
+        assert!(
+            fns[0].metadata.is_async,
+            "async generator should be is_async"
+        );
+        assert!(
+            fns[0].metadata.is_generator,
+            "async generator should be is_generator"
+        );
     }
 
     #[test]
@@ -1073,7 +1092,10 @@ mod tests {
             .iter()
             .filter(|n| n.kind == NodeKind::Function)
             .collect();
-        let outer = fns.iter().find(|n| n.name == "outer").expect("outer not found");
+        let outer = fns
+            .iter()
+            .find(|n| n.name == "outer")
+            .expect("outer not found");
         assert!(
             !outer.metadata.is_generator,
             "outer should NOT be generator — yield is in nested fn"
@@ -1092,7 +1114,10 @@ mod tests {
             .collect();
         let names: Vec<&str> = constants.iter().map(|n| n.name.as_str()).collect();
         assert!(names.contains(&"MAX_SIZE"), "expected Constant MAX_SIZE");
-        assert!(names.contains(&"DEFAULT_NAME"), "expected Constant DEFAULT_NAME");
+        assert!(
+            names.contains(&"DEFAULT_NAME"),
+            "expected Constant DEFAULT_NAME"
+        );
         assert!(
             !names.contains(&"ignored"),
             "lowercase assignment should not be a Constant"
@@ -1105,14 +1130,22 @@ mod tests {
     fn nested_class_emits_contains_edge_from_parent() {
         let src = "class Outer:\n    class Inner:\n        pass\n";
         let (nodes, edges) = parse(src);
-        let outer = nodes.iter().find(|n| n.name == "Outer").expect("Outer not found");
-        let inner = nodes.iter().find(|n| n.name == "Inner").expect("Inner not found");
+        let outer = nodes
+            .iter()
+            .find(|n| n.name == "Outer")
+            .expect("Outer not found");
+        let inner = nodes
+            .iter()
+            .find(|n| n.name == "Inner")
+            .expect("Inner not found");
         let contains: Vec<_> = edges
             .iter()
             .filter(|e| e.kind == EdgeKind::Contains)
             .collect();
         assert!(
-            contains.iter().any(|e| e.src == outer.id && e.dst == inner.id),
+            contains
+                .iter()
+                .any(|e| e.src == outer.id && e.dst == inner.id),
             "expected Contains Outer → Inner"
         );
     }
@@ -1121,7 +1154,8 @@ mod tests {
 
     #[test]
     fn multiple_type_annotations_produce_uses_entries() {
-        let src = "class Req:\n    pass\nclass Resp:\n    pass\ndef handler(r: Req) -> Resp:\n    pass\n";
+        let src =
+            "class Req:\n    pass\nclass Resp:\n    pass\ndef handler(r: Req) -> Resp:\n    pass\n";
         let (_, _, _, uses, _, _) = parse_full(src);
         let uses_req: Vec<_> = uses.iter().filter(|(_, n)| n == "Req").collect();
         let uses_resp: Vec<_> = uses.iter().filter(|(_, n)| n == "Resp").collect();
@@ -1136,8 +1170,14 @@ mod tests {
         use gitcortex_core::schema::Visibility;
         let src = "class Foo:\n    def _internal(self):\n        pass\n    def public(self):\n        pass\n";
         let (nodes, _) = parse(src);
-        let internal = nodes.iter().find(|n| n.name == "_internal").expect("_internal not found");
-        let public = nodes.iter().find(|n| n.name == "public").expect("public not found");
+        let internal = nodes
+            .iter()
+            .find(|n| n.name == "_internal")
+            .expect("_internal not found");
+        let public = nodes
+            .iter()
+            .find(|n| n.name == "public")
+            .expect("public not found");
         assert_eq!(internal.metadata.visibility, Visibility::Private);
         assert_eq!(public.metadata.visibility, Visibility::Pub);
     }
@@ -1156,8 +1196,14 @@ mod tests {
     fn method_call_via_self_creates_calls_edge() {
         let src = "class Svc:\n    def run(self):\n        self.process()\n    def process(self):\n        pass\n";
         let (nodes, edges) = parse(src);
-        let run = nodes.iter().find(|n| n.name == "run").expect("run not found");
-        let process = nodes.iter().find(|n| n.name == "process").expect("process not found");
+        let run = nodes
+            .iter()
+            .find(|n| n.name == "run")
+            .expect("run not found");
+        let process = nodes
+            .iter()
+            .find(|n| n.name == "process")
+            .expect("process not found");
         let calls: Vec<_> = edges.iter().filter(|e| e.kind == EdgeKind::Calls).collect();
         // self.process() resolves immediately because "process" is pre-indexed in pass 1
         assert!(

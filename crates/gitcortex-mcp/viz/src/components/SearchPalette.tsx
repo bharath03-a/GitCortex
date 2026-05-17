@@ -101,9 +101,7 @@ export function SearchPalette({ data, onClose, onSelect }: Props) {
                   className="size-2 shrink-0 rounded-full"
                   style={{ background: KIND_COLOR[n.kind] ?? "#888" }}
                 />
-                <span className="flex-1 truncate font-mono text-[12px]">
-                  {n.name}
-                </span>
+                <span className="flex-1 truncate font-mono text-[12px]">{n.name}</span>
                 <span className="shrink-0 text-[10px] tracking-widest text-(--color-text-dim) uppercase">
                   {KIND_LABEL[n.kind] ?? n.kind}
                 </span>

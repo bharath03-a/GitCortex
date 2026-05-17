@@ -1,10 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, ExternalLink, X } from "lucide-react";
-import type {
-  DeepCallersResult,
-  GraphData,
-  RawNode,
-} from "../api";
+import type { DeepCallersResult, GraphData, RawNode } from "../api";
 import { fetchDeepCallers } from "../api";
 import { KIND_COLOR, KIND_LABEL } from "../theme/colors";
 
@@ -26,14 +22,7 @@ const RISK_TONE: Record<string, string> = {
   CRITICAL: "text-(--color-bad) bg-red-500/20",
 };
 
-export function Inspector({
-  node,
-  data,
-  onClose,
-  onSelect,
-  depth,
-  onDepthChange,
-}: Props) {
+export function Inspector({ node, data, onClose, onSelect, depth, onDepthChange }: Props) {
   const [tab, setTab] = useState<Tab>("local");
   const { callers, callees, uses } = useMemo(() => {
     const callers: RawNode[] = [];
@@ -66,17 +55,12 @@ export function Inspector({
       <div className="flex items-start justify-between border-b border-(--color-border-subtle) p-4">
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex items-center gap-2">
-            <span
-              className="size-2.5 rounded-full"
-              style={{ background: color }}
-            />
+            <span className="size-2.5 rounded-full" style={{ background: color }} />
             <span className="text-[10px] tracking-widest text-(--color-text-dim) uppercase">
               {KIND_LABEL[node.kind] ?? node.kind}
             </span>
           </div>
-          <h2 className="truncate font-mono text-[14px] font-medium">
-            {node.name}
-          </h2>
+          <h2 className="truncate font-mono text-[14px] font-medium">{node.name}</h2>
           {node.qualified_name && node.qualified_name !== node.name && (
             <div className="mt-1 truncate font-mono text-[11px] text-(--color-text-muted)">
               {node.qualified_name}
@@ -143,9 +127,7 @@ export function Inspector({
             <NodeList title="Callers" nodes={callers} onSelect={onSelect} />
             <NodeList title="Callees" nodes={callees} onSelect={onSelect} />
             <NodeList title="Uses" nodes={uses} onSelect={onSelect} />
-            {callers.length === 0 &&
-              callees.length === 0 &&
-              uses.length === 0 && <EmptyHint />}
+            {callers.length === 0 && callees.length === 0 && uses.length === 0 && <EmptyHint />}
           </>
         )}
         {tab === "deep" && <DeepCallersPanel node={node} onSelect={onSelect} />}
@@ -154,13 +136,7 @@ export function Inspector({
   );
 }
 
-function DeepCallersPanel({
-  node,
-  onSelect,
-}: {
-  node: RawNode;
-  onSelect: (n: RawNode) => void;
-}) {
+function DeepCallersPanel({ node, onSelect }: { node: RawNode; onSelect: (n: RawNode) => void }) {
   const [result, setResult] = useState<DeepCallersResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -182,10 +158,7 @@ function DeepCallersPanel({
         Tracing callers up to depth {depth}…
       </div>
     );
-  if (error)
-    return (
-      <div className="px-2 py-4 text-[12px] text-(--color-bad)">{error}</div>
-    );
+  if (error) return <div className="px-2 py-4 text-[12px] text-(--color-bad)">{error}</div>;
   if (!result) return null;
 
   const total = result.hops.reduce((acc, h) => acc + h.nodes.length, 0);
@@ -197,19 +170,12 @@ function DeepCallersPanel({
         <div className="text-[10px] tracking-widest text-(--color-text-dim) uppercase">
           {total} affected · depth {result.depth}
         </div>
-        <span
-          className={`rounded px-2 py-0.5 font-mono text-[10px] ${tone}`}
-        >
+        <span className={`rounded px-2 py-0.5 font-mono text-[10px] ${tone}`}>
           {result.risk_level}
         </span>
       </div>
       {result.hops.map((h) => (
-        <NodeList
-          key={h.hop}
-          title={`Hop ${h.hop}`}
-          nodes={h.nodes}
-          onSelect={onSelect}
-        />
+        <NodeList key={h.hop} title={`Hop ${h.hop}`} nodes={h.nodes} onSelect={onSelect} />
       ))}
       {total === 0 && <EmptyHint label="No callers found" />}
     </div>
@@ -217,11 +183,7 @@ function DeepCallersPanel({
 }
 
 function EmptyHint({ label = "No connections in current view" }: { label?: string }) {
-  return (
-    <div className="px-2 py-6 text-center text-[12px] text-(--color-text-dim)">
-      {label}
-    </div>
-  );
+  return <div className="px-2 py-6 text-center text-[12px] text-(--color-text-dim)">{label}</div>;
 }
 
 function TabBtn({
@@ -260,13 +222,7 @@ function Badge({
       : tone === "warn"
         ? "bg-amber-500/15 text-(--color-warn)"
         : "bg-(--color-elevated) text-(--color-text-muted)";
-  return (
-    <span
-      className={`rounded px-1.5 py-0.5 font-mono text-[10px] ${cls}`}
-    >
-      {children}
-    </span>
-  );
+  return <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] ${cls}`}>{children}</span>;
 }
 
 function NodeList({
@@ -283,9 +239,7 @@ function NodeList({
     <section className="mb-4">
       <h3 className="mb-1.5 flex items-center justify-between text-[10px] font-semibold tracking-widest text-(--color-text-dim) uppercase">
         <span>{title}</span>
-        <span className="font-mono text-(--color-text-dim)">
-          {nodes.length}
-        </span>
+        <span className="font-mono text-(--color-text-dim)">{nodes.length}</span>
       </h3>
       <ul className="space-y-0.5">
         {nodes.slice(0, 30).map((n) => (
@@ -298,9 +252,7 @@ function NodeList({
                 className="size-1.5 shrink-0 rounded-full"
                 style={{ background: KIND_COLOR[n.kind] ?? "#888" }}
               />
-              <span className="flex-1 truncate font-mono text-[11px]">
-                {n.name}
-              </span>
+              <span className="flex-1 truncate font-mono text-[11px]">{n.name}</span>
               <ChevronRight className="size-3 text-(--color-text-dim)" />
             </button>
           </li>

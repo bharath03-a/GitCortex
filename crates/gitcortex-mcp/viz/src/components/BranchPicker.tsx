@@ -39,9 +39,7 @@ export function BranchPicker({ active, diffHead, onSetDiffHead }: Props) {
         <GitBranch className="size-3.5" />
         <span className="font-mono text-[11px]">{active ?? "—"}</span>
         {diffHead && (
-          <span className="font-mono text-[11px] text-(--color-accent)">
-            ↔ {diffHead}
-          </span>
+          <span className="font-mono text-[11px] text-(--color-accent)">↔ {diffHead}</span>
         )}
         <ChevronDown className="size-3" />
       </button>
@@ -74,9 +72,7 @@ export function BranchPicker({ active, diffHead, onSetDiffHead }: Props) {
                       setOpen(false);
                     }}
                     className={`flex w-full items-center justify-between px-3 py-1.5 text-left hover:bg-(--color-accent-soft) ${
-                      diffHead === b
-                        ? "text-(--color-accent)"
-                        : "text-(--color-text-primary)"
+                      diffHead === b ? "text-(--color-accent)" : "text-(--color-text-primary)"
                     }`}
                   >
                     <span className="font-mono text-[12px]">{b}</span>
@@ -84,9 +80,7 @@ export function BranchPicker({ active, diffHead, onSetDiffHead }: Props) {
                 </li>
               ))}
             {branches.length === 0 && (
-              <li className="px-3 py-2 text-[11px] text-(--color-text-dim)">
-                Loading branches…
-              </li>
+              <li className="px-3 py-2 text-[11px] text-(--color-text-dim)">Loading branches…</li>
             )}
           </ul>
         </div>

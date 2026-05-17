@@ -1,8 +1,7 @@
 use anyhow::Result;
 
 const CURRENT: &str = env!("CARGO_PKG_VERSION");
-const RELEASES_API: &str =
-    "https://api.github.com/repos/bharath03-a/GitCortex/releases/latest";
+const RELEASES_API: &str = "https://api.github.com/repos/bharath03-a/GitCortex/releases/latest";
 
 pub fn run() -> Result<()> {
     eprintln!("gcx update\n");
@@ -32,9 +31,12 @@ fn fetch_latest_version() -> Option<String> {
     let output = std::process::Command::new("curl")
         .args([
             "-s",
-            "--max-time", "5",
-            "-H", "Accept: application/vnd.github+json",
-            "-H", "X-GitHub-Api-Version: 2022-11-28",
+            "--max-time",
+            "5",
+            "-H",
+            "Accept: application/vnd.github+json",
+            "-H",
+            "X-GitHub-Api-Version: 2022-11-28",
             RELEASES_API,
         ])
         .output()
@@ -54,7 +56,11 @@ fn fetch_latest_version() -> Option<String> {
         .trim_start_matches('v')
         .to_owned();
 
-    if tag.is_empty() { None } else { Some(tag) }
+    if tag.is_empty() {
+        None
+    } else {
+        Some(tag)
+    }
 }
 
 #[derive(Debug)]
@@ -69,9 +75,9 @@ impl std::fmt::Display for InstallMethod {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             InstallMethod::Cargo => write!(f, "cargo"),
-            InstallMethod::Npm   => write!(f, "npm"),
-            InstallMethod::Pip   => write!(f, "pip/pipx/uv"),
-            InstallMethod::Curl  => write!(f, "curl installer"),
+            InstallMethod::Npm => write!(f, "npm"),
+            InstallMethod::Pip => write!(f, "pip/pipx/uv"),
+            InstallMethod::Curl => write!(f, "curl installer"),
         }
     }
 }

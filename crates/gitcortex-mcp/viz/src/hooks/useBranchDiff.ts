@@ -8,10 +8,7 @@ export interface DiffOverlay {
   removedIds: Set<string>;
 }
 
-export function useBranchDiff(
-  base: string | null,
-  head: string | null,
-): DiffOverlay | null {
+export function useBranchDiff(base: string | null, head: string | null): DiffOverlay | null {
   const [overlay, setOverlay] = useState<DiffOverlay | null>(null);
 
   useEffect(() => {
