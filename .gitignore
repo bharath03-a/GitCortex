@@ -29,6 +29,8 @@ target
 crates/gitcortex-mcp/dist-viz/
 crates/gitcortex-mcp/viz/node_modules/
 crates/gitcortex-mcp/viz/dist/
+crates/gitcortex-mcp/viz/*.tsbuildinfo
+crates/gitcortex-mcp/viz/**/*.tsbuildinfo
 
 # Editor/IDE caches
 .metals/
