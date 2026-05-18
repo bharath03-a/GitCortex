@@ -16,12 +16,12 @@ bootstrap:
     @command -v mise >/dev/null || (echo "Install mise first: https://mise.jdx.dev" && exit 1)
     mise install
     cargo fetch
-    cd crates/gitcortex-mcp/viz && npm ci
+    cd viz && npm ci
 
 # Just refresh deps (no toolchain install)
 deps:
     cargo fetch
-    cd crates/gitcortex-mcp/viz && npm ci
+    cd viz && npm ci
 
 # ─── Dev loop ───────────────────────────────────────────────────────────────
 
@@ -32,7 +32,7 @@ dev:
     cleanup() { kill 0 2>/dev/null || true; }
     trap cleanup EXIT
     cargo run -p gitcortex -- viz --port 5678 &
-    cd crates/gitcortex-mcp/viz && npm run dev
+    cd viz && npm run dev
     wait
 
 # Backend only (no viz HMR — use when iterating on Rust)
@@ -41,18 +41,18 @@ dev-backend:
 
 # Frontend only (assumes gcx viz is already running)
 dev-viz:
-    cd crates/gitcortex-mcp/viz && npm run dev
+    cd viz && npm run dev
 
 # ─── Build ──────────────────────────────────────────────────────────────────
 
 # Build the frontend bundle, then the gcx binary in release mode
 build:
-    cd crates/gitcortex-mcp/viz && npm run build
+    cd viz && npm run build
     cargo build --release --workspace
 
 # Build everything in debug
 build-debug:
-    cd crates/gitcortex-mcp/viz && npm run build
+    cd viz && npm run build
     cargo build --workspace
 
 # Install the gcx binary into ~/.local/bin
@@ -69,12 +69,12 @@ ci: fmt-check clippy test viz-lint viz-test viz-build
 # Auto-fix formatting (Rust + frontend)
 fmt:
     cargo fmt --all
-    cd crates/gitcortex-mcp/viz && npm run format
+    cd viz && npm run format
 
 # Check formatting without writing
 fmt-check:
     cargo fmt --all -- --check
-    cd crates/gitcortex-mcp/viz && npm run format:check
+    cd viz && npm run format:check
 
 # Clippy with -D warnings
 clippy:
@@ -86,15 +86,15 @@ test:
 
 # Frontend lint (eslint + tsc)
 viz-lint:
-    cd crates/gitcortex-mcp/viz && npm run lint
+    cd viz && npm run lint
 
 # Frontend unit tests (vitest)
 viz-test:
-    cd crates/gitcortex-mcp/viz && npm run test --if-present
+    cd viz && npm run test --if-present
 
 # Frontend production build
 viz-build:
-    cd crates/gitcortex-mcp/viz && npm run build
+    cd viz && npm run build
 
 # ─── Quality / security audits ──────────────────────────────────────────────
 
@@ -132,5 +132,5 @@ clean:
 
 # Nuclear: also remove node_modules and the kuzu DB
 clean-all: clean
-    rm -rf crates/gitcortex-mcp/viz/node_modules
+    rm -rf viz/node_modules
     rm -rf ~/.local/share/gitcortex

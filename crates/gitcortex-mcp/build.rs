@@ -11,15 +11,18 @@ use std::process::Command;
 
 fn main() {
     let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let viz_dir = crate_dir.join("viz");
+    // viz/ was moved to workspace root (../../viz relative to this crate).
+    let workspace_root = crate_dir.parent().unwrap().parent().unwrap();
+    let viz_dir = workspace_root.join("viz");
     let dist_dir = crate_dir.join("dist-viz");
     let dist_assets = dist_dir.join("assets");
 
-    println!("cargo:rerun-if-changed=viz/src");
-    println!("cargo:rerun-if-changed=viz/index.html");
-    println!("cargo:rerun-if-changed=viz/package.json");
-    println!("cargo:rerun-if-changed=viz/vite.config.ts");
-    println!("cargo:rerun-if-changed=viz/tsconfig.json");
+    // Paths relative to workspace root so cargo reruns on any viz change.
+    println!("cargo:rerun-if-changed=../../viz/src");
+    println!("cargo:rerun-if-changed=../../viz/index.html");
+    println!("cargo:rerun-if-changed=../../viz/package.json");
+    println!("cargo:rerun-if-changed=../../viz/vite.config.ts");
+    println!("cargo:rerun-if-changed=../../viz/tsconfig.json");
 
     let needs_build = !dist_dir.join("index.html").exists()
         || !dist_assets.join("main.js").exists()
@@ -68,7 +71,7 @@ fn ensure_placeholder(dist_dir: &Path, dist_assets: &Path) {
     }
 
     std::fs::create_dir_all(dist_assets).ok();
-    let placeholder_html = "<!doctype html><html><head><meta charset=\"utf-8\"><title>GitCortex Viz</title></head><body style=\"background:#06060a;color:#e6e6f0;font-family:monospace;padding:24px;\"><h2>Viz frontend not built</h2><p>Run <code>cd crates/gitcortex-mcp/viz &amp;&amp; npm install &amp;&amp; npm run build</code> and rebuild <code>gcx</code>.</p></body></html>";
+    let placeholder_html = "<!doctype html><html><head><meta charset=\"utf-8\"><title>GitCortex Viz</title></head><body style=\"background:#06060a;color:#e6e6f0;font-family:monospace;padding:24px;\"><h2>Viz frontend not built</h2><p>Run <code>cd viz &amp;&amp; npm install &amp;&amp; npm run build</code> and rebuild <code>gcx</code>.</p></body></html>";
 
     if !index.exists() {
         std::fs::write(&index, placeholder_html).ok();

@@ -40,10 +40,10 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
-          cache-dependency-path: crates/gitcortex-mcp/viz/package-lock.json
+          cache-dependency-path: viz/package-lock.json
 
       - name: Build viz frontend (so include_bytes! works)
-        working-directory: crates/gitcortex-mcp/viz
+        working-directory: viz
         run: |
           npm ci
           npm run build
@@ -81,10 +81,10 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
-          cache-dependency-path: crates/gitcortex-mcp/viz/package-lock.json
+          cache-dependency-path: viz/package-lock.json
 
       - name: Build viz frontend
-        working-directory: crates/gitcortex-mcp/viz
+        working-directory: viz
         shell: bash
         run: |
           npm ci

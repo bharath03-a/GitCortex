@@ -1,15 +1,15 @@
 use std::{
     collections::{HashMap, HashSet},
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 use gitcortex_core::{
     error::{GitCortexError, Result},
-    graph::{Edge, GraphDiff, Node, NodeId, NodeMetadata, Span},
-    schema::{EdgeKind, NodeKind, Visibility, SCHEMA_VERSION},
+    graph::{Edge, GraphDiff, Node, NodeId},
+    schema::{NodeKind, SCHEMA_VERSION},
     store::{CallersDeep, GraphStore, SubGraph, SymbolContext},
 };
-use kuzu::{Connection, Database, SystemConfig, Value};
+use kuzu::{Connection, Database, SystemConfig};
 
 use crate::{branch, schema as db_schema};
 
@@ -18,10 +18,10 @@ mod escape;
 mod queries;
 mod values;
 
-use conv::{edge_kind_from_str, kind_from_str, vis_from_str, vis_str};
+use conv::{edge_kind_from_str, vis_str};
 use escape::esc;
 use queries::{collect_ids, rows_to_nodes, NODE_COLS};
-use values::{bool_val, i64_val, str_val};
+use values::str_val;
 
 // ── KuzuGraphStore ────────────────────────────────────────────────────────────
 
