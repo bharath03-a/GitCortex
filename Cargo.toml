@@ -5,6 +5,8 @@ members = [
     "crates/gitcortex-indexer",
     "crates/gitcortex-store",
     "crates/gitcortex-mcp",
+    "crates/gitcortex-viz",
+    "crates/gitcortex-cli",
 ]
 
 [workspace.package]
@@ -20,6 +22,8 @@ rust-version = "1.80"
 gitcortex-core    = { path = "crates/gitcortex-core",    version = "0.2" }
 gitcortex-indexer = { path = "crates/gitcortex-indexer", version = "0.2" }
 gitcortex-store   = { path = "crates/gitcortex-store",   version = "0.2" }
+gitcortex-mcp     = { path = "crates/gitcortex-mcp",     version = "0.2" }
+gitcortex-viz     = { path = "crates/gitcortex-viz",     version = "0.2" }
 
 serde              = { version = "1",   features = ["derive"] }
 schemars           = "1"

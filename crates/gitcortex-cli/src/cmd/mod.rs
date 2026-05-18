@@ -8,4 +8,3 @@ pub mod query;
 pub mod serve;
 pub mod status;
 pub mod update;
-pub mod viz;

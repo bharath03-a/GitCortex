@@ -128,7 +128,7 @@ dist-build:
 # Remove build artefacts (keeps node_modules)
 clean:
     cargo clean
-    rm -rf crates/gitcortex-mcp/dist-viz
+    rm -rf crates/gitcortex-viz/dist-viz
 
 # Nuclear: also remove node_modules and the kuzu DB
 clean-all: clean

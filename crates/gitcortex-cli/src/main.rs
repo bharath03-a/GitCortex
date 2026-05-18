@@ -1,24 +1,16 @@
 mod cmd;
-mod mcp;
 
 use clap::{Parser, Subcommand};
 use tracing_subscriber::EnvFilter;
 
 use cmd::blast_radius::BlastFormat;
+use gitcortex_viz::VizFormat;
 
 #[derive(Parser)]
 #[command(name = "gcx", version, about = "GitCortex knowledge-graph CLI")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
-}
-
-#[derive(clap::ValueEnum, Clone)]
-pub enum VizFormat {
-    /// Open an interactive force-directed graph in the browser.
-    Web,
-    /// Print a Graphviz DOT file to stdout.
-    Dot,
 }
 
 #[derive(Subcommand)]
@@ -93,7 +85,7 @@ enum Commands {
 }
 
 #[derive(Subcommand)]
-enum QueryCmd {
+pub enum QueryCmd {
     /// Look up all nodes with the given name.
     LookupSymbol {
         name: String,
@@ -175,17 +167,10 @@ fn main() {
         Commands::Hook { branch_switch } => cmd::hook::run(branch_switch),
         Commands::Serve => cmd::serve::run(),
         Commands::Query(q) => cmd::query::run(q),
-        Commands::Viz {
-            branch,
-            format,
-            port,
-        } => cmd::viz::run(branch, port, format),
-        Commands::BlastRadius {
-            base,
-            head,
-            depth,
-            format,
-        } => cmd::blast_radius::run(base, head, depth, format),
+        Commands::Viz { branch, format, port } => gitcortex_viz::run(branch, port, format),
+        Commands::BlastRadius { base, head, depth, format } => {
+            cmd::blast_radius::run(base, head, depth, format)
+        }
         Commands::Export { branch } => cmd::export::run(branch),
         Commands::Status { branch } => cmd::status::run(branch),
         Commands::Clean => cmd::clean::run(),

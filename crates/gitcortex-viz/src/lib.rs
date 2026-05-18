@@ -14,12 +14,19 @@ use gitcortex_store::kuzu::KuzuGraphStore;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::VizFormat;
+static VIZ_INDEX: &[u8] = include_bytes!("../dist-viz/index.html");
+static VIZ_JS: &[u8] = include_bytes!("../dist-viz/assets/main.js");
+static VIZ_CSS: &[u8] = include_bytes!("../dist-viz/assets/main.css");
+static VIZ_WEBGL: &[u8] = include_bytes!("../dist-viz/assets/webgl-device.js");
 
-static VIZ_INDEX: &[u8] = include_bytes!("../../dist-viz/index.html");
-static VIZ_JS: &[u8] = include_bytes!("../../dist-viz/assets/main.js");
-static VIZ_CSS: &[u8] = include_bytes!("../../dist-viz/assets/main.css");
-static VIZ_WEBGL: &[u8] = include_bytes!("../../dist-viz/assets/webgl-device.js");
+/// Output format for `gcx viz`.
+#[derive(clap::ValueEnum, Clone)]
+pub enum VizFormat {
+    /// Open an interactive force-directed graph in the browser.
+    Web,
+    /// Print a Graphviz DOT file to stdout.
+    Dot,
+}
 
 /// Shared app state. `KuzuGraphStore` is held behind a `std::sync::Mutex` because
 /// the underlying `kuzu::Connection` is not `Send`-safe across `.await`; all access
@@ -108,11 +115,6 @@ fn static_response(bytes: &'static [u8], content_type: &'static str) -> Response
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/// Run a closure on the blocking task pool. Returns either the closure's result
-/// or a typed error response. Centralises:
-///   - converting `JoinError` (panic/cancel) into a 500-ish JSON
-///   - converting any `anyhow::Error` from the closure into a 500-ish JSON
-///   - structured tracing of both paths
 async fn run_blocking<F, R>(label: &'static str, f: F) -> Result<R, Json<Value>>
 where
     F: FnOnce() -> Result<R, anyhow::Error> + Send + 'static,
@@ -131,8 +133,6 @@ where
     }
 }
 
-/// Common pattern: open a sync lock on the store inside a blocking task.
-/// Returns the locked guard via a closure to keep `&dyn GraphStore` lifetimes tidy.
 fn with_locked_store<F, R>(state: &AppState, f: F) -> Result<R, anyhow::Error>
 where
     F: FnOnce(&KuzuGraphStore) -> Result<R, anyhow::Error>,
@@ -280,7 +280,6 @@ async fn callers_handler(
 async fn branches_handler(State(state): State<Arc<AppState>>) -> Json<Value> {
     let active = state.branch.clone();
 
-    // git for-each-ref is I/O — use async tokio::process
     let branches = list_local_branches_async().await.unwrap_or_default();
 
     let s = state.clone();
@@ -384,7 +383,6 @@ fn parse_node_kind(s: &str) -> Option<NodeKind> {
     })
 }
 
-/// Async version using `tokio::process::Command` — safe to call from an async route.
 async fn list_local_branches_async() -> Result<Vec<String>> {
     let out = tokio::process::Command::new("git")
         .args(["for-each-ref", "--format=%(refname:short)", "refs/heads/"])
@@ -448,8 +446,6 @@ fn kind_dot_color(k: &NodeKind) -> &'static str {
         NodeKind::EnumMember => "#a6d189",
     }
 }
-
-// ─── Sync utility — only used at startup before the runtime exists ────────────
 
 fn repo_root() -> Result<PathBuf> {
     let out = std::process::Command::new("git")

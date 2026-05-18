@@ -12,7 +12,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: "../crates/gitcortex-mcp/dist-viz",
+    outDir: "../crates/gitcortex-viz/dist-viz",
     emptyOutDir: true,
     rollupOptions: {
       output: {

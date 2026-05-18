@@ -642,14 +642,12 @@ name = "gitcortex"
 version = "0.2.3"
 dependencies = [
  "anyhow",
- "axum",
  "clap",
  "gitcortex-core",
  "gitcortex-indexer",
+ "gitcortex-mcp",
  "gitcortex-store",
- "open",
- "rmcp",
- "schemars",
+ "gitcortex-viz",
  "serde",
  "serde_json",
  "tempfile",
@@ -686,6 +684,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "gitcortex-mcp"
+version = "0.2.3"
+dependencies = [
+ "anyhow",
+ "gitcortex-core",
+ "gitcortex-indexer",
+ "gitcortex-store",
+ "rmcp",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "gitcortex-store"
 version = "0.2.3"
 dependencies = [
@@ -693,6 +708,22 @@ dependencies = [
  "gitcortex-core",
  "kuzu",
  "tempfile",
+ "tracing",
+]
+
+[[package]]
+name = "gitcortex-viz"
+version = "0.2.3"
+dependencies = [
+ "anyhow",
+ "axum",
+ "clap",
+ "gitcortex-core",
+ "gitcortex-store",
+ "open",
+ "serde",
+ "serde_json",
+ "tokio",
  "tracing",
 ]
 
