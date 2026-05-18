@@ -9,10 +9,20 @@ rust-version.workspace = true
 keywords = ["kuzu", "graph-database", "code-graph", "embedded-database", "static-analysis"]
 categories = ["development-tools", "database"]
 
+[features]
+# "kuzu-backend" is the default: links the embedded KuzuDB C++ library and
+# enables KuzuGraphStore. Disable it (--no-default-features) only when
+# building with the in-memory stub backend for fast unit tests.
+default = ["kuzu-backend"]
+kuzu-backend = ["dep:kuzu"]
+# Stub in-memory backend — no KuzuDB link needed. Useful for CI unit tests
+# that don't need persistence and for future remote-backend experiments.
+memory = []
+
 [dependencies]
 dashmap.workspace = true
 gitcortex-core.workspace = true
-kuzu.workspace = true
+kuzu = { workspace = true, optional = true }
 tracing.workspace = true
 
 [dev-dependencies]
