@@ -35,3 +35,4 @@ viz/**/*.tsbuildinfo
 # Editor/IDE caches
 .metals/
 .vscode/
+crates/gitcortex-mcp/dist-viz/
