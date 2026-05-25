@@ -69,10 +69,7 @@ pub fn generate<S: GraphStore + ?Sized>(
         }
     }
 
-    let by_id: HashMap<String, Node> = nodes
-        .into_iter()
-        .map(|n| (n.id.as_str(), n))
-        .collect();
+    let by_id: HashMap<String, Node> = nodes.into_iter().map(|n| (n.id.as_str(), n)).collect();
 
     let steps = match seed {
         Some(name) => seeded_tour(&by_id, &callees_of, &in_degree, name, limit),

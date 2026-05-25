@@ -951,4 +951,3 @@ impl GraphStore for KuzuGraphStore {
         branch::write_last_sha(&self.repo_id, branch_name, sha)
     }
 }
-

@@ -29,7 +29,7 @@ updates:
 
   # Frontend (viz)
   - package-ecosystem: npm
-    directory: "/crates/gitcortex-mcp/viz"
+    directory: "/viz"
     schedule:
       interval: weekly
       day: monday

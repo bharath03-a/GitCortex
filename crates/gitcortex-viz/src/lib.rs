@@ -3,16 +3,16 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use axum::{
-    Router,
     extract::{Path, Query, State},
     http::header,
     response::{IntoResponse, Json, Response},
     routing::get,
+    Router,
 };
 use gitcortex_core::{graph::Node, schema::NodeKind, store::GraphStore};
 use gitcortex_store::kuzu::KuzuGraphStore;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 static VIZ_INDEX: &[u8] = include_bytes!("../dist-viz/index.html");
 static VIZ_JS: &[u8] = include_bytes!("../dist-viz/assets/main.js");

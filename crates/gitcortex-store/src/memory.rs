@@ -39,7 +39,10 @@ impl GraphStore for MemoryGraphStore {
         _function_name: &str,
         _depth: u8,
     ) -> Result<CallersDeep> {
-        Ok(CallersDeep { hops: vec![], risk_level: "none" })
+        Ok(CallersDeep {
+            hops: vec![],
+            risk_level: "none",
+        })
     }
 
     fn symbol_context(&self, _branch: &str, name: &str) -> Result<SymbolContext> {
@@ -64,13 +67,11 @@ impl GraphStore for MemoryGraphStore {
         Ok(GraphDiff::default())
     }
 
-    fn find_callees(
-        &self,
-        _branch: &str,
-        _function_name: &str,
-        _depth: u8,
-    ) -> Result<CallersDeep> {
-        Ok(CallersDeep { hops: vec![], risk_level: "none" })
+    fn find_callees(&self, _branch: &str, _function_name: &str, _depth: u8) -> Result<CallersDeep> {
+        Ok(CallersDeep {
+            hops: vec![],
+            risk_level: "none",
+        })
     }
 
     fn find_implementors(
@@ -106,7 +107,10 @@ impl GraphStore for MemoryGraphStore {
         _depth: u8,
         _direction: &str,
     ) -> Result<SubGraph> {
-        Ok(SubGraph { nodes: vec![], edges: vec![] })
+        Ok(SubGraph {
+            nodes: vec![],
+            edges: vec![],
+        })
     }
 
     fn last_indexed_sha(&self, _branch: &str) -> Result<Option<String>> {

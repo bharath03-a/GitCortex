@@ -10,9 +10,11 @@
 /crates/gitcortex-indexer/              @bharath03-a
 /crates/gitcortex-store/                @bharath03-a
 /crates/gitcortex-mcp/                  @bharath03-a
+/crates/gitcortex-viz/                  @bharath03-a
+/crates/gitcortex-cli/                  @bharath03-a
 
 # Frontend (tag a frontend reviewer here when one joins)
-/crates/gitcortex-mcp/viz/              @bharath03-a
+/viz/                                   @bharath03-a
 
 # Docs / governance
 /docs/                                  @bharath03-a
