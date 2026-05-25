@@ -287,7 +287,7 @@ Example output:
 ```
 gcx doctor
 
-  [ok] gcx v0.2.3 on PATH (/usr/local/bin/gcx)
+  [ok] gcx v0.3.0 on PATH (/usr/local/bin/gcx)
   [ok] git repository detected
   [ok] post-commit hook installed
   [ok] post-merge hook installed
@@ -312,8 +312,8 @@ gcx update
 ```
 gcx update
 
-  current version:  0.2.3
-  latest version:   0.2.3
+  current version:  0.3.0
+  latest version:   0.3.0
   you are up to date.
 
   To update (cargo):

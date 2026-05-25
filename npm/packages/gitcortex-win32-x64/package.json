@@ -1,6 +1,6 @@
 {
   "name": "@gitcortex/gcx-win32-x64",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "gcx binary for Windows x64",
   "repository": {
     "type": "git",
