@@ -18,8 +18,8 @@ mod escape;
 mod queries;
 mod values;
 
-use conv::{edge_kind_from_str, vis_str};
-use escape::esc;
+use conv::{edge_kind_from_str, lang_scope_clause, vis_str};
+use escape::{esc, esc_multiline};
 use queries::{collect_ids, rows_to_nodes, NODE_COLS};
 use values::str_val;
 
@@ -197,6 +197,17 @@ impl GraphStore for KuzuGraphStore {
             let is_generator = node.metadata.is_generator;
             let is_const = node.metadata.is_const;
             let generic_bounds = esc(&node.metadata.generic_bounds.join("|"));
+            let def_sig = esc_multiline(&node.metadata.definition.signature);
+            let def_body = esc_multiline(&node.metadata.definition.body);
+            let def_doc = esc_multiline(
+                node.metadata
+                    .definition
+                    .doc_comment
+                    .as_deref()
+                    .unwrap_or(""),
+            );
+            let def_start_byte = node.metadata.definition.start_byte as i64;
+            let def_end_byte = node.metadata.definition.end_byte as i64;
 
             conn.query(&format!(
                 "CREATE (:{nt} {{\
@@ -206,7 +217,9 @@ impl GraphStore for KuzuGraphStore {
                     visibility: '{vis}', is_async: {is_async}, is_unsafe: {is_unsafe}, \
                     is_static: {is_static}, is_abstract: {is_abstract}, is_final: {is_final}, \
                     is_property: {is_property}, is_generator: {is_generator}, is_const: {is_const}, \
-                    generic_bounds: '{generic_bounds}'\
+                    generic_bounds: '{generic_bounds}', \
+                    def_signature: '{def_sig}', def_body: '{def_body}', def_doc: '{def_doc}', \
+                    def_start_byte: {def_start_byte}, def_end_byte: {def_end_byte}\
                 }})"
             ))
             .map_err(|e| GitCortexError::Store(format!("insert node '{name}': {e}")))?;
@@ -254,50 +267,86 @@ impl GraphStore for KuzuGraphStore {
         //    The diff-local pass couldn't find these callees/types because they
         //    live in unchanged files. We match by name here — best-effort without
         //    full type inference, filtered to the correct node kinds to reduce noise.
+        //
+        //    Scoping: the resolved candidate must live in a file whose extension
+        //    belongs to the same language family as the caller. Without this a
+        //    Rust `welcome()` would resolve to a Python `polite_greet()` simply
+        //    because they share a name. The caller-file map is built once from
+        //    `added_nodes` (all deferred caller ids are diff-local nodes).
+        let caller_file: HashMap<String, String> = diff
+            .added_nodes
+            .iter()
+            .map(|n| {
+                (
+                    n.id.as_str().to_owned(),
+                    n.file.to_string_lossy().into_owned(),
+                )
+            })
+            .collect();
 
         for (caller_id, callee_name) in &diff.deferred_calls {
-            let caller = esc(&caller_id.as_str());
+            let caller_id_str = caller_id.as_str();
+            let caller = esc(&caller_id_str);
             let callee = esc(callee_name);
+            let scope = caller_file
+                .get(&caller_id_str)
+                .map(|f| lang_scope_clause(f, "callee"))
+                .unwrap_or_default();
             conn.query(&format!(
                 "MATCH (caller:{nt} {{id: '{caller}'}}), (callee:{nt}) \
                  WHERE callee.name = '{callee}' \
-                 AND (callee.kind = 'function' OR callee.kind = 'method') \
+                 AND (callee.kind = 'function' OR callee.kind = 'method'){scope} \
                  CREATE (caller)-[:{et} {{kind: 'calls'}}]->(callee)"
             ))
             .map_err(|e| GitCortexError::Store(format!("deferred call '{callee_name}': {e}")))?;
         }
 
         for (fn_id, type_name) in &diff.deferred_uses {
-            let fn_esc = esc(&fn_id.as_str());
+            let fn_id_str = fn_id.as_str();
+            let fn_esc = esc(&fn_id_str);
             let ty = esc(type_name);
+            let scope = caller_file
+                .get(&fn_id_str)
+                .map(|f| lang_scope_clause(f, "ty"))
+                .unwrap_or_default();
             conn.query(&format!(
                 "MATCH (fn_node:{nt} {{id: '{fn_esc}'}}), (ty:{nt}) \
                  WHERE ty.name = '{ty}' \
                  AND (ty.kind = 'struct' OR ty.kind = 'enum' \
-                      OR ty.kind = 'trait' OR ty.kind = 'type_alias') \
+                      OR ty.kind = 'trait' OR ty.kind = 'type_alias'){scope} \
                  CREATE (fn_node)-[:{et} {{kind: 'uses'}}]->(ty)"
             ))
             .map_err(|e| GitCortexError::Store(format!("deferred use '{type_name}': {e}")))?;
         }
 
         for (struct_id, trait_name) in &diff.deferred_implements {
-            let s = esc(&struct_id.as_str());
+            let sid = struct_id.as_str();
+            let s = esc(&sid);
             let t = esc(trait_name);
+            let scope = caller_file
+                .get(&sid)
+                .map(|f| lang_scope_clause(f, "tr"))
+                .unwrap_or_default();
             conn.query(&format!(
                 "MATCH (st:{nt} {{id: '{s}'}}), (tr:{nt}) \
-                 WHERE tr.name = '{t}' AND (tr.kind = 'trait' OR tr.kind = 'interface') \
+                 WHERE tr.name = '{t}' AND (tr.kind = 'trait' OR tr.kind = 'interface'){scope} \
                  CREATE (st)-[:{et} {{kind: 'implements'}}]->(tr)"
             ))
             .map_err(|e| GitCortexError::Store(format!("deferred impl '{trait_name}': {e}")))?;
         }
 
         for (subtype_id, supertype_name) in &diff.deferred_inherits {
-            let s = esc(&subtype_id.as_str());
+            let sid = subtype_id.as_str();
+            let s = esc(&sid);
             let t = esc(supertype_name);
+            let scope = caller_file
+                .get(&sid)
+                .map(|f| lang_scope_clause(f, "sup"))
+                .unwrap_or_default();
             conn.query(&format!(
                 "MATCH (sub:{nt} {{id: '{s}'}}), (sup:{nt}) \
                  WHERE sup.name = '{t}' \
-                 AND (sup.kind = 'struct' OR sup.kind = 'interface' OR sup.kind = 'trait') \
+                 AND (sup.kind = 'struct' OR sup.kind = 'interface' OR sup.kind = 'trait'){scope} \
                  CREATE (sub)-[:{et} {{kind: 'inherits'}}]->(sup)"
             ))
             .map_err(|e| {
@@ -306,11 +355,16 @@ impl GraphStore for KuzuGraphStore {
         }
 
         for (method_id, exception_name) in &diff.deferred_throws {
-            let m = esc(&method_id.as_str());
+            let mid = method_id.as_str();
+            let m = esc(&mid);
             let e_name = esc(exception_name);
+            let scope = caller_file
+                .get(&mid)
+                .map(|f| lang_scope_clause(f, "ex"))
+                .unwrap_or_default();
             conn.query(&format!(
                 "MATCH (m:{nt} {{id: '{m}'}}), (ex:{nt}) \
-                 WHERE ex.name = '{e_name}' \
+                 WHERE ex.name = '{e_name}'{scope} \
                  CREATE (m)-[:{et} {{kind: 'throws'}}]->(ex)"
             ))
             .map_err(|e| {
@@ -319,12 +373,17 @@ impl GraphStore for KuzuGraphStore {
         }
 
         for (target_id, annotation_name) in &diff.deferred_annotated {
-            let t = esc(&target_id.as_str());
+            let tid = target_id.as_str();
+            let t = esc(&tid);
             let a = esc(annotation_name);
+            let scope = caller_file
+                .get(&tid)
+                .map(|f| lang_scope_clause(f, "ann"))
+                .unwrap_or_default();
             conn.query(&format!(
                 "MATCH (target:{nt} {{id: '{t}'}}), (ann:{nt}) \
                  WHERE ann.name = '{a}' \
-                 AND (ann.kind = 'annotation' OR ann.kind = 'macro' OR ann.kind = 'function') \
+                 AND (ann.kind = 'annotation' OR ann.kind = 'macro' OR ann.kind = 'function'){scope} \
                  CREATE (target)-[:{et} {{kind: 'annotated'}}]->(ann)"
             ))
             .map_err(|e| {
@@ -444,24 +503,35 @@ impl GraphStore for KuzuGraphStore {
         }
         let definition = defs.remove(0);
 
-        // Callers — who calls this symbol.
-        let callers = self.find_callers(branch, name)?;
+        // Scope callers/callees/used-by to THIS specific definition (by id),
+        // not by name. Otherwise a Java `welcome` would pull in callees from
+        // a Python `welcome` that happens to share the name. `find_callers`
+        // as a standalone tool remains name-based — callers without a specific
+        // definition node have no other handle.
+        let def_id = esc(&definition.id.as_str());
 
-        // Callees — what this symbol calls.
+        let mut caller_result = conn
+            .query(&format!(
+                "MATCH (n:{nt})-[:{et} {{kind: 'calls'}}]->(callee:{nt}) \
+                 WHERE callee.id = '{def_id}' \
+                 RETURN DISTINCT {NODE_COLS}"
+            ))
+            .map_err(|e| GitCortexError::Store(e.to_string()))?;
+        let callers = rows_to_nodes(&mut caller_result)?;
+
         let mut callee_result = conn
             .query(&format!(
                 "MATCH (caller:{nt})-[:{et} {{kind: 'calls'}}]->(n:{nt}) \
-                 WHERE caller.name = '{name_esc}' \
+                 WHERE caller.id = '{def_id}' \
                  RETURN {NODE_COLS}"
             ))
             .map_err(|e| GitCortexError::Store(e.to_string()))?;
         let callees = rows_to_nodes(&mut callee_result)?;
 
-        // Used-by — who references this symbol via Uses edges.
         let mut used_result = conn
             .query(&format!(
                 "MATCH (n:{nt})-[:{et} {{kind: 'uses'}}]->(ty:{nt}) \
-                 WHERE ty.name = '{name_esc}' \
+                 WHERE ty.id = '{def_id}' \
                  RETURN {NODE_COLS}"
             ))
             .map_err(|e| GitCortexError::Store(e.to_string()))?;

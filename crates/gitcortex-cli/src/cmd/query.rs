@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use gitcortex_core::{schema::NodeKind, store::GraphStore};
+use gitcortex_mcp::mcp::{search, tour, wiki};
 use gitcortex_store::kuzu::KuzuGraphStore;
 
 use crate::QueryCmd;
@@ -234,6 +235,37 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
                     );
                 }
             }
+        }
+
+        QueryCmd::Wiki { name, branch } => {
+            let md = wiki::render_symbol(&store, &branch, &name)?;
+            print!("{md}");
+        }
+
+        QueryCmd::Search {
+            query,
+            limit,
+            branch,
+        } => {
+            let hits = search::search(&store, &branch, &query, Some(limit))?;
+            if hits.is_empty() {
+                println!("no matches for '{query}' on branch '{branch}'");
+            }
+            for h in hits {
+                println!(
+                    "{:>4}  {} ({})  {}:{}  [{}]",
+                    h.score, h.name, h.kind, h.file, h.start_line, h.qualified_name
+                );
+            }
+        }
+
+        QueryCmd::Tour {
+            seed,
+            limit,
+            branch,
+        } => {
+            let t = tour::generate(&store, &branch, seed.as_deref(), Some(limit))?;
+            print!("{}", tour::render_markdown(&t));
         }
     }
     Ok(())

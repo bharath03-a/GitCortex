@@ -53,3 +53,38 @@ pub(super) fn vis_from_str(s: &str) -> Visibility {
         _ => Visibility::Private,
     }
 }
+
+/// Return the list of file extensions (with leading dot) that belong to the
+/// same language family as `file`. Used to scope deferred-edge resolution so
+/// a Rust caller never resolves to a Python callee that shares a name.
+///
+/// Returns `None` for files we cannot classify — the caller treats that as
+/// "no scoping" and falls back to the existing name-only match.
+pub(super) fn language_extensions(file: &str) -> Option<&'static [&'static str]> {
+    let ext = file.rsplit('.').next()?;
+    match ext {
+        "rs" => Some(&[".rs"]),
+        "py" => Some(&[".py"]),
+        "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" => {
+            Some(&[".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"])
+        }
+        "go" => Some(&[".go"]),
+        "java" => Some(&[".java"]),
+        _ => None,
+    }
+}
+
+/// Build a Cypher predicate that constrains `var.file` to any of the
+/// language extensions matching `caller_file`. Returns an empty string when
+/// the language is unknown — caller can splice it directly into a WHERE
+/// clause.
+pub(super) fn lang_scope_clause(caller_file: &str, var: &str) -> String {
+    let Some(exts) = language_extensions(caller_file) else {
+        return String::new();
+    };
+    let parts: Vec<String> = exts
+        .iter()
+        .map(|e| format!("ends_with({var}.file, '{e}')"))
+        .collect();
+    format!(" AND ({})", parts.join(" OR "))
+}

@@ -1,0 +1,1 @@
+Run `gcx query search $ARGUMENTS` and show the results. Output is a ranked list of code-graph hits — score, name, kind, file:line, qualified name. Higher score = stronger match (exact > prefix > substring; functions/structs boosted). Use this to find a symbol when only a fragment of its name is known.

@@ -10,7 +10,7 @@ use gitcortex_core::{
 };
 use tree_sitter::{Node as TsNode, Parser};
 
-use super::{LanguageParser, ParseResult};
+use super::{capture_definition, LanguageParser, ParseResult};
 
 pub struct PythonParser {
     language: tree_sitter::Language,
@@ -184,6 +184,7 @@ impl<'src> FileVisitor<'src> {
                 visibility: vis,
                 is_async,
                 is_unsafe: false,
+                definition: capture_definition(self.source, ts_node),
                 ..Default::default()
             },
         }

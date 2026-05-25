@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use gitcortex_core::{
     error::{GitCortexError, Result},
-    graph::{Node, NodeId, NodeMetadata, Span},
+    graph::{DefinitionText, Node, NodeId, NodeMetadata, Span},
 };
 use kuzu::{Connection, Value};
 
@@ -19,7 +19,7 @@ use super::{
 pub(super) const NODE_COLS: &str = "n.id, n.kind, n.name, n.qualified_name, n.file, \
      n.start_line, n.end_line, n.loc, n.visibility, n.is_async, n.is_unsafe, \
      n.is_static, n.is_abstract, n.is_final, n.is_property, n.is_generator, n.is_const, \
-     n.generic_bounds";
+     n.generic_bounds, n.def_signature, n.def_body, n.def_doc, n.def_start_byte, n.def_end_byte";
 
 pub(super) fn rows_to_nodes(result: &mut kuzu::QueryResult) -> Result<Vec<Node>> {
     let mut nodes = Vec::new();
@@ -33,9 +33,9 @@ pub(super) fn rows_to_nodes(result: &mut kuzu::QueryResult) -> Result<Vec<Node>>
 }
 
 pub(super) fn row_to_node(row: Vec<Value>) -> Result<Node> {
-    if row.len() < 18 {
+    if row.len() < 23 {
         return Err(GitCortexError::Store(format!(
-            "expected 18 columns, got {}",
+            "expected 23 columns, got {}",
             row.len()
         )));
     }
@@ -62,6 +62,16 @@ pub(super) fn row_to_node(row: Vec<Value>) -> Result<Node> {
     } else {
         generic_bounds_str.split('|').map(String::from).collect()
     };
+    let def_signature = str_val(&row[18])?;
+    let def_body = str_val(&row[19])?;
+    let def_doc_raw = str_val(&row[20])?;
+    let def_doc = if def_doc_raw.is_empty() {
+        None
+    } else {
+        Some(def_doc_raw)
+    };
+    let def_start_byte = i64_val(&row[21]).unwrap_or(0) as u32;
+    let def_end_byte = i64_val(&row[22]).unwrap_or(0) as u32;
 
     Ok(Node {
         id: NodeId::try_from(id_str.as_str())
@@ -86,6 +96,13 @@ pub(super) fn row_to_node(row: Vec<Value>) -> Result<Node> {
             is_generator,
             is_const,
             generic_bounds,
+            definition: DefinitionText {
+                signature: def_signature,
+                body: def_body,
+                doc_comment: def_doc,
+                start_byte: def_start_byte,
+                end_byte: def_end_byte,
+            },
             ..Default::default()
         },
     })

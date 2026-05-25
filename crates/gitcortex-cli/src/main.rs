@@ -152,6 +152,29 @@ pub enum QueryCmd {
         #[arg(long, default_value = "main")]
         branch: String,
     },
+    /// Render a wiki-style markdown page for a symbol.
+    Wiki {
+        name: String,
+        #[arg(long, default_value = "main")]
+        branch: String,
+    },
+    /// Fuzzy search over the graph by name + qualified path.
+    Search {
+        query: String,
+        #[arg(long, default_value_t = 25)]
+        limit: usize,
+        #[arg(long, default_value = "main")]
+        branch: String,
+    },
+    /// Generate a guided tour of the codebase (omit --seed for global tour).
+    Tour {
+        #[arg(long)]
+        seed: Option<String>,
+        #[arg(long, default_value_t = 12)]
+        limit: usize,
+        #[arg(long, default_value = "main")]
+        branch: String,
+    },
 }
 
 fn main() {

@@ -67,6 +67,27 @@ pub struct LldLabels {
     pub complexity: Option<u32>,
 }
 
+/// Source-text capture for a node — signature, body slice, preceding doc-comment,
+/// and byte range into the original file. Filled during pass 1 from the
+/// tree-sitter node's byte range; cheap (no extra parsing).
+///
+/// Powers wiki rendering, tour narration, and future semantic search.
+/// Empty default means "not captured" — legacy rows return all-empty.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct DefinitionText {
+    /// First line(s) of the definition up to (and excluding) the body block.
+    /// E.g. `pub fn apply_diff(&mut self, branch: &str, diff: &GraphDiff) -> Result<()>`.
+    pub signature: String,
+    /// Full source slice of the node, including signature and body.
+    pub body: String,
+    /// Doc-comment immediately preceding the node (`///`, `//!`, `/** */`, `"""`).
+    /// `None` when absent.
+    pub doc_comment: Option<String>,
+    /// Byte offsets into the parent file. `(0, 0)` if not captured.
+    pub start_byte: u32,
+    pub end_byte: u32,
+}
+
 /// Per-node metadata collected during pass-1 (structural) indexing.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct NodeMetadata {
@@ -92,6 +113,8 @@ pub struct NodeMetadata {
     pub generic_bounds: Vec<String>,
     /// Pass-2 LLD annotations. Empty until pass 2 runs.
     pub lld: LldLabels,
+    /// Raw source-text capture — signature, body, doc-comment, byte range.
+    pub definition: DefinitionText,
 }
 
 // ── Core graph types ──────────────────────────────────────────────────────────

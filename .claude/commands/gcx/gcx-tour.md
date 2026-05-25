@@ -1,0 +1,1 @@
+Run `gcx query tour $ARGUMENTS` and show the rendered markdown plan. Without `--seed`, returns a centrality-ranked tour of the highest-traffic public symbols (good for onboarding a new contributor). With `--seed <symbol>`, BFS-walks the call graph outward from that symbol. Each step lists name, kind, file:line, and a one-line rationale.

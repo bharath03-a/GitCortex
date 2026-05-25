@@ -14,7 +14,7 @@ use gitcortex_core::{
 };
 use tree_sitter::{Node as TsNode, Parser};
 
-use super::{LanguageParser, ParseResult};
+use super::{capture_definition, LanguageParser, ParseResult};
 
 // ── Public parser ─────────────────────────────────────────────────────────────
 
@@ -237,6 +237,7 @@ impl<'src> FileVisitor<'src> {
                 visibility: Self::visibility(ts_node, self.source),
                 is_async: Self::is_async(ts_node),
                 is_unsafe: false,
+                definition: capture_definition(self.source, ts_node),
                 ..Default::default()
             },
         }

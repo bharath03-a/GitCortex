@@ -10,7 +10,7 @@ use gitcortex_core::{
 };
 use tree_sitter::{Node as TsNode, Parser};
 
-use super::{LanguageParser, ParseResult};
+use super::{capture_definition, LanguageParser, ParseResult};
 
 pub struct JavaParser {
     language: tree_sitter::Language,
@@ -215,6 +215,7 @@ impl<'src> FileVisitor<'src> {
                 is_abstract: mods.contains("abstract"),
                 is_final: mods.contains("final"),
                 is_static: mods.contains("static"),
+                definition: capture_definition(self.source, ts_node),
                 ..Default::default()
             },
         }
@@ -550,6 +551,12 @@ impl<'src> FileVisitor<'src> {
             .get(&name)
             .cloned()
             .unwrap_or_else(NodeId::new);
+        // Register this method in fn_index so later method bodies in the same
+        // file resolve calls intra-file via `record_call`'s fn_index lookup.
+        // Without this, every intra-file Java call gets pushed onto
+        // `deferred_calls` and is later matched across all languages by
+        // name, producing spurious cross-language edges.
+        self.fn_index.insert(name.clone(), id.clone());
         let kind = if node.kind() == "constructor_declaration" {
             NodeKind::Function
         } else {

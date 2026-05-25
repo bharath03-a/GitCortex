@@ -121,6 +121,33 @@ pub struct GetSubgraphParams {
     pub branch: Option<String>,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct WikiSymbolParams {
+    /// Symbol to summarise (unqualified name).
+    pub name: String,
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SearchCodeParams {
+    /// Free-text query — substring matched against `name` and `qualified_name`.
+    pub query: String,
+    /// Max results (default 25, capped at 200).
+    pub limit: Option<usize>,
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct StartTourParams {
+    /// Optional seed symbol — when given, the tour walks outward from it
+    /// along the call graph. When omitted, picks the highest-centrality
+    /// entry points across the repo.
+    pub seed: Option<String>,
+    /// How many steps in the tour (default 12, capped at 50).
+    pub limit: Option<usize>,
+    pub branch: Option<String>,
+}
+
 // ── Server ────────────────────────────────────────────────────────────────────
 
 /// The MCP server handler. One shared `KuzuGraphStore` wrapped in `Arc<Mutex>`
@@ -791,6 +818,91 @@ impl GitCortexServer {
                 }))
             }
             Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
+        }
+    }
+
+    /// Render a wiki-style markdown summary for a symbol.
+    #[tool(
+        description = "Render a wiki page for a symbol — definition signature, doc-comment, callers, \
+        callees, and used-by, formatted as markdown. Combines `lookup_symbol`, `find_callers`, and \
+        `find_callees` in one structured view ready to paste into a README or PR description."
+    )]
+    fn wiki_symbol(&self, Parameters(p): Parameters<WikiSymbolParams>) -> CallToolResult {
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        match super::wiki::render_symbol(&*store, &branch, &p.name) {
+            Ok(markdown) => CallToolResult::structured(json!({
+                "symbol": p.name,
+                "branch": branch,
+                "markdown": markdown,
+            })),
+            Err(e) => CallToolResult::error(vec![Content::text(format!("wiki failed: {e}"))]),
+        }
+    }
+
+    /// Search the graph by name + qualified-name with deterministic ranking.
+    #[tool(
+        description = "Fuzzy search the code knowledge graph. Matches the query against both the \
+        unqualified `name` and full `qualified_name`, ranks by exactness (exact > prefix > \
+        substring), and applies kind boosts (functions/structs rank above generic nodes). \
+        Returns up to `limit` hits with scores."
+    )]
+    fn search_code(&self, Parameters(p): Parameters<SearchCodeParams>) -> CallToolResult {
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        match super::search::search(&*store, &branch, &p.query, p.limit) {
+            Ok(hits) => CallToolResult::structured(json!({
+                "query": p.query,
+                "branch": branch,
+                "count": hits.len(),
+                "hits": hits,
+            })),
+            Err(e) => CallToolResult::error(vec![Content::text(format!("search failed: {e}"))]),
+        }
+    }
+
+    /// Generate a guided tour through the repo's important symbols.
+    #[tool(
+        description = "Generate a guided tour through the codebase. Without a seed, picks the \
+        highest-centrality public functions/structs to give a new contributor an entry path. \
+        With a seed, BFS-walks outward from it along call edges. Returns ordered tour steps \
+        with rationale per step and a rendered markdown plan."
+    )]
+    fn start_tour(&self, Parameters(p): Parameters<StartTourParams>) -> CallToolResult {
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        match super::tour::generate(&*store, &branch, p.seed.as_deref(), p.limit) {
+            Ok(tour) => {
+                let markdown = super::tour::render_markdown(&tour);
+                CallToolResult::structured(json!({
+                    "branch": tour.branch,
+                    "seed": tour.seed,
+                    "steps": tour.steps,
+                    "markdown": markdown,
+                }))
+            }
+            Err(e) => CallToolResult::error(vec![Content::text(format!("tour failed: {e}"))]),
         }
     }
 }
