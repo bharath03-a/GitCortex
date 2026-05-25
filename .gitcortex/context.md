@@ -1,6 +1,6 @@
 # Codebase Map
 
-> Branch: `feature/v0-2-x` · 873 definitions · SHA: `5baf1499e7c9b65053cfdc820fd534f996327833`
+> Branch: `feature/v0-2-x` · 872 definitions · SHA: `4e1d3540379219990125af4c3b14075b20c49416`
 
 ## crates
 
@@ -879,7 +879,6 @@
     - `pub folder gitcortex` :1
       - `pub folder bin` :1
         - `pub file gcx.js` :1
-          - `pub module gcx` :1
           - `pub constant PLATFORM_PACKAGES` :7
           - `pub constant BINARY_NAME` :15
           - `pub function findBinary` :17
