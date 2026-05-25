@@ -31,10 +31,7 @@ jobs:
             archive_suffix: aarch64-unknown-linux-gnu.tar.gz
             cargo_target: aarch64-unknown-linux-gnu
             binary_name: gcx
-          - pkg: gitcortex-win32-x64
-            archive_suffix: x86_64-pc-windows-msvc.zip
-            cargo_target: x86_64-pc-windows-msvc
-            binary_name: gcx.exe
+          # Windows excluded — KuzuDB 0.11.3 (archived) does not link on MSVC.
 
     steps:
       - uses: actions/checkout@v4

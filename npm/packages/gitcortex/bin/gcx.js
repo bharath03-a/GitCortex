@@ -9,10 +9,10 @@ const PLATFORM_PACKAGES = {
   "darwin-x64":   "@gitcortex/gcx-darwin-x64",
   "linux-x64":    "@gitcortex/gcx-linux-x64",
   "linux-arm64":  "@gitcortex/gcx-linux-arm64",
-  "win32-x64":    "@gitcortex/gcx-win32-x64",
+  // Windows builds are disabled — see dist-workspace.toml.
 };
 
-const BINARY_NAME = process.platform === "win32" ? "gcx.exe" : "gcx";
+const BINARY_NAME = "gcx";
 
 function findBinary() {
   const key = `${process.platform}-${process.arch}`;

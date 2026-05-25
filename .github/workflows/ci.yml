@@ -58,7 +58,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # Windows is excluded — see dist-workspace.toml. KuzuDB 0.11.3 does not
+        # link cleanly on MSVC and the upstream project is archived.
+        os: [ubuntu-latest, macos-latest]
         toolchain: [stable]
         include:
           # Also test on the pinned MSRV — only on Linux to keep CI minutes down

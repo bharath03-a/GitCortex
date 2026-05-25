@@ -20,7 +20,6 @@
     "@gitcortex/gcx-darwin-arm64": "0.3.0",
     "@gitcortex/gcx-darwin-x64": "0.3.0",
     "@gitcortex/gcx-linux-x64": "0.3.0",
-    "@gitcortex/gcx-linux-arm64": "0.3.0",
-    "@gitcortex/gcx-win32-x64": "0.3.0"
+    "@gitcortex/gcx-linux-arm64": "0.3.0"
   }
 }

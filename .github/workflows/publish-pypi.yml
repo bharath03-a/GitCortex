@@ -31,10 +31,7 @@ jobs:
             platform_tag: macosx_11_0_arm64
             archive_suffix: aarch64-apple-darwin.tar.gz
             binary_name: gcx
-          - target: x86_64-pc-windows-msvc
-            platform_tag: win_amd64
-            archive_suffix: x86_64-pc-windows-msvc.zip
-            binary_name: gcx.exe
+          # Windows excluded — KuzuDB 0.11.3 (archived) does not link on MSVC.
 
     steps:
       - uses: actions/checkout@v4
