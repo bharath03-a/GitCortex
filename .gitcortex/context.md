@@ -1,6 +1,6 @@
 # Codebase Map
 
-> Branch: `feature/v0-2-x` · 874 definitions · SHA: `1e3f9c4a65ceb43fa73ca28f42b113f4478e0024`
+> Branch: `feature/v0-2-x` · 873 definitions · SHA: `a4ae1e43cfaa95e31983afc5bc2eb81a3dfead65`
 
 ## crates
 
@@ -1022,7 +1022,6 @@
   - `pub folder src` :1
     - `pub folder gitcortex` :1
       - `pub file __init__.py` :1
-        - `pub module __init__` :1
         - `function _binary_path` :9
         - `pub function main` :14
 
