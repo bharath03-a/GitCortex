@@ -1,6 +1,6 @@
 # Codebase Map
 
-> Branch: `feature/v0-2-x` · 875 definitions · SHA: `1b3591a8464d828845986061ff3616b7dba0d144`
+> Branch: `feature/v0-2-x` · 874 definitions · SHA: `1e3f9c4a65ceb43fa73ca28f42b113f4478e0024`
 
 ## crates
 
@@ -1054,6 +1054,14 @@
         - `pub struct Hello` :5
           - `pub method greet` :6
         - `pub struct FancyGreeter` :11
+          - `pub struct Hello` :5
+            - `method greet` :10
+          - `pub struct Hello` :5
+            - `pub method greet` :6
+          - `pub struct Hello` :7
+            - `pub method Greet` :11
+          - `pub(crate) struct Hello` :7
+            - `pub method greet` :8
           - `pub method greet` :12
         - `pub function makeGreeting` :17
       - `pub file python_comprehensive.py` :1
@@ -1061,10 +1069,10 @@
         - `pub constant MAX_RETRIES` :16
         - `pub constant DEFAULT_TIMEOUT` :17
         - `pub constant API_VERSION` :18
-        - `pub interface Serializable` :22
+        - `pub function Serializable` :22
           - `pub method serialize` :23
           - `pub method deserialize` :26
-        - `pub interface Repository` :30
+        - `pub function Repository` :30
           - `pub method find_by_id` :31
           - `pub method save` :34
         - `pub struct BaseModel` :40
@@ -1072,7 +1080,7 @@
           - `pub method to_dict` :44
         - `pub struct User` :51
           - `pub method validate` :41
-          - `pub property display_name` :57
+          - `pub function display_name` :57
           - `pub method from_dict` :61
           - `pub method anonymous` :65
           - `method _internal_check` :71
@@ -1097,7 +1105,7 @@
         - `pub function make_greeting` :15
       - `pub file sample.java` :1
         - `pub module sample` :1
-        - `pub(crate) interface Greeter` :3
+        - `pub(crate) function Greeter` :3
           - `pub(crate) method greet` :4
         - `pub(crate) struct Hello` :7
           - `pub method greet` :8
@@ -1138,117 +1146,9 @@
 ## viz
 
 - `pub folder viz` :1
-  - `pub file eslint.config.js` :1
-    - `pub module eslint.config` :1
-  - `pub file vitest.config.ts` :1
-    - `pub module vitest.config` :1
-  - `pub file vite.config.ts` :1
-    - `pub module vite.config` :1
   - `pub folder src` :1
-    - `pub file main.tsx` :1
-      - `pub module main` :1
-    - `pub file api.ts` :1
-      - `pub module api` :1
-      - `pub trait RawNode` :1
-      - `pub trait RawEdge` :15
-      - `pub trait GraphData` :21
-      - `pub async function fetchGraphData` :26
-      - `pub trait DeepCallersHop` :32
-      - `pub trait DeepCallersResult` :37
-      - `pub async function fetchDeepCallers` :44
-      - `pub trait BranchListResult` :50
-      - `pub trait UnusedResult` :56
-      - `pub async function fetchUnused` :61
-      - `pub async function fetchBranches` :70
-      - `pub trait BranchDiffResult` :76
-      - `pub async function fetchBranchDiff` :83
     - `pub file App.tsx` :1
-      - `pub module App` :1
       - `pub function App` :14
-    - `pub folder theme` :1
-      - `pub file colors.ts` :1
-        - `pub module colors` :1
-        - `pub constant KIND_COLOR` :1
-        - `pub constant EDGE_COLOR` :19
-        - `pub constant EDGE_WIDTH` :30
-        - `pub constant KIND_LABEL` :41
-        - `pub function dimColor` :59
-    - `pub folder hooks` :1
-      - `pub file useBranchDiff.ts` :1
-        - `pub module useBranchDiff` :1
-        - `pub trait DiffOverlay` :4
-        - `pub function useBranchDiff` :11
-    - `pub folder graph` :1
-      - `pub file density.ts` :1
-        - `pub module density` :1
-        - `pub type_alias DensityMode` :3
-        - `pub constant DENSITY_LABEL` :5
-        - `pub constant SEMANTIC_EDGE_KINDS` :11
-        - `pub constant STRUCTURAL_KINDS` :13
-        - `pub function applyDensity` :15
-        - `pub function filterByIds` :37
-      - `pub folder __tests__` :1
-        - `pub file density.test.ts` :1
-          - `pub module density.test` :1
-          - `pub function node` :5
-          - `pub function edge` :19
-          - `pub function buildGraph` :21
-    - `pub folder components` :1
-      - `pub file FilterRail.tsx` :1
-        - `pub module FilterRail` :1
-        - `pub type_alias Visibility` :6
-        - `pub type_alias Flag` :7
-        - `pub constant VIS_LABEL` :9
-        - `pub trait Props` :15
-        - `pub function FilterRail` :28
-        - `pub function FilterSection` :148
-        - `pub function FilterRow` :159
-      - `pub file CosmosCanvas.tsx` :1
-        - `pub module CosmosCanvas` :1
-        - `pub constant DIFF_ADDED` :9
-        - `pub constant DIFF_REMOVED` :10
-        - `pub trait PointRow` :12
-        - `pub trait LinkRow` :20
-        - `pub trait Props` :28
-        - `pub function CosmosCanvas` :39
-      - `pub file BranchPicker.tsx` :1
-        - `pub module BranchPicker` :1
-        - `pub trait Props` :5
-        - `pub function BranchPicker` :11
-      - `pub file SearchPalette.tsx` :1
-        - `pub module SearchPalette` :1
-        - `pub trait Props` :6
-        - `pub function SearchPalette` :12
-      - `pub file Inspector.tsx` :1
-        - `pub module Inspector` :1
-        - `pub type_alias Tab` :7
-        - `pub trait Props` :9
-        - `pub constant RISK_TONE` :18
-        - `pub function Inspector` :25
-        - `pub function DeepCallersPanel` :139
-        - `pub function EmptyHint` :185
-        - `pub function TabBtn` :189
-        - `pub function Badge` :212
-        - `pub function NodeList` :228
-      - `pub file Header.tsx` :1
-        - `pub module Header` :1
-        - `pub trait Props` :5
-        - `pub constant DENSITY_OPTIONS` :19
-        - `pub function Header` :21
-      - `pub file KeyboardHelp.tsx` :1
-        - `pub module KeyboardHelp` :1
-        - `pub trait Props` :3
-        - `pub constant SHORTCUTS` :7
-        - `pub function KeyboardHelp` :22
-      - `pub file CanvasControls.tsx` :1
-        - `pub module CanvasControls` :1
-        - `pub trait Props` :5
-        - `pub function CanvasControls` :9
-        - `pub function Btn` :71
-      - `pub file StatusBar.tsx` :1
-        - `pub module StatusBar` :1
-        - `pub trait Props` :4
-        - `pub function StatusBar` :12
 
 ## viz/eslint.config.js
 
@@ -1264,6 +1164,62 @@
 
 ## viz/src/components
 
+- `pub folder components` :1
+  - `pub file FilterRail.tsx` :1
+    - `pub module FilterRail` :1
+    - `pub type_alias Visibility` :6
+    - `pub type_alias Flag` :7
+    - `pub constant VIS_LABEL` :9
+    - `pub trait Props` :15
+    - `pub function FilterRail` :28
+    - `pub function FilterSection` :148
+    - `pub function FilterRow` :159
+  - `pub file CosmosCanvas.tsx` :1
+    - `pub module CosmosCanvas` :1
+    - `pub constant DIFF_ADDED` :9
+    - `pub constant DIFF_REMOVED` :10
+    - `pub trait PointRow` :12
+    - `pub trait LinkRow` :20
+    - `pub trait Props` :28
+    - `pub function CosmosCanvas` :39
+  - `pub file BranchPicker.tsx` :1
+    - `pub module BranchPicker` :1
+    - `pub trait Props` :5
+    - `pub function BranchPicker` :11
+  - `pub file SearchPalette.tsx` :1
+    - `pub module SearchPalette` :1
+    - `pub trait Props` :6
+    - `pub function SearchPalette` :12
+  - `pub file Inspector.tsx` :1
+    - `pub module Inspector` :1
+    - `pub type_alias Tab` :7
+    - `pub trait Props` :9
+    - `pub constant RISK_TONE` :18
+    - `pub function Inspector` :25
+    - `pub function DeepCallersPanel` :139
+    - `pub function EmptyHint` :185
+    - `pub function TabBtn` :189
+    - `pub function Badge` :212
+    - `pub function NodeList` :228
+  - `pub file Header.tsx` :1
+    - `pub module Header` :1
+    - `pub trait Props` :5
+    - `pub constant DENSITY_OPTIONS` :19
+    - `pub function Header` :21
+  - `pub file KeyboardHelp.tsx` :1
+    - `pub module KeyboardHelp` :1
+    - `pub trait Props` :3
+    - `pub constant SHORTCUTS` :7
+    - `pub function KeyboardHelp` :22
+  - `pub file CanvasControls.tsx` :1
+    - `pub module CanvasControls` :1
+    - `pub trait Props` :5
+    - `pub function CanvasControls` :9
+    - `pub function Btn` :71
+  - `pub file StatusBar.tsx` :1
+    - `pub module StatusBar` :1
+    - `pub trait Props` :4
+    - `pub function StatusBar` :12
 
 ## viz/src/components/BranchPicker.tsx
 
@@ -1294,6 +1250,21 @@
 
 ## viz/src/graph
 
+- `pub folder graph` :1
+  - `pub file density.ts` :1
+    - `pub module density` :1
+    - `pub type_alias DensityMode` :3
+    - `pub constant DENSITY_LABEL` :5
+    - `pub constant SEMANTIC_EDGE_KINDS` :11
+    - `pub constant STRUCTURAL_KINDS` :13
+    - `pub function applyDensity` :15
+    - `pub function filterByIds` :37
+  - `pub folder __tests__` :1
+    - `pub file density.test.ts` :1
+      - `pub module density.test` :1
+      - `pub function node` :5
+      - `pub function edge` :19
+      - `pub function buildGraph` :21
 
 ## viz/src/graph/__tests__
 
@@ -1306,6 +1277,11 @@
 
 ## viz/src/hooks
 
+- `pub folder hooks` :1
+  - `pub file useBranchDiff.ts` :1
+    - `pub module useBranchDiff` :1
+    - `pub trait DiffOverlay` :4
+    - `pub function useBranchDiff` :11
 
 ## viz/src/hooks/useBranchDiff.ts
 
@@ -1315,6 +1291,14 @@
 
 ## viz/src/theme
 
+- `pub folder theme` :1
+  - `pub file colors.ts` :1
+    - `pub module colors` :1
+    - `pub constant KIND_COLOR` :1
+    - `pub constant EDGE_COLOR` :19
+    - `pub constant EDGE_WIDTH` :30
+    - `pub constant KIND_LABEL` :41
+    - `pub function dimColor` :59
 
 ## viz/src/theme/colors.ts
 
