@@ -173,7 +173,7 @@ export default function App() {
               {error}
             </div>
           )}
-          {data && !error && (
+          {data && !error && data.nodes.length > 0 && (
             <CosmosCanvas
               data={data}
               hiddenKinds={hiddenKinds}
@@ -184,6 +184,16 @@ export default function App() {
               diffOverlay={diffOverlay}
               unusedIds={unusedIds}
             />
+          )}
+          {data && !error && data.nodes.length === 0 && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center text-(--color-text-muted)">
+              <div className="text-lg">Graph is empty</div>
+              <div className="font-mono text-xs">
+                Run <span className="text-(--color-text-primary)">gcx hook</span> (or
+                <span className="text-(--color-text-primary)"> gcx init</span>) to index this
+                repository, then refresh.
+              </div>
+            </div>
           )}
           {!data && !error && (
             <div className="absolute inset-0 flex items-center justify-center text-(--color-text-muted)">
