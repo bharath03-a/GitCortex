@@ -3,7 +3,7 @@ import { Focus, Maximize2, Pause, Play, RotateCcw, ZoomIn, ZoomOut } from "lucid
 import type { CosmographRef } from "@cosmograph/react";
 
 interface Props {
-  cosmoRef: RefObject<CosmographRef>;
+  cosmoRef: RefObject<CosmographRef | null>;
 }
 
 export function CanvasControls({ cosmoRef }: Props) {

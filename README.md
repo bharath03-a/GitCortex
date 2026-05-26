@@ -10,18 +10,32 @@ When you ask an AI editor to work on a large codebase, it either scans dozens of
 
 GitCortex gives your AI editor a pre-built, queryable call graph of your repo — functions, structs, traits, interfaces, call relationships, inheritance — so instead of reading raw source files it can ask precise questions like "what calls this function?" or "what implements this trait?" and get structured answers instantly.
 
-| | GitCortex v0.2 | GitNexus | codebase-memory-mcp |
-|---|---|---|---|
-| **License** | **MIT** (commercial-friendly) | PolyForm Noncommercial | MIT |
-| **MCP tools** | **12** with real query depth | 7 + 2 prompts | 14 |
-| **Languages** | **5 — full edge coverage** (Rust, Python, TS/JS, Go, Java) | 14 (uneven depth) | 155 (shallow) |
-| **IDE support** | Cursor, Claude Code, Windsurf, Copilot, Antigravity | Claude Code, Cursor, Windsurf | Varies |
-| **Index freshness** | **Auto on every git op** (<500ms) | Manual `npx analyze` | Manual |
-| **Branch graphs** | **Per-branch, instant switch** | No | No |
-| **Runtime dep** | **None** — single static binary | Node.js required | None |
-| **Install** | `npm install -g`, `pip install`, `curl \| sh`, `cargo install` | `npm install -g gitnexus` | `curl \| sh` |
+### Highlights
 
-> **One sentence**: GitCortex is the only MIT-licensed, zero-runtime-dependency code knowledge graph that stays current automatically and works in every major AI editor.
+- **MIT licensed** — commercial-friendly.
+- **Zero runtime dependencies** — single static binary, no Node.js / Python runtime required.
+- **5 languages with full edge coverage** — Rust, Python, TypeScript/JavaScript, Go, Java.
+- **Auto-indexing on every git op** — incremental, sub-500 ms on changed files.
+- **Per-branch graphs** — switching branches is instant, no re-index.
+- **Wiki, search, tour, blast-radius** — built-in discovery surface for AI assistants and humans.
+- **Works in Cursor, Claude Code, Windsurf, GitHub Copilot, Google Antigravity** via MCP.
+
+---
+
+## Demo
+
+<!-- VIDEO_SLOT
+     Drop your recording here. Two supported shapes:
+
+       1. GitHub-uploaded asset:
+          https://github.com/user-attachments/assets/<id>
+
+       2. Local file checked in under docs/ (preferred for repeatability):
+
+       https://github.com/bharath03-a/GitCortex/assets/PLACEHOLDER/demo.mp4
+-->
+
+> _Demo video coming soon — see `docs/demo.mp4` once recorded._
 
 ---
 
@@ -72,8 +86,11 @@ curl --proto '=https' --tlsv1.2 -LsSf \
   https://github.com/bharath03-a/GitCortex/releases/latest/download/gcx-installer.sh | sh
 ```
 
-> Pre-built binaries for macOS (arm64/x86_64), Linux (x86_64/aarch64), and Windows (x86_64) are published
-> automatically on every release via GitHub Releases. Windows users can also install via `npm install -g gitcortex` or `pip install gitcortex`.
+> Pre-built binaries for macOS (arm64/x86_64) and Linux (x86_64/aarch64) are published automatically
+> on every release via GitHub Releases.
+>
+> _Windows is not currently supported — the embedded graph store (KuzuDB 0.11.3, upstream archived)
+> does not link cleanly on MSVC. We'll restore Windows support after migrating the store layer._
 
 **Cargo (from crates.io):**
 
@@ -152,12 +169,25 @@ gcx serve
 
 ### `gcx query`
 
-One-shot CLI queries for manual inspection.
+One-shot CLI queries for manual inspection. The same surface is exposed to
+AI assistants as MCP tools.
 
 ```bash
+# Locate symbols
 gcx query lookup-symbol MyStruct
-gcx query find-callers process_request --branch main
+gcx query search auth --limit 10              # ranked fuzzy match
 gcx query list-definitions src/lib.rs
+
+# Call graph
+gcx query find-callers process_request --branch main --depth 3
+gcx query find-callees handle_request
+gcx query trace-path entry_point database_query
+gcx query symbol-context apply_diff           # 360° view (def + callers + callees + uses)
+
+# Discovery — new in v0.3
+gcx query wiki apply_diff                     # markdown wiki page for a symbol
+gcx query tour --limit 12                     # centrality-ranked global tour
+gcx query tour --seed main                    # BFS-walk outward from a seed
 ```
 
 ### `gcx viz`
@@ -172,7 +202,7 @@ gcx viz --format dot > graph.dot   # export Graphviz DOT to stdout
 dot -Tsvg graph.dot -o graph.svg   # render with Graphviz
 ```
 
-The browser UI is a React 18 + Vite + Tailwind v4 single-page app, rendered by **Cosmograph** (`@cosmos.gl/graph`) — a WebGL/GPGPU force-directed graph engine that runs the entire simulation on the GPU. The whole bundle is embedded in the `gcx` binary via `include_bytes!`, so there is no runtime dependency beyond a browser.
+The browser UI is a React 19 + Vite + Tailwind v4 single-page app, rendered by **Cosmograph** (`@cosmos.gl/graph`) — a WebGL/GPGPU force-directed graph engine that runs the entire simulation on the GPU. The whole bundle is embedded in the `gcx` binary via `include_bytes!`, so there is no runtime dependency beyond a browser.
 
 Features:
 - **GPGPU force layout** — clusters form naturally on first paint, smooth at 60fps even on thousands of nodes

@@ -10,6 +10,17 @@
         ],
         "matcher": "Read"
       }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "command": ".claude/hooks/post-tool-use/rustfmt.sh",
+            "type": "command"
+          }
+        ],
+        "matcher": "Edit|Write|MultiEdit"
+      }
     ]
   }
 }
