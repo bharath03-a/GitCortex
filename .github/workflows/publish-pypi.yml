@@ -34,7 +34,7 @@ jobs:
           # Windows excluded — KuzuDB 0.11.3 (archived) does not link on MSVC.
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python
         uses: actions/setup-python@v5
