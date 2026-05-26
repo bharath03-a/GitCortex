@@ -10,8 +10,12 @@ ci = "github"
 # The installers to generate for each app
 installers = ["shell"]
 # Target platforms to build apps for (Rust target-triple syntax)
-# Windows excluded: kuzu's bundled C++ libs conflict with the MSVC CRT on windows-msvc.
-# Windows users should build from source: cargo install --git https://github.com/bharath03-a/GitCortex --bin gcx
+#
+# Windows (x86_64-pc-windows-msvc) is excluded: KuzuDB 0.11.3 (final release;
+# upstream archived 2025-10-10) does not link cleanly with MSVC — its bundled
+# algo_extension defines symbols that conflict with the main `kuzu.lib`
+# (LNK1169 / LNK2038). Reintroduce only after swapping the embedded graph
+# store, or after KuzuDB is forked/patched.
 targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu"]
 # Build artifacts on PRs to verify cross-platform builds before merge
 pr-run-mode = "upload"

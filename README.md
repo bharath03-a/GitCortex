@@ -10,16 +10,18 @@ When you ask an AI editor to work on a large codebase, it either scans dozens of
 
 GitCortex gives your AI editor a pre-built, queryable call graph of your repo — functions, structs, traits, interfaces, call relationships, inheritance — so instead of reading raw source files it can ask precise questions like "what calls this function?" or "what implements this trait?" and get structured answers instantly.
 
-| | GitCortex v0.2 | Others |
-|---|---|---|
-| **MCP tools** | 12, each with real query depth | 4–16 (many shallow grep wrappers) |
-| **Languages** | 5 with full edge coverage (Rust, Python, TS/JS, Go, Java) | Often 1–2, or broad but shallow |
-| **IDE support** | Cursor, Claude Code, Windsurf, Copilot, Antigravity | Usually Claude Code only |
-| **Index freshness** | Automatic on every `git commit / merge / rebase / checkout` | Manual re-run |
-| **Branch graphs** | Per-branch, instant switch — no re-index | One graph per repo |
-| **Install time** | `cargo install gitcortex` + `gcx init` — under 2 minutes | Varies |
+| | GitCortex v0.2 | GitNexus | codebase-memory-mcp |
+|---|---|---|---|
+| **License** | **MIT** (commercial-friendly) | PolyForm Noncommercial | MIT |
+| **MCP tools** | **12** with real query depth | 7 + 2 prompts | 14 |
+| **Languages** | **5 — full edge coverage** (Rust, Python, TS/JS, Go, Java) | 14 (uneven depth) | 155 (shallow) |
+| **IDE support** | Cursor, Claude Code, Windsurf, Copilot, Antigravity | Claude Code, Cursor, Windsurf | Varies |
+| **Index freshness** | **Auto on every git op** (<500ms) | Manual `npx analyze` | Manual |
+| **Branch graphs** | **Per-branch, instant switch** | No | No |
+| **Runtime dep** | **None** — single static binary | Node.js required | None |
+| **Install** | `npm install -g`, `pip install`, `curl \| sh`, `cargo install` | `npm install -g gitnexus` | `curl \| sh` |
 
-> **One sentence**: GitCortex is the knowledge graph that stays current without you thinking about it — and works in the editor you already use.
+> **One sentence**: GitCortex is the only MIT-licensed, zero-runtime-dependency code knowledge graph that stays current automatically and works in every major AI editor.
 
 ---
 
@@ -43,27 +45,40 @@ The graph is namespaced per branch — switching branches instantly gives you th
 
 ## Installation
 
-**macOS / Linux — pre-built binary (no Rust required):**
+**npm / pnpm / yarn (Node.js — no Rust required):**
+
+```bash
+npm install -g gitcortex
+# or
+pnpm add -g gitcortex
+# or
+yarn global add gitcortex
+```
+
+**pip / pipx / uv (Python — no Rust required):**
+
+```bash
+pip install gitcortex
+# or (isolated, recommended for CLI tools)
+pipx install gitcortex
+# or
+uv tool install gitcortex
+```
+
+**macOS / Linux — curl installer:**
 
 ```bash
 curl --proto '=https' --tlsv1.2 -LsSf \
   https://github.com/bharath03-a/GitCortex/releases/latest/download/gcx-installer.sh | sh
 ```
 
-> Pre-built binaries for macOS (arm64/x86_64) and Linux (x86_64/aarch64) are published
-> automatically on every release via GitHub Releases.
-> Windows users should build from source (see below) — a prebuilt binary will ship in a future release.
+> Pre-built binaries for macOS (arm64/x86_64), Linux (x86_64/aarch64), and Windows (x86_64) are published
+> automatically on every release via GitHub Releases. Windows users can also install via `npm install -g gitcortex` or `pip install gitcortex`.
 
 **Cargo (from crates.io):**
 
 ```bash
 cargo install gitcortex
-```
-
-**Cargo (from git — works before crates.io publish):**
-
-```bash
-cargo install --git https://github.com/bharath03-a/GitCortex --bin gcx
 ```
 
 **Build from source:**
@@ -157,14 +172,19 @@ gcx viz --format dot > graph.dot   # export Graphviz DOT to stdout
 dot -Tsvg graph.dot -o graph.svg   # render with Graphviz
 ```
 
-The browser UI is built on **Cytoscape.js** with a Catppuccin dark theme. Features:
-- **Community detection** — nodes grouped by label-propagation clusters, each cluster shaded a distinct fill
-- **Node sizing** by LOC (lines of code); **edge colour** by edge kind
-- **Filter rail** — NodeKind toggles, EdgeKind toggles, visibility (pub / pub(crate) / private), file list, async/unsafe flag toggles
-- **Search bar** — fuzzy match by name or qualified name, ↑/↓/Enter keyboard navigation
-- **Inspector panel** — callers, callees, and uses/implements lists with click-to-navigate
-- **Trace path** — type any target symbol; BFS path highlighted with animation
-- **Layout switcher** — Force (cose), Concentric, Tree (breadthfirst)
+The browser UI is a React 18 + Vite + Tailwind v4 single-page app, rendered by **Cosmograph** (`@cosmos.gl/graph`) — a WebGL/GPGPU force-directed graph engine that runs the entire simulation on the GPU. The whole bundle is embedded in the `gcx` binary via `include_bytes!`, so there is no runtime dependency beyond a browser.
+
+Features:
+- **GPGPU force layout** — clusters form naturally on first paint, smooth at 60fps even on thousands of nodes
+- **Three-pane shell** — FilterRail (left) · Cosmograph canvas (center) · Inspector (right) · StatusBar (bottom)
+- **Density modes** in the header: `Focused` (only semantically connected nodes), `Public API` (only `pub` symbols), `Full` (all)
+- **Cmd+K search palette** — fuzzy match on name and qualified_name, ↑/↓/Enter keyboard navigation, click zooms-to-node
+- **Inspector tabs** — local Callers/Callees/Uses (computed client-side from the live graph), plus a **Deep Callers** tab backed by MCP `find_callers_deep` with risk scoring (LOW / MEDIUM / HIGH / CRITICAL)
+- **Branch diff overlay** — pick a branch from the header dropdown; added nodes glow emerald, removed nodes glow red, with a live legend
+- **NodeKind + EdgeKind filter toggles** in the left rail, with per-kind counts
+- **Floating canvas controls** — zoom in/out, fit, focus selected, play/pause simulation
+- **Catppuccin dark theme** with custom Tailwind v4 design tokens (`--color-void`, `--color-accent`, etc.)
+- **Editor links** — clicking a node opens it in VS Code/Cursor/IDEA via `file:line` URI
 
 ### `gcx blast-radius`
 
@@ -255,6 +275,51 @@ Wipe the graph store for this repo so the next `gcx init` or commit triggers a f
 gcx clean
 ```
 
+### `gcx doctor`
+
+Diagnose setup issues: hooks installed, MCP registered, store accessible, index current.
+
+```bash
+gcx doctor
+```
+
+Example output:
+```
+gcx doctor
+
+  [ok] gcx v0.3.0 on PATH (/usr/local/bin/gcx)
+  [ok] git repository detected
+  [ok] post-commit hook installed
+  [ok] post-merge hook installed
+  [ok] post-rewrite hook installed
+  [ok] post-checkout hook installed
+  [ok] graph store accessible  (1 842 nodes, 4 217 edges on main)
+  [ok] index is current  (HEAD abc1234)
+  [ok] MCP registered  (Claude Code)
+  [--] MCP not configured for Cursor  (run: gcx init --editor cursor)
+
+All checks passed.
+```
+
+### `gcx update`
+
+Check for a newer release and print the right update command for your install method.
+
+```bash
+gcx update
+```
+
+```
+gcx update
+
+  current version:  0.3.0
+  latest version:   0.3.0
+  you are up to date.
+
+  To update (cargo):
+    cargo install gitcortex
+```
+
 ---
 
 ### CI / PR blast radius bot
@@ -288,7 +353,16 @@ This writes `.github/workflows/gcx-blast-radius.yml`. On every pull request it r
 | `detect_changes` | Changed symbols + blast radius vs a base branch |
 | `symbol_context` | Callers, callees, and used-by for a symbol |
 
-All tools accept an optional `branch` parameter (defaults to `"main"`).
+All tools accept an optional `branch` parameter. Defaults to the branch active when `gcx serve` was started (auto-detected from `git symbolic-ref HEAD`).
+
+### MCP prompts
+
+| Prompt | What it does |
+|---|---|
+| `detect_impact` | Pre-commit impact analysis — maps a list of changed files to affected callers and scores risk LOW / MEDIUM / HIGH / CRITICAL |
+| `generate_map` | Architecture diagram — produces a Mermaid module map, key types table, and core execution flows |
+
+Prompts are multi-step workflows your AI assistant executes automatically using the tools above. In Claude Code, invoke them via the prompt picker or with `/mcp__gitcortex__detect_impact`.
 
 ### Claude Code slash commands
 
@@ -344,8 +418,8 @@ build/
 | `Module` | all | `mod foo { }`, Python module, Go package |
 | `Struct` | Rust/Go/TS/Java | `struct Foo`, `class Foo` |
 | `Enum` | all | `enum Bar` |
-| `Trait` | Rust/Python | `trait Baz`, `Protocol` |
-| `Interface` | TS/Go/Java | `interface Foo`, structural interface |
+| `Trait` | Rust/Python | `trait Baz`, abstract base class |
+| `Interface` | TS/Go/Java/Python | `interface Foo`, structural interface, `Protocol` subclass |
 | `TypeAlias` | Rust/TS/Python | `type Alias = ...` |
 | `Function` | all | Free-standing function |
 | `Method` | all | Method inside a class / impl block |
@@ -367,6 +441,23 @@ build/
 | `Imports` | `use path::to::Thing`, `import` |
 | `Throws` | Java `throws` clause → exception type |
 | `Annotated` | Node decorated by `#[attr]`, `@decorator`, `@annotation` |
+
+### Python indexing detail
+
+The Python parser fully resolves the following patterns:
+
+| Pattern | NodeKind emitted | Metadata set |
+|---|---|---|
+| `class Foo(Protocol):` | `Interface` | `is_abstract = true` |
+| `class Foo:` / `@dataclass class Foo:` | `Struct` | — |
+| `@property def bar(self):` | `Property` | `is_property = true` |
+| `@staticmethod def fn():` | `Method` | `is_static = true` |
+| `@classmethod def fn(cls):` | `Method` | `is_static = true` |
+| `async def fn():` | `Function` / `Method` | `is_async = true` |
+| `def fn(): yield …` | `Function` | `is_generator = true` |
+| `async def fn(): yield …` | `Function` | `is_async = true`, `is_generator = true` |
+| `UPPER_SNAKE_CASE = …` at module level | `Constant` | — |
+| Nested `class Inner:` inside `class Outer:` | `Struct` | `Contains` edge from `Outer` |
 
 ### Node metadata flags
 

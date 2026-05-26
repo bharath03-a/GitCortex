@@ -1,3 +1,5 @@
+#![cfg(feature = "kuzu-backend")]
+
 use std::path::{Path, PathBuf};
 
 use gitcortex_core::{

@@ -639,19 +639,18 @@ dependencies = [
 
 [[package]]
 name = "gitcortex"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "anyhow",
- "axum",
  "clap",
  "gitcortex-core",
  "gitcortex-indexer",
+ "gitcortex-mcp",
  "gitcortex-store",
- "open",
- "rmcp",
- "schemars",
+ "gitcortex-viz",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -659,7 +658,7 @@ dependencies = [
 
 [[package]]
 name = "gitcortex-core"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "petgraph",
  "serde",
@@ -669,7 +668,7 @@ dependencies = [
 
 [[package]]
 name = "gitcortex-indexer"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "git2",
  "gitcortex-core",
@@ -685,13 +684,46 @@ dependencies = [
 ]
 
 [[package]]
+name = "gitcortex-mcp"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "gitcortex-core",
+ "gitcortex-indexer",
+ "gitcortex-store",
+ "rmcp",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "gitcortex-store"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "dashmap",
  "gitcortex-core",
  "kuzu",
  "tempfile",
+ "tracing",
+]
+
+[[package]]
+name = "gitcortex-viz"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "clap",
+ "gitcortex-core",
+ "gitcortex-store",
+ "open",
+ "serde",
+ "serde_json",
+ "tokio",
  "tracing",
 ]
 

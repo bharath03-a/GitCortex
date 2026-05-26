@@ -1,0 +1,30 @@
+# GitCortex code owners
+# This file routes PR review requests automatically based on the paths touched.
+# Add more reviewers as the team grows; GitHub will request review from anyone listed.
+
+# Default — everything not matched below
+*                                       @bharath03-a
+
+# Rust crates
+/crates/gitcortex-core/                 @bharath03-a
+/crates/gitcortex-indexer/              @bharath03-a
+/crates/gitcortex-store/                @bharath03-a
+/crates/gitcortex-mcp/                  @bharath03-a
+/crates/gitcortex-viz/                  @bharath03-a
+/crates/gitcortex-cli/                  @bharath03-a
+
+# Frontend (tag a frontend reviewer here when one joins)
+/viz/                                   @bharath03-a
+
+# Docs / governance
+/docs/                                  @bharath03-a
+/CONTRIBUTING.md                        @bharath03-a
+/CODE_OF_CONDUCT.md                     @bharath03-a
+/README.md                              @bharath03-a
+/CHANGELOG.md                           @bharath03-a
+
+# CI / release infrastructure
+/.github/                               @bharath03-a
+/Cargo.toml                             @bharath03-a
+/dist-workspace.toml                    @bharath03-a
+/rust-toolchain.toml                    @bharath03-a

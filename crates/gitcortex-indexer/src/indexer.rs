@@ -112,20 +112,33 @@ impl IncrementalIndexer {
             map
         };
 
+        // Parallel id → file map. Used to constrain deferred resolution to the
+        // caller's language family — without this, a Java caller's deferred
+        // `greet` would be resolved to all `greet` symbols across every
+        // language in the diff, producing spurious cross-language edges.
+        let id_to_file: HashMap<&NodeId, &Path> = merged
+            .added_nodes
+            .iter()
+            .map(|n| (&n.id, n.file.as_path()))
+            .collect();
+
         merged.deferred_calls = resolve_deferred(
             &name_to_ids,
+            &id_to_file,
             &all_calls,
             EdgeKind::Calls,
             &mut merged.added_edges,
         );
         merged.deferred_uses = resolve_deferred(
             &name_to_ids,
+            &id_to_file,
             &all_uses,
             EdgeKind::Uses,
             &mut merged.added_edges,
         );
         merged.deferred_implements = resolve_deferred(
             &name_to_ids,
+            &id_to_file,
             &all_implements,
             EdgeKind::Implements,
             &mut merged.added_edges,
@@ -134,24 +147,28 @@ impl IncrementalIndexer {
         // resolve what we can locally and silently drop the rest.
         let _ = resolve_deferred(
             &name_to_ids,
+            &id_to_file,
             &all_imports,
             EdgeKind::Imports,
             &mut merged.added_edges,
         );
         merged.deferred_inherits = resolve_deferred(
             &name_to_ids,
+            &id_to_file,
             &all_inherits,
             EdgeKind::Inherits,
             &mut merged.added_edges,
         );
         merged.deferred_throws = resolve_deferred(
             &name_to_ids,
+            &id_to_file,
             &all_throws,
             EdgeKind::Throws,
             &mut merged.added_edges,
         );
         merged.deferred_annotated = resolve_deferred(
             &name_to_ids,
+            &id_to_file,
             &all_annotated,
             EdgeKind::Annotated,
             &mut merged.added_edges,
@@ -173,7 +190,9 @@ impl IncrementalIndexer {
     // ── Private helpers ───────────────────────────────────────────────────────
 
     fn supported_extensions(&self) -> Vec<&'static str> {
-        vec!["rs", "py", "ts", "tsx", "js", "jsx", "mjs", "cjs", "go"]
+        vec![
+            "rs", "py", "ts", "tsx", "js", "jsx", "mjs", "cjs", "go", "java",
+        ]
     }
 
     fn index_file(&self, repo_relative_path: &Path) -> FileIndexResult {
@@ -260,16 +279,40 @@ impl IncrementalIndexer {
 /// target lives in an unchanged file not present in this diff). The caller
 /// stores the unresolved entries in `GraphDiff.deferred_*` so the store can
 /// resolve them against its full existing database.
+///
+/// Candidate destinations are filtered to the same language family as the
+/// source (by file extension) — otherwise a Java caller's deferred `greet`
+/// would resolve to every `greet` symbol across all languages in the diff.
 fn resolve_deferred(
     name_to_ids: &HashMap<&str, Vec<&NodeId>>,
+    id_to_file: &HashMap<&NodeId, &Path>,
     deferred: &[(NodeId, String)],
     kind: EdgeKind,
     edges: &mut Vec<Edge>,
 ) -> Vec<(NodeId, String)> {
     let mut unresolved = Vec::new();
     for (src_id, target_name) in deferred {
+        let src_exts = id_to_file
+            .get(src_id)
+            .and_then(|p| language_extensions_for_path(p));
+        let mut matched_any = false;
         if let Some(dst_ids) = name_to_ids.get(target_name.as_str()) {
             for dst_id in dst_ids {
+                // Same-language filter when both sides have a known extension
+                // family. When either side is unknown, fall back to the
+                // existing name-only match (defensive — preserves behaviour
+                // for kinds where ext classification doesn't apply).
+                let same_lang = match (src_exts, id_to_file.get(*dst_id)) {
+                    (Some(exts), Some(dst_path)) => match language_extensions_for_path(dst_path) {
+                        Some(dst_exts) => dst_exts.first() == exts.first(),
+                        None => true,
+                    },
+                    _ => true,
+                };
+                if !same_lang {
+                    continue;
+                }
+                matched_any = true;
                 let edge = Edge {
                     src: src_id.clone(),
                     dst: (*dst_id).clone(),
@@ -279,11 +322,28 @@ fn resolve_deferred(
                     edges.push(edge);
                 }
             }
-        } else {
+        }
+        if !matched_any {
             unresolved.push((src_id.clone(), target_name.clone()));
         }
     }
     unresolved
+}
+
+/// File extension family for `path`. Mirrors the store-side helper — kept
+/// duplicated to avoid pulling kuzu into the indexer.
+fn language_extensions_for_path(path: &Path) -> Option<&'static [&'static str]> {
+    let ext = path.extension()?.to_str()?;
+    match ext {
+        "rs" => Some(&[".rs"]),
+        "py" => Some(&[".py"]),
+        "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" => {
+            Some(&[".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"])
+        }
+        "go" => Some(&[".go"]),
+        "java" => Some(&[".java"]),
+        _ => None,
+    }
 }
 
 /// Derives `Folder` and `File` structural nodes from the code nodes already in

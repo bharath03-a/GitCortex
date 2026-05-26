@@ -5,11 +5,14 @@ use gitcortex_core::{
     graph::{Edge, Node, NodeId},
 };
 
+mod deftext;
 pub mod go;
 pub mod java;
 pub mod python;
 pub mod rust;
 pub mod typescript;
+
+pub(crate) use deftext::capture as capture_definition;
 
 /// Result of parsing a single source file.
 pub struct ParseResult {

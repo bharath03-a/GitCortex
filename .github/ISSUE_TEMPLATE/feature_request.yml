@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest something new
+labels: [enhancement, triage]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Be specific. "I want X" is less useful than "When I do Y, I can't do Z."
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How would this work from the user's perspective?
+  - type: dropdown
+    id: domain
+    attributes:
+      label: Which area does this touch?
+      multiple: true
+      options:
+        - "MCP tools"
+        - "CLI commands"
+        - "Viz UI"
+        - "Indexer (new language support)"
+        - "Indexer (existing language improvement)"
+        - "Store / query"
+        - "Editor integration"
+        - "Docs"
+        - "Build / packaging"
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Existing tools, workarounds, or other approaches you thought about.

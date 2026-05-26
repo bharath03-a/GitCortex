@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+@theme {
+  --color-void: #06060a;
+  --color-void-deep: #04040a;
+  --color-elevated: #12121c;
+  --color-elevated-hi: #1a1a26;
+  --color-border-subtle: #2a2a3a;
+  --color-border-strong: #3a3a4e;
+  --color-text-primary: #e6e6f0;
+  --color-text-muted: #8a8aa3;
+  --color-text-dim: #5a5a72;
+  --color-accent: #a78bfa;
+  --color-accent-deep: #7c3aed;
+  --color-accent-soft: rgba(167, 139, 250, 0.12);
+  --color-good: #10b981;
+  --color-warn: #f59e0b;
+  --color-bad: #ef4444;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: var(--color-void);
+  color: var(--color-text-primary);
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "SF Pro Text",
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-subtle);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-strong);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 140ms ease-out;
+}
+
+.canvas-bg {
+  background:
+    radial-gradient(circle at center, rgba(124, 58, 237, 0.04) 0%, transparent 60%),
+    radial-gradient(circle at center, #0a0a14 0%, #06060a 100%);
+}

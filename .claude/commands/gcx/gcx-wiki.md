@@ -1,0 +1,1 @@
+Run `gcx query wiki $ARGUMENTS` and show the rendered markdown. The output is a wiki-style page for the named symbol: definition signature, doc-comment, callers, callees, and used-by — assembled from the GitCortex graph. Paste directly into a README or PR description; do not re-format.

@@ -10,7 +10,7 @@ use gitcortex_core::{
 };
 use tree_sitter::{Node as TsNode, Parser};
 
-use super::{LanguageParser, ParseResult};
+use super::{capture_definition, LanguageParser, ParseResult};
 
 pub struct GoParser {
     language: tree_sitter::Language,
@@ -204,6 +204,7 @@ impl<'src> FileVisitor<'src> {
                 visibility: Self::visibility(&name),
                 is_async: false,
                 is_unsafe: false,
+                definition: capture_definition(self.source, ts_node),
                 ..Default::default()
             },
         }

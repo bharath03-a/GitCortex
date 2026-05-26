@@ -1,0 +1,10 @@
+[profile.default]
+slow-timeout = { period = "60s", terminate-after = 2 }
+retries = 0
+
+[profile.ci]
+# CI gets one retry on flaky tests but reports as flaky in the output
+retries = { backoff = "exponential", count = 1, delay = "1s" }
+slow-timeout = { period = "90s", terminate-after = 2 }
+fail-fast = false
+final-status-level = "all"

@@ -10,7 +10,7 @@ use gitcortex_core::{
 };
 use tree_sitter::{Node as TsNode, Parser};
 
-use super::{LanguageParser, ParseResult};
+use super::{capture_definition, LanguageParser, ParseResult};
 
 pub struct PythonParser {
     language: tree_sitter::Language,
@@ -184,6 +184,7 @@ impl<'src> FileVisitor<'src> {
                 visibility: vis,
                 is_async,
                 is_unsafe: false,
+                definition: capture_definition(self.source, ts_node),
                 ..Default::default()
             },
         }
@@ -953,5 +954,291 @@ mod tests {
             .collect();
         assert_eq!(fns.len(), 1);
         assert!(fns[0].metadata.is_async);
+    }
+
+    // ── Regression: Protocol / Interface ─────────────────────────────────────
+
+    #[test]
+    fn protocol_class_becomes_interface() {
+        let src = "from typing import Protocol\n\nclass MyProto(Protocol):\n    def do_it(self) -> None:\n        ...\n";
+        let (nodes, _) = parse(src);
+        let ifaces: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Interface)
+            .collect();
+        assert_eq!(ifaces.len(), 1, "expected 1 Interface, got: {ifaces:?}");
+        assert_eq!(ifaces[0].name, "MyProto");
+        assert!(
+            ifaces[0].metadata.is_abstract,
+            "Protocol should be is_abstract"
+        );
+    }
+
+    #[test]
+    fn non_protocol_class_is_struct() {
+        let src = "class Plain:\n    def work(self):\n        pass\n";
+        let (nodes, _) = parse(src);
+        let structs: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Struct)
+            .collect();
+        assert_eq!(structs.len(), 1);
+        assert_eq!(structs[0].name, "Plain");
+        assert!(!structs[0].metadata.is_abstract);
+    }
+
+    // ── Regression: decorators ────────────────────────────────────────────────
+
+    #[test]
+    fn property_decorator_yields_property_kind() {
+        let src =
+            "class Foo:\n    @property\n    def bar(self) -> str:\n        return self._bar\n";
+        let (nodes, _) = parse(src);
+        let props: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Property)
+            .collect();
+        assert_eq!(props.len(), 1, "expected 1 Property node, got: {props:?}");
+        assert_eq!(props[0].name, "bar");
+        assert!(props[0].metadata.is_property);
+    }
+
+    #[test]
+    fn staticmethod_decorator_sets_is_static() {
+        let src = "class Foo:\n    @staticmethod\n    def create(x: int) -> 'Foo':\n        return Foo()\n";
+        let (nodes, _) = parse(src);
+        let methods: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Method)
+            .collect();
+        assert_eq!(methods.len(), 1);
+        assert_eq!(methods[0].name, "create");
+        assert!(
+            methods[0].metadata.is_static,
+            "staticmethod should set is_static"
+        );
+    }
+
+    #[test]
+    fn classmethod_decorator_sets_is_static() {
+        let src = "class Foo:\n    @classmethod\n    def from_str(cls, s: str) -> 'Foo':\n        return cls()\n";
+        let (nodes, _) = parse(src);
+        let methods: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Method)
+            .collect();
+        assert_eq!(methods.len(), 1);
+        assert_eq!(methods[0].name, "from_str");
+        assert!(
+            methods[0].metadata.is_static,
+            "classmethod should set is_static"
+        );
+    }
+
+    #[test]
+    fn dataclass_decorator_class_is_struct() {
+        let src = "from dataclasses import dataclass\n\n@dataclass\nclass Point:\n    x: float\n    y: float\n";
+        let (nodes, _) = parse(src);
+        let structs: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Struct)
+            .collect();
+        assert_eq!(structs.len(), 1, "expected Struct for @dataclass Point");
+        assert_eq!(structs[0].name, "Point");
+    }
+
+    // ── Regression: generator / async-generator ──────────────────────────────
+
+    #[test]
+    fn generator_function_sets_is_generator() {
+        let src = "def numbers():\n    yield 1\n    yield 2\n";
+        let (nodes, _) = parse(src);
+        let fns: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Function)
+            .collect();
+        assert_eq!(fns.len(), 1);
+        assert!(
+            fns[0].metadata.is_generator,
+            "yield fn should be is_generator"
+        );
+        assert!(!fns[0].metadata.is_async);
+    }
+
+    #[test]
+    fn async_generator_is_both_async_and_generator() {
+        let src = "async def stream():\n    yield 1\n    yield 2\n";
+        let (nodes, _) = parse(src);
+        let fns: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Function)
+            .collect();
+        assert_eq!(fns.len(), 1);
+        assert!(
+            fns[0].metadata.is_async,
+            "async generator should be is_async"
+        );
+        assert!(
+            fns[0].metadata.is_generator,
+            "async generator should be is_generator"
+        );
+    }
+
+    #[test]
+    fn nested_yield_does_not_pollute_outer_function() {
+        // The outer function is NOT a generator; only the inner lambda/nested fn yields.
+        let src = "def outer():\n    def inner():\n        yield 1\n    return inner()\n";
+        let (nodes, _) = parse(src);
+        let fns: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Function)
+            .collect();
+        let outer = fns
+            .iter()
+            .find(|n| n.name == "outer")
+            .expect("outer not found");
+        assert!(
+            !outer.metadata.is_generator,
+            "outer should NOT be generator — yield is in nested fn"
+        );
+    }
+
+    // ── Regression: constants ─────────────────────────────────────────────────
+
+    #[test]
+    fn module_constant_all_caps_detected() {
+        let src = "MAX_SIZE = 100\nDEFAULT_NAME = 'anon'\nignored = 1\n";
+        let (nodes, _) = parse(src);
+        let constants: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Constant)
+            .collect();
+        let names: Vec<&str> = constants.iter().map(|n| n.name.as_str()).collect();
+        assert!(names.contains(&"MAX_SIZE"), "expected Constant MAX_SIZE");
+        assert!(
+            names.contains(&"DEFAULT_NAME"),
+            "expected Constant DEFAULT_NAME"
+        );
+        assert!(
+            !names.contains(&"ignored"),
+            "lowercase assignment should not be a Constant"
+        );
+    }
+
+    // ── Regression: nested classes ────────────────────────────────────────────
+
+    #[test]
+    fn nested_class_emits_contains_edge_from_parent() {
+        let src = "class Outer:\n    class Inner:\n        pass\n";
+        let (nodes, edges) = parse(src);
+        let outer = nodes
+            .iter()
+            .find(|n| n.name == "Outer")
+            .expect("Outer not found");
+        let inner = nodes
+            .iter()
+            .find(|n| n.name == "Inner")
+            .expect("Inner not found");
+        let contains: Vec<_> = edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::Contains)
+            .collect();
+        assert!(
+            contains
+                .iter()
+                .any(|e| e.src == outer.id && e.dst == inner.id),
+            "expected Contains Outer → Inner"
+        );
+    }
+
+    // ── Regression: type annotation Uses deferred entries ────────────────────
+
+    #[test]
+    fn multiple_type_annotations_produce_uses_entries() {
+        let src =
+            "class Req:\n    pass\nclass Resp:\n    pass\ndef handler(r: Req) -> Resp:\n    pass\n";
+        let (_, _, _, uses, _, _) = parse_full(src);
+        let uses_req: Vec<_> = uses.iter().filter(|(_, n)| n == "Req").collect();
+        let uses_resp: Vec<_> = uses.iter().filter(|(_, n)| n == "Resp").collect();
+        assert!(!uses_req.is_empty(), "expected Uses edge to Req");
+        assert!(!uses_resp.is_empty(), "expected Uses edge to Resp");
+    }
+
+    // ── Regression: visibility ────────────────────────────────────────────────
+
+    #[test]
+    fn private_method_has_private_visibility() {
+        use gitcortex_core::schema::Visibility;
+        let src = "class Foo:\n    def _internal(self):\n        pass\n    def public(self):\n        pass\n";
+        let (nodes, _) = parse(src);
+        let internal = nodes
+            .iter()
+            .find(|n| n.name == "_internal")
+            .expect("_internal not found");
+        let public = nodes
+            .iter()
+            .find(|n| n.name == "public")
+            .expect("public not found");
+        assert_eq!(internal.metadata.visibility, Visibility::Private);
+        assert_eq!(public.metadata.visibility, Visibility::Pub);
+    }
+
+    // ── Regression: call detection ────────────────────────────────────────────
+
+    #[test]
+    fn calls_edge_between_two_functions() {
+        let src = "def helper():\n    pass\n\ndef main():\n    helper()\n";
+        let (_, edges) = parse(src);
+        let calls: Vec<_> = edges.iter().filter(|e| e.kind == EdgeKind::Calls).collect();
+        assert_eq!(calls.len(), 1, "expected exactly 1 Calls edge");
+    }
+
+    #[test]
+    fn method_call_via_self_creates_calls_edge() {
+        let src = "class Svc:\n    def run(self):\n        self.process()\n    def process(self):\n        pass\n";
+        let (nodes, edges) = parse(src);
+        let run = nodes
+            .iter()
+            .find(|n| n.name == "run")
+            .expect("run not found");
+        let process = nodes
+            .iter()
+            .find(|n| n.name == "process")
+            .expect("process not found");
+        let calls: Vec<_> = edges.iter().filter(|e| e.kind == EdgeKind::Calls).collect();
+        // self.process() resolves immediately because "process" is pre-indexed in pass 1
+        assert!(
+            calls.iter().any(|e| e.src == run.id && e.dst == process.id),
+            "expected Calls edge run → process, got: {calls:?}"
+        );
+    }
+
+    // ── Regression: import edge collection ───────────────────────────────────
+
+    #[test]
+    fn aliased_import_uses_alias_name() {
+        let src = "import numpy as np\nimport pandas as pd\n";
+        let (_, _, _, _, _, imports) = parse_full(src);
+        // For aliased imports, the leaf of the original module name is recorded
+        let names: Vec<&str> = imports.iter().map(|(_, n)| n.as_str()).collect();
+        assert!(
+            names.contains(&"numpy"),
+            "expected import 'numpy', got: {names:?}"
+        );
+        assert!(
+            names.contains(&"pandas"),
+            "expected import 'pandas', got: {names:?}"
+        );
+    }
+
+    #[test]
+    fn dotted_import_records_leaf_module() {
+        let src = "import os.path\n";
+        let (_, _, _, _, _, imports) = parse_full(src);
+        let names: Vec<&str> = imports.iter().map(|(_, n)| n.as_str()).collect();
+        assert!(
+            names.contains(&"path"),
+            "expected leaf 'path' from 'import os.path', got: {names:?}"
+        );
     }
 }

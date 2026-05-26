@@ -1,0 +1,401 @@
+/// End-to-end pipeline tests: git repo → indexer → store → query.
+/// Each test creates a real temp git repo, commits a fixture file,
+/// runs the incremental indexer, applies the diff to a KuzuDB store,
+/// and asserts that nodes and known symbols are present.
+///
+/// Tests are serialized via KUZU_LOCK because KuzuDB cannot safely open
+/// multiple database instances concurrently within the same process.
+use std::path::Path;
+use std::process::Command;
+use std::sync::Mutex;
+
+static KUZU_LOCK: Mutex<()> = Mutex::new(());
+
+use gitcortex_core::store::GraphStore;
+use gitcortex_indexer::IncrementalIndexer;
+use gitcortex_store::kuzu::KuzuGraphStore;
+
+const FIXTURES: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../tests/integration/fixtures"
+);
+
+fn init_repo(dir: &Path) {
+    for args in [
+        vec!["init"],
+        vec!["config", "user.email", "test@test.com"],
+        vec!["config", "user.name", "Test"],
+    ] {
+        let status = Command::new("git")
+            .args(&args)
+            .current_dir(dir)
+            .status()
+            .expect("git failed");
+        assert!(status.success(), "git {args:?} failed");
+    }
+}
+
+fn commit_file(dir: &Path, src: &Path, dest_name: &str) {
+    let dest = dir.join(dest_name);
+    std::fs::copy(src, &dest).expect("copy fixture");
+    for args in [vec!["add", dest_name], vec!["commit", "-m", "add fixture"]] {
+        let status = Command::new("git")
+            .args(&args)
+            .current_dir(dir)
+            .status()
+            .expect("git failed");
+        assert!(status.success(), "git {args:?} failed");
+    }
+}
+
+fn run_pipeline(
+    fixture: &str,
+) -> (
+    Vec<gitcortex_core::graph::Node>,
+    Vec<gitcortex_core::graph::Edge>,
+) {
+    let _lock = KUZU_LOCK.lock().expect("lock");
+    let tmp = tempfile::tempdir().expect("tempdir");
+    init_repo(tmp.path());
+    commit_file(
+        tmp.path(),
+        Path::new(FIXTURES).join(fixture).as_path(),
+        fixture,
+    );
+
+    let indexer = IncrementalIndexer::new(tmp.path()).expect("indexer");
+    let (diff, head_sha) = indexer.run(None).expect("indexer.run");
+
+    let mut store = KuzuGraphStore::open(tmp.path()).expect("store");
+    store.apply_diff("main", &diff).expect("apply_diff");
+    store
+        .set_last_indexed_sha("main", &head_sha)
+        .expect("set sha");
+
+    let nodes = store.list_all_nodes("main").expect("list_all_nodes");
+    let edges = store.list_all_edges("main").expect("list_all_edges");
+    (nodes, edges)
+}
+
+#[test]
+fn rust_fixture_indexes_nodes_and_edges() {
+    let (nodes, edges) = run_pipeline("sample.rs");
+    assert!(!nodes.is_empty(), "expected nodes for sample.rs");
+    assert!(!edges.is_empty(), "expected edges for sample.rs");
+    let names: Vec<_> = nodes.iter().map(|n| n.name.as_str()).collect();
+    assert!(names.contains(&"Hello"), "expected struct Hello");
+    assert!(names.contains(&"Greeter"), "expected trait Greeter");
+    assert!(
+        names.contains(&"make_greeting"),
+        "expected fn make_greeting"
+    );
+}
+
+#[test]
+fn python_fixture_indexes_nodes_and_edges() {
+    let (nodes, edges) = run_pipeline("sample.py");
+    assert!(!nodes.is_empty(), "expected nodes for sample.py");
+    assert!(!edges.is_empty(), "expected edges for sample.py");
+    let names: Vec<_> = nodes.iter().map(|n| n.name.as_str()).collect();
+    assert!(names.contains(&"Greeter"), "expected class Greeter");
+    assert!(
+        names.contains(&"make_greeting"),
+        "expected fn make_greeting"
+    );
+}
+
+#[test]
+fn typescript_fixture_indexes_nodes_and_edges() {
+    let (nodes, edges) = run_pipeline("sample.ts");
+    assert!(!nodes.is_empty(), "expected nodes for sample.ts");
+    assert!(!edges.is_empty(), "expected edges for sample.ts");
+    let names: Vec<_> = nodes.iter().map(|n| n.name.as_str()).collect();
+    assert!(names.contains(&"Greeter"), "expected interface Greeter");
+    assert!(names.contains(&"Hello"), "expected class Hello");
+    assert!(names.contains(&"makeGreeting"), "expected fn makeGreeting");
+}
+
+#[test]
+fn go_fixture_indexes_nodes_and_edges() {
+    let (nodes, edges) = run_pipeline("sample.go");
+    assert!(!nodes.is_empty(), "expected nodes for sample.go");
+    assert!(!edges.is_empty(), "expected edges for sample.go");
+    let names: Vec<_> = nodes.iter().map(|n| n.name.as_str()).collect();
+    assert!(names.contains(&"Greeter"), "expected interface Greeter");
+    assert!(names.contains(&"Hello"), "expected struct Hello");
+    assert!(names.contains(&"MakeGreeting"), "expected fn MakeGreeting");
+}
+
+#[test]
+fn java_fixture_indexes_nodes_and_edges() {
+    let (nodes, edges) = run_pipeline("sample.java");
+    assert!(!nodes.is_empty(), "expected nodes for sample.java");
+    assert!(!edges.is_empty(), "expected edges for sample.java");
+    let names: Vec<_> = nodes.iter().map(|n| n.name.as_str()).collect();
+    assert!(names.contains(&"Greeter"), "expected interface Greeter");
+    assert!(names.contains(&"Hello"), "expected class Hello");
+    assert!(names.contains(&"makeGreeting"), "expected fn makeGreeting");
+}
+
+// ── Python comprehensive regression tests ────────────────────────────────────
+
+use gitcortex_core::schema::{EdgeKind, NodeKind};
+
+fn run_python_comprehensive() -> (
+    Vec<gitcortex_core::graph::Node>,
+    Vec<gitcortex_core::graph::Edge>,
+) {
+    run_pipeline("python_comprehensive.py")
+}
+
+#[test]
+fn python_comprehensive_constants_are_indexed() {
+    let (nodes, _) = run_python_comprehensive();
+    let constants: Vec<_> = nodes
+        .iter()
+        .filter(|n| n.kind == NodeKind::Constant)
+        .collect();
+    let names: Vec<&str> = constants.iter().map(|n| n.name.as_str()).collect();
+    assert!(
+        names.contains(&"MAX_RETRIES"),
+        "expected Constant MAX_RETRIES, got: {names:?}"
+    );
+    assert!(
+        names.contains(&"DEFAULT_TIMEOUT"),
+        "expected Constant DEFAULT_TIMEOUT, got: {names:?}"
+    );
+    assert!(
+        names.contains(&"API_VERSION"),
+        "expected Constant API_VERSION, got: {names:?}"
+    );
+}
+
+#[test]
+fn python_comprehensive_protocols_become_interfaces() {
+    let (nodes, _) = run_python_comprehensive();
+    let interfaces: Vec<_> = nodes
+        .iter()
+        .filter(|n| n.kind == NodeKind::Interface)
+        .collect();
+    let names: Vec<&str> = interfaces.iter().map(|n| n.name.as_str()).collect();
+    assert!(
+        names.contains(&"Serializable"),
+        "expected Interface Serializable, got: {names:?}"
+    );
+    assert!(
+        names.contains(&"Repository"),
+        "expected Interface Repository, got: {names:?}"
+    );
+    for iface in &interfaces {
+        assert!(
+            iface.metadata.is_abstract,
+            "Protocol node '{}' should have is_abstract=true",
+            iface.name
+        );
+    }
+}
+
+#[test]
+fn python_comprehensive_plain_classes_are_structs() {
+    let (nodes, _) = run_python_comprehensive();
+    let structs: Vec<_> = nodes
+        .iter()
+        .filter(|n| n.kind == NodeKind::Struct)
+        .collect();
+    let names: Vec<&str> = structs.iter().map(|n| n.name.as_str()).collect();
+    for expected in &["BaseModel", "User", "AsyncService", "EventSystem"] {
+        assert!(
+            names.contains(expected),
+            "expected Struct {expected}, got: {names:?}"
+        );
+    }
+}
+
+#[test]
+fn python_comprehensive_property_decorator() {
+    let (nodes, _) = run_python_comprehensive();
+    let props: Vec<_> = nodes
+        .iter()
+        .filter(|n| n.kind == NodeKind::Property)
+        .collect();
+    assert!(
+        props.iter().any(|n| n.name == "display_name"),
+        "expected Property 'display_name', got: {:?}",
+        props.iter().map(|n| &n.name).collect::<Vec<_>>()
+    );
+    let display_name = props.iter().find(|n| n.name == "display_name").unwrap();
+    assert!(
+        display_name.metadata.is_property,
+        "display_name should have is_property=true"
+    );
+}
+
+#[test]
+fn python_comprehensive_staticmethod_and_classmethod() {
+    let (nodes, _) = run_python_comprehensive();
+    let methods: Vec<_> = nodes
+        .iter()
+        .filter(|n| n.kind == NodeKind::Method)
+        .collect();
+    let from_dict = methods.iter().find(|n| n.name == "from_dict");
+    let anonymous = methods.iter().find(|n| n.name == "anonymous");
+    assert!(from_dict.is_some(), "expected method 'from_dict'");
+    assert!(anonymous.is_some(), "expected method 'anonymous'");
+    assert!(
+        from_dict.unwrap().metadata.is_static,
+        "from_dict (@staticmethod) should have is_static=true"
+    );
+    assert!(
+        anonymous.unwrap().metadata.is_static,
+        "anonymous (@classmethod) should have is_static=true"
+    );
+}
+
+#[test]
+fn python_comprehensive_async_methods_flagged() {
+    let (nodes, _) = run_python_comprehensive();
+    let methods: Vec<_> = nodes
+        .iter()
+        .filter(|n| n.kind == NodeKind::Method)
+        .collect();
+    let fetch = methods.iter().find(|n| n.name == "fetch_user");
+    let save = methods.iter().find(|n| n.name == "save_user");
+    assert!(fetch.is_some(), "expected method 'fetch_user'");
+    assert!(save.is_some(), "expected method 'save_user'");
+    assert!(
+        fetch.unwrap().metadata.is_async,
+        "fetch_user should have is_async=true"
+    );
+    assert!(
+        save.unwrap().metadata.is_async,
+        "save_user should have is_async=true"
+    );
+}
+
+#[test]
+fn python_comprehensive_generator_function_flagged() {
+    let (nodes, _) = run_python_comprehensive();
+    let fns: Vec<_> = nodes
+        .iter()
+        .filter(|n| n.kind == NodeKind::Function)
+        .collect();
+    let user_stream = fns.iter().find(|n| n.name == "user_stream");
+    assert!(user_stream.is_some(), "expected function 'user_stream'");
+    assert!(
+        user_stream.unwrap().metadata.is_generator,
+        "user_stream should have is_generator=true"
+    );
+}
+
+#[test]
+fn python_comprehensive_async_generator_flagged() {
+    let (nodes, _) = run_python_comprehensive();
+    let fns: Vec<_> = nodes
+        .iter()
+        .filter(|n| n.kind == NodeKind::Function)
+        .collect();
+    let async_stream = fns.iter().find(|n| n.name == "async_user_stream");
+    assert!(
+        async_stream.is_some(),
+        "expected function 'async_user_stream'"
+    );
+    let f = async_stream.unwrap();
+    assert!(
+        f.metadata.is_async,
+        "async_user_stream should have is_async=true"
+    );
+    assert!(
+        f.metadata.is_generator,
+        "async_user_stream should have is_generator=true"
+    );
+}
+
+#[test]
+fn python_comprehensive_nested_classes_indexed() {
+    let (nodes, edges) = run_python_comprehensive();
+    let names: Vec<&str> = nodes.iter().map(|n| n.name.as_str()).collect();
+    assert!(names.contains(&"Event"), "expected nested class 'Event'");
+    assert!(
+        names.contains(&"Handler"),
+        "expected nested class 'Handler'"
+    );
+    // EventSystem must contain Event and Handler via Contains edges
+    let event_sys = nodes.iter().find(|n| n.name == "EventSystem").unwrap();
+    let event_cls = nodes.iter().find(|n| n.name == "Event").unwrap();
+    let handler_cls = nodes.iter().find(|n| n.name == "Handler").unwrap();
+    let contains: Vec<_> = edges
+        .iter()
+        .filter(|e| e.kind == EdgeKind::Contains)
+        .collect();
+    assert!(
+        contains
+            .iter()
+            .any(|e| e.src == event_sys.id && e.dst == event_cls.id),
+        "expected Contains edge EventSystem → Event"
+    );
+    assert!(
+        contains
+            .iter()
+            .any(|e| e.src == event_sys.id && e.dst == handler_cls.id),
+        "expected Contains edge EventSystem → Handler"
+    );
+}
+
+#[test]
+fn python_comprehensive_call_edges_recorded() {
+    let (nodes, edges) = run_python_comprehensive();
+    let process = nodes.iter().find(|n| n.name == "process_pipeline").unwrap();
+    let user_stream = nodes.iter().find(|n| n.name == "user_stream").unwrap();
+    let create_user = nodes.iter().find(|n| n.name == "create_user").unwrap();
+    let calls: Vec<_> = edges.iter().filter(|e| e.kind == EdgeKind::Calls).collect();
+    assert!(
+        calls
+            .iter()
+            .any(|e| e.src == process.id && e.dst == user_stream.id),
+        "expected Calls edge process_pipeline → user_stream"
+    );
+    assert!(
+        calls
+            .iter()
+            .any(|e| e.src == process.id && e.dst == create_user.id),
+        "expected Calls edge process_pipeline → create_user"
+    );
+}
+
+#[test]
+fn python_comprehensive_inheritance_edges_present() {
+    let (_, edges) = run_python_comprehensive();
+    let implements: Vec<_> = edges
+        .iter()
+        .filter(|e| e.kind == EdgeKind::Implements)
+        .collect();
+    assert!(
+        !implements.is_empty(),
+        "expected at least one Implements edge (User extends BaseModel)"
+    );
+}
+
+#[test]
+fn python_comprehensive_private_method_visibility() {
+    use gitcortex_core::schema::Visibility;
+    let (nodes, _) = run_python_comprehensive();
+    let internal = nodes.iter().find(|n| n.name == "_internal_check");
+    assert!(internal.is_some(), "expected method '_internal_check'");
+    assert_eq!(
+        internal.unwrap().metadata.visibility,
+        Visibility::Private,
+        "_internal_check should be Private"
+    );
+}
+
+#[test]
+fn python_comprehensive_dataclass_is_struct() {
+    let (nodes, _) = run_python_comprehensive();
+    let user = nodes.iter().find(|n| n.name == "User");
+    assert!(user.is_some(), "expected class 'User'");
+    assert_eq!(
+        user.unwrap().kind,
+        NodeKind::Struct,
+        "@dataclass User should be Struct kind"
+    );
+}

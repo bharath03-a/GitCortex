@@ -1,0 +1,69 @@
+# pre-commit — runs locally before `git commit`. Install once:
+#   pip install pre-commit && pre-commit install
+# CI also runs these (see .github/workflows/ci.yml).
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: \.md$
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=512"]
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+
+  # Rust
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt --check
+        entry: cargo fmt --all -- --check
+        language: system
+        files: \.rs$
+        pass_filenames: false
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --workspace --all-targets -- -D warnings
+        language: system
+        files: \.(rs|toml)$
+        pass_filenames: false
+
+  # Frontend
+  - repo: local
+    hooks:
+      - id: viz-lint
+        name: viz eslint
+        entry: bash -c 'cd viz && npm run lint'
+        language: system
+        files: ^viz/.*\.(ts|tsx|js|jsx)$
+        pass_filenames: false
+      - id: viz-fmt-check
+        name: viz prettier --check
+        entry: bash -c 'cd viz && npm run format:check'
+        language: system
+        files: ^viz/.*\.(ts|tsx|js|jsx|css|html|json|md)$
+        pass_filenames: false
+
+  # Conventional commits
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v3.6.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args:
+          - feat
+          - fix
+          - chore
+          - docs
+          - test
+          - refactor
+          - perf
+          - ci
+          - build
+          - revert

@@ -1,0 +1,4 @@
+# Clippy thresholds. Stricter than defaults; nudges contributors toward smaller fns.
+cognitive-complexity-threshold = 25
+too-many-lines-threshold = 200
+type-complexity-threshold = 250

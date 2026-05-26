@@ -246,3 +246,6 @@ Use the MCP server (`gcx serve`, configured in `.mcp.json`) or these slash comma
 - `/gcx-callers <name>` — find all callers of a function
 - `/gcx-file <path>` — list all definitions in a file
 - `/gcx-blast-radius` — show blast radius of changes vs main
+- `/gcx-search <query>` — ranked fuzzy search over name + qualified path
+- `/gcx-wiki <name>` — markdown wiki page (signature, doc, callers, callees, used-by)
+- `/gcx-tour [--seed <name>]` — guided tour of the codebase (centrality-ranked or BFS from a seed)

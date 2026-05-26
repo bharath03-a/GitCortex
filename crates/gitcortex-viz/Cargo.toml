@@ -1,0 +1,22 @@
+[package]
+name = "gitcortex-viz"
+description = "Axum HTTP viz server for GitCortex — embeds the Vite+React frontend bundle"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+build = "build.rs"
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+clap.workspace = true
+gitcortex-core.workspace = true
+gitcortex-store.workspace = true
+open.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true

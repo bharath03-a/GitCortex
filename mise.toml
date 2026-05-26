@@ -1,0 +1,16 @@
+# mise — pinned tool versions for reproducible dev environments.
+# Install once: https://mise.jdx.dev/getting-started.html
+# Then: `mise install` reads this file and installs everything.
+
+[tools]
+rust = "1.95.0"
+node = "20.18.0"
+
+[env]
+# KuzuDB C++ static libs build against the current macOS SDK.
+# Mirrors .cargo/config.toml so direct `cargo` invocations work too.
+MACOSX_DEPLOYMENT_TARGET = "26.0"
+
+[settings]
+# Auto-install tools when entering the project directory
+experimental = true
