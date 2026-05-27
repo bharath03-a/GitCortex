@@ -189,6 +189,7 @@ impl<'src> FileVisitor<'src> {
     }
 
     fn visibility(node: TsNode<'_>, source: &[u8]) -> Visibility {
+        // 1. Explicit member modifier wins (class fields/methods).
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.kind() == "accessibility_modifier" {
@@ -200,7 +201,56 @@ impl<'src> FileVisitor<'src> {
                 };
             }
         }
-        Visibility::Pub
+        // 2. Class/interface members without a modifier are public by default
+        //    in TypeScript.
+        if Self::is_type_member(node) {
+            return Visibility::Pub;
+        }
+        // 3. Top-level declarations: exported → public, otherwise
+        //    module-private. (Previously everything defaulted to `pub`, which
+        //    made the visibility field meaningless for TS.)
+        if Self::is_exported(node) {
+            Visibility::Pub
+        } else {
+            Visibility::Private
+        }
+    }
+
+    /// True when `node`'s nearest structural ancestor is a class/interface/
+    /// object-type body (i.e. it's a member declaration), before reaching the
+    /// program root or an `export_statement`.
+    fn is_type_member(node: TsNode<'_>) -> bool {
+        let mut cur = node.parent();
+        while let Some(p) = cur {
+            match p.kind() {
+                "class_body" | "interface_body" | "object_type" | "enum_body" => return true,
+                "program" | "export_statement" => return false,
+                _ => cur = p.parent(),
+            }
+        }
+        false
+    }
+
+    /// True when `node` is (directly or via a wrapping declaration) the subject
+    /// of an `export` — i.e. an ancestor up the chain is an `export_statement`,
+    /// stopping at the first statement/program boundary.
+    fn is_exported(node: TsNode<'_>) -> bool {
+        let mut cur = node.parent();
+        let mut hops = 0;
+        while let Some(p) = cur {
+            match p.kind() {
+                "export_statement" => return true,
+                "program" => return false,
+                _ => {
+                    hops += 1;
+                    if hops > 4 {
+                        return false;
+                    }
+                    cur = p.parent();
+                }
+            }
+        }
+        false
     }
 
     fn is_async(node: TsNode<'_>) -> bool {

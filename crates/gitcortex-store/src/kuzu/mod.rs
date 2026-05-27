@@ -21,7 +21,7 @@ mod values;
 
 use conv::{edge_kind_from_str, lang_scope_clause, vis_str};
 use escape::{esc, esc_multiline};
-use queries::{collect_ids, rows_to_nodes, NODE_COLS};
+use queries::{collect_ids, rows_to_nodes, NODE_COLS, SYMBOL_RANK};
 use values::str_val;
 
 // Batch sizes for `UNWIND`-based inserts. Nodes carry a (≤16 KB) def_body, so
@@ -516,7 +516,7 @@ impl GraphStore for KuzuGraphStore {
 
         let mut result = conn
             .query(&format!(
-                "MATCH (n:{nt}) WHERE {condition} RETURN {NODE_COLS}"
+                "MATCH (n:{nt}) WHERE {condition} RETURN {NODE_COLS} ORDER BY {SYMBOL_RANK}"
             ))
             .map_err(|e| GitCortexError::Store(e.to_string()))?;
 
@@ -592,10 +592,13 @@ impl GraphStore for KuzuGraphStore {
         let name_esc = esc(name);
         let conn = self.conn()?;
 
-        // Definition — first match.
+        // Definition — best match by kind priority (type decl > fn/method >
+        // … > module/file), so `wiki Echo` resolves to `type Echo` not a
+        // same-named method.
         let mut def_result = conn
             .query(&format!(
-                "MATCH (n:{nt}) WHERE n.name = '{name_esc}' RETURN {NODE_COLS} LIMIT 1"
+                "MATCH (n:{nt}) WHERE n.name = '{name_esc}' \
+                 RETURN {NODE_COLS} ORDER BY {SYMBOL_RANK} LIMIT 1"
             ))
             .map_err(|e| GitCortexError::Store(e.to_string()))?;
         let mut defs = rows_to_nodes(&mut def_result)?;
@@ -799,7 +802,7 @@ impl GraphStore for KuzuGraphStore {
                 "MATCH (n:{nt})-[e:{et}]->(trait_node:{nt}) \
                  WHERE trait_node.name = '{name_esc}' \
                  AND (e.kind = 'implements' OR e.kind = 'inherits') \
-                 RETURN {NODE_COLS}"
+                 RETURN DISTINCT {NODE_COLS} ORDER BY {SYMBOL_RANK}"
             ))
             .map_err(|e| GitCortexError::Store(e.to_string()))?;
         rows_to_nodes(&mut result)

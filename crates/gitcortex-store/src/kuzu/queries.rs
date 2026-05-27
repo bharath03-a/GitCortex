@@ -21,6 +21,22 @@ pub(super) const NODE_COLS: &str = "n.id, n.kind, n.name, n.qualified_name, n.fi
      n.is_static, n.is_abstract, n.is_final, n.is_property, n.is_generator, n.is_const, \
      n.generic_bounds, n.def_signature, n.def_body, n.def_doc, n.def_start_byte, n.def_end_byte";
 
+/// Cypher `ORDER BY` fragment that ranks a node by "how likely the user meant
+/// THIS one" when several share a name. Type declarations win over
+/// functions/methods, which win over constants, which win over structural
+/// (module/file/folder) nodes. Ties break by source line for determinism.
+///
+/// Without this, `wiki Echo` on a Go repo (where `Echo` is both a `type` and a
+/// `Context.Echo()` method) — or `wiki Gson` on Java (class vs file `module`)
+/// — would surface the wrong node, hiding the headline type.
+pub(super) const SYMBOL_RANK: &str = "CASE n.kind \
+     WHEN 'struct' THEN 0 WHEN 'enum' THEN 0 WHEN 'trait' THEN 0 \
+     WHEN 'interface' THEN 0 WHEN 'type_alias' THEN 0 \
+     WHEN 'function' THEN 1 WHEN 'method' THEN 1 \
+     WHEN 'macro' THEN 2 WHEN 'constant' THEN 2 WHEN 'property' THEN 2 \
+     WHEN 'annotation' THEN 2 WHEN 'enum_member' THEN 2 \
+     ELSE 5 END, n.start_line";
+
 pub(super) fn rows_to_nodes(result: &mut kuzu::QueryResult) -> Result<Vec<Node>> {
     let mut nodes = Vec::new();
     for row in result.by_ref() {

@@ -489,23 +489,29 @@ impl<'src> FileVisitor<'src> {
     }
 
     fn maybe_visit_constant(&mut self, node: TsNode<'_>, scope: &[String]) {
+        // Capture module-level bindings as `Constant` nodes. Any
+        // simple-identifier assignment at module scope is an importable symbol
+        // (`from pkg import default_config`, `__version__`, `T = TypeVar(...)`),
+        // not just SCREAMING_SNAKE_CASE — restricting to all-caps dropped the
+        // bulk of a module's public surface. Visibility follows Python's
+        // leading-underscore convention via `make_node`.
+        //
+        // Only plain `identifier = …` / `identifier: T = …` targets are taken;
+        // tuple/attribute/subscript targets (`a, b = …`, `self.x = …`) are
+        // skipped — they aren't module-level named symbols.
         let mut cursor = node.walk();
         for child in node.named_children(&mut cursor) {
             if child.kind() == "assignment" {
                 if let Some(left) = child.child_by_field_name("left") {
                     if left.kind() == "identifier" {
                         let name = self.text(left).to_owned();
-                        if name
-                            .chars()
-                            .all(|c| c.is_uppercase() || c == '_' || c.is_ascii_digit())
-                            && name.len() > 1
-                            && !name.starts_with('_')
-                        {
-                            let id = NodeId::new();
-                            let graph_node =
-                                self.make_node(id, NodeKind::Constant, name, scope, node, false);
-                            self.nodes.push(graph_node);
+                        if name.is_empty() {
+                            continue;
                         }
+                        let id = NodeId::new();
+                        let graph_node =
+                            self.make_node(id, NodeKind::Constant, name, scope, node, false);
+                        self.nodes.push(graph_node);
                     }
                 }
             }
@@ -1106,22 +1112,32 @@ mod tests {
     // ── Regression: constants ─────────────────────────────────────────────────
 
     #[test]
-    fn module_constant_all_caps_detected() {
-        let src = "MAX_SIZE = 100\nDEFAULT_NAME = 'anon'\nignored = 1\n";
+    fn module_level_bindings_detected() {
+        // Module-level assignments are importable symbols regardless of case:
+        // ALL_CAPS constants, lowercase config objects, dunders, and TypeVars
+        // all count. Locals inside functions must NOT be captured here.
+        let src = "MAX_SIZE = 100\nDEFAULT_NAME = 'anon'\ndefault_config = {}\n__version__ = '1.0'\nT = 1\n\ndef f():\n    local = 1\n    return local\n";
         let (nodes, _) = parse(src);
-        let constants: Vec<_> = nodes
+        let names: Vec<&str> = nodes
             .iter()
             .filter(|n| n.kind == NodeKind::Constant)
+            .map(|n| n.name.as_str())
             .collect();
-        let names: Vec<&str> = constants.iter().map(|n| n.name.as_str()).collect();
-        assert!(names.contains(&"MAX_SIZE"), "expected Constant MAX_SIZE");
+        for expected in [
+            "MAX_SIZE",
+            "DEFAULT_NAME",
+            "default_config",
+            "__version__",
+            "T",
+        ] {
+            assert!(
+                names.contains(&expected),
+                "expected module-level binding `{expected}` as Constant; got {names:?}"
+            );
+        }
         assert!(
-            names.contains(&"DEFAULT_NAME"),
-            "expected Constant DEFAULT_NAME"
-        );
-        assert!(
-            !names.contains(&"ignored"),
-            "lowercase assignment should not be a Constant"
+            !names.contains(&"local"),
+            "function-local assignment must not be captured as a module Constant"
         );
     }
 
