@@ -37,4 +37,6 @@ viz/**/*.tsbuildinfo
 .vscode/
 crates/gitcortex-mcp/dist-viz/
 docs/DEMO_SCRIPT.md
-scripts/
+
+# Local-only dev helpers (lang-smoke.sh is tracked; this one is personal)
+scripts/agent-worktree.sh
