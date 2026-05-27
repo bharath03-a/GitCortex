@@ -61,6 +61,27 @@ gh run view <run-id> --log-failed
 gh workflow view ci.yml
 ```
 
+## CI Babysitting with /loop
+
+After pushing a PR, hand CI off to an agent loop instead of polling manually:
+
+```
+/loop 5m gh run list --branch $(git branch --show-current) --limit 5 --json status,conclusion,name,databaseId | python3 -c "import sys,json; runs=json.load(sys.stdin); [print(r['name'],r['status'],r.get('conclusion','')) for r in runs]"; gh pr checks
+```
+
+Loop behavior:
+1. Every 5 min: checks run status + PR checks
+2. On failure: reads logs with `gh run view <id> --log-failed`, fixes, commits, pushes
+3. On all-green: cancels loop (`/loop off`)
+
+Key commands for log triage:
+```bash
+gh run list --branch <branch> --limit 5
+gh run view <run-id> --log-failed
+gh pr checks <pr-number>
+gh run rerun <run-id> --failed    # re-run only failed jobs
+```
+
 ## When the catalog doesn't match
 
 Use the **rust-build-fixer** agent on the raw error output. Once resolved, add the new failure mode to this skill so the next occurrence is one-shot.
