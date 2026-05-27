@@ -39,7 +39,10 @@ mod tests {
         let out = esc_multiline(input);
         assert!(out.contains('\n'), "newline must remain literal");
         assert!(out.contains('\t'), "tab must remain literal");
-        assert!(!out.contains("\\n"), "must not introduce a backslash-n escape");
+        assert!(
+            !out.contains("\\n"),
+            "must not introduce a backslash-n escape"
+        );
     }
 
     #[test]

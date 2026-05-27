@@ -7,9 +7,13 @@
 use gitcortex_core::graph::DefinitionText;
 use tree_sitter::Node as TsNode;
 
-/// Maximum bytes captured per node body. Defensive cap so an outlier file
-/// (generated 100k-line const table) doesn't bloat the store. Tunable later.
-const MAX_BODY_BYTES: usize = 16 * 1024;
+/// Maximum bytes captured per node body. The body is stored per node and
+/// re-serialised on every insert, so an oversized cap bloats both the store
+/// and full-index write time (a 2k-method repo at 16 KB each = ~30 MB of body
+/// text shovelled through Cypher). Queries surface the signature + doc, not
+/// the full body, so 2 KB keeps enough head-of-function context for future
+/// semantic use without the I/O tax.
+const MAX_BODY_BYTES: usize = 2 * 1024;
 
 /// Capture `DefinitionText` for `ts_node` from `source`.
 ///
