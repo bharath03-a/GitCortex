@@ -24,11 +24,11 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
-            platform_tag: linux_x86_64
+            platform_tag: manylinux2014_x86_64
             archive_suffix: x86_64-unknown-linux-gnu.tar.xz
             binary_name: gcx
           - target: aarch64-unknown-linux-gnu
-            platform_tag: linux_aarch64
+            platform_tag: manylinux2014_aarch64
             archive_suffix: aarch64-unknown-linux-gnu.tar.xz
             binary_name: gcx
           - target: x86_64-apple-darwin
