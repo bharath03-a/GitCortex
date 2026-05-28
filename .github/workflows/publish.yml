@@ -46,5 +46,17 @@ jobs:
       - name: Wait for crates.io to index gitcortex-store
         run: sleep 30
 
-      - name: Publish gitcortex
+      - name: Publish gitcortex-mcp
+        run: cargo publish -p gitcortex-mcp --no-verify
+
+      - name: Wait for crates.io to index gitcortex-mcp
+        run: sleep 30
+
+      - name: Publish gitcortex-viz
+        run: cargo publish -p gitcortex-viz --no-verify
+
+      - name: Wait for crates.io to index gitcortex-viz
+        run: sleep 30
+
+      - name: Publish gitcortex (CLI binary `gcx`)
         run: cargo publish -p gitcortex --no-verify
