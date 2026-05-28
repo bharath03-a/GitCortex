@@ -1,370 +1,39 @@
 # Codebase Map
 
-> Branch: `feature/v0-3-x` · 857 definitions · SHA: `db935900774a65261c4550bbd4852f6e5b22c296`
+> Branch: `feature/v0-3-x` · 865 definitions · SHA: `c60af2e139e595a411eb712a2515446809fd25b9`
 
 ## crates
 
 - `pub folder crates` :1
-  - `pub folder gitcortex-indexer` :1
+  - `pub folder gitcortex-cli` :1
     - `pub folder src` :1
-      - `pub folder parser` :1
-        - `pub file typescript.rs` :1
-          - `pub struct TypeScriptParser` :21
-            - `pub method new_ts` :26
-            - `pub method new_tsx` :32
-            - `method extensions` :58
-            - `method parse` :62
-          - `pub struct JavaScriptParser` :39
-            - `pub method new` :44
-            - `method default` :52
-            - `method extensions` :68
-            - `method parse` :72
-          - `function parse_source` :77
-          - `struct FileVisitor` :117
-            - `method new` :137
-            - `method text` :180
-            - `method span` :184
-            - `method visibility` :191
-            - `method is_type_member` :222
-            - `method is_exported` :237
-            - `method is_async` :256
-            - `method qualified` :262
-            - `method make_node` :270
-            - `method collect_names` :298
-            - `method collect_names_from_var_decl` :330
-            - `method unwrap_export` :353
-            - `method visit_program` :376
-            - `method visit_statement` :385
-            - `method visit_function` :417
-            - `method visit_class` :457
-            - `method visit_method` :499
-            - `method visit_interface` :526
-            - `method visit_type_alias` :557
-            - `method visit_enum` :571
-            - `method visit_namespace` :617
-            - `method visit_var_decl` :644
-            - `method collect_imports` :699
-            - `method extract_generic_constraints` :761
-            - `method extract_param_types` :778
-            - `method extract_return_type_annotation` :794
-            - `method extract_heritage` :805
-            - `method collect_extends_names` :828
-            - `method collect_implements_names` :849
-            - `method extract_decorator_annotated` :867
-            - `method extract_decorator_uses` :879
-            - `method decorator_name` :891
-            - `method collect_type_names` :915
-            - `method walk_type_names` :921
-            - `method collect_calls` :942
-            - `method callee_name` :960
-            - `method record_call` :971
-          - `function is_builtin_ts_type` :995
-          - `module tests` :1043
-            - `function parse_ts` :1049
-            - `function parse_ts_full` :1062
-            - `function parse_js` :1087
-            - `function parses_ts_function` :1100
-            - `function parses_ts_class_and_method` :1112
-            - `function parses_ts_interface` :1133
-            - `function parses_js_arrow_function` :1141
-            - `function detects_ts_call_edges` :1152
-            - `function detects_ts_extends_implements` :1160
-            - `function detects_ts_type_annotation_uses` :1172
-            - `function detects_ts_named_imports` :1183
-            - `function module_node_is_emitted` :1197
-        - `pub file python.rs` :1
-          - `pub struct PythonParser` :15
-            - `pub method new` :20
-            - `method default` :28
-            - `method extensions` :34
-            - `method parse` :38
-          - `struct FileVisitor` :75
-            - `method new` :94
-            - `method text` :137
-            - `method span` :141
-            - `method visibility` :149
-            - `method qualified` :157
-            - `method make_node` :165
-            - `method collect_names` :195
-            - `method visit_module` :247
-            - `method visit_top_level` :255
-            - `method visit_function` :283
-            - `method visit_class` :356
-            - `method maybe_visit_constant` :491
-            - `method collect_imports` :523
-            - `method collect_calls` :579
-            - `method callee_name` :596
-            - `method record_call` :607
-            - `method fn_is_async` :632
-            - `method body_has_yield` :640
-            - `method collect_decorators` :655
-            - `method decorator_name` :664
-            - `method extract_param_types` :687
-            - `method extract_return_type` :705
-            - `method collect_type_names` :714
-            - `method walk_type_names` :720
-          - `function is_builtin_type` :740
-          - `module tests` :799
-            - `function parse` :805
-            - `function parse_full` :818
-            - `function parses_free_function` :842
-            - `function parses_class_and_method` :855
-            - `function detects_call_edges` :876
-            - `function detects_base_class_implements` :884
-            - `function detects_type_annotation_uses` :894
-            - `function detects_decorator_uses` :905
-            - `function detects_import_statement` :915
-            - `function detects_from_import_statement` :929
-            - `function module_node_is_emitted` :943
-            - `function async_function_flagged` :954
-            - `function protocol_class_becomes_interface` :968
-            - `function non_protocol_class_is_struct` :984
-            - `function property_decorator_yields_property_kind` :999
-            - `function staticmethod_decorator_sets_is_static` :1013
-            - `function classmethod_decorator_sets_is_static` :1029
-            - `function dataclass_decorator_class_is_struct` :1045
-            - `function generator_function_sets_is_generator` :1059
-            - `function async_generator_is_both_async_and_generator` :1075
-            - `function nested_yield_does_not_pollute_outer_function` :1094
-            - `function module_level_bindings_detected` :1115
-            - `function nested_class_emits_contains_edge_from_parent` :1147
-            - `function multiple_type_annotations_produce_uses_entries` :1173
-            - `function private_method_has_private_visibility` :1186
-            - `function calls_edge_between_two_functions` :1205
-            - `function method_call_via_self_creates_calls_edge` :1213
-            - `function aliased_import_uses_alias_name` :1235
-            - `function dotted_import_records_leaf_module` :1251
-        - `pub file java.rs` :1
-          - `pub struct JavaParser` :15
-            - `pub method new` :20
-            - `method default` :28
-            - `method extensions` :34
-            - `method parse` :38
-          - `struct FileVisitor` :75
-            - `method new` :96
-            - `method text` :141
-            - `method span` :145
-            - `method visibility` :152
-            - `method is_async` :170
-            - `method modifiers_text` :176
-            - `method qualified` :186
-            - `method make_node` :194
-            - `method collect_names` :226
-            - `method visit_program` :248
-            - `method visit_top_level` :256
-            - `method visit_class` :266
-            - `method visit_class_nested` :343
-            - `method visit_interface_nested` :392
-            - `method visit_interface` :431
-            - `method visit_enum` :478
-            - `method visit_record` :516
-            - `method visit_method` :544
-            - `method collect_imports` :616
-            - `method extract_annotation_uses` :646
-            - `method has_functional_interface_annotation` :671
-            - `method extract_field_uses` :692
-            - `method extract_simple_type` :701
-            - `method collect_type_names` :733
-            - `method walk_type_names` :739
-            - `method collect_calls` :760
-            - `method callee_name` :779
-            - `method record_call` :801
-          - `function is_builtin_java_type` :825
-          - `module tests` :880
-            - `function parse` :886
-            - `function parse_full` :899
-            - `function parses_class_and_method` :929
-            - `function parses_interface` :951
-            - `function parses_enum` :963
-            - `function detects_extends_and_implements` :972
-            - `function detects_type_annotation_uses` :984
-            - `function detects_import_declaration` :995
-            - `function module_node_is_emitted` :1005
-  - `pub folder gitcortex-store` :1
-    - `pub folder src` :1
-      - `pub folder kuzu` :1
-        - `pub file queries.rs` :1
-          - `pub constant NODE_COLS` :19
-          - `pub constant SYMBOL_RANK` :32
-          - `pub function rows_to_nodes` :40
-          - `pub function row_to_node` :51
-          - `pub function collect_ids` :127
-        - `pub file mod.rs` :1
-          - `module bulk` :16
-          - `module conv` :17
-          - `module escape` :18
-          - `module queries` :19
-          - `module values` :20
-          - `constant NODE_INSERT_CHUNK` :30
-          - `constant EDGE_INSERT_CHUNK` :31
-          - `function node_struct_literal` :36
-          - `function node_table_is_empty` :73
-          - `function bulk_apply` :88
-          - `pub struct KuzuGraphStore` :121
-            - `pub method open` :132
-            - `method conn` :157
-            - `method ensure_branch` :162
-            - `method apply_diff` :173
-            - `method lookup_symbol` :505
-            - `method find_callers` :526
-            - `method find_callers_deep` :544
-            - `method symbol_context` :588
-            - `method list_definitions` :654
-            - `method branch_diff` :670
-            - `method list_all_nodes` :710
-            - `method list_all_edges` :720
-            - `method find_callees` :747
-            - `method find_implementors` :794
-            - `method trace_path` :811
-            - `method list_symbols_in_range` :878
-            - `method find_unused_symbols` :903
-            - `method get_subgraph` :928
-            - `method last_indexed_sha` :1052
-            - `method set_last_indexed_sha` :1056
+      - `pub file main.rs` :1
+        - `module cmd` :1
+        - `struct Cli` :11
+        - `enum Commands` :17
+        - `pub enum QueryCmd` :99
+        - `function main` :191
+      - `pub folder cmd` :1
+        - `pub file export.rs` :1
+          - `constant DEFAULT_OUTPUT` :15
+          - `constant CLAUDE_MD` :16
+          - `constant SYMBOLS_BEGIN` :17
+          - `constant SYMBOLS_END` :18
+          - `pub enum ExportFormat` :22
+          - `pub function run` :30
+          - `pub function refresh_if_exists` :66
+          - `function write_context` :75
+          - `function build_symbols_json` :103
+          - `function vis_str` :148
+          - `function write_claude_md` :162
+          - `function upsert_block` :245
+          - `function build_context_md` :265
+          - `function render_node` :325
+          - `function repo_root` :367
+          - `function current_branch` :380
 
 ## crates/gitcortex-cli
 
-- `pub folder gitcortex-cli` :1
-  - `pub folder src` :1
-    - `pub file main.rs` :1
-      - `module cmd` :1
-      - `struct Cli` :11
-      - `enum Commands` :17
-      - `pub enum QueryCmd` :88
-      - `function main` :180
-    - `pub folder cmd` :1
-      - `pub file clean.rs` :1
-        - `pub function run` :8
-        - `function repo_root` :26
-      - `pub file mod.rs` :1
-        - `pub module blast_radius` :1
-        - `pub module clean` :2
-        - `pub module doctor` :3
-        - `pub module export` :4
-        - `pub module hook` :5
-        - `pub module init` :6
-        - `pub module query` :7
-        - `pub module serve` :8
-        - `pub module status` :9
-        - `pub module update` :10
-      - `pub file query.rs` :1
-        - `pub function run` :10
-        - `function parse_node_kind` :274
-        - `function repo_root` :287
-      - `pub file hook.rs` :1
-        - `pub function run` :11
-        - `function repo_root` :77
-        - `function current_branch` :87
-      - `pub file update.rs` :1
-        - `constant CURRENT` :3
-        - `constant RELEASES_API` :4
-        - `pub function run` :6
-        - `function fetch_latest_version` :30
-        - `enum InstallMethod` :67
-          - `method fmt` :75
-        - `function detect_install_method` :85
-        - `function update_command` :103
-      - `pub file blast_radius.rs` :1
-        - `pub enum BlastFormat` :12
-        - `pub function run` :19
-        - `function risk_label` :104
-        - `function print_text` :113
-        - `function print_github_comment` :153
-        - `function print_json` :213
-        - `function node_to_json` :244
-        - `function repo_root` :255
-      - `pub file export.rs` :1
-        - `constant DEFAULT_OUTPUT` :15
-        - `pub function run` :17
-        - `pub function refresh_if_exists` :32
-        - `function write_context` :41
-        - `function build_context_md` :66
-        - `function render_node` :126
-        - `function repo_root` :168
-        - `function current_branch` :181
-      - `pub file doctor.rs` :1
-        - `pub function run` :7
-        - `function check_hook` :102
-        - `type_alias EditorCheck` :120
-        - `function check_editor_mcp` :122
-        - `function ok` :198
-        - `function fail` :202
-        - `function warn` :208
-        - `function info` :212
-        - `function print_summary` :216
-        - `function find_repo_root` :224
-        - `function current_branch` :237
-        - `function head_sha` :253
-        - `function dirs_home` :261
-      - `pub file status.rs` :1
-        - `pub function run` :7
-        - `function repo_root` :50
-        - `function current_branch` :60
-      - `pub file serve.rs` :1
-        - `pub function run` :3
-      - `pub folder init` :1
-        - `pub file helpers.rs` :1
-          - `pub function repo_root` :5
-          - `pub function home_dir` :18
-          - `pub function current_branch` :25
-        - `pub file detect.rs` :1
-          - `pub function detect_editors` :7
-          - `pub function parse_editor_flag` :34
-          - `function env_prefix` :49
-        - `pub file mod.rs` :1
-          - `module detect` :5
-          - `pub module editors` :6
-          - `module helpers` :7
-          - `module universal` :8
-          - `pub function run` :15
-        - `pub file universal.rs` :1
-          - `constant HOOK_NAMES` :12
-          - `constant HOOK_SHEBANG` :19
-          - `constant AGENT_GUIDE` :22
-          - `pub function install_hooks` :72
-          - `pub function initial_index` :99
-          - `pub function write_agent_guide` :117
-          - `pub function write_ci_workflow` :127
-        - `pub folder editors` :1
-          - `pub file cursor.rs` :1
-            - `constant CURSOR_RULES` :6
-            - `pub function install` :44
-            - `function write_cursor_rules` :50
-            - `function write_cursor_mcp` :60
-          - `pub file mod.rs` :1
-            - `pub module antigravity` :5
-            - `pub module claude` :6
-            - `pub module copilot` :7
-            - `pub module cursor` :8
-            - `pub module windsurf` :9
-            - `pub enum EditorKind` :12
-              - `pub method all` :21
-              - `pub method display_name` :31
-            - `pub function install_for_editor` :42
-          - `pub file windsurf.rs` :1
-            - `constant WINDSURF_RULES` :8
-            - `pub function install` :37
-            - `function write_windsurf_rules` :43
-            - `function write_windsurf_mcp` :58
-          - `pub file claude.rs` :1
-            - `constant CLAUDE_MD_SECTION` :10
-            - `constant PRE_TOOL_USE_HOOK` :22
-            - `constant SKILLS` :41
-            - `constant SLASH_COMMANDS` :105
-            - `pub function install` :128
-            - `function write_mcp_json` :138
-            - `function write_slash_commands` :158
-            - `function write_skills` :172
-            - `function update_claude_md` :186
-            - `function write_pre_tool_use_hook` :203
-            - `function write_claude_settings` :219
-            - `function add_gcx_hook_entry` :238
-          - `pub file antigravity.rs` :1
-            - `pub function install` :8
-            - `function write_antigravity_mcp` :13
-          - `pub file copilot.rs` :1
-            - `constant COPILOT_INSTRUCTIONS` :5
-            - `pub function install` :38
 
 ## crates/gitcortex-cli/src
 
@@ -389,6 +58,69 @@
 
 ## crates/gitcortex-cli/src/cmd/init
 
+- `pub folder init` :1
+  - `pub file helpers.rs` :1
+    - `pub function repo_root` :5
+    - `pub function home_dir` :18
+    - `pub function current_branch` :25
+  - `pub file detect.rs` :1
+    - `pub function detect_editors` :7
+    - `pub function parse_editor_flag` :34
+    - `function env_prefix` :49
+  - `pub file mod.rs` :1
+    - `module detect` :5
+    - `pub module editors` :6
+    - `module helpers` :7
+    - `module universal` :8
+    - `pub function run` :15
+  - `pub file universal.rs` :1
+    - `constant HOOK_NAMES` :12
+    - `constant HOOK_SHEBANG` :19
+    - `constant AGENT_GUIDE` :22
+    - `pub function install_hooks` :72
+    - `pub function initial_index` :99
+    - `pub function write_agent_guide` :117
+    - `pub function write_ci_workflow` :127
+  - `pub folder editors` :1
+    - `pub file cursor.rs` :1
+      - `constant CURSOR_RULES` :6
+      - `pub function install` :44
+      - `function write_cursor_rules` :50
+      - `function write_cursor_mcp` :60
+    - `pub file mod.rs` :1
+      - `pub module antigravity` :5
+      - `pub module claude` :6
+      - `pub module copilot` :7
+      - `pub module cursor` :8
+      - `pub module windsurf` :9
+      - `pub enum EditorKind` :12
+        - `pub method all` :21
+        - `pub method display_name` :31
+      - `pub function install_for_editor` :42
+    - `pub file windsurf.rs` :1
+      - `constant WINDSURF_RULES` :8
+      - `pub function install` :37
+      - `function write_windsurf_rules` :43
+      - `function write_windsurf_mcp` :58
+    - `pub file claude.rs` :1
+      - `constant CLAUDE_MD_SECTION` :10
+      - `constant PRE_TOOL_USE_HOOK` :22
+      - `constant SKILLS` :41
+      - `constant SLASH_COMMANDS` :105
+      - `pub function install` :128
+      - `function write_mcp_json` :138
+      - `function write_slash_commands` :158
+      - `function write_skills` :172
+      - `function update_claude_md` :186
+      - `function write_pre_tool_use_hook` :203
+      - `function write_claude_settings` :219
+      - `function add_gcx_hook_entry` :238
+    - `pub file antigravity.rs` :1
+      - `pub function install` :8
+      - `function write_antigravity_mcp` :13
+    - `pub file copilot.rs` :1
+      - `constant COPILOT_INSTRUCTIONS` :5
+      - `pub function install` :38
 
 ## crates/gitcortex-cli/src/cmd/init/detect.rs
 
@@ -510,6 +242,181 @@
 
 ## crates/gitcortex-indexer
 
+- `pub folder gitcortex-indexer` :1
+  - `pub folder src` :1
+    - `pub folder parser` :1
+      - `pub file typescript.rs` :1
+        - `pub struct TypeScriptParser` :21
+          - `pub method new_ts` :26
+          - `pub method new_tsx` :32
+          - `method extensions` :58
+          - `method parse` :62
+        - `pub struct JavaScriptParser` :39
+          - `pub method new` :44
+          - `method default` :52
+          - `method extensions` :68
+          - `method parse` :72
+        - `function parse_source` :77
+        - `struct FileVisitor` :117
+          - `method new` :137
+          - `method text` :180
+          - `method span` :184
+          - `method visibility` :191
+          - `method is_type_member` :222
+          - `method is_exported` :237
+          - `method is_async` :256
+          - `method qualified` :262
+          - `method make_node` :270
+          - `method collect_names` :298
+          - `method collect_names_from_var_decl` :330
+          - `method unwrap_export` :353
+          - `method visit_program` :376
+          - `method visit_statement` :385
+          - `method visit_function` :417
+          - `method visit_class` :457
+          - `method visit_method` :499
+          - `method visit_interface` :526
+          - `method visit_type_alias` :557
+          - `method visit_enum` :571
+          - `method visit_namespace` :617
+          - `method visit_var_decl` :644
+          - `method collect_imports` :699
+          - `method extract_generic_constraints` :761
+          - `method extract_param_types` :778
+          - `method extract_return_type_annotation` :794
+          - `method extract_heritage` :805
+          - `method collect_extends_names` :828
+          - `method collect_implements_names` :849
+          - `method extract_decorator_annotated` :867
+          - `method extract_decorator_uses` :879
+          - `method decorator_name` :891
+          - `method collect_type_names` :915
+          - `method walk_type_names` :921
+          - `method collect_calls` :942
+          - `method callee_name` :960
+          - `method record_call` :971
+        - `function is_builtin_ts_type` :995
+        - `module tests` :1043
+          - `function parse_ts` :1049
+          - `function parse_ts_full` :1062
+          - `function parse_js` :1087
+          - `function parses_ts_function` :1100
+          - `function parses_ts_class_and_method` :1112
+          - `function parses_ts_interface` :1133
+          - `function parses_js_arrow_function` :1141
+          - `function detects_ts_call_edges` :1152
+          - `function detects_ts_extends_implements` :1160
+          - `function detects_ts_type_annotation_uses` :1172
+          - `function detects_ts_named_imports` :1183
+          - `function module_node_is_emitted` :1197
+      - `pub file python.rs` :1
+        - `pub struct PythonParser` :15
+          - `pub method new` :20
+          - `method default` :28
+          - `method extensions` :34
+          - `method parse` :38
+        - `struct FileVisitor` :75
+          - `method new` :94
+          - `method text` :137
+          - `method span` :141
+          - `method visibility` :149
+          - `method qualified` :157
+          - `method make_node` :165
+          - `method collect_names` :195
+          - `method visit_module` :247
+          - `method visit_top_level` :255
+          - `method visit_function` :283
+          - `method visit_class` :356
+          - `method maybe_visit_constant` :491
+          - `method collect_imports` :523
+          - `method collect_calls` :579
+          - `method callee_name` :596
+          - `method record_call` :607
+          - `method fn_is_async` :632
+          - `method body_has_yield` :640
+          - `method collect_decorators` :655
+          - `method decorator_name` :664
+          - `method extract_param_types` :687
+          - `method extract_return_type` :705
+          - `method collect_type_names` :714
+          - `method walk_type_names` :720
+        - `function is_builtin_type` :740
+        - `module tests` :799
+          - `function parse` :805
+          - `function parse_full` :818
+          - `function parses_free_function` :842
+          - `function parses_class_and_method` :855
+          - `function detects_call_edges` :876
+          - `function detects_base_class_implements` :884
+          - `function detects_type_annotation_uses` :894
+          - `function detects_decorator_uses` :905
+          - `function detects_import_statement` :915
+          - `function detects_from_import_statement` :929
+          - `function module_node_is_emitted` :943
+          - `function async_function_flagged` :954
+          - `function protocol_class_becomes_interface` :968
+          - `function non_protocol_class_is_struct` :984
+          - `function property_decorator_yields_property_kind` :999
+          - `function staticmethod_decorator_sets_is_static` :1013
+          - `function classmethod_decorator_sets_is_static` :1029
+          - `function dataclass_decorator_class_is_struct` :1045
+          - `function generator_function_sets_is_generator` :1059
+          - `function async_generator_is_both_async_and_generator` :1075
+          - `function nested_yield_does_not_pollute_outer_function` :1094
+          - `function module_level_bindings_detected` :1115
+          - `function nested_class_emits_contains_edge_from_parent` :1147
+          - `function multiple_type_annotations_produce_uses_entries` :1173
+          - `function private_method_has_private_visibility` :1186
+          - `function calls_edge_between_two_functions` :1205
+          - `function method_call_via_self_creates_calls_edge` :1213
+          - `function aliased_import_uses_alias_name` :1235
+          - `function dotted_import_records_leaf_module` :1251
+      - `pub file java.rs` :1
+        - `pub struct JavaParser` :15
+          - `pub method new` :20
+          - `method default` :28
+          - `method extensions` :34
+          - `method parse` :38
+        - `struct FileVisitor` :75
+          - `method new` :96
+          - `method text` :141
+          - `method span` :145
+          - `method visibility` :152
+          - `method is_async` :170
+          - `method modifiers_text` :176
+          - `method qualified` :186
+          - `method make_node` :194
+          - `method collect_names` :226
+          - `method visit_program` :248
+          - `method visit_top_level` :256
+          - `method visit_class` :266
+          - `method visit_class_nested` :343
+          - `method visit_interface_nested` :392
+          - `method visit_interface` :431
+          - `method visit_enum` :478
+          - `method visit_record` :516
+          - `method visit_method` :544
+          - `method collect_imports` :616
+          - `method extract_annotation_uses` :646
+          - `method has_functional_interface_annotation` :671
+          - `method extract_field_uses` :692
+          - `method extract_simple_type` :701
+          - `method collect_type_names` :733
+          - `method walk_type_names` :739
+          - `method collect_calls` :760
+          - `method callee_name` :779
+          - `method record_call` :801
+        - `function is_builtin_java_type` :825
+        - `module tests` :880
+          - `function parse` :886
+          - `function parse_full` :899
+          - `function parses_class_and_method` :929
+          - `function parses_interface` :951
+          - `function parses_enum` :963
+          - `function detects_extends_and_implements` :972
+          - `function detects_type_annotation_uses` :984
+          - `function detects_import_declaration` :995
+          - `function module_node_is_emitted` :1005
 
 ## crates/gitcortex-indexer/src
 
@@ -616,6 +523,47 @@
 
 ## crates/gitcortex-store
 
+- `pub folder gitcortex-store` :1
+  - `pub folder src` :1
+    - `pub folder kuzu` :1
+      - `pub file queries.rs` :1
+        - `pub constant NODE_COLS` :19
+        - `pub constant SYMBOL_RANK` :32
+        - `pub function rows_to_nodes` :40
+        - `pub function row_to_node` :51
+        - `pub function collect_ids` :127
+      - `pub file mod.rs` :1
+        - `module bulk` :16
+        - `module conv` :17
+        - `module escape` :18
+        - `module queries` :19
+        - `module values` :20
+        - `constant NODE_INSERT_CHUNK` :30
+        - `constant EDGE_INSERT_CHUNK` :31
+        - `function node_struct_literal` :36
+        - `function node_table_is_empty` :73
+        - `function bulk_apply` :88
+        - `pub struct KuzuGraphStore` :121
+          - `pub method open` :132
+          - `method conn` :157
+          - `method ensure_branch` :162
+          - `method apply_diff` :173
+          - `method lookup_symbol` :505
+          - `method find_callers` :526
+          - `method find_callers_deep` :544
+          - `method symbol_context` :588
+          - `method list_definitions` :654
+          - `method branch_diff` :670
+          - `method list_all_nodes` :710
+          - `method list_all_edges` :720
+          - `method find_callees` :747
+          - `method find_implementors` :794
+          - `method trace_path` :811
+          - `method list_symbols_in_range` :878
+          - `method find_unused_symbols` :903
+          - `method get_subgraph` :928
+          - `method last_indexed_sha` :1052
+          - `method set_last_indexed_sha` :1056
 
 ## crates/gitcortex-store/src
 
