@@ -283,9 +283,14 @@ Affected callers:
 Generates `.gitcortex/context.md` — a readable Markdown codebase map organized by file with hierarchical struct→method containment. Once generated, the git hook keeps it fresh after every commit.
 
 ```bash
-gcx export                   # writes .gitcortex/context.md for current branch
+gcx export                          # writes .gitcortex/context.md (Markdown map)
 gcx export --branch feat/auth
+gcx export --format json > graph.json   # committable JSON: symbols + edges, joinable by id
+gcx export --claude-md --top 40     # upsert top-N symbols into CLAUDE.md
 ```
+
+- **`--format json`** — emits `{ branch, sha, symbols[], edges[] }` to stdout. Each symbol carries `id`, `name`, `qualified_name`, `kind`, `file`, `line`, `visibility`; edges reference symbol `id`s. Commit it, diff it in PRs, or consume it in CI **without the binary or the embedded DB**.
+- **`--claude-md`** — upserts a compact, centrality-ranked symbol table into `CLAUDE.md` between `<!-- gcx:symbols start/end -->` markers (idempotent). Assistants get the most-referenced symbols (name → `file:line`) **pre-loaded with zero tool calls**, with a hint to fall back to the MCP tools for anything not listed.
 
 Example output:
 ```markdown
