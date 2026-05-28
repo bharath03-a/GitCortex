@@ -35,7 +35,11 @@ jobs:
           cache: "npm"
           cache-dependency-path: viz/package-lock.json
 
-      - run: npm ci
+      # `npm install` (not `npm ci`): lightningcss ships per-platform native
+      # binaries as optionalDependencies; `npm ci` from a lockfile generated on
+      # another OS skips the runner's variant (npm/cli#4828). `npm install`
+      # resolves the correct binary for this platform.
+      - run: npm install --no-audit --no-fund
 
       - name: Prettier --check
         run: npm run format:check

@@ -45,7 +45,7 @@ jobs:
       - name: Build viz frontend (so include_bytes! works)
         working-directory: viz
         run: |
-          npm ci
+          npm install --no-audit --no-fund
           npm run build
 
       - run: cargo fmt --all -- --check
@@ -89,7 +89,7 @@ jobs:
         working-directory: viz
         shell: bash
         run: |
-          npm ci
+          npm install --no-audit --no-fund
           npm run build
 
       - name: Install cargo-nextest
