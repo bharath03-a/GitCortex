@@ -27,15 +27,19 @@ jobs:
     name: viz · lint + test + build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: "npm"
           cache-dependency-path: viz/package-lock.json
 
-      - run: npm ci
+      # `npm install` (not `npm ci`): lightningcss ships per-platform native
+      # binaries as optionalDependencies; `npm ci` from a lockfile generated on
+      # another OS skips the runner's variant (npm/cli#4828). `npm install`
+      # resolves the correct binary for this platform.
+      - run: npm install --no-audit --no-fund
 
       - name: Prettier --check
         run: npm run format:check

@@ -701,9 +701,23 @@ impl<'src> FileVisitor<'src> {
     fn extract_simple_type(&self, node: TsNode<'_>) -> Option<String> {
         match node.kind() {
             "type_identifier" | "identifier" => Some(self.text(node).to_owned()),
-            "generic_type" => node
-                .child_by_field_name("name")
-                .map(|n| self.text(n).to_owned()),
+            // `generic_type` in tree-sitter-java is `(type_identifier (type_arguments …))`
+            // with NO `name` field — strip the type arguments and keep the raw
+            // type name so `extends TypeAdapter<T>` resolves to `TypeAdapter`.
+            // (A `name`-field lookup here previously returned None, dropping the
+            // inherits edge for every generic superclass.)
+            "generic_type" => {
+                let mut c = node.walk();
+                let children: Vec<TsNode<'_>> = node.named_children(&mut c).collect();
+                children.into_iter().find_map(|ch| match ch.kind() {
+                    "type_identifier" | "scoped_type_identifier" | "identifier" => {
+                        Some(self.text(ch).to_owned())
+                    }
+                    _ => None,
+                })
+            }
+            // `scoped_type_identifier` (`a.b.Foo`) — keep the last segment.
+            "scoped_type_identifier" => self.text(node).rsplit('.').next().map(|s| s.to_owned()),
             _ => {
                 // Try first named child
                 let mut c = node.walk();

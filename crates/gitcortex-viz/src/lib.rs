@@ -3,8 +3,9 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use axum::{
-    extract::{Path, Query, State},
-    http::header,
+    extract::{Path, Query, Request, State},
+    http::{header, HeaderValue, StatusCode},
+    middleware::{self, Next},
     response::{IntoResponse, Json, Response},
     routing::get,
     Router,
@@ -66,6 +67,17 @@ async fn serve(state: Arc<AppState>, port: u16) -> Result<()> {
     let addr = format!("127.0.0.1:{port}");
     let url = format!("http://{addr}");
 
+    // Allowed Host headers. Computed once so the middleware closure can match
+    // against them without re-allocating. Includes both `127.0.0.1` and
+    // `localhost` (and their bare-name forms in case a tool strips the port).
+    let allowed_hosts: Arc<Vec<String>> = Arc::new(vec![
+        format!("127.0.0.1:{port}"),
+        format!("localhost:{port}"),
+        format!("[::1]:{port}"),
+        "127.0.0.1".to_owned(),
+        "localhost".to_owned(),
+    ]);
+
     let app = Router::new()
         .route("/", get(root_handler))
         .route("/assets/main.js", get(js_handler))
@@ -77,6 +89,10 @@ async fn serve(state: Arc<AppState>, port: u16) -> Result<()> {
         .route("/api/branches", get(branches_handler))
         .route("/api/branch-diff", get(branch_diff_handler))
         .route("/api/unused", get(unused_handler))
+        .layer(middleware::from_fn(move |req, next| {
+            let allowed = allowed_hosts.clone();
+            host_header_guard(req, next, allowed)
+        }))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(&addr)
@@ -89,6 +105,45 @@ async fn serve(state: Arc<AppState>, port: u16) -> Result<()> {
 
     axum::serve(listener, app).await.context("axum serve")?;
     Ok(())
+}
+
+// ─── Middleware: Host-header allowlist ────────────────────────────────────────
+//
+// Defense against DNS-rebinding. The viz server binds to 127.0.0.1 only, but a
+// malicious page on `evil.com` whose DNS resolves to 127.0.0.1 can drive the
+// user's browser to call our endpoints — without this check the response is
+// served and the page can exfiltrate code-graph data (file paths, function
+// names, source body).
+//
+// Reject any request whose `Host` header isn't on the allowlist. Browsers
+// always send the `Host` header; `curl` users can pass `--host` if needed.
+
+async fn host_header_guard(
+    req: Request,
+    next: Next,
+    allowed_hosts: Arc<Vec<String>>,
+) -> Result<Response, StatusCode> {
+    let Some(host) = req
+        .headers()
+        .get(header::HOST)
+        .and_then(|v| v.to_str().ok())
+    else {
+        // Per RFC 7230 a Host header is mandatory for HTTP/1.1; drop the
+        // request when it's missing or non-ASCII.
+        return Err(StatusCode::BAD_REQUEST);
+    };
+    if !allowed_hosts.iter().any(|allowed| host == allowed) {
+        tracing::warn!(host = %host, "rejected request with unrecognised Host header");
+        return Err(StatusCode::FORBIDDEN);
+    }
+    let mut response = next.run(req).await;
+    // Belt-and-suspenders: instruct user-agents not to cache responses across
+    // origins. `Vary: Host` ensures a poisoned cache entry from one host is
+    // not served to another.
+    response
+        .headers_mut()
+        .insert(header::VARY, HeaderValue::from_static("Host"));
+    Ok(response)
 }
 
 // ─── Static asset handlers ────────────────────────────────────────────────────

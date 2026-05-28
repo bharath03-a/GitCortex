@@ -1,6 +1,21 @@
 # GitCortex
 
-A local-first, branch-aware code knowledge graph for Git repositories. GitCortex (`gcx`) indexes your codebase incrementally on every commit using tree-sitter AST parsing, persists the graph in an embedded KuzuDB database, and exposes it to AI coding assistants via an MCP server — in Cursor, Claude Code, Windsurf, GitHub Copilot, and Google Antigravity.
+> A local-first, branch-aware **code knowledge graph** for Git repositories.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![crates.io](https://img.shields.io/crates/v/gitcortex.svg)](https://crates.io/crates/gitcortex)
+[![npm](https://img.shields.io/npm/v/gitcortex.svg)](https://www.npmjs.com/package/gitcortex)
+[![PyPI](https://img.shields.io/pypi/v/gitcortex.svg)](https://pypi.org/project/gitcortex/)
+[![CI](https://github.com/bharath03-a/GitCortex/actions/workflows/ci.yml/badge.svg)](https://github.com/bharath03-a/GitCortex/actions/workflows/ci.yml)
+
+GitCortex (`gcx`) indexes your codebase incrementally on every commit using tree-sitter AST parsing, persists the graph in an embedded KuzuDB database, and exposes it to AI coding assistants via an MCP server — in Cursor, Claude Code, Windsurf, GitHub Copilot, and Google Antigravity.
+
+```bash
+cargo install gitcortex   # or: npm i -g gitcortex · pip install gitcortex
+cd your-repo && gcx init  # index + install hooks + register your editor
+```
+
+**Contents:** [Why](#why) · [Demo](#demo) · [How it works](#how-it-works) · [Install](#installation) · [Quick start](#quick-start) · [Commands](#commands) · [Languages](#supported-languages) · [MCP](#mcp-integration) · [Graph schema](#graph-schema) · [Architecture](#architecture) · [Limitations & roadmap](#limitations--roadmap) · [Contributing](#contributing)
 
 ---
 
@@ -10,18 +25,32 @@ When you ask an AI editor to work on a large codebase, it either scans dozens of
 
 GitCortex gives your AI editor a pre-built, queryable call graph of your repo — functions, structs, traits, interfaces, call relationships, inheritance — so instead of reading raw source files it can ask precise questions like "what calls this function?" or "what implements this trait?" and get structured answers instantly.
 
-| | GitCortex v0.2 | GitNexus | codebase-memory-mcp |
-|---|---|---|---|
-| **License** | **MIT** (commercial-friendly) | PolyForm Noncommercial | MIT |
-| **MCP tools** | **12** with real query depth | 7 + 2 prompts | 14 |
-| **Languages** | **5 — full edge coverage** (Rust, Python, TS/JS, Go, Java) | 14 (uneven depth) | 155 (shallow) |
-| **IDE support** | Cursor, Claude Code, Windsurf, Copilot, Antigravity | Claude Code, Cursor, Windsurf | Varies |
-| **Index freshness** | **Auto on every git op** (<500ms) | Manual `npx analyze` | Manual |
-| **Branch graphs** | **Per-branch, instant switch** | No | No |
-| **Runtime dep** | **None** — single static binary | Node.js required | None |
-| **Install** | `npm install -g`, `pip install`, `curl \| sh`, `cargo install` | `npm install -g gitnexus` | `curl \| sh` |
+### Highlights
 
-> **One sentence**: GitCortex is the only MIT-licensed, zero-runtime-dependency code knowledge graph that stays current automatically and works in every major AI editor.
+- **MIT licensed** — commercial-friendly.
+- **Zero runtime dependencies** — single static binary, no Node.js / Python runtime required.
+- **5 languages** — Rust, Python, TypeScript/JavaScript, Go, Java ([coverage matrix](#supported-languages)).
+- **Auto-indexing on every git op** — incremental, sub-500 ms on changed files; a full index of a 520k-LOC repo (Django) takes ~4 s.
+- **Per-branch graphs** — switching branches is instant, no re-index.
+- **Wiki, search, tour, blast-radius** — built-in discovery surface for AI assistants and humans.
+- **Works in Cursor, Claude Code, Windsurf, GitHub Copilot, Google Antigravity** via MCP.
+
+---
+
+## Demo
+
+<!-- VIDEO_SLOT
+     Drop your recording here. Two supported shapes:
+
+       1. GitHub-uploaded asset:
+          https://github.com/user-attachments/assets/<id>
+
+       2. Local file checked in under docs/ (preferred for repeatability):
+
+       https://github.com/bharath03-a/GitCortex/assets/PLACEHOLDER/demo.mp4
+-->
+
+> _Demo video coming soon — see `docs/demo.mp4` once recorded._
 
 ---
 
@@ -33,6 +62,24 @@ GitCortex gives your AI editor a pre-built, queryable call graph of your repo �
 4. `gcx viz` opens an interactive force-directed graph in your browser.
 
 The graph is namespaced per branch — switching branches instantly gives you the graph for that branch with no re-indexing.
+
+---
+
+## Supported languages
+
+All five languages parse into the same graph schema (nodes + edges) and work with every query, the MCP tools, and the visualizer. Coverage maturity differs by language — the table is honest about what's deep vs. still shallow.
+
+| Language | Defs (fn/type/method) | Calls | Inheritance | Imports | Notes |
+|---|---|---|---|---|---|
+| **Rust** | ✅ | ✅ | ✅ traits/impls | ✅ | Reference implementation; deepest coverage. |
+| **Python** | ✅ | ✅ | ✅ base classes | ✅ | Decorators, async, generators, nested classes, properties, module-level bindings. |
+| **TypeScript / JavaScript** | ✅ | ✅ | ✅ extends/implements | ✅ | Generics, arrow-fn consts, type aliases, getters/setters. Visibility from `export`. |
+| **Go** | ✅ | ✅ | ◑ embedding | ✅ | Methods bind to receiver types. Structural interface satisfaction is **not** inferred (see roadmap). |
+| **Java** | ✅ | ✅ | ✅ extends/implements (incl. generics) | ✅ | Member annotations + fields not yet modeled (see roadmap). |
+
+Call resolution is **syntactic** (no full type inference): a call to a name with more than a handful of same-named definitions is treated as ambiguous and left unlinked rather than fanned out to all of them. This keeps the graph precise and the index fast.
+
+Adding a language is a self-contained task — implement one `LanguageParser` in `gitcortex-indexer`. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
@@ -72,8 +119,11 @@ curl --proto '=https' --tlsv1.2 -LsSf \
   https://github.com/bharath03-a/GitCortex/releases/latest/download/gcx-installer.sh | sh
 ```
 
-> Pre-built binaries for macOS (arm64/x86_64), Linux (x86_64/aarch64), and Windows (x86_64) are published
-> automatically on every release via GitHub Releases. Windows users can also install via `npm install -g gitcortex` or `pip install gitcortex`.
+> Pre-built binaries for macOS (arm64/x86_64) and Linux (x86_64/aarch64) are published automatically
+> on every release via GitHub Releases.
+>
+> _Windows is not currently supported — the embedded graph store (KuzuDB 0.11.3, upstream archived)
+> does not link cleanly on MSVC. We'll restore Windows support after migrating the store layer._
 
 **Cargo (from crates.io):**
 
@@ -152,12 +202,25 @@ gcx serve
 
 ### `gcx query`
 
-One-shot CLI queries for manual inspection.
+One-shot CLI queries for manual inspection. The same surface is exposed to
+AI assistants as MCP tools.
 
 ```bash
+# Locate symbols
 gcx query lookup-symbol MyStruct
-gcx query find-callers process_request --branch main
+gcx query search auth --limit 10              # ranked fuzzy match
 gcx query list-definitions src/lib.rs
+
+# Call graph
+gcx query find-callers process_request --branch main --depth 3
+gcx query find-callees handle_request
+gcx query trace-path entry_point database_query
+gcx query symbol-context apply_diff           # 360° view (def + callers + callees + uses)
+
+# Discovery — new in v0.3
+gcx query wiki apply_diff                     # markdown wiki page for a symbol
+gcx query tour --limit 12                     # centrality-ranked global tour
+gcx query tour --seed main                    # BFS-walk outward from a seed
 ```
 
 ### `gcx viz`
@@ -172,7 +235,7 @@ gcx viz --format dot > graph.dot   # export Graphviz DOT to stdout
 dot -Tsvg graph.dot -o graph.svg   # render with Graphviz
 ```
 
-The browser UI is a React 18 + Vite + Tailwind v4 single-page app, rendered by **Cosmograph** (`@cosmos.gl/graph`) — a WebGL/GPGPU force-directed graph engine that runs the entire simulation on the GPU. The whole bundle is embedded in the `gcx` binary via `include_bytes!`, so there is no runtime dependency beyond a browser.
+The browser UI is a React 19 + Vite + Tailwind v4 single-page app, rendered by **Cosmograph** (`@cosmos.gl/graph`) — a WebGL/GPGPU force-directed graph engine that runs the entire simulation on the GPU. The whole bundle is embedded in the `gcx` binary via `include_bytes!`, so there is no runtime dependency beyond a browser.
 
 Features:
 - **GPGPU force layout** — clusters form naturally on first paint, smooth at 60fps even on thousands of nodes
@@ -220,9 +283,14 @@ Affected callers:
 Generates `.gitcortex/context.md` — a readable Markdown codebase map organized by file with hierarchical struct→method containment. Once generated, the git hook keeps it fresh after every commit.
 
 ```bash
-gcx export                   # writes .gitcortex/context.md for current branch
+gcx export                          # writes .gitcortex/context.md (Markdown map)
 gcx export --branch feat/auth
+gcx export --format json > graph.json   # committable JSON: symbols + edges, joinable by id
+gcx export --claude-md --top 40     # upsert top-N symbols into CLAUDE.md
 ```
+
+- **`--format json`** — emits `{ branch, sha, symbols[], edges[] }` to stdout. Each symbol carries `id`, `name`, `qualified_name`, `kind`, `file`, `line`, `visibility`; edges reference symbol `id`s. Commit it, diff it in PRs, or consume it in CI **without the binary or the embedded DB**.
+- **`--claude-md`** — upserts a compact, centrality-ranked symbol table into `CLAUDE.md` between `<!-- gcx:symbols start/end -->` markers (idempotent). Assistants get the most-referenced symbols (name → `file:line`) **pre-loaded with zero tool calls**, with a hint to fall back to the MCP tools for anything not listed.
 
 Example output:
 ```markdown
@@ -518,6 +586,40 @@ The `GraphStore` trait is the extensibility boundary — the local KuzuDB backen
 
 ---
 
+## Limitations & roadmap
+
+GitCortex builds a **syntactic** graph from tree-sitter ASTs. That's deliberate — it keeps indexing fast and dependency-free — but it sets the boundaries below. Contributions toward any of these are welcome.
+
+**Known gaps**
+- **No type inference.** Call resolution matches on names, not resolved types. Calls to very common names (`get`, `save`, `__init__`) are left unlinked rather than fanned out to every same-named definition.
+- **Go interface satisfaction not inferred.** Go satisfies interfaces structurally (no `implements` keyword), so `find-implementors` on a Go interface returns nothing. Embedding (`inherits`) is captured.
+- **Java member annotations & fields not modeled.** `@Override` / `@SerializedName` on members and `static final` fields don't yet produce nodes/edges, so annotation-target and field-level queries are incomplete.
+- **Go type-declaration signatures** render without the leading `type` keyword and struct/interface body (the type name + kind are correct).
+- **Windows is unsupported** — KuzuDB 0.11.3 (upstream archived) doesn't link under MSVC. macOS (arm64/x86_64) and Linux (x86_64/aarch64) ship pre-built binaries.
+
+**Roadmap**
+- Pass-2 LLD annotation (SOLID hints, design patterns, code smells, cyclomatic complexity) — schema is already in place.
+- Optional semantic search over `DefinitionText` (signatures + docstrings are already captured).
+- Remote `GraphStore` backend for team-shared graphs (the trait boundary exists today).
+- Deeper Java/Go modeling (fields, annotations, structural interface satisfaction).
+
+See [open issues](https://github.com/bharath03-a/GitCortex/issues) for the live list.
+
+---
+
+## Contributing
+
+Contributions are welcome — bug reports, language-coverage improvements, new MCP tools, docs.
+
+- **Start here:** [CONTRIBUTING.md](CONTRIBUTING.md) — dev setup, build, test, and PR workflow.
+- **Conduct:** [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+- **Test your changes against real repos:** `scripts/lang-smoke.sh <git-url> <symbol>` clones a repo, indexes it, exercises every query + the MCP round-trip, and prints PASS/FAIL with metrics.
+- **Releasing:** [RELEASING.md](RELEASING.md).
+
+Good first issues: add a `LanguageParser` for a new language, deepen an existing parser (see [the coverage matrix](#supported-languages)), or add an MCP tool.
+
+---
+
 ## License
 
-MIT
+[MIT](LICENSE) © GitCortex contributors.

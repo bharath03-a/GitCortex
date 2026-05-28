@@ -10,6 +10,29 @@
         ],
         "matcher": "Read"
       }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "command": ".claude/hooks/post-tool-use/rustfmt.sh",
+            "type": "command"
+          },
+          {
+            "command": ".claude/hooks/post-tool-use/cargo-check.sh",
+            "type": "command"
+          },
+          {
+            "command": ".claude/hooks/post-tool-use/rule-guard.sh",
+            "type": "command"
+          },
+          {
+            "command": ".claude/hooks/post-tool-use/file-size.sh",
+            "type": "command"
+          }
+        ],
+        "matcher": "Edit|Write|MultiEdit"
+      }
     ]
   }
 }

@@ -13,6 +13,7 @@ use kuzu::{Connection, Database, SystemConfig};
 
 use crate::{branch, schema as db_schema};
 
+mod bulk;
 mod conv;
 mod escape;
 mod queries;
@@ -20,8 +21,95 @@ mod values;
 
 use conv::{edge_kind_from_str, lang_scope_clause, vis_str};
 use escape::{esc, esc_multiline};
-use queries::{collect_ids, rows_to_nodes, NODE_COLS};
+use queries::{collect_ids, rows_to_nodes, NODE_COLS, SYMBOL_RANK};
 use values::str_val;
+
+// Batch sizes for `UNWIND`-based inserts. Nodes carry a (≤16 KB) def_body, so
+// their chunk is kept small to bound query-string size; edges are three ids
+// each, so they batch much larger.
+const NODE_INSERT_CHUNK: usize = 128;
+const EDGE_INSERT_CHUNK: usize = 1000;
+
+/// Render a `Node` as a Cypher struct literal `{id:'…', kind:'…', …}` for use
+/// inside an `UNWIND [...] AS r CREATE` batch. String fields are escaped and
+/// single-quoted; bools/ints are emitted bare.
+fn node_struct_literal(node: &Node) -> String {
+    let id = esc(&node.id.as_str());
+    let kind = esc(&node.kind.to_string());
+    let name = esc(&node.name);
+    let qname = esc(&node.qualified_name);
+    let file = esc(node.file.to_string_lossy().as_ref());
+    let sl = node.span.start_line as i64;
+    let el = node.span.end_line as i64;
+    let loc = node.metadata.loc as i64;
+    let vis = esc(&vis_str(&node.metadata.visibility));
+    let m = &node.metadata;
+    let generic_bounds = esc(&m.generic_bounds.join("|"));
+    let def_sig = esc_multiline(&m.definition.signature);
+    let def_body = esc_multiline(&m.definition.body);
+    let def_doc = esc_multiline(m.definition.doc_comment.as_deref().unwrap_or(""));
+    let def_start_byte = m.definition.start_byte as i64;
+    let def_end_byte = m.definition.end_byte as i64;
+
+    format!(
+        "{{id:'{id}', kind:'{kind}', name:'{name}', qualified_name:'{qname}', file:'{file}', \
+         start_line:{sl}, end_line:{el}, loc:{loc}, visibility:'{vis}', \
+         is_async:{ia}, is_unsafe:{iu}, is_static:{ist}, is_abstract:{iab}, is_final:{ifi}, \
+         is_property:{ip}, is_generator:{ig}, is_const:{ic}, generic_bounds:'{generic_bounds}', \
+         def_signature:'{def_sig}', def_body:'{def_body}', def_doc:'{def_doc}', \
+         def_start_byte:{def_start_byte}, def_end_byte:{def_end_byte}}}",
+        ia = m.is_async,
+        iu = m.is_unsafe,
+        ist = m.is_static,
+        iab = m.is_abstract,
+        ifi = m.is_final,
+        ip = m.is_property,
+        ig = m.is_generator,
+        ic = m.is_const,
+    )
+}
+
+/// True when the branch's node table has zero rows (fresh / never indexed).
+fn node_table_is_empty(conn: &Connection, nt: &str) -> Result<bool> {
+    let mut r = conn
+        .query(&format!("MATCH (n:{nt}) RETURN count(n) AS c LIMIT 1"))
+        .map_err(|e| GitCortexError::Store(format!("count nodes: {e}")))?;
+    match r.by_ref().next() {
+        Some(row) => match &row[0] {
+            kuzu::Value::Int64(n) => Ok(*n == 0),
+            _ => Ok(false),
+        },
+        None => Ok(true),
+    }
+}
+
+/// Bulk-load a full-index diff via CSV `COPY`. Stages CSVs in a unique temp
+/// dir, loads them, then removes the dir. See [`bulk`] for the rationale.
+fn bulk_apply(conn: &Connection, nt: &str, et: &str, diff: &GraphDiff) -> Result<()> {
+    // Unique staging dir per call: pid + nanos + a process-wide atomic counter,
+    // so concurrent `apply_diff`s (e.g. parallel tests in one binary) never
+    // share a directory.
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let stage = std::env::temp_dir().join(format!(
+        "gcx-bulk-{}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0),
+        SEQ.fetch_add(1, Ordering::Relaxed),
+    ));
+    std::fs::create_dir_all(&stage)
+        .map_err(|e| GitCortexError::Store(format!("create staging dir: {e}")))?;
+
+    let result = bulk::bulk_load(conn, nt, et, &stage, &diff.added_nodes, &diff.added_edges);
+
+    // Best-effort cleanup regardless of load outcome.
+    let _ = std::fs::remove_dir_all(&stage);
+
+    result.map(|_| ())
+}
 
 // ── KuzuGraphStore ────────────────────────────────────────────────────────────
 
@@ -91,6 +179,30 @@ impl GraphStore for KuzuGraphStore {
         let nt = db_schema::node_table(branch);
         let et = db_schema::edge_table(branch);
         let conn = self.conn()?;
+
+        // ── Fast path: bulk COPY load for a fresh full index ───────────────────
+        // When the branch's node table is empty this is a first full index.
+        // Stage the nodes/edges as CSV and `COPY` them in — ~100× faster than
+        // per-row MATCH/CREATE on large repos.
+        //
+        // The diff's `removed_*` fields are ignored on this path: the indexer
+        // emits a `removed_files` entry for every parsed file + its ancestor
+        // folders (so an incremental re-parse first clears the old nodes), but
+        // against an empty table those deletes are vacuous. Deferred cross-file
+        // resolution is likewise skipped — on a full index every in-repo name
+        // is already in `added_edges`; the only `deferred_*` left are external
+        // (stdlib) names the store couldn't resolve anyway.
+        let empty = node_table_is_empty(&conn, &nt)?;
+        if std::env::var_os("GCX_TIMING").is_some() {
+            eprintln!(
+                "[gcx-timing] apply_diff path: table_empty={empty} nodes={} edges={}",
+                diff.added_nodes.len(),
+                diff.added_edges.len()
+            );
+        }
+        if empty {
+            return bulk_apply(&conn, &nt, &et, diff);
+        }
 
         // Transaction 1: commit all deletes first.
         // KuzuDB has a quirk where DETACH DELETE + CREATE in the same transaction
@@ -169,60 +281,37 @@ impl GraphStore for KuzuGraphStore {
         conn.query("BEGIN TRANSACTION")
             .map_err(|e| GitCortexError::Store(format!("begin node insert transaction: {e}")))?;
 
+        // Batch node inserts via `UNWIND [<struct>, …] CREATE`. One query per
+        // chunk instead of one per node — a ~100× cut in round-trips on a full
+        // index of a large repo. Chunk size is kept modest because each row
+        // carries the (truncated) def_body, so a chunk can still be a few MB.
         let mut seen_node_ids: HashSet<String> = HashSet::new();
-        for node in diff
+        let rows: Vec<String> = diff
             .added_nodes
             .iter()
             .filter(|n| seen_node_ids.insert(n.id.as_str().to_owned()))
-        {
             // Folder node remapped to an existing DB node — skip INSERT.
-            if id_remap.contains_key(&node.id.as_str().to_owned()) {
-                continue;
-            }
-            let id = esc(&node.id.as_str());
-            let kind = esc(&node.kind.to_string());
-            let name = esc(&node.name);
-            let qname = esc(&node.qualified_name);
-            let file = esc(node.file.to_string_lossy().as_ref());
-            let sl = node.span.start_line as i64;
-            let el = node.span.end_line as i64;
-            let loc = node.metadata.loc as i64;
-            let vis = esc(&vis_str(&node.metadata.visibility));
-            let is_async = node.metadata.is_async;
-            let is_unsafe = node.metadata.is_unsafe;
-            let is_static = node.metadata.is_static;
-            let is_abstract = node.metadata.is_abstract;
-            let is_final = node.metadata.is_final;
-            let is_property = node.metadata.is_property;
-            let is_generator = node.metadata.is_generator;
-            let is_const = node.metadata.is_const;
-            let generic_bounds = esc(&node.metadata.generic_bounds.join("|"));
-            let def_sig = esc_multiline(&node.metadata.definition.signature);
-            let def_body = esc_multiline(&node.metadata.definition.body);
-            let def_doc = esc_multiline(
-                node.metadata
-                    .definition
-                    .doc_comment
-                    .as_deref()
-                    .unwrap_or(""),
-            );
-            let def_start_byte = node.metadata.definition.start_byte as i64;
-            let def_end_byte = node.metadata.definition.end_byte as i64;
+            .filter(|n| !id_remap.contains_key(&n.id.as_str()))
+            .map(node_struct_literal)
+            .collect();
 
+        for chunk in rows.chunks(NODE_INSERT_CHUNK) {
+            let list = chunk.join(", ");
             conn.query(&format!(
-                "CREATE (:{nt} {{\
-                    id: '{id}', kind: '{kind}', name: '{name}', \
-                    qualified_name: '{qname}', file: '{file}', \
-                    start_line: {sl}, end_line: {el}, loc: {loc}, \
-                    visibility: '{vis}', is_async: {is_async}, is_unsafe: {is_unsafe}, \
-                    is_static: {is_static}, is_abstract: {is_abstract}, is_final: {is_final}, \
-                    is_property: {is_property}, is_generator: {is_generator}, is_const: {is_const}, \
-                    generic_bounds: '{generic_bounds}', \
-                    def_signature: '{def_sig}', def_body: '{def_body}', def_doc: '{def_doc}', \
-                    def_start_byte: {def_start_byte}, def_end_byte: {def_end_byte}\
-                }})"
+                "UNWIND [{list}] AS r \
+                 CREATE (:{nt} {{\
+                    id: r.id, kind: r.kind, name: r.name, \
+                    qualified_name: r.qualified_name, file: r.file, \
+                    start_line: r.start_line, end_line: r.end_line, loc: r.loc, \
+                    visibility: r.visibility, is_async: r.is_async, is_unsafe: r.is_unsafe, \
+                    is_static: r.is_static, is_abstract: r.is_abstract, is_final: r.is_final, \
+                    is_property: r.is_property, is_generator: r.is_generator, is_const: r.is_const, \
+                    generic_bounds: r.generic_bounds, \
+                    def_signature: r.def_signature, def_body: r.def_body, def_doc: r.def_doc, \
+                    def_start_byte: r.def_start_byte, def_end_byte: r.def_end_byte\
+                 }})"
             ))
-            .map_err(|e| GitCortexError::Store(format!("insert node '{name}': {e}")))?;
+            .map_err(|e| GitCortexError::Store(format!("batch insert nodes: {e}")))?;
         }
 
         // Commit node inserts so the edge MATCH queries in step 3 see them.
@@ -237,30 +326,44 @@ impl GraphStore for KuzuGraphStore {
         //    parallel edges. Remap folder IDs to existing DB nodes where applicable.
         //    MATCH yields nothing for missing endpoints → skip silently.
         let mut seen_edges: HashSet<(String, String, String)> = HashSet::new();
-        for edge in diff.added_edges.iter().filter(|e| {
-            seen_edges.insert((
-                e.src.as_str().to_owned(),
-                e.dst.as_str().to_owned(),
-                e.kind.to_string(),
-            ))
-        }) {
-            let src_raw = edge.src.as_str().to_owned();
-            let dst_raw = edge.dst.as_str().to_owned();
-            let s = esc(id_remap
-                .get(&src_raw)
-                .map(String::as_str)
-                .unwrap_or(&src_raw));
-            let d = esc(id_remap
-                .get(&dst_raw)
-                .map(String::as_str)
-                .unwrap_or(&dst_raw));
-            let k = esc(&edge.kind.to_string());
+        let edge_rows: Vec<String> = diff
+            .added_edges
+            .iter()
+            .filter(|e| {
+                seen_edges.insert((
+                    e.src.as_str().to_owned(),
+                    e.dst.as_str().to_owned(),
+                    e.kind.to_string(),
+                ))
+            })
+            .map(|edge| {
+                let src_raw = edge.src.as_str();
+                let dst_raw = edge.dst.as_str();
+                let s = esc(id_remap
+                    .get(&src_raw)
+                    .map(String::as_str)
+                    .unwrap_or(&src_raw));
+                let d = esc(id_remap
+                    .get(&dst_raw)
+                    .map(String::as_str)
+                    .unwrap_or(&dst_raw));
+                let k = esc(&edge.kind.to_string());
+                format!("{{s:'{s}', d:'{d}', k:'{k}'}}")
+            })
+            .collect();
 
+        // Batch edge inserts via `UNWIND … MATCH … CREATE`. Edge rows are tiny
+        // (three ids), so a larger chunk than nodes is fine. Endpoints missing
+        // from the store yield no MATCH row and are skipped silently — same
+        // semantics as the per-edge version.
+        for chunk in edge_rows.chunks(EDGE_INSERT_CHUNK) {
+            let list = chunk.join(", ");
             conn.query(&format!(
-                "MATCH (s:{nt} {{id: '{s}'}}), (d:{nt} {{id: '{d}'}}) \
-                 CREATE (s)-[:{et} {{kind: '{k}'}}]->(d)"
+                "UNWIND [{list}] AS r \
+                 MATCH (s:{nt} {{id: r.s}}), (d:{nt} {{id: r.d}}) \
+                 CREATE (s)-[:{et} {{kind: r.k}}]->(d)"
             ))
-            .map_err(|e| GitCortexError::Store(format!("insert edge: {e}")))?;
+            .map_err(|e| GitCortexError::Store(format!("batch insert edges: {e}")))?;
         }
 
         // 6. Resolve cross-file deferred edges against the full store.
@@ -413,7 +516,7 @@ impl GraphStore for KuzuGraphStore {
 
         let mut result = conn
             .query(&format!(
-                "MATCH (n:{nt}) WHERE {condition} RETURN {NODE_COLS}"
+                "MATCH (n:{nt}) WHERE {condition} RETURN {NODE_COLS} ORDER BY {SYMBOL_RANK}"
             ))
             .map_err(|e| GitCortexError::Store(e.to_string()))?;
 
@@ -489,10 +592,13 @@ impl GraphStore for KuzuGraphStore {
         let name_esc = esc(name);
         let conn = self.conn()?;
 
-        // Definition — first match.
+        // Definition — best match by kind priority (type decl > fn/method >
+        // … > module/file), so `wiki Echo` resolves to `type Echo` not a
+        // same-named method.
         let mut def_result = conn
             .query(&format!(
-                "MATCH (n:{nt}) WHERE n.name = '{name_esc}' RETURN {NODE_COLS} LIMIT 1"
+                "MATCH (n:{nt}) WHERE n.name = '{name_esc}' \
+                 RETURN {NODE_COLS} ORDER BY {SYMBOL_RANK} LIMIT 1"
             ))
             .map_err(|e| GitCortexError::Store(e.to_string()))?;
         let mut defs = rows_to_nodes(&mut def_result)?;
@@ -696,7 +802,7 @@ impl GraphStore for KuzuGraphStore {
                 "MATCH (n:{nt})-[e:{et}]->(trait_node:{nt}) \
                  WHERE trait_node.name = '{name_esc}' \
                  AND (e.kind = 'implements' OR e.kind = 'inherits') \
-                 RETURN {NODE_COLS}"
+                 RETURN DISTINCT {NODE_COLS} ORDER BY {SYMBOL_RANK}"
             ))
             .map_err(|e| GitCortexError::Store(e.to_string()))?;
         rows_to_nodes(&mut result)

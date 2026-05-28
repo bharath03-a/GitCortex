@@ -25,7 +25,7 @@ jobs:
     name: rust · fmt + clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -36,7 +36,7 @@ jobs:
           shared-key: "ubuntu-stable"
 
       # Need the viz bundle to exist for `gitcortex-mcp` to compile (build.rs)
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: "npm"
@@ -45,7 +45,7 @@ jobs:
       - name: Build viz frontend (so include_bytes! works)
         working-directory: viz
         run: |
-          npm ci
+          npm install --no-audit --no-fund
           npm run build
 
       - run: cargo fmt --all -- --check
@@ -68,7 +68,7 @@ jobs:
             toolchain: "1.95"
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust toolchain ${{ matrix.toolchain }}
         uses: dtolnay/rust-toolchain@master
@@ -79,7 +79,7 @@ jobs:
         with:
           shared-key: "${{ matrix.os }}-${{ matrix.toolchain }}"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: "npm"
@@ -89,7 +89,7 @@ jobs:
         working-directory: viz
         shell: bash
         run: |
-          npm ci
+          npm install --no-audit --no-fund
           npm run build
 
       - name: Install cargo-nextest

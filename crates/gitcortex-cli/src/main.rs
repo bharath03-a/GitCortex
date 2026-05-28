@@ -64,11 +64,22 @@ enum Commands {
         #[arg(long, default_value = "text", value_enum)]
         format: BlastFormat,
     },
-    /// Export the knowledge graph as a readable Markdown codebase map.
+    /// Export the knowledge graph as a Markdown map, JSON, or a CLAUDE.md symbol block.
     Export {
         /// Branch to export (defaults to current branch).
         #[arg(long)]
         branch: Option<String>,
+        /// Output format: markdown (default codebase map), json (symbols + edges).
+        #[arg(long, default_value = "markdown", value_enum)]
+        format: cmd::export::ExportFormat,
+        /// Upsert a compressed top-symbols table into CLAUDE.md between
+        /// `<!-- gcx:symbols -->` markers, so assistants get high-value symbols
+        /// pre-loaded with zero tool calls. Overrides --format.
+        #[arg(long)]
+        claude_md: bool,
+        /// How many top-ranked symbols to inject with --claude-md.
+        #[arg(long, default_value_t = 40)]
+        top: usize,
     },
     /// Show indexed node/edge counts for the current branch.
     Status {
@@ -201,7 +212,12 @@ fn main() {
             depth,
             format,
         } => cmd::blast_radius::run(base, head, depth, format),
-        Commands::Export { branch } => cmd::export::run(branch),
+        Commands::Export {
+            branch,
+            format,
+            claude_md,
+            top,
+        } => cmd::export::run(branch, format, claude_md, top),
         Commands::Status { branch } => cmd::status::run(branch),
         Commands::Clean => cmd::clean::run(),
         Commands::Doctor => cmd::doctor::run(),

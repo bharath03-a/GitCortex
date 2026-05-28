@@ -7,13 +7,46 @@ pub(super) fn esc(s: &str) -> String {
     s.replace('\\', "\\\\").replace('\'', "\\'")
 }
 
-/// Escape a multi-line string (e.g. a function body) for inline Cypher use.
-/// In addition to [`esc`], encodes `\n`, `\r`, `\t` so the resulting literal
-/// fits on a single line and is unambiguously round-trippable.
+/// Escape a multi-line string (e.g. a function body or docstring) for inline
+/// Cypher use.
+///
+/// Kuzu's single-quoted string literals accept literal newlines, tabs, and
+/// carriage returns verbatim — and it does NOT honour C-style `\n`/`\t`
+/// escapes (an unknown escape silently drops the backslash, turning `\n`
+/// into a bare `n`). So the only characters we must escape are the ones that
+/// would terminate or corrupt the literal: backslash and single-quote.
+/// Identical to [`esc`]; kept as a named alias to document intent at the
+/// multi-line call sites.
 pub(super) fn esc_multiline(s: &str) -> String {
-    s.replace('\\', "\\\\")
-        .replace('\'', "\\'")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-        .replace('\t', "\\t")
+    esc(s)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn esc_escapes_backslash_and_quote() {
+        assert_eq!(esc(r"a\b'c"), r"a\\b\'c");
+    }
+
+    #[test]
+    fn esc_multiline_preserves_newlines_tabs() {
+        // Regression: a prior version encoded `\n` as the two chars `\` + `n`,
+        // which Kuzu then stored as a bare `n` (it drops unknown escapes),
+        // collapsing multi-line docstrings. Literal newlines must survive.
+        let input = "line1\nline2\twith tab\r\nend";
+        let out = esc_multiline(input);
+        assert!(out.contains('\n'), "newline must remain literal");
+        assert!(out.contains('\t'), "tab must remain literal");
+        assert!(
+            !out.contains("\\n"),
+            "must not introduce a backslash-n escape"
+        );
+    }
+
+    #[test]
+    fn esc_multiline_still_escapes_quotes() {
+        assert_eq!(esc_multiline("it's\n\"ok\""), "it\\'s\n\"ok\"");
+    }
 }

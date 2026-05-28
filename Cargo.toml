@@ -34,22 +34,22 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 anyhow             = "1"
 tokio              = { version = "1",   features = ["full"] }
 clap               = { version = "4",   features = ["derive"] }
-petgraph           = { version = "0.6", features = ["serde-1"] }
+petgraph           = { version = "0.8", features = ["serde-1"] }
 rayon              = "1"
-git2               = { version = "0.20", default-features = false }
+git2               = { version = "0.21", default-features = false }
 ignore             = "0.4"
-tree-sitter              = "0.25"
-tree-sitter-rust         = "0.23"
-tree-sitter-python       = "0.23"
+tree-sitter              = "0.26"
+tree-sitter-rust         = "0.24"
+tree-sitter-python       = "0.25"
 tree-sitter-typescript   = "0.23"
-tree-sitter-javascript   = "0.23"
-tree-sitter-go           = "0.23"
+tree-sitter-javascript   = "0.25"
+tree-sitter-go           = "0.25"
 tree-sitter-java         = "0.23"
 dashmap            = { version = "6", features = ["serde"] }
 kuzu               = "0.11"
 tempfile           = "3"
 serde_json         = "1"
-rmcp               = { version = "1.5", features = ["server", "transport-io"] }
+rmcp               = { version = "1.7", features = ["server", "transport-io"] }
 axum               = "0.7"
 open               = "5"
 
