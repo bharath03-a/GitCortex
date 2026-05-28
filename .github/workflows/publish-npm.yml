@@ -3,9 +3,17 @@ name: Publish to npm
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.3.0)"
+        required: true
 
 permissions:
   contents: read
+
+env:
+  RELEASE_TAG: ${{ github.event.release.tag_name || github.event.inputs.tag }}
 
 jobs:
   build-platform-packages:
@@ -43,7 +51,7 @@ jobs:
 
       - name: Set version
         run: |
-          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${{ env.RELEASE_TAG }}"
           VERSION="${VERSION#v}"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
@@ -52,7 +60,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ARCHIVE="gcx-${{ matrix.archive_suffix }}"
-          gh release download "${{ github.event.release.tag_name }}" \
+          gh release download "${{ env.RELEASE_TAG }}" \
             --repo "${{ github.repository }}" \
             --pattern "$ARCHIVE" \
             --output "$ARCHIVE"
@@ -96,7 +104,7 @@ jobs:
 
       - name: Set version
         run: |
-          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${{ env.RELEASE_TAG }}"
           VERSION="${VERSION#v}"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
