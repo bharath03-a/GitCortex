@@ -16,6 +16,7 @@
 name: Release
 permissions:
   "contents": "write"
+  "actions": "write"
 
 # This task will run whenever you push a git tag that looks like a version
 # like "1.0.0", "v0.1.0-prerelease.1", "my-app/0.1.0", "releases/v1.0.0", etc.
@@ -298,3 +299,13 @@ jobs:
         with:
           persist-credentials: false
           submodules: recursive
+      - name: Trigger PyPI publish
+        run: |
+          gh workflow run publish-pypi.yml \
+            --repo "${{ github.repository }}" \
+            --field tag="${{ needs.plan.outputs.tag }}"
+      - name: Trigger npm publish
+        run: |
+          gh workflow run publish-npm.yml \
+            --repo "${{ github.repository }}" \
+            --field tag="${{ needs.plan.outputs.tag }}"
