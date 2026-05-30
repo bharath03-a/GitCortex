@@ -692,7 +692,9 @@ fn build_graphml(store: &KuzuGraphStore, branch: &str) -> Result<String> {
     out.push_str("  <key id=\"name\" for=\"node\" attr.name=\"name\" attr.type=\"string\"/>\n");
     out.push_str("  <key id=\"kind\" for=\"node\" attr.name=\"kind\" attr.type=\"string\"/>\n");
     out.push_str("  <key id=\"file\" for=\"node\" attr.name=\"file\" attr.type=\"string\"/>\n");
-    out.push_str("  <key id=\"qname\" for=\"node\" attr.name=\"qualified_name\" attr.type=\"string\"/>\n");
+    out.push_str(
+        "  <key id=\"qname\" for=\"node\" attr.name=\"qualified_name\" attr.type=\"string\"/>\n",
+    );
     out.push_str("  <key id=\"line\" for=\"node\" attr.name=\"start_line\" attr.type=\"int\"/>\n");
     out.push_str("  <key id=\"ekind\" for=\"edge\" attr.name=\"kind\" attr.type=\"string\"/>\n");
     out.push_str(&format!(
@@ -763,7 +765,13 @@ fn build_cypher(store: &KuzuGraphStore, branch: &str) -> Result<String> {
 fn cypher_id(s: &str) -> String {
     // Backticked node-variable name: strip anything not [A-Za-z0-9_].
     s.chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
