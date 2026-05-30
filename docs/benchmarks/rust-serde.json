@@ -1,0 +1,11 @@
+{
+  "repo": "serde",
+  "url": "https://github.com/serde-rs/serde",
+  "branch": "master",
+  "symbol_used": "Token",
+  "file_used": "./serde_core/src/de/impls.rs",
+  "nodes": 2579,
+  "edges": 8342,
+  "geomean_ratio": 2893.37,
+  "questions": [{"q":"lookup_Token","baseline_tokens":37316,"gcx_tokens":10,"ratio":3731.60},{"q":"callers_Token","baseline_tokens":37316,"gcx_tokens":10,"ratio":3731.60},{"q":"file_def_./serde_core/src/de/impls.rs","baseline_tokens":24283,"gcx_tokens":16,"ratio":1517.69},{"q":"context_Error","baseline_tokens":62225,"gcx_tokens":22,"ratio":2828.41},{"q":"implementors_Token","baseline_tokens":37316,"gcx_tokens":11,"ratio":3392.36}]
+}

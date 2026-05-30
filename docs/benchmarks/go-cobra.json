@@ -1,0 +1,11 @@
+{
+  "repo": "cobra",
+  "url": "https://github.com/spf13/cobra",
+  "branch": "main",
+  "symbol_used": "Command",
+  "file_used": "./completions_test.go",
+  "nodes": 731,
+  "edges": 2448,
+  "geomean_ratio": 3992.78,
+  "questions": [{"q":"lookup_Command","baseline_tokens":49209,"gcx_tokens":7,"ratio":7029.86},{"q":"callers_Command","baseline_tokens":49209,"gcx_tokens":13,"ratio":3785.31},{"q":"file_def_./completions_test.go","baseline_tokens":29764,"gcx_tokens":14,"ratio":2126.00},{"q":"context_Errorf","baseline_tokens":60146,"gcx_tokens":15,"ratio":4009.73},{"q":"implementors_Command","baseline_tokens":49209,"gcx_tokens":11,"ratio":4473.55}]
+}

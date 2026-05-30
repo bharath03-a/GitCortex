@@ -34,6 +34,8 @@ GitCortex gives your AI editor a pre-built, queryable call graph of your repo �
 - **Per-branch graphs** — switching branches is instant, no re-index.
 - **Wiki, search, tour, blast-radius** — built-in discovery surface for AI assistants and humans.
 - **Works in Cursor, Claude Code, Windsurf, GitHub Copilot, Google Antigravity** via MCP.
+- **~97 % fewer context tokens per session** (geomean ~200× per question across 5 OSS repos × 7 developer questions — see [benchmark below](#token-savings-benchmark)).
+- **Six viz formats** — WebGL Cosmograph UI, self-contained HTML, SVG, DOT, GraphML, Neo4j Cypher.
 
 ---
 
@@ -51,6 +53,57 @@ GitCortex gives your AI editor a pre-built, queryable call graph of your repo �
 -->
 
 > _Demo video coming soon — see `docs/demo.mp4` once recorded._
+
+---
+
+## Token-savings benchmark
+
+How much context does GitCortex actually save in a real session? We ran 7 realistic developer questions against 5 OSS repos (one per language) and compared the tokens an LLM would need either way:
+
+- **Baseline** — `grep -l <symbol>` + `cat` of every matched file (what an LLM does without GitCortex).
+- **GitCortex** — the matching `gcx query …` command output.
+
+Token proxy: `chars / 4` (rough `tiktoken` approximation).
+
+### The 7 questions
+
+| # | Developer question                          | GitCortex command                          |
+|---|---------------------------------------------|--------------------------------------------|
+| 1 | "Give me a tour of this codebase"           | `gcx query tour --limit 10`                |
+| 2 | "Find code related to `<concept>`"          | `gcx query search <term>`                  |
+| 3 | "Explain symbol `X`"                        | `gcx query wiki X`                         |
+| 4 | "If I change `Y`, what breaks? (3 hops)"    | `gcx query find-callers Y --depth 3`       |
+| 5 | "How does `Y` reach `Z`?"                   | `gcx query trace-path Y Z`                 |
+| 6 | "Show 2-hop neighborhood around `X`"        | `gcx query get-subgraph X --depth 2`       |
+| 7 | "What dead code exists?"                    | `gcx query find-unused --limit 30`         |
+
+Symbols are picked from the centrality-ranked tour of each repo — the same nodes a real developer would click on first.
+
+### Headline — absolute tokens per session
+
+| Repo (lang)    | Baseline tokens | gcx tokens | Saved tokens | Saved % | Geomean ratio |
+|----------------|----------------:|-----------:|-------------:|--------:|--------------:|
+| ripgrep (Rust) |       1,248,662 |     20,713 |    1,227,949 | 98.34 % |          284× |
+| hono (TS)      |         641,744 |      5,917 |      635,827 | 99.08 % |          224× |
+| cobra (Go)     |         567,203 |     12,652 |      554,551 | 97.77 % |          208× |
+| requests (Py)  |         543,662 |     10,416 |      533,246 | 98.08 % |          182× |
+| gson (Java)    |         768,472 |     64,460 |      704,012 | 91.61 % |          119× |
+| **TOTAL**      |   **3,769,743** |**114,158** |**3,655,585** |**96.97 %** |  **199× geomean of geomeans** |
+
+**Plain reading:** across these 5 repos × 7 questions = 35 questions, a developer who fed all answers to an LLM via raw file reads would burn **~3.77 M tokens**. With GitCortex the same session takes **~114 K tokens** — **~3.66 M tokens saved, 96.97 % less context spent**.
+
+**Geomean** = geometric mean (nth root of product). Used instead of arithmetic mean when averaging ratios so single outliers don't dominate — read **"199×"** as "on a typical question, GitCortex returns ~200× fewer tokens than reading raw files". Half the questions do better, half worse.
+
+Per-question detail, raw JSON, and the full mechanical 15-repo sweep are in [docs/benchmarks/token-savings-v0.3.md](docs/benchmarks/token-savings-v0.3.md).
+
+### Reproducing
+
+```bash
+cargo build --release --bin gcx
+bash docs/benchmarks/dev-harness.sh \
+    https://github.com/BurntSushi/ripgrep \
+    /tmp/out.json
+```
 
 ---
 
@@ -228,12 +281,26 @@ gcx query tour --seed main                    # BFS-walk outward from a seed
 Visualise the knowledge graph.
 
 ```bash
-gcx viz                            # open interactive browser UI (default port 5678)
-gcx viz --port 9000                # custom port
-gcx viz --branch feat/auth         # visualise a different branch
-gcx viz --format dot > graph.dot   # export Graphviz DOT to stdout
-dot -Tsvg graph.dot -o graph.svg   # render with Graphviz
+gcx viz                                # default: WebGL Cosmograph UI on port 5678
+gcx viz --port 9000                    # custom port
+gcx viz --branch feat/auth             # visualise a different branch
+gcx viz --format html > graph.html     # self-contained vis-network HTML, open offline
+gcx viz --format svg  > graph.svg      # static SVG with kind-grouped concentric layout
+gcx viz --format dot  > graph.dot      # Graphviz DOT (pipe to `dot -Tsvg ...`)
+gcx viz --format graphml > graph.graphml   # importable by Gephi, yEd, Cytoscape
+gcx viz --format cypher > import.cypher    # Neo4j bulk CREATE statements
 ```
+
+Format choice:
+
+| `--format`  | Output | When to use |
+|-------------|--------|-------------|
+| `web` (default) | Live Axum server, Cosmograph WebGL UI | Interactive exploration on a running machine |
+| `html`      | Single self-contained file (vis-network from CDN) | Share via Slack/email, open offline, embed in docs |
+| `svg`       | Static SVG, kind-grouped concentric layout | Paste into Markdown/PRs/issues |
+| `dot`       | Graphviz DOT | Pipe to `dot`/`neato` for high-fidelity SVG/PNG |
+| `graphml`   | XML graph | Open in Gephi / yEd / Cytoscape for analysis |
+| `cypher`    | Neo4j Cypher | Push the graph into a live Neo4j instance |
 
 The browser UI is a React 19 + Vite + Tailwind v4 single-page app, rendered by **Cosmograph** (`@cosmos.gl/graph`) — a WebGL/GPGPU force-directed graph engine that runs the entire simulation on the GPU. The whole bundle is embedded in the `gcx` binary via `include_bytes!`, so there is no runtime dependency beyond a browser.
 

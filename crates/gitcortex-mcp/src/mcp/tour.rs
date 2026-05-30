@@ -94,7 +94,11 @@ fn global_tour(
         .filter(|n| {
             matches!(
                 n.kind,
-                NodeKind::Function | NodeKind::Method | NodeKind::Struct | NodeKind::Trait
+                NodeKind::Function
+                    | NodeKind::Method
+                    | NodeKind::Struct
+                    | NodeKind::Trait
+                    | NodeKind::Interface
             )
         })
         .map(|n| {

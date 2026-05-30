@@ -1,0 +1,11 @@
+{
+  "repo": "zod",
+  "url": "https://github.com/colinhacks/zod",
+  "branch": "main",
+  "symbol_used": "ZodType",
+  "file_used": "./packages/zod/src/v4/locales/lt.ts",
+  "nodes": 3384,
+  "edges": 8785,
+  "geomean_ratio": 617.20,
+  "questions": [{"q":"lookup_ZodType","baseline_tokens":79761,"gcx_tokens":44,"ratio":1812.75},{"q":"callers_ZodType","baseline_tokens":79761,"gcx_tokens":10,"ratio":7976.10},{"q":"file_def_./packages/zod/src/v4/locales/lt.ts","baseline_tokens":1925,"gcx_tokens":18,"ratio":106.94},{"q":"context_ZodError","baseline_tokens":26990,"gcx_tokens":76,"ratio":355.13},{"q":"implementors_ZodType","baseline_tokens":79761,"gcx_tokens":489,"ratio":163.11}]
+}

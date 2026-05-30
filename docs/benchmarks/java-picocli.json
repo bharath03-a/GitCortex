@@ -1,0 +1,11 @@
+{
+  "repo": "picocli",
+  "url": "https://github.com/remkop/picocli",
+  "branch": "main",
+  "symbol_used": "String",
+  "file_used": "./picocli-tests-java8/src/test/java/picocli/MapOptionsOptionalTest.java",
+  "nodes": 6302,
+  "edges": 23045,
+  "geomean_ratio": 395.88,
+  "questions": [{"q":"lookup_String","baseline_tokens":6634,"gcx_tokens":10,"ratio":663.40},{"q":"callers_String","baseline_tokens":6634,"gcx_tokens":9,"ratio":737.11},{"q":"file_def_./picocli-tests-java8/src/test/java/picocli/MapOptionsOptionalTest.java","baseline_tokens":1991,"gcx_tokens":27,"ratio":73.74},{"q":"context_CommandLine","baseline_tokens":7154,"gcx_tokens":16,"ratio":447.12},{"q":"implementors_String","baseline_tokens":6634,"gcx_tokens":11,"ratio":603.09}]
+}

@@ -1,0 +1,17 @@
+{
+  "repo": "gson",
+  "url": "https://github.com/google/gson",
+  "branch": "main",
+  "symbols": {"type": "JsonReader", "fn": "beginArray", "other": "getType", "concept": "auth"},
+  "nodes": 4006,
+  "edges": 20022,
+  "totals": {
+    "baseline_tokens": 768472,
+    "gcx_tokens": 64460,
+    "saved_tokens": 704012,
+    "saved_pct": 91.61,
+    "sum_ratio": 11.9,
+    "geomean_ratio": 119.1
+  },
+  "questions": [{"q":"tour_onboarding","question":"Give me a tour of this codebase","baseline_tokens":114754,"gcx_tokens":316,"ratio":363.1},{"q":"search_concept","question":"Find code related to 'auth'","baseline_tokens":17784,"gcx_tokens":9,"ratio":1976.0},{"q":"wiki_explain","question":"Explain JsonReader","baseline_tokens":44288,"gcx_tokens":7559,"ratio":5.9},{"q":"refactor_impact","question":"If I change beginArray, what breaks? (3 hops)","baseline_tokens":80215,"gcx_tokens":6651,"ratio":12.1},{"q":"trace_flow","question":"How does beginArray reach getType?","baseline_tokens":62182,"gcx_tokens":110,"ratio":565.3},{"q":"subgraph_around","question":"Show 2-hop neighborhood around JsonReader","baseline_tokens":44288,"gcx_tokens":49784,"ratio":0.9},{"q":"find_dead_code","question":"What dead code exists?","baseline_tokens":404961,"gcx_tokens":31,"ratio":13063.3}]
+}

@@ -1,0 +1,11 @@
+{
+  "repo": "zap",
+  "url": "https://github.com/uber-go/zap",
+  "branch": "master",
+  "symbol_used": "Software",
+  "file_used": "./field.go",
+  "nodes": 1704,
+  "edges": 6841,
+  "geomean_ratio": 999.72,
+  "questions": [{"q":"lookup_Software","baseline_tokens":14989,"gcx_tokens":11,"ratio":1362.64},{"q":"callers_Software","baseline_tokens":14989,"gcx_tokens":10,"ratio":1498.90},{"q":"file_def_./field.go","baseline_tokens":5014,"gcx_tokens":12,"ratio":417.83},{"q":"context_SOFTWARE","baseline_tokens":14989,"gcx_tokens":16,"ratio":936.81},{"q":"implementors_Software","baseline_tokens":14989,"gcx_tokens":12,"ratio":1249.08}]
+}

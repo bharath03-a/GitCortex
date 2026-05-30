@@ -1,0 +1,17 @@
+{
+  "repo": "ripgrep",
+  "url": "https://github.com/BurntSushi/ripgrep",
+  "branch": "master",
+  "symbols": {"type": "as_bytes", "fn": "line_number", "other": "search_reader", "concept": "parse"},
+  "nodes": 3424,
+  "edges": 14372,
+  "totals": {
+    "baseline_tokens": 1248662,
+    "gcx_tokens": 20713,
+    "saved_tokens": 1227949,
+    "saved_pct": 98.34,
+    "sum_ratio": 60.3,
+    "geomean_ratio": 283.7
+  },
+  "questions": [{"q":"tour_onboarding","question":"Give me a tour of this codebase","baseline_tokens":203300,"gcx_tokens":234,"ratio":868.8},{"q":"search_concept","question":"Find code related to 'parse'","baseline_tokens":98215,"gcx_tokens":319,"ratio":307.9},{"q":"wiki_explain","question":"Explain as_bytes","baseline_tokens":76713,"gcx_tokens":2987,"ratio":25.7},{"q":"refactor_impact","question":"If I change line_number, what breaks? (3 hops)","baseline_tokens":175142,"gcx_tokens":4251,"ratio":41.2},{"q":"trace_flow","question":"How does line_number reach search_reader?","baseline_tokens":177387,"gcx_tokens":29,"ratio":6116.8},{"q":"subgraph_around","question":"Show 2-hop neighborhood around as_bytes","baseline_tokens":76713,"gcx_tokens":12862,"ratio":6.0},{"q":"find_dead_code","question":"What dead code exists?","baseline_tokens":441192,"gcx_tokens":31,"ratio":14232.0}]
+}

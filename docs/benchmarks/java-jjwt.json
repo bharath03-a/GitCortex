@@ -1,0 +1,11 @@
+{
+  "repo": "jjwt",
+  "url": "https://github.com/jwtk/jjwt",
+  "branch": "master",
+  "symbol_used": "License",
+  "file_used": "./impl/src/main/java/io/jsonwebtoken/impl/security/EdwardsCurve.java",
+  "nodes": 3238,
+  "edges": 14783,
+  "geomean_ratio": 411.06,
+  "questions": [{"q":"lookup_License","baseline_tokens":5803,"gcx_tokens":10,"ratio":580.30},{"q":"callers_License","baseline_tokens":5803,"gcx_tokens":10,"ratio":580.30},{"q":"file_def_./impl/src/main/java/io/jsonwebtoken/impl/security/EdwardsCurve.java","baseline_tokens":4186,"gcx_tokens":26,"ratio":161.00},{"q":"context_String","baseline_tokens":6565,"gcx_tokens":16,"ratio":410.31},{"q":"implementors_License","baseline_tokens":5803,"gcx_tokens":11,"ratio":527.55}]
+}

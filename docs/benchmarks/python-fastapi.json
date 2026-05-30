@@ -1,0 +1,11 @@
+{
+  "repo": "fastapi",
+  "url": "https://github.com/tiangolo/fastapi",
+  "branch": "master",
+  "symbol_used": "FastAPI",
+  "file_used": "./tests/test_request_params/test_body/test_optional_list.py",
+  "nodes": 8533,
+  "edges": 40634,
+  "geomean_ratio": 422.03,
+  "questions": [{"q":"lookup_FastAPI","baseline_tokens":25548,"gcx_tokens":11,"ratio":2322.55},{"q":"callers_FastAPI","baseline_tokens":25548,"gcx_tokens":2084,"ratio":12.26},{"q":"file_def_./tests/test_request_params/test_body/test_optional_list.py","baseline_tokens":3233,"gcx_tokens":24,"ratio":134.71},{"q":"context_TestClient","baseline_tokens":25548,"gcx_tokens":17,"ratio":1502.82},{"q":"implementors_FastAPI","baseline_tokens":25548,"gcx_tokens":11,"ratio":2322.55}]
+}

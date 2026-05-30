@@ -1,0 +1,17 @@
+{
+  "repo": "requests",
+  "url": "https://github.com/psf/requests",
+  "branch": "main",
+  "symbols": {"type": "httpbin", "fn": "get", "other": "Session", "concept": "auth"},
+  "nodes": 837,
+  "edges": 2873,
+  "totals": {
+    "baseline_tokens": 543662,
+    "gcx_tokens": 10416,
+    "saved_tokens": 533246,
+    "saved_pct": 98.08,
+    "sum_ratio": 52.2,
+    "geomean_ratio": 181.7
+  },
+  "questions": [{"q":"tour_onboarding","question":"Give me a tour of this codebase","baseline_tokens":85191,"gcx_tokens":214,"ratio":398.1},{"q":"search_concept","question":"Find code related to 'auth'","baseline_tokens":67734,"gcx_tokens":299,"ratio":226.5},{"q":"wiki_explain","question":"Explain httpbin","baseline_tokens":61364,"gcx_tokens":2628,"ratio":23.4},{"q":"refactor_impact","question":"If I change get, what breaks? (3 hops)","baseline_tokens":83084,"gcx_tokens":4013,"ratio":20.7},{"q":"trace_flow","question":"How does get reach Session?","baseline_tokens":83084,"gcx_tokens":35,"ratio":2373.8},{"q":"subgraph_around","question":"Show 2-hop neighborhood around httpbin","baseline_tokens":61364,"gcx_tokens":3196,"ratio":19.2},{"q":"find_dead_code","question":"What dead code exists?","baseline_tokens":101841,"gcx_tokens":31,"ratio":3285.2}]
+}
