@@ -208,6 +208,16 @@ That installs the git hooks and indexes the current branch. Every subsequent com
 
 ## Commands
 
+Every `gcx` subcommand accepts a global `--color` flag controlling ANSI output:
+
+```bash
+gcx --color auto    query lookup-symbol Foo   # default: colour only when stdout is a TTY
+gcx --color always  query find-callers bar    # force colour (useful in pipes that handle ANSI)
+gcx --color never   query symbol-context baz  # plain text, for scripts and CI
+```
+
+`gcx` also respects the [`NO_COLOR`](https://no-color.org) convention, `CLICOLOR=0`, and `TERM=dumb`. NodeKinds are coloured to match the WebGL viz palette: structs green, traits/constants yellow, interfaces cyan, functions blue, methods bright-blue, modules magenta — same identity wherever you read it.
+
 ### `gcx init`
 
 Installs four git hooks, runs the initial full index, registers the MCP server in the detected editor(s), and writes `.gitcortex/AGENT_GUIDE.md` as a universal context file.

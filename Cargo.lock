@@ -627,6 +627,7 @@ dependencies = [
 name = "gitcortex"
 version = "0.3.0"
 dependencies = [
+ "anstyle",
  "anyhow",
  "clap",
  "gitcortex-core",

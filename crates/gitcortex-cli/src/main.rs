@@ -1,4 +1,5 @@
 mod cmd;
+pub mod style;
 
 use clap::{Parser, Subcommand};
 use tracing_subscriber::EnvFilter;
@@ -9,6 +10,11 @@ use gitcortex_viz::VizFormat;
 #[derive(Parser)]
 #[command(name = "gcx", version, about = "GitCortex knowledge-graph CLI")]
 struct Cli {
+    /// When to emit ANSI colour: auto (TTY only), always, never.
+    /// Also respects NO_COLOR, CLICOLOR=0, TERM=dumb when set to auto.
+    #[arg(long, value_enum, default_value_t = style::ColorMode::Auto, global = true)]
+    color: style::ColorMode,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -195,6 +201,7 @@ fn main() {
         .init();
 
     let cli = Cli::parse();
+    style::init(cli.color);
 
     let result = match cli.command {
         Commands::Init { ci, editor } => cmd::init::run(ci, editor.as_deref()),

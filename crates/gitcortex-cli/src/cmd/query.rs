@@ -5,6 +5,10 @@ use gitcortex_core::{schema::NodeKind, store::GraphStore};
 use gitcortex_mcp::mcp::{search, tour, wiki};
 use gitcortex_store::kuzu::KuzuGraphStore;
 
+use crate::style::{
+    arrow, header_style, hint_style, kind_style, kind_style_from_str, name_style, node_line, paint,
+    path_style, risk_style, score_style,
+};
 use crate::QueryCmd;
 
 pub fn run(cmd: QueryCmd) -> Result<()> {
@@ -15,16 +19,13 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
         QueryCmd::LookupSymbol { name, branch } => {
             let nodes = store.lookup_symbol(&branch, &name, false)?;
             if nodes.is_empty() {
-                println!("no results for '{name}' on branch '{branch}'");
+                println!(
+                    "{}",
+                    empty_msg(&format!("no results for '{name}'"), &branch)
+                );
             }
             for n in nodes {
-                println!(
-                    "{} ({})  {}:{}",
-                    n.name,
-                    n.kind,
-                    n.file.display(),
-                    n.span.start_line
-                );
+                println!("{}", node_line(&n));
             }
         }
 
@@ -36,34 +37,28 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
             if depth <= 1 {
                 let nodes = store.find_callers(&branch, &name)?;
                 if nodes.is_empty() {
-                    println!("no callers of '{name}' on branch '{branch}'");
+                    println!("{}", empty_msg(&format!("no callers of '{name}'"), &branch));
                 }
                 for n in nodes {
-                    println!(
-                        "{} ({})  {}:{}",
-                        n.name,
-                        n.kind,
-                        n.file.display(),
-                        n.span.start_line
-                    );
+                    println!("{}", node_line(&n));
                 }
             } else {
                 let result = store.find_callers_deep(&branch, &name, depth)?;
                 if result.hops.iter().all(|h| h.is_empty()) {
-                    println!("no callers of '{name}' on branch '{branch}'");
+                    println!("{}", empty_msg(&format!("no callers of '{name}'"), &branch));
                 } else {
-                    println!("callers of '{name}'  (risk: {}):", result.risk_level);
+                    println!(
+                        "{} {}  ({} {})",
+                        paint(header_style(), "callers of"),
+                        paint(name_style(), &format!("'{name}'")),
+                        paint(hint_style(), "risk:"),
+                        paint(risk_style(result.risk_level), result.risk_level),
+                    );
                     for (i, hop_nodes) in result.hops.iter().enumerate() {
                         if !hop_nodes.is_empty() {
-                            println!("  hop {}:", i + 1);
+                            println!("  {} {}:", paint(hint_style(), "hop"), i + 1);
                             for n in hop_nodes {
-                                println!(
-                                    "    {} ({})  {}:{}",
-                                    n.name,
-                                    n.kind,
-                                    n.file.display(),
-                                    n.span.start_line
-                                );
+                                println!("    {}", node_line(n));
                             }
                         }
                     }
@@ -74,59 +69,37 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
         QueryCmd::ListDefinitions { file, branch } => {
             let nodes = store.list_definitions(&branch, &PathBuf::from(&file))?;
             if nodes.is_empty() {
-                println!("no definitions in '{file}' on branch '{branch}'");
+                println!(
+                    "{}",
+                    empty_msg(&format!("no definitions in '{file}'"), &branch)
+                );
             }
             for n in nodes {
-                println!("{:>5}  {} ({})", n.span.start_line, n.name, n.kind);
+                println!(
+                    "{}  {} {}",
+                    paint(hint_style(), &format!("{:>5}", n.span.start_line)),
+                    paint(name_style(), &n.name),
+                    paint(kind_style(&n.kind), &format!("({})", n.kind)),
+                );
             }
         }
 
         QueryCmd::SymbolContext { name, branch } => {
             let ctx = store.symbol_context(&branch, &name)?;
-            println!("[GitCortex] {} ({})", name, branch);
             println!(
-                "  definition: {} ({})  {}:{}",
-                ctx.definition.name,
-                ctx.definition.kind,
-                ctx.definition.file.display(),
-                ctx.definition.span.start_line,
+                "{} {} {}",
+                paint(hint_style(), "[GitCortex]"),
+                paint(name_style(), &name),
+                paint(hint_style(), &format!("({branch})")),
             );
-            if !ctx.callers.is_empty() {
-                println!("  callers ({}):", ctx.callers.len());
-                for n in &ctx.callers {
-                    println!(
-                        "    {} ({})  {}:{}",
-                        n.name,
-                        n.kind,
-                        n.file.display(),
-                        n.span.start_line
-                    );
-                }
-            }
-            if !ctx.callees.is_empty() {
-                println!("  callees ({}):", ctx.callees.len());
-                for n in &ctx.callees {
-                    println!(
-                        "    {} ({})  {}:{}",
-                        n.name,
-                        n.kind,
-                        n.file.display(),
-                        n.span.start_line
-                    );
-                }
-            }
-            if !ctx.used_by.is_empty() {
-                println!("  used_by ({}):", ctx.used_by.len());
-                for n in &ctx.used_by {
-                    println!(
-                        "    {} ({})  {}:{}",
-                        n.name,
-                        n.kind,
-                        n.file.display(),
-                        n.span.start_line
-                    );
-                }
-            }
+            println!(
+                "  {} {}",
+                paint(header_style(), "definition:"),
+                node_line(&ctx.definition),
+            );
+            print_section("callers", &ctx.callers);
+            print_section("callees", &ctx.callees);
+            print_section("used_by", &ctx.used_by);
         }
 
         QueryCmd::FindCallees {
@@ -136,20 +109,18 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
         } => {
             let result = store.find_callees(&branch, &name, depth)?;
             if result.hops.iter().all(|h| h.is_empty()) {
-                println!("no callees of '{name}' on branch '{branch}'");
+                println!("{}", empty_msg(&format!("no callees of '{name}'"), &branch));
             } else {
-                println!("callees of '{name}':");
+                println!(
+                    "{} {}",
+                    paint(header_style(), "callees of"),
+                    paint(name_style(), &format!("'{name}'")),
+                );
                 for (i, hop_nodes) in result.hops.iter().enumerate() {
                     if !hop_nodes.is_empty() {
-                        println!("  hop {}:", i + 1);
+                        println!("  {} {}:", paint(hint_style(), "hop"), i + 1);
                         for n in hop_nodes {
-                            println!(
-                                "    {} ({})  {}:{}",
-                                n.name,
-                                n.kind,
-                                n.file.display(),
-                                n.span.start_line
-                            );
+                            println!("    {}", node_line(n));
                         }
                     }
                 }
@@ -159,34 +130,35 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
         QueryCmd::FindImplementors { name, branch } => {
             let nodes = store.find_implementors(&branch, &name)?;
             if nodes.is_empty() {
-                println!("no implementors of '{name}' on branch '{branch}'");
+                println!(
+                    "{}",
+                    empty_msg(&format!("no implementors of '{name}'"), &branch)
+                );
             }
             for n in nodes {
-                println!(
-                    "{} ({})  {}:{}",
-                    n.name,
-                    n.kind,
-                    n.file.display(),
-                    n.span.start_line
-                );
+                println!("{}", node_line(&n));
             }
         }
 
         QueryCmd::TracePath { from, to, branch } => {
             let path = store.trace_path(&branch, &from, &to)?;
             if path.is_empty() {
-                println!("no path from '{from}' to '{to}' on branch '{branch}' (max 6 hops)");
+                println!(
+                    "{} {} {} {} {} {}",
+                    paint(hint_style(), "no path from"),
+                    paint(name_style(), &format!("'{from}'")),
+                    paint(hint_style(), "to"),
+                    paint(name_style(), &format!("'{to}'")),
+                    paint(hint_style(), &format!("on branch '{branch}'")),
+                    paint(hint_style(), "(max 6 hops)"),
+                );
             } else {
                 for (i, n) in path.iter().enumerate() {
-                    let prefix = if i == 0 { "  " } else { "  →  " };
-                    println!(
-                        "{}{} ({})  {}:{}",
-                        prefix,
-                        n.name,
-                        n.kind,
-                        n.file.display(),
-                        n.span.start_line
-                    );
+                    if i == 0 {
+                        println!("  {}", node_line(n));
+                    } else {
+                        println!("  {}  {}", arrow(), node_line(n));
+                    }
                 }
             }
         }
@@ -196,16 +168,13 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
             let nodes = store.find_unused_symbols(&branch, kind_filter)?;
             if nodes.is_empty() {
                 let qualifier = kind.as_deref().unwrap_or("symbol");
-                println!("no unused {qualifier}s on branch '{branch}'");
+                println!("{}", empty_msg(&format!("no unused {qualifier}s"), &branch));
             }
             for n in nodes {
                 println!(
-                    "{} ({})  {}:{}  [{}]",
-                    n.name,
-                    n.kind,
-                    n.file.display(),
-                    n.span.start_line,
-                    n.metadata.visibility,
+                    "{}  {}",
+                    node_line(&n),
+                    paint(hint_style(), &format!("[{}]", n.metadata.visibility)),
                 );
             }
         }
@@ -218,21 +187,25 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
         } => {
             let sg = store.get_subgraph(&branch, &name, depth, &direction)?;
             if sg.nodes.is_empty() {
-                println!("no subgraph for '{name}' on branch '{branch}'");
+                println!(
+                    "{}",
+                    empty_msg(&format!("no subgraph for '{name}'"), &branch)
+                );
             } else {
                 println!(
-                    "{} nodes, {} edges  (seed={name}, depth={depth}, direction={direction})",
-                    sg.nodes.len(),
-                    sg.edges.len()
+                    "{} {} {}",
+                    paint(
+                        header_style(),
+                        &format!("{} nodes, {} edges", sg.nodes.len(), sg.edges.len()),
+                    ),
+                    paint(hint_style(), "—"),
+                    paint(
+                        hint_style(),
+                        &format!("seed={name}, depth={depth}, direction={direction}"),
+                    ),
                 );
                 for n in &sg.nodes {
-                    println!(
-                        "  {} ({})  {}:{}",
-                        n.name,
-                        n.kind,
-                        n.file.display(),
-                        n.span.start_line
-                    );
+                    println!("  {}", node_line(n));
                 }
             }
         }
@@ -249,12 +222,21 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
         } => {
             let hits = search::search(&store, &branch, &query, Some(limit))?;
             if hits.is_empty() {
-                println!("no matches for '{query}' on branch '{branch}'");
+                println!(
+                    "{}",
+                    empty_msg(&format!("no matches for '{query}'"), &branch)
+                );
             }
             for h in hits {
                 println!(
-                    "{:>4}  {} ({})  {}:{}  [{}]",
-                    h.score, h.name, h.kind, h.file, h.start_line, h.qualified_name
+                    "{}  {} {}  {}{}{}  {}",
+                    paint(score_style(), &format!("{:>4}", h.score)),
+                    paint(name_style(), &h.name),
+                    paint(kind_style_from_str(&h.kind), &format!("({})", h.kind)),
+                    paint(path_style(), &h.file),
+                    paint(path_style(), ":"),
+                    paint(path_style(), &h.start_line.to_string()),
+                    paint(hint_style(), &format!("[{}]", h.qualified_name)),
                 );
             }
         }
@@ -269,6 +251,28 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn empty_msg(prefix: &str, branch: &str) -> String {
+    format!(
+        "{} {}",
+        paint(hint_style(), prefix),
+        paint(hint_style(), &format!("on branch '{branch}'"))
+    )
+}
+
+fn print_section(label: &str, nodes: &[gitcortex_core::graph::Node]) {
+    if nodes.is_empty() {
+        return;
+    }
+    println!(
+        "  {} {}",
+        paint(header_style(), &format!("{label}:")),
+        paint(hint_style(), &format!("({})", nodes.len()))
+    );
+    for n in nodes {
+        println!("    {}", node_line(n));
+    }
 }
 
 fn parse_node_kind(s: &str) -> Option<NodeKind> {
