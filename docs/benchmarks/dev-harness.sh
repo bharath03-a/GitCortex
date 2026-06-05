@@ -10,6 +10,9 @@
 set -u
 REPO_URL="${1:?repo url required}"
 OUT_JSON="${2:?output json path required}"
+# Resolve output to an absolute path before we cd into the cloned repo,
+# otherwise the final `cat > "$OUT_JSON"` writes relative to the repo dir.
+case "$OUT_JSON" in /*) ;; *) OUT_JSON="$PWD/$OUT_JSON" ;; esac
 GCX="${GCX:-/Users/bharathvelamala/Documents/Open Source/GitCortex/target/release/gcx}"
 WORK="${WORK:-/tmp/gcx-bench/work}"
 
@@ -62,6 +65,18 @@ toks_files() {
   done
   echo $total
 }
+# Count baseline files on stdin. This is the number of raw cat/read calls an LLM
+# makes after a grep to answer the question — the "grep_calls" the graph replaces
+# with a single gcx query. gcx_calls is always 1 per question.
+count_files() {
+  local n=0 f
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    [ -f "$f" ] || continue
+    n=$((n + 1))
+  done
+  echo $n
+}
 
 # Top symbols — pull from gcx tour (centrality-ranked, real graph nodes).
 pick_symbols() {
@@ -79,9 +94,10 @@ PICK_TERM="parse"
 [ -n "$(files_matching 'auth' | head -1)" ] && PICK_TERM="auth"
 
 # JSON helpers.
+#   $1 q  $2 question  $3 baseline_tokens  $4 gcx_tokens  $5 ratio  $6 files_read
 json_q() {
-  printf '{"q":"%s","question":"%s","baseline_tokens":%d,"gcx_tokens":%d,"ratio":%s}' \
-    "$1" "$2" "$3" "$4" "$5"
+  printf '{"q":"%s","question":"%s","baseline_tokens":%d,"gcx_tokens":%d,"ratio":%s,"files_read":%d,"gcx_calls":1}' \
+    "$1" "$2" "$3" "$4" "$5" "$6"
 }
 
 # ── Q1: Onboarding tour ────────────────────────────────────────────────────────
@@ -163,13 +179,25 @@ STATUS=$("$GCX" status 2>/dev/null || true)
 NODES=$(echo "$STATUS" | awk '/^nodes:/{print $2; exit}')
 EDGES=$(echo "$STATUS" | awk '/^edges:/{print $2; exit}')
 
-Q1=$(json_q "tour_onboarding"  "Give me a tour of this codebase"                     "$BASE_Q1" "$GCX_Q1" "$R_Q1")
-Q2=$(json_q "search_concept"   "Find code related to '$PICK_TERM'"                   "$BASE_Q2" "$GCX_Q2" "$R_Q2")
-Q3=$(json_q "wiki_explain"     "Explain $SYM_TYPE"                                    "$BASE_Q3" "$GCX_Q3" "$R_Q3")
-Q4=$(json_q "refactor_impact"  "If I change $SYM_FN, what breaks? (3 hops)"           "$BASE_Q4" "$GCX_Q4" "$R_Q4")
-Q5=$(json_q "trace_flow"       "How does $SYM_FN reach $SYM_OTHER?"                   "$BASE_Q5" "$GCX_Q5" "$R_Q5")
-Q6=$(json_q "subgraph_around"  "Show 2-hop neighborhood around $SYM_TYPE"             "$BASE_Q6" "$GCX_Q6" "$R_Q6")
-Q7=$(json_q "find_dead_code"   "What dead code exists?"                               "$BASE_Q7" "$GCX_Q7" "$R_Q7")
+# Grep-call counts: number of raw file reads the baseline needs per question.
+# gcx replaces each with a single query call.
+N_Q1=$(echo "$BASELINE_FILES" | count_files)
+N_Q2=$(echo "$Q2_FILES"       | count_files)
+N_Q3=$(echo "$Q3_FILES"       | count_files)
+N_Q4=$(echo "$Q4_FILES"       | count_files)
+N_Q5=$(echo "$Q5_FILES"       | count_files)
+N_Q6=$N_Q3   # Q6 baseline reuses Q3 file set
+N_Q7=$(echo "$ALL_FILES"      | count_files)
+TOTAL_FILES_READ=$((N_Q1 + N_Q2 + N_Q3 + N_Q4 + N_Q5 + N_Q6 + N_Q7))
+TOTAL_GCX_CALLS=7   # one gcx query per question
+
+Q1=$(json_q "tour_onboarding"  "Give me a tour of this codebase"                     "$BASE_Q1" "$GCX_Q1" "$R_Q1" "$N_Q1")
+Q2=$(json_q "search_concept"   "Find code related to '$PICK_TERM'"                   "$BASE_Q2" "$GCX_Q2" "$R_Q2" "$N_Q2")
+Q3=$(json_q "wiki_explain"     "Explain $SYM_TYPE"                                    "$BASE_Q3" "$GCX_Q3" "$R_Q3" "$N_Q3")
+Q4=$(json_q "refactor_impact"  "If I change $SYM_FN, what breaks? (3 hops)"           "$BASE_Q4" "$GCX_Q4" "$R_Q4" "$N_Q4")
+Q5=$(json_q "trace_flow"       "How does $SYM_FN reach $SYM_OTHER?"                   "$BASE_Q5" "$GCX_Q5" "$R_Q5" "$N_Q5")
+Q6=$(json_q "subgraph_around"  "Show 2-hop neighborhood around $SYM_TYPE"             "$BASE_Q6" "$GCX_Q6" "$R_Q6" "$N_Q6")
+Q7=$(json_q "find_dead_code"   "What dead code exists?"                               "$BASE_Q7" "$GCX_Q7" "$R_Q7" "$N_Q7")
 
 cat > "$OUT_JSON" <<EOF
 {
@@ -185,10 +213,13 @@ cat > "$OUT_JSON" <<EOF
     "saved_tokens": $SAVED_TOKENS,
     "saved_pct": $SAVED_PCT,
     "sum_ratio": $TOTAL_RATIO,
-    "geomean_ratio": $GEOMEAN
+    "geomean_ratio": $GEOMEAN,
+    "files_read": $TOTAL_FILES_READ,
+    "gcx_calls": $TOTAL_GCX_CALLS,
+    "calls_saved": $((TOTAL_FILES_READ - TOTAL_GCX_CALLS))
   },
   "questions": [$Q1,$Q2,$Q3,$Q4,$Q5,$Q6,$Q7]
 }
 EOF
 
-echo "$REPO_NAME  baseline=${TOTAL_BASE} gcx=${TOTAL_GCX} saved=${SAVED_TOKENS} (${SAVED_PCT}%)  geomean=${GEOMEAN}x"
+echo "$REPO_NAME  baseline=${TOTAL_BASE} gcx=${TOTAL_GCX} saved=${SAVED_TOKENS} (${SAVED_PCT}%)  geomean=${GEOMEAN}x  reads=${TOTAL_FILES_READ}->${TOTAL_GCX_CALLS}"
