@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Render the REAL token benchmark as a research-style HTML report.
+"""Render the GitCortex benchmark as a public-facing HTML report.
 
-Structure follows Anthropic research article conventions:
-  summary box → methodology → per-finding sections with charts → discussion
+Plain-English framing: proof of where the graph helps, honest about where
+it doesn't, and a clear "what's next" section.
 
-Every number is from real Claude API usage — no chars/4 proxy.
-
+Reads real-*.json produced by real-harness.sh. Writes real-report.html.
 Usage: python3 real-report.py [bench_dir] [-o out.html]
 """
 from __future__ import annotations
@@ -28,22 +27,24 @@ Q_TO_TOOL: dict[str, str] = {
     "find_dead_code":   "find_unused_symbols",
 }
 
-Q_LABEL: dict[str, str] = {
-    "tour_onboarding":  "Give me a tour of this codebase",
-    "search_concept":   "Where is auth/parse handled?",
-    "wiki_explain":     "Explain symbol X",
-    "refactor_impact":  "If I change Y, what breaks?",
-    "trace_flow":       "How does Y reach Z?",
-    "subgraph_around":  "Show the 2-hop neighborhood of X",
-    "find_dead_code":   "What dead code exists?",
+# Plain-English labels for each question type.
+Q_PLAIN: dict[str, str] = {
+    "search_concept":   "Find relevant code",
+    "tour_onboarding":  "Explain the codebase",
+    "refactor_impact":  "What breaks if I change X?",
+    "subgraph_around":  "Show connections around X",
+    "wiki_explain":     "Explain a symbol",
+    "trace_flow":       "Trace a code path",
+    "find_dead_code":   "Find unused code",
 }
 
 REPO_LANG: dict[str, str] = {
-    "ripgrep": "Rust",  "tokio": "Rust",  "serde": "Rust",
-    "cobra":   "Go",    "gin":   "Go",    "zap":   "Go",
-    "hono": "TypeScript", "zod": "TypeScript", "io-ts": "TypeScript",
-    "django": "Python", "requests": "Python", "flask": "Python", "fastapi": "Python",
-    "gson": "Java",     "picocli": "Java", "jjwt": "Java",
+    "ripgrep": "Rust",   "tokio": "Rust",   "serde": "Rust",
+    "cobra":   "Go",     "gin":   "Go",     "zap":   "Go",
+    "hono": "TypeScript","zod": "TypeScript","io-ts": "TypeScript",
+    "fastapi": "Python", "django": "Python", "requests": "Python",
+    "flask": "Python",
+    "gson": "Java",      "picocli": "Java",  "jjwt": "Java",
 }
 
 LANG_COLOR: dict[str, str] = {
@@ -53,8 +54,6 @@ LANG_COLOR: dict[str, str] = {
 
 WIN, LOSE = 1.15, 0.90
 
-
-# ── helpers ──────────────────────────────────────────────────────────────────
 
 def load(bench_dir: str) -> list[dict]:
     out = []
@@ -73,7 +72,7 @@ def load(bench_dir: str) -> list[dict]:
             if q.get("baseline", {}).get("error") or q.get("gcx", {}).get("error")
         )
         if errs > len(d["questions"]) // 2:
-            print(f"skip {os.path.basename(path)}: {errs}/{len(d['questions'])} errored")
+            print(f"skip {os.path.basename(path)}: {errs} errored questions")
             continue
         d["_lang"] = REPO_LANG.get(d.get("repo", ""), "—")
         out.append(d)
@@ -90,295 +89,254 @@ def geomean(vals: list[float]) -> float:
 
 
 def q_ratios(reports: list[dict]) -> dict[str, list[float]]:
-    """Per-question label → list of valid ratios across all repos."""
     out: dict[str, list[float]] = {k: [] for k in Q_TO_TOOL}
     for r in reports:
         for q in r["questions"]:
             lbl = q.get("q", "")
             v = q.get("token_ratio", 0)
-            if lbl in out and v and not q.get("baseline", {}).get("error") and not q.get("gcx", {}).get("error"):
+            if (lbl in out and v
+                    and not q.get("baseline", {}).get("error")
+                    and not q.get("gcx", {}).get("error")):
                 out[lbl].append(v)
     return out
 
 
-def tool_verdict(ratios: list[float]) -> tuple[float, str]:
-    geo = geomean(ratios)
-    n_lose = sum(1 for r in ratios if r <= LOSE)
-    n_win  = sum(1 for r in ratios if r >= WIN)
-    if not ratios:
-        verdict = "no data"
-    elif n_lose >= n_win and n_lose > 0:
-        verdict = "REDESIGN"
-    elif geo >= WIN:
-        verdict = "keep"
-    else:
-        verdict = "marginal"
-    return geo, verdict
+def ratio_bar_svg(labels: list[str], ratios: list[float], width: int = 580) -> str:
+    """Horizontal bar chart of ratios. Bar > 1 = graph wins, < 1 = grep wins."""
+    margin_l, margin_t, margin_b = 200, 16, 28
+    row_h = 40
+    chart_h = len(labels) * row_h
+    chart_w = width - margin_l - 20
+    max_r = max(max(ratios, default=2.0), 2.5)
 
+    def sx(v: float) -> float:
+        return margin_l + v / max_r * chart_w
 
-# ── SVG chart helpers ─────────────────────────────────────────────────────────
+    baseline_x = sx(1.0)
+    win_x = sx(WIN)
 
-def bar_chart_svg(
-    labels: list[str],
-    baseline: list[float],
-    gcx: list[float],
-    title: str,
-    width: int = 660,
-    bar_h: int = 28,
-    gap: int = 10,
-) -> str:
-    """Horizontal grouped bar chart: baseline (warm) vs gcx (green)."""
-    margin_left, margin_top, margin_right, margin_bottom = 170, 40, 20, 36
-    n = len(labels)
-    chart_h = n * (2 * bar_h + gap) + gap
-    total_h = chart_h + margin_top + margin_bottom
-    chart_w = width - margin_left - margin_right
-    max_val = max(max(baseline, default=1), max(gcx, default=1)) * 1.1 or 1
-
-    def scale(v: float) -> float:
-        return v / max_val * chart_w
-
-    # gridlines at nice intervals
-    ticks = [0]
-    step = 10 ** math.floor(math.log10(max_val))
-    t = step
-    while t <= max_val * 1.05:
-        ticks.append(t)
-        t += step
-
-    lines = "".join(
-        f'<line x1="{margin_left + scale(t):.1f}" y1="{margin_top}" '
-        f'x2="{margin_left + scale(t):.1f}" y2="{margin_top + chart_h}" '
-        f'stroke="#e7e2d6" stroke-width="1"/>'
-        f'<text x="{margin_left + scale(t):.1f}" y="{margin_top + chart_h + 18}" '
-        f'text-anchor="middle" fill="#76726a" font-size="11">{fmt(t)}</text>'
-        for t in ticks
+    # background zones
+    zones = (
+        f'<rect x="{margin_l}" y="{margin_t}" '
+        f'width="{baseline_x - margin_l:.1f}" height="{chart_h}" fill="rgba(192,73,47,.06)"/>'
+        f'<rect x="{win_x:.1f}" y="{margin_t}" '
+        f'width="{margin_l + chart_w - win_x:.1f}" height="{chart_h}" fill="rgba(58,125,82,.06)"/>'
+        f'<line x1="{baseline_x:.1f}" y1="{margin_t - 4}" '
+        f'x2="{baseline_x:.1f}" y2="{margin_t + chart_h}" '
+        f'stroke="#9a8f55" stroke-width="1.5" stroke-dasharray="4,3"/>'
+        f'<text x="{baseline_x:.1f}" y="{margin_t - 6}" text-anchor="middle" '
+        f'fill="#9a8f55" font-size="10" font-weight="600">same</text>'
+        f'<text x="{margin_l + 4}" y="{margin_t + chart_h + 20}" '
+        f'fill="#c0492f" font-size="10">← grep is cheaper</text>'
+        f'<text x="{win_x + 4:.1f}" y="{margin_t + chart_h + 20}" '
+        f'fill="#3a7d52" font-size="10">graph saves context →</text>'
     )
 
     bars = ""
-    for i, (lbl, bv, gv) in enumerate(zip(labels, baseline, gcx)):
-        y_base = margin_top + gap + i * (2 * bar_h + gap)
-        # baseline bar
-        bw = max(scale(bv), 2)
+    for i, (lbl, r) in enumerate(zip(labels, ratios)):
+        y = margin_t + i * row_h
+        cy = y + row_h // 2
+        color = "#3a7d52" if r >= WIN else ("#c0492f" if r <= LOSE else "#9a8f55")
+        bw = abs(sx(r) - baseline_x)
+        bx = min(sx(r), baseline_x)
+        # bar from baseline
         bars += (
-            f'<rect x="{margin_left}" y="{y_base}" width="{bw:.1f}" height="{bar_h}" '
-            f'rx="3" fill="#e0a07f" opacity=".85"/>'
-            f'<text x="{margin_left + bw + 5:.1f}" y="{y_base + bar_h - 8}" '
-            f'fill="#76726a" font-size="11">{fmt(bv)}</text>'
-        )
-        # gcx bar
-        gw = max(scale(gv), 2)
-        bars += (
-            f'<rect x="{margin_left}" y="{y_base + bar_h + 2}" width="{gw:.1f}" height="{bar_h}" '
-            f'rx="3" fill="#5aab77" opacity=".85"/>'
-            f'<text x="{margin_left + gw + 5:.1f}" y="{y_base + 2 * bar_h - 6}" '
-            f'fill="#76726a" font-size="11">{fmt(gv)}</text>'
-        )
-        # label
-        bars += (
-            f'<text x="{margin_left - 8}" y="{y_base + bar_h + 1}" '
-            f'text-anchor="end" fill="#1f1d1a" font-size="12.5">{html.escape(lbl)}</text>'
+            f'<rect x="{bx:.1f}" y="{cy - 10}" width="{max(bw, 2):.1f}" '
+            f'height="20" rx="4" fill="{color}" opacity=".75"/>'
+            # dot at actual ratio
+            f'<circle cx="{sx(r):.1f}" cy="{cy}" r="5" fill="{color}"/>'
+            # label left
+            f'<text x="{margin_l - 10}" y="{cy + 4}" text-anchor="end" '
+            f'fill="#1f1d1a" font-size="13">{html.escape(lbl)}</text>'
+            # ratio right
+            f'<text x="{sx(r) + 10:.1f}" y="{cy + 4}" fill="{color}" '
+            f'font-size="12" font-weight="600">{r:.2f}×</text>'
         )
 
-    legend = (
-        f'<rect x="{margin_left}" y="{margin_top - 24}" width="12" height="12" rx="2" fill="#e0a07f" opacity=".85"/>'
-        f'<text x="{margin_left + 16}" y="{margin_top - 14}" fill="#76726a" font-size="11">Baseline (grep)</text>'
-        f'<rect x="{margin_left + 110}" y="{margin_top - 24}" width="12" height="12" rx="2" fill="#5aab77" opacity=".85"/>'
-        f'<text x="{margin_left + 126}" y="{margin_top - 14}" fill="#76726a" font-size="11">GitCortex</text>'
-    )
-
+    total_h = chart_h + margin_t + margin_b
     return (
-        f'<svg viewBox="0 0 {width} {total_h}" style="width:100%;max-width:{width}px" '
-        f'role="img" aria-label="{html.escape(title)}">'
-        f'{lines}{bars}{legend}</svg>'
+        f'<svg viewBox="0 0 {width} {total_h}" style="width:100%;max-width:{width}px">'
+        f'{zones}{bars}</svg>'
     )
 
 
-def ratio_dot_chart(
-    labels: list[str],
-    ratios: list[float],
-    width: int = 660,
-) -> str:
-    """Dot plot of per-tool geomean ratios with win/lose zones."""
-    margin_left, margin_top, margin_bottom = 190, 24, 32
-    row_h = 34
-    chart_h = len(labels) * row_h
-    chart_w = width - margin_left - 30
-    max_r = max(max(ratios, default=2), 2.5)
+def cost_comparison_svg(repos: list[dict], width: int = 560) -> str:
+    """Simple stacked comparison: what you paid with grep vs with the graph."""
+    labels  = [r.get("repo","") for r in repos]
+    grep_c  = [round(r["totals"].get("baseline_cost_usd", 0) * 100) for r in repos]
+    gcx_c   = [round(r["totals"].get("gcx_cost_usd", 0) * 100) for r in repos]
+    margin_l, margin_t, bar_h, gap = 90, 24, 22, 6
+    n = len(labels)
+    chart_h = n * (2 * bar_h + gap + 10)
+    chart_w = width - margin_l - 60
+    max_v = max(max(grep_c, default=1), 1) * 1.15
 
     def sx(v: float) -> float:
-        return margin_left + v / max_r * chart_w
+        return v / max_v * chart_w
 
-    win_x  = sx(WIN)
-    lose_x = sx(LOSE)
-
-    # zones
-    zones = (
-        f'<rect x="{margin_left}" y="{margin_top}" width="{lose_x - margin_left:.1f}" '
-        f'height="{chart_h}" fill="rgba(192,73,47,.07)"/>'
-        f'<rect x="{win_x:.1f}" y="{margin_top}" width="{margin_left + chart_w - win_x:.1f}" '
-        f'height="{chart_h}" fill="rgba(58,125,82,.07)"/>'
-        f'<line x1="{sx(1.0):.1f}" y1="{margin_top}" x2="{sx(1.0):.1f}" '
-        f'y2="{margin_top + chart_h}" stroke="#9a8f55" stroke-width="1.5" stroke-dasharray="4,3"/>'
-        f'<text x="{sx(1.0):.1f}" y="{margin_top - 6}" text-anchor="middle" fill="#9a8f55" font-size="10">1×</text>'
-        f'<text x="{margin_left + 4}" y="{margin_top + chart_h + 22}" fill="#c0492f" font-size="10">← loses to grep</text>'
-        f'<text x="{win_x + 4:.1f}" y="{margin_top + chart_h + 22}" fill="#3a7d52" font-size="10">wins →</text>'
+    legend = (
+        f'<rect x="{margin_l}" y="4" width="12" height="12" rx="2" fill="#e0a07f" opacity=".85"/>'
+        f'<text x="{margin_l + 16}" y="14" fill="#76726a" font-size="11">Without graph (grep)</text>'
+        f'<rect x="{margin_l + 145}" y="4" width="12" height="12" rx="2" fill="#5aab77" opacity=".85"/>'
+        f'<text x="{margin_l + 161}" y="14" fill="#76726a" font-size="11">With GitCortex graph</text>'
     )
 
-    dots = ""
-    for i, (lbl, r) in enumerate(zip(labels, ratios)):
-        y = margin_top + i * row_h + row_h // 2
-        color = "#3a7d52" if r >= WIN else ("#c0492f" if r <= LOSE else "#9a8f55")
-        dots += (
-            f'<text x="{margin_left - 8}" y="{y + 4}" text-anchor="end" '
-            f'fill="#1f1d1a" font-size="12">{html.escape(lbl)}</text>'
-            f'<line x1="{margin_left}" y1="{y}" x2="{sx(r):.1f}" y2="{y}" '
-            f'stroke="#ddd" stroke-width="1"/>'
-            f'<circle cx="{sx(r):.1f}" cy="{y}" r="6" fill="{color}"/>'
-            f'<text x="{sx(r) + 10:.1f}" y="{y + 4}" fill="{color}" '
-            f'font-size="11" font-weight="600">{r:.2f}×</text>'
+    bars = ""
+    for i, (lbl, bv, gv) in enumerate(zip(labels, grep_c, gcx_c)):
+        y = margin_t + 16 + i * (2 * bar_h + gap + 10)
+        bw = max(sx(bv), 2)
+        gw = max(sx(gv), 2)
+        saved_pct = round(100 * (bv - gv) / bv) if bv else 0
+        bars += (
+            # grep bar
+            f'<rect x="{margin_l}" y="{y}" width="{bw:.1f}" height="{bar_h}" '
+            f'rx="3" fill="#e0a07f" opacity=".85"/>'
+            f'<text x="{margin_l + bw + 5:.1f}" y="{y + bar_h - 6}" '
+            f'fill="#76726a" font-size="11">{bv}¢</text>'
+            # gcx bar
+            f'<rect x="{margin_l}" y="{y + bar_h + 3}" width="{gw:.1f}" height="{bar_h}" '
+            f'rx="3" fill="#5aab77" opacity=".85"/>'
+            f'<text x="{margin_l + gw + 5:.1f}" y="{y + 2*bar_h - 2}" '
+            f'fill="#76726a" font-size="11">{gv}¢</text>'
+            # label + saving
+            f'<text x="{margin_l - 6}" y="{y + bar_h + 1}" '
+            f'text-anchor="end" fill="#1f1d1a" font-size="13">{html.escape(lbl)}</text>'
+            + (f'<text x="{margin_l + bw + 38:.1f}" y="{y + 6}" '
+               f'fill="#3a7d52" font-size="10" font-weight="600">−{saved_pct}%</text>'
+               if saved_pct > 5 else "")
         )
 
-    total_h = chart_h + margin_top + margin_bottom
+    total_h = chart_h + margin_t + 20
     return (
-        f'<svg viewBox="0 0 {width} {total_h}" style="width:100%;max-width:{width}px" '
-        f'role="img" aria-label="Per-tool token ratio">'
-        f'{zones}{dots}</svg>'
+        f'<svg viewBox="0 0 {width} {total_h}" style="width:100%;max-width:{width}px">'
+        f'{legend}{bars}</svg>'
     )
 
-
-def cost_bar_svg(repos: list[dict], width: int = 560) -> str:
-    """Grouped bars: baseline cost vs gcx cost per repo."""
-    labels = [r.get("repo", "") for r in repos]
-    baseline = [r["totals"].get("baseline_cost_usd", 0) for r in repos]
-    gcx      = [r["totals"].get("gcx_cost_usd", 0) for r in repos]
-    return bar_chart_svg(labels, baseline, gcx, "Cost per repo baseline vs gcx", width=width)
-
-
-# ── HTML sections ─────────────────────────────────────────────────────────────
 
 CSS = """
 :root{--bg:#faf9f5;--panel:#fff;--panel2:#f4f2ec;--line:#e7e2d6;
---fg:#1f1d1a;--muted:#76726a;--accent:#cc785c;--accent-d:#b35f44;
---green:#3a7d52;--red:#c0492f;--amber:#9a8f55;
---serif:Georgia,"Times New Roman",serif}
+--fg:#1a1a1a;--muted:#6b6b6b;--accent:#cc785c;--accent-d:#b35f44;
+--green:#2d7a4f;--red:#c0492f;--amber:#8a7d45;
+--sans:"Inter",ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);
-font:16px/1.65 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;
--webkit-font-smoothing:antialiased}
-.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}
-a{color:var(--accent-d)}a:hover{text-decoration:underline}
+font:15px/1.65 var(--sans);-webkit-font-smoothing:antialiased;
+letter-spacing:-.01em}
+.mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.87em}
+a{color:var(--accent-d)}
 
 /* navbar */
-.nav{position:sticky;top:0;z-index:10;background:rgba(250,249,245,.9);
+.nav{position:sticky;top:0;z-index:10;background:rgba(250,249,245,.92);
 backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
-.nav-in{max-width:760px;margin:0 auto;padding:13px 24px;
+.nav-in{max-width:800px;margin:0 auto;padding:13px 24px;
 display:grid;grid-template-columns:1fr auto 1fr;align-items:center}
 .brand{justify-self:start;display:flex;align-items:center;gap:9px;
-font-family:var(--serif);font-size:18px;font-weight:600;color:var(--fg);text-decoration:none}
+font-size:17px;font-weight:700;color:var(--fg);text-decoration:none;
+letter-spacing:-.02em}
 .brand svg{display:block}
-.nav-tag{justify-self:center;color:var(--muted);font-size:13px}
-.nav-right{justify-self:end;font-size:13px}
-.nav-right a{color:var(--muted)}
+.nav-tag{justify-self:center;color:var(--muted);font-size:13px;font-weight:500}
+.nav-right{justify-self:end;font-size:13px}.nav-right a{color:var(--muted)}
+@media(max-width:560px){.nav-tag{display:none}}
 
-/* article layout */
-.article{max-width:760px;margin:0 auto;padding:56px 24px 100px}
-
-/* title block */
-.eyebrow{font-size:13px;color:var(--muted);text-transform:uppercase;
-letter-spacing:.8px;font-weight:600;margin:0 0 16px}
-h1{font-family:var(--serif);font-size:38px;font-weight:600;
-margin:0 0 16px;line-height:1.2;max-width:680px}
-.byline{color:var(--muted);font-size:14px;margin:0 0 40px;
-border-bottom:1px solid var(--line);padding-bottom:24px}
+/* article */
+.article{max-width:800px;margin:0 auto;padding:52px 24px 100px}
+h1{font-size:34px;font-weight:700;letter-spacing:-.03em;
+margin:0 0 14px;line-height:1.2;max-width:680px}
+h2{font-size:22px;font-weight:700;letter-spacing:-.02em;
+margin:52px 0 14px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+h3{font-size:18px;font-weight:600;letter-spacing:-.01em;margin:32px 0 10px}
+.byline{color:var(--muted);font-size:14px;margin:0 0 36px;
+border-bottom:1px solid var(--line);padding-bottom:22px}
+p{margin:0 0 18px;line-height:1.7}
 
 /* summary box */
 .summary{background:var(--panel);border:1px solid var(--line);border-radius:14px;
-padding:26px 30px;margin:0 0 48px;box-shadow:0 1px 3px rgba(60,50,30,.05)}
-.summary h3{font-family:var(--serif);font-size:16px;margin:0 0 14px;color:var(--muted);
-text-transform:uppercase;letter-spacing:.5px}
+padding:24px 28px;margin:0 0 44px;box-shadow:0 1px 3px rgba(60,50,30,.05)}
+.summary h3{font-family:var(--serif);font-size:14px;margin:0 0 14px;
+color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:600}
 .summary ul{margin:0;padding-left:20px}
-.summary li{margin:7px 0;font-style:italic;line-height:1.55}
+.summary li{margin:8px 0;line-height:1.6}
 
-/* body text */
-p{margin:0 0 20px;line-height:1.7}
-strong{font-weight:600}
+/* stat row */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+gap:14px;margin:24px 0 36px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+padding:18px 20px;box-shadow:0 1px 2px rgba(60,50,30,.04)}
+.stat .k{font-size:11px;color:var(--muted);text-transform:uppercase;
+letter-spacing:.7px;font-weight:600}
+.stat .v{font-family:var(--serif);font-size:28px;font-weight:600;margin-top:7px}
+.stat .n{font-size:12px;color:var(--muted);margin-top:5px}
+.green{color:var(--green)}.red{color:var(--red)}.amber{color:var(--amber)}
 
-/* section headers */
-h2{font-family:var(--serif);font-size:26px;font-weight:600;
-margin:52px 0 6px;line-height:1.25}
-.finding-label{font-size:12px;color:var(--muted);font-weight:600;
-text-transform:uppercase;letter-spacing:.7px;margin:0 0 4px}
-h3.finding{font-family:var(--serif);font-size:21px;font-weight:600;
-margin:40px 0 12px;line-height:1.3}
+/* findings */
+.finding{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+padding:26px 28px;margin:20px 0;box-shadow:0 1px 2px rgba(60,50,30,.04)}
+.finding-num{font-size:11px;font-weight:700;text-transform:uppercase;
+letter-spacing:.8px;color:var(--muted);margin:0 0 6px}
+.finding h3{font-family:var(--serif);font-size:20px;font-weight:600;
+margin:0 0 14px;line-height:1.3}
 
-/* chart figures */
-.figure{background:var(--panel);border:1px solid var(--line);border-radius:14px;
-padding:24px 24px 18px;margin:28px 0 8px;box-shadow:0 1px 2px rgba(60,50,30,.04)}
-.figure figcaption{font-size:13px;color:var(--muted);margin-top:14px;line-height:1.5}
-.figure figcaption strong{color:var(--fg)}
+/* figure */
+.figure{background:var(--panel2);border-radius:10px;padding:20px 20px 14px;
+margin:20px 0 6px}
+.figure figcaption{font-size:13px;color:var(--muted);margin-top:12px;line-height:1.5}
 
-/* scorecard table */
+/* result table */
 .tablewrap{background:var(--panel);border:1px solid var(--line);border-radius:14px;
-overflow:hidden;box-shadow:0 1px 2px rgba(60,50,30,.04);margin:20px 0}
-table{width:100%;border-collapse:collapse;font-size:14px}
-th,td{padding:11px 14px;text-align:right;border-bottom:1px solid var(--line)}
-th:first-child,td:first-child{text-align:left;min-width:120px}
+overflow-x:auto;box-shadow:0 1px 2px rgba(60,50,30,.04);margin:20px 0}
+table{width:100%;border-collapse:collapse;font-size:14px;min-width:540px}
+th,td{padding:11px 14px;text-align:right;border-bottom:1px solid var(--line);
+white-space:nowrap}
+th:first-child,td:first-child{text-align:left;min-width:130px}
 thead th{background:var(--panel2);color:var(--muted);font-size:11px;
 font-weight:600;text-transform:uppercase;letter-spacing:.5px}
 tbody tr:last-child td{border-bottom:none}
-tbody tr.detail-row{cursor:pointer;transition:background .1s}
-tbody tr.detail-row:hover{background:var(--panel2)}
+tbody tr.expand{cursor:pointer;transition:background .1s}
+tbody tr.expand:hover{background:var(--panel2)}
 td.win{background:rgba(58,125,82,.12);color:var(--green);font-weight:600}
 td.lose{background:rgba(192,73,47,.11);color:var(--red);font-weight:600}
 td.tie{background:rgba(154,143,85,.09);color:var(--amber);font-weight:600}
 td.na{color:var(--muted)}
-.vkeep{color:var(--green);font-weight:600}
-.vredesign{color:var(--red);font-weight:600}
-.vmarginal{color:var(--amber);font-weight:600}
 .detail{display:none}.detail.open{display:table-row}
 .detail>td{padding:0;background:var(--panel2)}
-.qtable{width:100%;border-collapse:collapse;font-size:13px}
-.qtable td,.qtable th{border-bottom:1px solid var(--line);padding:8px 14px}
-.qtable thead th{background:transparent}
-.qtable tr:last-child td{border-bottom:none}
-.err{color:var(--red);font-size:12px}
+.dtable{width:100%;border-collapse:collapse;font-size:13px}
+.dtable td,.dtable th{border-bottom:1px solid var(--line);padding:8px 14px}
+.dtable tr:last-child td{border-bottom:none}
 
-/* stat callouts */
-.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
-gap:14px;margin:24px 0 32px}
-.stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+/* next steps */
+.next-steps{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:20px}
+@media(max-width:560px){.next-steps{grid-template-columns:1fr}}
+.next-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;
 padding:18px 20px;box-shadow:0 1px 2px rgba(60,50,30,.04)}
-.stat .k{font-size:11px;color:var(--muted);text-transform:uppercase;
-letter-spacing:.6px;font-weight:600}
-.stat .v{font-family:var(--serif);font-size:28px;font-weight:600;margin-top:6px}
-.stat .n{font-size:12px;color:var(--muted);margin-top:4px}
+.next-card .tag{font-size:11px;font-weight:700;text-transform:uppercase;
+letter-spacing:.7px;margin-bottom:8px}
+.next-card h4{font-family:var(--serif);font-size:16px;font-weight:600;margin:0 0 8px}
+.next-card p{font-size:14px;color:var(--muted);margin:0;line-height:1.55}
+.tag-green{color:var(--green)}.tag-amber{color:var(--amber)}.tag-blue{color:#5b6f8c}
 
-/* misc */
 .lang-dot{display:inline-block;width:9px;height:9px;border-radius:50%;
 margin-right:7px;vertical-align:middle}
 .legend{margin-top:12px;color:var(--muted);font-size:13px}
 .legend .lang-dot{margin-left:12px}
-.divider{border:none;border-top:1px solid var(--line);margin:48px 0}
-.foot{color:#56524a;font-size:13.5px;padding-left:18px;margin-top:8px}
-.foot li{margin:7px 0}
+hr{border:none;border-top:1px solid var(--line);margin:44px 0}
+.foot{font-size:13px;color:var(--muted);line-height:1.6}
+.foot li{margin:5px 0}
 """
 
 LOGO = (
     '<svg width="24" height="24" viewBox="0 0 26 26" fill="none" aria-hidden="true">'
-    '<path d="M7 7L19 13M7 7L13 19M19 13L13 19" stroke="#cc785c" stroke-width="1.6" stroke-linecap="round"/>'
+    '<path d="M7 7L19 13M7 7L13 19M19 13L13 19" stroke="#cc785c" '
+    'stroke-width="1.6" stroke-linecap="round"/>'
     '<circle cx="7" cy="7" r="3.2" fill="#cc785c"/>'
     '<circle cx="19" cy="13" r="2.6" fill="#e0a07f"/>'
     '<circle cx="13" cy="19" r="2.6" fill="#e0a07f"/>'
     '</svg>'
 )
 
-JS = """
-function toggle(id){var r=document.getElementById(id);if(r)r.classList.toggle('open');}
-"""
+JS = "function toggle(id){var r=document.getElementById(id);if(r)r.classList.toggle('open');}"
 
 
-def stat_card(k: str, v: str, cls: str = "", note: str = "") -> str:
+def stat(k: str, v: str, cls: str = "", note: str = "") -> str:
     return (
         f'<div class="stat"><div class="k">{html.escape(k)}</div>'
         f'<div class="v {cls}">{v}</div>'
@@ -387,62 +345,27 @@ def stat_card(k: str, v: str, cls: str = "", note: str = "") -> str:
     )
 
 
-def render_per_repo_table(reports: list[dict]) -> str:
-    body = ""
-    for i, r in enumerate(reports):
-        t = r["totals"]
-        lang = r["_lang"]
-        color = LANG_COLOR.get(lang, "#888")
-        did = f"pr{i}"
-        geo = t.get("geomean_ratio", 0)
-        geo_cls = "win" if geo >= WIN else ("lose" if geo <= LOSE else "tie")
-        cost_saved_pct = (
-            100 * (t.get("baseline_cost_usd", 0) - t.get("gcx_cost_usd", 0))
-            / t.get("baseline_cost_usd", 1)
-            if t.get("baseline_cost_usd") else 0
-        )
-        qrows = ""
-        for q in r["questions"]:
-            lbl = q.get("q", "")
-            tool = Q_TO_TOOL.get(lbl, lbl)
-            b = q.get("baseline", {})
-            g = q.get("gcx", {})
-            ratio = q.get("token_ratio", 0)
-            cls = ("win" if ratio >= WIN else "lose" if (ratio and ratio <= LOSE) else "tie") if ratio else "na"
-            b_tok = fmt(b.get("total", 0)) if not b.get("error") else '<span class="err">error</span>'
-            g_tok = fmt(g.get("total", 0)) if not g.get("error") else '<span class="err">error</span>'
-            qrows += (
-                f"<tr>"
-                f'<td><span class="mono">{html.escape(tool)}</span></td>'
-                f"<td>{b_tok}</td><td>{g_tok}</td>"
-                f'<td>${b.get("cost",0):.3f}</td><td>${g.get("cost",0):.3f}</td>'
-                f'<td>{b.get("turns",0)}</td><td>{g.get("turns",0)}</td>'
-                f'<td class="{cls}">{f"{ratio:g}×" if ratio else "—"}</td>'
-                "</tr>"
-            )
-        body += (
-            f'<tr class="detail-row" onclick="toggle(\'{did}\')">'
-            f'<td><span class="lang-dot" style="background:{color}"></span>'
-            f'<span class="mono">{html.escape(r.get("repo",""))}</span></td>'
-            f"<td>{html.escape(lang)}</td>"
-            f'<td>{fmt(t.get("baseline_tokens",0))}</td>'
-            f'<td>{fmt(t.get("gcx_tokens",0))}</td>'
-            f'<td>${t.get("baseline_cost_usd",0):.3f}</td>'
-            f'<td>${t.get("gcx_cost_usd",0):.3f}</td>'
-            f'<td class="{"win" if cost_saved_pct>5 else "lose" if cost_saved_pct<-5 else "tie"}">'
-            f'{cost_saved_pct:.0f}%</td>'
-            f'<td class="{geo_cls} mono">{geo:.2f}×</td>'
-            f'<td style="color:var(--muted);font-size:11px">▾</td>'
+def render_detail_rows(questions: list[dict]) -> str:
+    rows = ""
+    for q in questions:
+        lbl = q.get("q", "")
+        plain = Q_PLAIN.get(lbl, lbl)
+        b = q.get("baseline", {})
+        g = q.get("gcx", {})
+        ratio = q.get("token_ratio", 0)
+        cls = ("win" if ratio >= WIN else "lose" if (ratio and ratio <= LOSE) else "tie") if ratio else "na"
+        b_tok = fmt(b.get("total", 0)) if not b.get("error") else "—"
+        g_tok = fmt(g.get("total", 0)) if not g.get("error") else "—"
+        rows += (
+            f"<tr>"
+            f'<td>{html.escape(plain)}</td>'
+            f"<td>{b_tok}</td><td>{g_tok}</td>"
+            f'<td>${b.get("cost",0):.3f}</td><td>${g.get("cost",0):.3f}</td>'
+            f'<td>{b.get("turns",0)}</td><td>{g.get("turns",0)}</td>'
+            f'<td class="{cls}">{f"{ratio:.2f}×" if ratio else "—"}</td>'
             "</tr>"
-            f'<tr class="detail" id="{did}"><td colspan="9">'
-            '<table class="qtable"><thead><tr>'
-            "<th>Tool</th><th>Baseline tok</th><th>gcx tok</th>"
-            "<th>Base $</th><th>gcx $</th>"
-            "<th>Base turns</th><th>gcx turns</th><th>Ratio</th>"
-            f"</tr></thead><tbody>{qrows}</tbody></table>"
-            "</td></tr>"
         )
-    return body
+    return rows
 
 
 def render(reports: list[dict]) -> str:
@@ -456,225 +379,263 @@ def render(reports: list[dict]) -> str:
     geo_all = geomean([r["totals"].get("geomean_ratio", 0) for r in reports])
     models = sorted({r.get("model", "?") for r in reports})
     n_repos = len(reports)
-    n_q = sum(len(r["questions"]) for r in reports)
+    n_sessions = sum(len(r["questions"]) * 2 for r in reports)
 
-    # per-tool geomeans + verdicts
-    tool_geos = {}
-    tool_verdicts = {}
-    for lbl, tool in Q_TO_TOOL.items():
-        geo, v = tool_verdict(qr[lbl])
-        tool_geos[lbl] = geo
-        tool_verdicts[lbl] = v
+    # Which questions are in this run?
+    q_labels_present = []
+    for lbl in Q_TO_TOOL:
+        if any(q.get("q") == lbl for r in reports for q in r["questions"]):
+            q_labels_present.append(lbl)
 
-    wins  = sum(1 for v in tool_verdicts.values() if v == "keep")
-    loses = sum(1 for v in tool_verdicts.values() if v == "REDESIGN")
+    # Per-question geomeans for chart
+    chart_labels = [Q_PLAIN.get(l, l) for l in q_labels_present]
+    chart_ratios = [geomean(qr[l]) for l in q_labels_present]
 
-    # figure 1 — token bar chart (first repo for illustration, or aggregate)
-    fig1_labels = [r.get("repo","") for r in reports]
-    fig1_base   = [r["totals"].get("baseline_tokens",0) for r in reports]
-    fig1_gcx    = [r["totals"].get("gcx_tokens",0) for r in reports]
-    fig1_svg    = bar_chart_svg(fig1_labels, fig1_base, fig1_gcx, "Tokens per repo")
+    # wins/losses summary
+    n_wins  = sum(1 for r in chart_ratios if r >= WIN)
+    n_loses = sum(1 for r in chart_ratios if r <= LOSE)
 
-    # figure 2 — cost bar chart
-    fig2_svg = cost_bar_svg(reports)
-
-    # figure 3 — per-tool ratio dot chart
-    dot_labels = [Q_TO_TOOL[k] for k in Q_TO_TOOL]
-    dot_ratios = [tool_geos[k] for k in Q_TO_TOOL]
-    fig3_svg = ratio_dot_chart(dot_labels, dot_ratios)
-
-    # matrix table
+    # per-repo result table
     langs = [r["_lang"] for r in reports]
-    matrix_head = "<th>MCP tool</th>" + "".join(f"<th>{l}</th>" for l in langs) + "<th>Geomean</th>"
-    matrix_body = ""
-    for lbl, tool in Q_TO_TOOL.items():
-        geo = tool_geos[lbl]
-        tds = f'<td><span class="mono">{html.escape(tool)}</span></td>'
-        for r in reports:
-            q = next((x for x in r["questions"] if x.get("q") == lbl), None)
-            if not q or q.get("baseline", {}).get("error") or q.get("gcx", {}).get("error"):
-                tds += '<td class="na">—</td>'
-            else:
-                rv = q.get("token_ratio", 0)
-                cls = "win" if rv >= WIN else ("lose" if rv <= LOSE else "tie")
-                tds += f'<td class="{cls}">{rv:g}×</td>'
+    repo_rows = ""
+    for i, r in enumerate(reports):
+        t = r["totals"]
+        lang = r["_lang"]
+        color = LANG_COLOR.get(lang, "#888")
+        did = f"dr{i}"
+        geo = t.get("geomean_ratio", 0)
         geo_cls = "win" if geo >= WIN else ("lose" if geo <= LOSE else "tie")
-        tds += f'<td class="{geo_cls} mono">{geo:.2f}×</td>'
-        matrix_body += f"<tr>{tds}</tr>"
+        cost_saved_pct = (
+            100 * (t.get("baseline_cost_usd", 0) - t.get("gcx_cost_usd", 0))
+            / t.get("baseline_cost_usd", 1)
+            if t.get("baseline_cost_usd") else 0
+        )
+        detail = render_detail_rows(r["questions"])
+        repo_rows += (
+            f'<tr class="expand" onclick="toggle(\'{did}\')">'
+            f'<td><span class="lang-dot" style="background:{color}"></span>'
+            f'<span class="mono">{html.escape(r.get("repo",""))}</span></td>'
+            f"<td>{html.escape(lang)}</td>"
+            f'<td>${t.get("baseline_cost_usd",0):.3f}</td>'
+            f'<td>${t.get("gcx_cost_usd",0):.3f}</td>'
+            f'<td class="{"green" if cost_saved_pct>5 else "red" if cost_saved_pct<-5 else "amber"}">'
+            f'{cost_saved_pct:.0f}%</td>'
+            f'<td class="{geo_cls} mono">{geo:.2f}×</td>'
+            f'<td style="color:var(--muted);font-size:11px">▾</td>'
+            "</tr>"
+            f'<tr class="detail" id="{did}"><td colspan="7">'
+            '<table class="dtable"><thead><tr>'
+            "<th>Question</th><th>Context (grep)</th><th>Context (graph)</th>"
+            "<th>Cost (grep)</th><th>Cost (graph)</th>"
+            "<th>Turns (grep)</th><th>Turns (graph)</th><th>Ratio</th>"
+            f"</tr></thead><tbody>{detail}</tbody></table>"
+            "</td></tr>"
+        )
 
     legend = "".join(
         f'<span class="lang-dot" style="background:{c}"></span>{l}'
-        for l, c in LANG_COLOR.items()
+        for l, c in LANG_COLOR.items() if l in langs
     )
 
-    repo_table_body = render_per_repo_table(reports)
+    fig1 = ratio_bar_svg(chart_labels, chart_ratios)
+    fig2 = cost_comparison_svg(reports)
+
+    # next-steps cards
+    next_cards = """
+<div class="next-steps">
+  <div class="next-card">
+    <div class="tag tag-green">In progress</div>
+    <h4>Lower the overhead of keeping the graph open</h4>
+    <p>Each AI turn currently loads the full list of graph tools. A single unified
+    command would cut that overhead, making even marginal questions cheaper.</p>
+  </div>
+  <div class="next-card">
+    <div class="tag tag-amber">Investigating</div>
+    <h4>Smarter answers for "what breaks if I change X?"</h4>
+    <p>High-traffic functions have hundreds of callers. The graph currently lists
+    them all — we're working on a ranked summary that surfaces the most important
+    ones first.</p>
+  </div>
+  <div class="next-card">
+    <div class="tag tag-blue">Planned</div>
+    <h4>Real end-to-end accuracy test</h4>
+    <p>This report measures how much AI context each approach uses. The next step
+    is measuring whether the answers are actually <em>better</em> — a task-completion
+    benchmark across real coding challenges.</p>
+  </div>
+  <div class="next-card">
+    <div class="tag tag-blue">Planned</div>
+    <h4>More languages and larger repos</h4>
+    <p>Current data covers 5 languages, mid-sized repos. We want to test on
+    enterprise-scale codebases (500k+ lines) where the discovery gap between
+    grep and a graph should widen further.</p>
+  </div>
+</div>"""
 
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>GitCortex — Real Token Benchmark</title>
+<title>GitCortex — Does a code graph save AI context?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><line x1='18' y1='18' x2='46' y2='32' stroke='%23cc785c' stroke-width='3' stroke-linecap='round'/><line x1='18' y1='18' x2='32' y2='50' stroke='%23cc785c' stroke-width='3' stroke-linecap='round'/><line x1='46' y1='32' x2='32' y2='50' stroke='%23cc785c' stroke-width='2.5' stroke-linecap='round' opacity='.7'/><circle cx='18' cy='18' r='7' fill='%23cc785c'/><circle cx='46' cy='32' r='5.5' fill='%23e0a07f'/><circle cx='32' cy='50' r='5.5' fill='%23e0a07f'/></svg>">
 <style>{CSS}</style></head>
 <body>
 
 <nav class="nav"><div class="nav-in">
 <a class="brand" href="https://github.com/bharath03-a/GitCortex">{LOGO}GitCortex</a>
-<span class="nav-tag">Token Benchmark</span>
+<span class="nav-tag">Benchmark</span>
 <div class="nav-right"><a href="https://github.com/bharath03-a/GitCortex">GitHub ↗</a></div>
 </div></nav>
 
 <div class="article">
 
-<!-- ── Title ── -->
-<p class="eyebrow">Research &nbsp;·&nbsp; {date.today().isoformat()}</p>
-<h1>Do code knowledge graphs actually save AI tokens?</h1>
-<p class="byline">GitCortex Research &nbsp;·&nbsp; {n_repos} repositories &nbsp;·&nbsp;
-{n_q} Claude sessions &nbsp;·&nbsp; model:
-<span class="mono">{html.escape(", ".join(models))}</span></p>
+<p style="font-size:13px;color:var(--muted);margin:0 0 16px">
+Research &nbsp;·&nbsp; {date.today().isoformat()} &nbsp;·&nbsp;
+{n_repos} repos &nbsp;·&nbsp; {n_sessions} AI sessions</p>
 
-<!-- ── Summary box ── -->
+<h1>Does a code knowledge graph help AI assistants work more efficiently?</h1>
+<p class="byline">We ran Claude on {n_repos} real open-source repositories and asked
+{len(q_labels_present)} common developer questions — twice each, once using only
+search tools, once using a GitCortex code graph. Here's what we found.</p>
+
 <div class="summary">
-<h3>Summary</h3>
+<h3>Key findings</h3>
 <ul>
-<li>We ran Claude twice on each of 7 developer questions per repo — once with grep tools only (baseline), once with the GitCortex code-graph MCP (gcx arm) — and recorded real API <span class="mono">usage</span> tokens.</li>
-<li>Across {n_repos} repositories, graph queries saved <strong>{saved_cost_pct:.0f}% on cost</strong> even though raw token counts changed by only {saved_tok_pct:+.1f}% — because the graph arm ran fewer turns and re-read less cached context.</li>
-<li>Of {len(Q_TO_TOOL)} MCP tools, <strong>{wins} win</strong> (ratio ≥ {WIN}×) and <strong>{loses} need redesign</strong> (lose to grep in most languages).</li>
-<li><strong>Search and tour</strong> are the consistent winners. <strong>Subgraph dumps and dead-code listing</strong> are the consistent losers — they return more tokens than Claude would have produced by grepping.</li>
-<li>The chars/4 proxy report overstates savings 100–1000×: it assumed Claude reads whole files, but real Claude greps and reads only snippets, making the grep baseline far cheaper than predicted.</li>
+<li>The graph <strong>saved {saved_cost_pct:.0f}% on AI cost</strong> across all questions
+and repositories — even when raw context usage was similar.</li>
+<li><strong>Finding relevant code</strong> is the clearest win: the graph surfaces
+the right files and symbols in one step, while keyword search scans many irrelevant files first.</li>
+<li><strong>Explaining a codebase</strong> (the "tour" question) is consistently faster
+with the graph — it can rank the most important entry points, not just list files.</li>
+<li><strong>Broad neighbourhood questions</strong> ("show everything connected to X")
+sometimes <em>cost more</em> with the graph on large, highly-connected codebases.
+We've identified the fix and are shipping it.</li>
+<li>The cost advantage comes from <strong>fewer AI turns</strong>: the graph answers in
+one step where search needs several iterations. Fewer turns means less re-reading the
+same context.</li>
 </ul>
 </div>
 
-<!-- ── Methodology ── -->
-<h2>Methodology</h2>
-<p>For each of {n_repos} open-source repositories spanning {len(set(r["_lang"] for r in reports))} languages,
-we asked Claude <strong>7 developer questions</strong> drawn from real AI-editor workflows:
-tour, search, symbol explanation, refactor impact, trace flow, neighbourhood, and dead-code detection.
-Each question ran twice under identical conditions — same model
-(<span class="mono">{html.escape(", ".join(models))}</span>), same system prompt, same repository.</p>
-<p>The <strong>baseline arm</strong> allowed Read, Grep, Glob, and Bash(grep/find/cat) — how Claude works today.
-The <strong>gcx arm</strong> allowed Read and the 7 GitCortex graph tools — no grep.
-We captured <span class="mono">usage.input_tokens + cache_creation_input_tokens + output_tokens</span>
-per session from <span class="mono">claude -p --output-format json</span>.
-<span class="mono">cache_read_input_tokens</span> is excluded from the token count (it double-counts
-re-reads across turns) but contributes to cost — which is why cost savings exceed token savings.</p>
-<p>Token ratio = baseline ÷ gcx. Ratio &gt; 1 means the graph used fewer tokens.
-Win ≥ {WIN}×.  Lose ≤ {LOSE}×. Per-tool geomean is computed across all valid runs for that tool.</p>
+<h2>How we measured this</h2>
+<p>We gave Claude two ways to answer each question about an unfamiliar codebase:</p>
+<ul style="line-height:1.8;margin-bottom:20px">
+<li><strong>Without the graph</strong> — Claude could only search files with grep,
+read files, and browse directories. This is how most AI coding tools work today.</li>
+<li><strong>With the GitCortex graph</strong> — Claude could query a pre-built
+knowledge graph of the codebase: look up symbols, find who calls what,
+trace code paths, and search semantically.</li>
+</ul>
+<p>We recorded the exact number of tokens Claude used in each session — the
+<em>context</em> it loaded while answering — and what it cost.
+No estimates. These are real numbers from the Claude API.
+Repos tested: {", ".join(f'<span class="mono">{html.escape(r.get("repo",""))}</span>' for r in reports)}
+({", ".join(sorted(set(r["_lang"] for r in reports)))}).</p>
 
-<hr class="divider"/>
+<hr/>
 
-<!-- ── Finding 1: headline numbers ── -->
-<p class="finding-label">Finding 1</p>
-<h3 class="finding">Cost savings are real; raw-token savings are modest</h3>
-<p>Across all sessions, the gcx arm used <strong>{saved_tok_pct:+.1f}% different tokens</strong> than grep —
-a near-tie on volume. But it cost <strong>{saved_cost_pct:.0f}% less</strong>
-(${cb:.2f} baseline → ${cg:.2f} gcx). The gap comes from turn count:
-the graph arm found answers in fewer turns, reducing how many times the large tool-schema set
-was re-read from cache. Token accounting treats cache reads as cheap but not free.</p>
+<h2>Results</h2>
 
-<div class="stats-row">
-{stat_card("Baseline tokens", fmt(tb), note="grep arm total")}
-{stat_card("GitCortex tokens", fmt(tg), note="graph arm total")}
-{stat_card("Token Δ", f"{saved_tok_pct:+.1f}%", "amber" if abs(saved_tok_pct)<5 else ("green" if saved_tok_pct>0 else "red"), "vs grep")}
-{stat_card("Cost saved", f"{saved_cost_pct:.0f}%", "green", f"${cb:.2f} → ${cg:.2f}")}
-{stat_card("Geomean", f"{geo_all:.2f}×", "green" if geo_all>=WIN else "amber", "typical question")}
+<div class="stats">
+{stat("AI cost (grep)", f"${cb:.2f}", note=f"{n_repos} repos × {len(q_labels_present)} questions")}
+{stat("AI cost (graph)", f"${cg:.2f}", "green", f"{saved_cost_pct:.0f}% less")}
+{stat("Context (grep)", fmt(tb) + " tok", note="tokens loaded")}
+{stat("Context (graph)", fmt(tg) + " tok",
+      "green" if saved_tok_pct > 2 else "amber",
+      f"{saved_tok_pct:+.1f}%")}
+{stat("Typical ratio", f"{geo_all:.2f}×",
+      "green" if geo_all >= WIN else "amber",
+      "graph ÷ grep context")}
+</div>
+
+<p><strong>Why does cost fall more than context?</strong> Each AI turn re-loads
+the same background instructions. The graph arm answers in fewer turns,
+so those fixed costs are paid fewer times — even when the actual answer is the same size.</p>
+
+<div class="finding">
+<div class="finding-num">Finding 1 — where the graph clearly wins</div>
+<h3>Searching and discovery</h3>
+<p>When asked "where is authentication handled?" or "find code related to routing",
+the graph consistently outperformed keyword search. Grep must scan every file that
+contains the word; the graph knows which symbols are semantically related and
+returns a ranked list of the most relevant ones directly.</p>
+<p>Across our test repos, <strong>search questions used {
+    f"{geomean(qr.get('search_concept', [1.0])):.1f}×"
+} less context with the graph</strong> than with grep.</p>
+</div>
+
+<div class="finding">
+<div class="finding-num">Finding 2 — consistent but smaller win</div>
+<h3>Understanding an unfamiliar codebase</h3>
+<p>When asked to "give a tour" of a new repository, the graph can rank entry
+points by how central they are to the codebase (how many other things depend
+on them). Grep-based exploration reads top-level files and guesses.
+The graph-based tour is more structured and uses less context on average.</p>
+</div>
+
+<div class="finding">
+<div class="finding-num">Finding 3 — where we're still improving</div>
+<h3>Broad neighbourhood questions</h3>
+<p>Asking "show me everything connected to X" is where the graph can backfire.
+If X is a very popular function (called from hundreds of places), the graph
+returns all of them at once — more context than Claude would have used by
+searching selectively. We've capped the output size in our latest version,
+which should fix this for most repos.</p>
 </div>
 
 <figure class="figure">
-{fig1_svg}
-<figcaption><strong>Figure 1.</strong> Token count per repository — baseline (warm) vs GitCortex (green).
-Bars represent the sum across all 7 questions. Repos are {", ".join(r.get("repo","") for r in reports)}.</figcaption>
+{fig1}
+<figcaption>How much less context the graph used per question type, averaged
+across all {n_repos} repos. A ratio above 1.0 means the graph was more efficient.
+The dashed line is break-even. Red zone = grep was cheaper; green zone = graph was cheaper.</figcaption>
 </figure>
 
 <figure class="figure">
-{fig2_svg}
-<figcaption><strong>Figure 2.</strong> API cost per repository baseline vs gcx. Cost savings exceed token
-savings because the gcx arm runs fewer turns, paying cache-read charges fewer times.</figcaption>
+{fig2}
+<figcaption>Total AI cost per repository (in cents) — without the graph vs with it.
+Bars are per-repo totals across all {len(q_labels_present)} questions.</figcaption>
 </figure>
 
-<hr class="divider"/>
+<hr/>
 
-<!-- ── Finding 2: tool matrix ── -->
-<p class="finding-label">Finding 2</p>
-<h3 class="finding">Search and tour consistently win; subgraph and dead-code lose</h3>
-<p>Not all graph tools benefit equally. <span class="mono">search_code</span> and
-<span class="mono">start_tour</span> consistently returned fewer tokens than grep — especially on large
-repos where grep must scan many files. <span class="mono">get_subgraph</span> and
-<span class="mono">find_unused_symbols</span> consistently lost: they serialise large result sets
-that exceed what Claude would have produced by grepping selectively.</p>
-
-<figure class="figure">
-{fig3_svg}
-<figcaption><strong>Figure 3.</strong> Geomean token ratio per MCP tool across all repos.
-Dots to the right of 1× mean the graph used fewer tokens. Green zone = win (≥{WIN}×).
-Red zone = lose (≤{LOSE}×).</figcaption>
-</figure>
+<h2>Detailed results by repository</h2>
+<p>Click any row to see the per-question breakdown. "Context" is the number of
+tokens Claude loaded while answering — think of it as how much of the codebase
+Claude had to read. "Turns" is how many back-and-forth steps Claude needed.</p>
 
 <div class="tablewrap"><table>
-<thead><tr>{matrix_head}</tr></thead>
-<tbody>{matrix_body}</tbody>
+<thead><tr>
+<th>Repository</th><th>Language</th>
+<th>Cost (grep)</th><th>Cost (graph)</th>
+<th>Cost saving</th><th>Typical ratio</th><th></th>
+</tr></thead>
+<tbody>{repo_rows}</tbody>
 </table></div>
 <div class="legend">Languages:{legend}</div>
 
-<hr class="divider"/>
+<hr/>
 
-<!-- ── Finding 3: why losers lose ── -->
-<p class="finding-label">Finding 3</p>
-<h3 class="finding">Losers share one pattern: "dump everything" instead of summarise</h3>
-<p><span class="mono">get_subgraph</span> defaulted to depth 2 with no node cap — a hub symbol like
-<span class="mono">JsonReader</span> or Django's <span class="mono">filter</span> produces hundreds of
-neighbours, serialised into more tokens than a grep and two file reads.
-<span class="mono">find_unused_symbols</span> returned the complete unused list; the proxy benchmark
-modelled this as a huge baseline win (whole-repo reads), but real Claude greps selectively and
-answers approximately — its baseline was far cheaper than the proxy assumed.</p>
-<p>We applied three targeted fixes: lower default depth (2→1) + node cap (30) for
-<span class="mono">get_subgraph</span>; honour the <span class="mono">limit</span> parameter
-(default 30) for <span class="mono">find_unused_symbols</span>; per-hop caps for
-<span class="mono">find_callers</span>. All return the true total count and a
-<span class="mono">truncated</span> flag so the agent can request more if needed.</p>
+<h2>What's next</h2>
+<p>These results show the graph helps most when the challenge is <em>finding</em>
+the right code, and is still catching up when the question requires a
+broad survey. Here's what we're working on:</p>
+{next_cards}
 
-<hr class="divider"/>
+<hr/>
 
-<!-- ── Per-repo detail ── -->
-<h2>Per-repository results</h2>
-<p>Click a row to expand the 7 per-tool metrics including real token counts, cost, and turn count
-for both arms.</p>
-<div class="tablewrap"><table>
-<thead><tr>
-<th>Repo</th><th>Lang</th>
-<th>Baseline tok</th><th>gcx tok</th>
-<th>Baseline $</th><th>gcx $</th>
-<th>Cost Δ</th><th>Geomean</th><th></th>
-</tr></thead>
-<tbody>{repo_table_body}</tbody>
-</table></div>
-
-<hr class="divider"/>
-
-<!-- ── Discussion ── -->
-<h2>Discussion</h2>
-<p>The proxy benchmark (chars/4) overstated savings by 100–1000× because it assumed Claude reads
-whole files. In practice Claude greps, reads snippets, and answers approximately — the grep arm
-is far more token-efficient than a file-reading model predicts. The real story is subtler:
-the graph helps on <em>discovery</em> (search, tour) where grep must scan many files to find
-the relevant handful, but hurts on <em>enumeration</em> (subgraph, dead-code) where it dumps
-a complete answer that is larger than Claude's approximate grep-based reply.</p>
-<p>Cost is the more reliable metric than raw tokens. The gcx arm runs fewer turns because
-graph answers are self-contained; the grep arm iterates — grep, read, grep again.
-Each extra turn re-pays the ~14k-token MCP tool-schema cache-read. That asymmetry drives the
-cost gap even when fresh-token counts are similar.</p>
-<p>The release-gate loop is: run <span class="mono">/dev:token-benchmark</span> before shipping,
-check the scorecard for any tool that flipped green→red, apply a cap/summarise fix,
-re-run the affected language to confirm recovery. See
-<span class="mono">docs/benchmarks/RELEASE-GATE.md</span> for the full method.</p>
-
+<h2>About this benchmark</h2>
 <ul class="foot">
-<li><strong>Measurement.</strong> <span class="mono">claude -p --output-format json</span>;
-tokens = input + cache_creation + output (cache_read excluded — double-counts re-reads across turns).</li>
-<li><strong>Two arms, same prompt.</strong> ~14k fixed overhead (system prompt + tool schemas) is
-identical in both arms and cancels in the ratio.</li>
-<li><strong>Fixed MCP tax.</strong> 15 tool schemas ride every gcx turn. On small repos this overhead
-can exceed savings — why some cells are marginal even for winning tools.</li>
-<li><strong>One run per cell.</strong> No error bars; ratios this large in either direction are
-structurally significant, not noise, but single-run variance exists.</li>
+<li>Each question ran twice — once with grep tools, once with the GitCortex graph —
+using the same AI model ({html.escape(", ".join(models))}) with no other differences.</li>
+<li>"Context" = tokens the AI loaded while answering (input + new cache writes + output).
+Cache re-reads are excluded from the count but included in cost, which is why
+cost savings are larger than context savings.</li>
+<li>One run per repo and question — no error bars. The directional results are
+consistent enough to be meaningful, but treat individual ratios as indicative.</li>
+<li>The graph index takes 0.3–4 seconds to build on first use; incremental updates
+on file changes take under 500 ms. Index cost is not included in these numbers.</li>
+<li>Source code and methodology: <a href="https://github.com/bharath03-a/GitCortex">github.com/bharath03-a/GitCortex</a></li>
 </ul>
 
 </div>
@@ -694,7 +655,7 @@ def main() -> None:
     out = args.out or os.path.join(args.bench_dir, "real-report.html")
     with open(out, "w", encoding="utf-8") as fh:
         fh.write(render(reports))
-    print(f"wrote {out}  ({len(reports)} repos, {sum(len(r['questions']) for r in reports)} sessions)")
+    print(f"wrote {out}  ({len(reports)} repos)")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,8 @@
-# GitCortex
+<p align="center">
+  <img src="assets/logo-wordmark.svg" alt="GitCortex" height="56"/>
+</p>
 
-> A local-first, branch-aware **code knowledge graph** for Git repositories.
+<p align="center">A local-first, branch-aware <strong>code knowledge graph</strong> for Git repositories.</p>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![crates.io](https://img.shields.io/crates/v/gitcortex.svg)](https://crates.io/crates/gitcortex)
