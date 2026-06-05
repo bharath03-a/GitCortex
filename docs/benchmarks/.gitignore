@@ -1,4 +1,5 @@
-# Real benchmark run artifacts — machine-local, regenerate with real-harness.sh
+# Benchmark run artifacts — regenerate with dev-harness.sh / real-harness.sh
+dev-*.json
 real-*.json
 *.prefix.json
 
