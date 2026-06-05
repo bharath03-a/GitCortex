@@ -17,7 +17,7 @@ cargo install gitcortex   # or: npm i -g gitcortex · pip install gitcortex
 cd your-repo && gcx init  # index + install hooks + register your editor
 ```
 
-**Contents:** [Why](#why) · [Demo](#demo) · [How it works](#how-it-works) · [Install](#installation) · [Quick start](#quick-start) · [Commands](#commands) · [Languages](#supported-languages) · [MCP](#mcp-integration) · [Graph schema](#graph-schema) · [Architecture](#architecture) · [Limitations & roadmap](#limitations--roadmap) · [Contributing](#contributing)
+**Contents:** [Why](#why) · [Demo](#demo) · [How it works](#how-it-works) · [Install](#installation) · [Quick start](#quick-start) · [Commands](#commands) · [Languages](#supported-languages) · [MCP](#mcp-integration) · [Graph schema](#graph-schema) · [Benchmark](#benchmark) · [Architecture](#architecture) · [Limitations & roadmap](#limitations--roadmap) · [Contributing](#contributing)
 
 ---
 
@@ -36,7 +36,8 @@ GitCortex gives your AI editor a pre-built, queryable call graph of your repo �
 - **Per-branch graphs** — switching branches is instant, no re-index.
 - **Wiki, search, tour, blast-radius** — built-in discovery surface for AI assistants and humans.
 - **Works in Cursor, Claude Code, Windsurf, GitHub Copilot, Google Antigravity** via MCP.
-- **~97 % fewer context tokens per session** (geomean ~200× per question across 5 OSS repos × 7 developer questions — see [benchmark below](#token-savings-benchmark)).
+- **Up to 58 % cheaper AI sessions** — measured with real Claude API usage across 5 OSS repos: search and tour questions use 2× less context; cost savings exceed token savings because the graph answers in fewer turns (see [benchmark below](#benchmark)).
+- **`gcx` single-dispatch MCP tool** — one compact schema covers all graph operations, cutting per-turn context overhead vs. loading 15 separate tool schemas.
 - **Six viz formats** — WebGL Cosmograph UI, self-contained HTML, SVG, DOT, GraphML, Neo4j Cypher.
 
 ---
@@ -58,53 +59,42 @@ GitCortex gives your AI editor a pre-built, queryable call graph of your repo �
 
 ---
 
-## Token-savings benchmark
+## Benchmark
 
-How much context does GitCortex actually save in a real session? We ran 7 realistic developer questions against 5 OSS repos (one per language) and compared the tokens an LLM would need either way:
+We ran Claude twice on 4 developer questions per repo — once with grep/read tools only, once with the GitCortex graph — and recorded real API `usage` tokens and cost. No chars/4 proxy.
 
-- **Baseline** — `grep -l <symbol>` + `cat` of every matched file (what an LLM does without GitCortex).
-- **GitCortex** — the matching `gcx query …` command output.
+| Question | What it tests |
+|---|---|
+| "Find all auth-related code" | Discovery — where the graph vs. grep matters most |
+| "Give me a tour of this codebase" | Architecture overview |
+| "If I change X, what breaks?" | Refactor impact — honest about limits |
+| "Show everything connected to X" | Neighbourhood — honest loss case on large hubs |
 
-Token proxy: `chars / 4` (rough `tiktoken` approximation).
+### Real results (Claude Haiku, 4 repos × 4 questions = 32 sessions)
 
-### The 7 questions
+| Repo | Language | Cost (grep) | Cost (graph) | Saving | Typical ratio |
+|---|---|--:|--:|--:|--:|
+| ripgrep | Rust | $0.247 | $0.110 | **55 %** | **2.15×** |
+| hono | TypeScript | $0.265 | $0.112 | **58 %** | **2.03×** |
+| cobra | Go | $0.231 | $0.151 | **35 %** | **1.39×** |
+| gson | Java | $0.115 | $0.132 | −14 % | 0.92× |
 
-| # | Developer question                          | GitCortex command                          |
-|---|---------------------------------------------|--------------------------------------------|
-| 1 | "Give me a tour of this codebase"           | `gcx query tour --limit 10`                |
-| 2 | "Find code related to `<concept>`"          | `gcx query search <term>`                  |
-| 3 | "Explain symbol `X`"                        | `gcx query wiki X`                         |
-| 4 | "If I change `Y`, what breaks? (3 hops)"    | `gcx query find-callers Y --depth 3`       |
-| 5 | "How does `Y` reach `Z`?"                   | `gcx query trace-path Y Z`                 |
-| 6 | "Show 2-hop neighborhood around `X`"        | `gcx query get-subgraph X --depth 2`       |
-| 7 | "What dead code exists?"                    | `gcx query find-unused --limit 30`         |
+**Why does cost fall more than token count?** The graph answers in fewer turns. Each extra turn re-reads the ~14k-token tool-schema set from cache — cheaper per token, but it adds up. The graph arm avoids most of those re-reads.
 
-Symbols are picked from the centrality-ranked tour of each repo — the same nodes a real developer would click on first.
-
-### Headline — absolute tokens per session
-
-| Repo (lang)    | Baseline tokens | gcx tokens | Saved tokens | Saved % | Geomean ratio |
-|----------------|----------------:|-----------:|-------------:|--------:|--------------:|
-| ripgrep (Rust) |       1,248,662 |     20,713 |    1,227,949 | 98.34 % |          284× |
-| hono (TS)      |         641,744 |      5,917 |      635,827 | 99.08 % |          224× |
-| cobra (Go)     |         567,203 |     12,652 |      554,551 | 97.77 % |          208× |
-| requests (Py)  |         543,662 |     10,416 |      533,246 | 98.08 % |          182× |
-| gson (Java)    |         768,472 |     64,460 |      704,012 | 91.61 % |          119× |
-| **TOTAL**      |   **3,769,743** |**114,158** |**3,655,585** |**96.97 %** |  **199× geomean of geomeans** |
-
-**Plain reading:** across these 5 repos × 7 questions = 35 questions, a developer who fed all answers to an LLM via raw file reads would burn **~3.77 M tokens**. With GitCortex the same session takes **~114 K tokens** — **~3.66 M tokens saved, 96.97 % less context spent**.
-
-**Geomean** = geometric mean (nth root of product). Used instead of arithmetic mean when averaging ratios so single outliers don't dominate — read **"199×"** as "on a typical question, GitCortex returns ~200× fewer tokens than reading raw files". Half the questions do better, half worse.
-
-Per-question detail, raw JSON, and the full mechanical 15-repo sweep are in [docs/benchmarks/token-savings-v0.3.md](docs/benchmarks/token-savings-v0.3.md).
+**Where the graph loses:** broad neighbourhood dumps (`get_subgraph`, `find_callers` on hub symbols with hundreds of callers) return more tokens than Claude would have produced by grepping selectively. We've capped both in v0.3.1 — the fix lands in the next run.
 
 ### Reproducing
 
 ```bash
 cargo build --release --bin gcx
-bash docs/benchmarks/dev-harness.sh \
+# Full 5-language sweep (haiku, 4 questions, ~$3–5)
+bash docs/benchmarks/real-sweep.sh
+# Single repo
+bash docs/benchmarks/real-harness.sh \
     https://github.com/BurntSushi/ripgrep \
-    /tmp/out.json
+    /tmp/ripgrep.json claude-haiku-4-5-20251001 4
+# Render HTML report
+python3 docs/benchmarks/real-report.py
 ```
 
 ---
@@ -487,18 +477,22 @@ This writes `.github/workflows/gcx-blast-radius.yml`. On every pull request it r
 
 | Tool | Description |
 |---|---|
+| `gcx` | **Single-dispatch tool** — one schema covers all operations below. Pass `action` + `params` to avoid loading 15 separate schemas per turn. Preferred for token efficiency. |
 | `lookup_symbol` | Find all nodes matching a name across the codebase |
-| `find_callers` | All functions that call a given function (backward trace) |
+| `find_callers` | All functions that call a given function (backward trace, capped at 25) |
 | `find_callees` | All functions called by a given function (forward trace, configurable depth) |
 | `list_definitions` | All definitions in a source file ordered by line |
 | `find_implementors` | All structs/classes that implement a trait or interface |
 | `trace_path` | Every call path between two symbols (up to 6 hops) |
 | `list_symbols_in_range` | Symbols whose span overlaps a file + line range |
-| `find_unused_symbols` | Symbols with zero callers — dead code candidates |
-| `get_subgraph` | All nodes + edges within N hops of a seed symbol (in/out/both) |
+| `find_unused_symbols` | Symbols with zero callers — dead code candidates (returns top 30, full count always included) |
+| `get_subgraph` | Nodes + edges within N hops of a seed symbol (default depth 1, capped at 30 nodes) |
 | `branch_diff_graph` | Nodes added or removed between two branches |
 | `detect_changes` | Changed symbols + blast radius vs a base branch |
 | `symbol_context` | Callers, callees, and used-by for a symbol |
+| `wiki_symbol` | Markdown wiki page: signature, doc-comment, top callers/callees |
+| `search_code` | Ranked fuzzy search over name + qualified path (default 10 results) |
+| `start_tour` | Centrality-ranked guided tour — entry points ordered by graph importance |
 
 All tools accept an optional `branch` parameter. Defaults to the branch active when `gcx serve` was started (auto-detected from `git symbolic-ref HEAD`).
 
@@ -692,6 +686,7 @@ Contributions are welcome — bug reports, language-coverage improvements, new M
 
 - **Start here:** [CONTRIBUTING.md](CONTRIBUTING.md) — dev setup, build, test, and PR workflow.
 - **Conduct:** [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+- **Pre-commit gate:** after cloning, install the hook once: `cp hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit`. It auto-formats with `cargo fmt` (re-stages changed files) and runs `cargo clippy -D warnings` before every commit.
 - **Test your changes against real repos:** `scripts/lang-smoke.sh <git-url> <symbol>` clones a repo, indexes it, exercises every query + the MCP round-trip, and prints PASS/FAIL with metrics.
 - **Releasing:** [RELEASING.md](RELEASING.md).
 
