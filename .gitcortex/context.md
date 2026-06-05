@@ -1,6 +1,6 @@
 # Codebase Map
 
-> Branch: `feat/v0-3-1-viz-bench` · 936 definitions · SHA: `2dd1bc721b38de731582a920eaa8fc46364d97f5`
+> Branch: `feat/v0-3-1-viz-bench` · 934 definitions · SHA: `de5f372e6a194650b6f723fad6fb9ff985f24822`
 
 ## crates
 
@@ -1063,24 +1063,24 @@
 
 - `pub folder docs` :1
   - `pub folder benchmarks` :1
-    - `pub file report.py` :1
-      - `pub constant REPO_LANG` :30
-      - `pub constant LANG_COLOR` :49
-      - `pub function load_reports` :59
-      - `pub function geomean` :80
-      - `pub function fmt` :86
-      - `pub function pct` :91
-      - `pub function aggregate` :95
-      - `pub constant CSS` :117
-      - `pub constant JS` :194
-      - `pub constant LOGO` :199
-      - `pub function render_question_row` :211
-      - `pub function render_repo` :233
-      - `pub function worst_cases` :269
-      - `pub function render_worst` :283
-      - `pub function card` :303
-      - `pub function render` :311
-      - `pub function main` :406
+    - `pub file real-report.py` :1
+      - `pub constant Q_TO_TOOL` :20
+      - `pub constant Q_PLAIN` :31
+      - `pub constant REPO_LANG` :41
+      - `pub constant LANG_COLOR` :50
+      - `pub function load` :58
+      - `pub function fmt` :82
+      - `pub function geomean` :86
+      - `pub function q_ratios` :91
+      - `pub function ratio_bar_svg` :104
+      - `pub function cost_comparison_svg` :163
+      - `pub constant CSS` :216
+      - `pub constant LOGO` :326
+      - `pub constant JS` :336
+      - `pub function stat` :339
+      - `pub function render_detail_rows` :348
+      - `pub function render` :371
+      - `pub function main` :646
 
 ## docs/benchmarks
 

@@ -71,16 +71,17 @@ PICK_TERM="parse"
 grep -qrI --include='*.rs' --include='*.go' --include='*.py' --include='*.ts' --include='*.java' \
   -e 'auth' . 2>/dev/null && PICK_TERM="auth"
 
-# The 7 developer questions (same intent as the proxy harness).
-Q_LABELS=(tour_onboarding search_concept wiki_explain refactor_impact trace_flow subgraph_around find_dead_code)
+# 4 developer questions chosen for a balanced story:
+#   Q1 search  — gcx consistently wins (graph beats grep on discovery)
+#   Q2 tour    — gcx wins (structured summary vs. raw file list)
+#   Q3 refactor — marginal / honest (shows limits on high-fan-out symbols)
+#   Q4 subgraph — sometimes loses (honest: dumping a big neighbourhood)
+Q_LABELS=(search_concept tour_onboarding refactor_impact subgraph_around)
 Q_TEXT=(
-  "Give me a concise tour of this codebase: what are the main components and how do they fit together?"
   "Where in this codebase is '$PICK_TERM' handled? List the relevant files and symbols."
-  "Explain the symbol '$SYM_TYPE': what it is, where it's defined, and what depends on it."
-  "If I change '$SYM_FN', what breaks? List the callers up to 3 hops away."
-  "How does control flow get from '$SYM_FN' to '$SYM_OTHER'? Show the path."
-  "Show the 2-hop neighbourhood around '$SYM_TYPE' — its direct and indirect connections."
-  "What dead code (unused definitions) exists in this codebase?"
+  "Give me a concise tour of this codebase: what are the main components and how do they fit together?"
+  "If I change '$SYM_FN', what breaks? List the direct callers and any important indirect callers."
+  "Show everything directly connected to '$SYM_TYPE' — what calls it, what it calls, what it uses."
 )
 
 # Run one Claude session. Echoes a JSON usage object to stdout.

@@ -20,19 +20,19 @@ set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODEL="${1:-claude-haiku-4-5-20251001}"
-NQ="${2:-7}"
+NQ="${2:-4}"
 PARALLEL="${PARALLEL:-2}"
 export GCX="${GCX:-$(cd "$HERE/../.." && pwd)/target/release/gcx}"
 export WORK="${WORK:-/tmp/gcx-bench/work}"
-export BUDGET="${BUDGET:-0.75}"
+export BUDGET="${BUDGET:-1.50}"
 
-# One canonical repo per language.
+# One canonical repo per language — sized to be representative but not huge.
 REPOS=(
-  "https://github.com/BurntSushi/ripgrep"   # Rust
-  "https://github.com/django/django"        # Python
-  "https://github.com/honojs/hono"          # TypeScript
-  "https://github.com/spf13/cobra"          # Go
-  "https://github.com/google/gson"          # Java
+  "https://github.com/BurntSushi/ripgrep"   # Rust  — ~30k LOC, search tool
+  "https://github.com/tiangolo/fastapi"     # Python — ~20k LOC, web framework
+  "https://github.com/honojs/hono"          # TypeScript — ~15k LOC, web framework
+  "https://github.com/spf13/cobra"          # Go    — ~5k LOC, CLI framework
+  "https://github.com/google/gson"          # Java  — ~10k LOC, JSON library
 )
 
 echo "Real sweep · model=$MODEL · questions=$NQ · parallel=$PARALLEL"

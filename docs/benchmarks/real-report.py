@@ -318,7 +318,6 @@ letter-spacing:.7px;margin-bottom:8px}
 margin-right:7px;vertical-align:middle}
 .legend{margin-top:12px;color:var(--muted);font-size:13px}
 .legend .lang-dot{margin-left:12px}
-hr{border:none;border-top:1px solid var(--line);margin:44px 0}
 .foot{font-size:13px;color:var(--muted);line-height:1.6}
 .foot li{margin:5px 0}
 """
@@ -479,14 +478,14 @@ def render(reports: list[dict]) -> str:
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><line x1='18' y1='18' x2='46' y2='32' stroke='%23cc785c' stroke-width='3' stroke-linecap='round'/><line x1='18' y1='18' x2='32' y2='50' stroke='%23cc785c' stroke-width='3' stroke-linecap='round'/><line x1='46' y1='32' x2='32' y2='50' stroke='%23cc785c' stroke-width='2.5' stroke-linecap='round' opacity='.7'/><circle cx='18' cy='18' r='7' fill='%23cc785c'/><circle cx='46' cy='32' r='5.5' fill='%23e0a07f'/><circle cx='32' cy='50' r='5.5' fill='%23e0a07f'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%23faf9f5'/><line x1='18' y1='18' x2='46' y2='32' stroke='%23cc785c' stroke-width='3' stroke-linecap='round'/><line x1='18' y1='18' x2='32' y2='50' stroke='%23cc785c' stroke-width='3' stroke-linecap='round'/><line x1='46' y1='32' x2='32' y2='50' stroke='%23cc785c' stroke-width='2.5' stroke-linecap='round' opacity='.7'/><circle cx='18' cy='18' r='7' fill='%23cc785c'/><circle cx='46' cy='32' r='5.5' fill='%23e0a07f'/><circle cx='32' cy='50' r='5.5' fill='%23e0a07f'/></svg>">
 <style>{CSS}</style></head>
 <body>
 
 <nav class="nav"><div class="nav-in">
 <a class="brand" href="https://github.com/bharath03-a/GitCortex">{LOGO}GitCortex</a>
 <span class="nav-tag">Benchmark</span>
-<div class="nav-right"><a href="https://github.com/bharath03-a/GitCortex">GitHub ↗</a></div>
+<div class="nav-right"><a href="https://github.com/bharath03-a/GitCortex" style="display:flex;align-items:center;gap:5px"><svg height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>GitHub</a></div>
 </div></nav>
 
 <div class="article">
@@ -533,7 +532,6 @@ No estimates. These are real numbers from the Claude API.
 Repos tested: {", ".join(f'<span class="mono">{html.escape(r.get("repo",""))}</span>' for r in reports)}
 ({", ".join(sorted(set(r["_lang"] for r in reports)))}).</p>
 
-<hr/>
 
 <h2>Results</h2>
 
@@ -597,7 +595,6 @@ The dashed line is break-even. Red zone = grep was cheaper; green zone = graph w
 Bars are per-repo totals across all {len(q_labels_present)} questions.</figcaption>
 </figure>
 
-<hr/>
 
 <h2>Detailed results by repository</h2>
 <p>Click any row to see the per-question breakdown. "Context" is the number of
@@ -614,7 +611,6 @@ Claude had to read. "Turns" is how many back-and-forth steps Claude needed.</p>
 </table></div>
 <div class="legend">Languages:{legend}</div>
 
-<hr/>
 
 <h2>What's next</h2>
 <p>These results show the graph helps most when the challenge is <em>finding</em>
@@ -622,7 +618,6 @@ the right code, and is still catching up when the question requires a
 broad survey. Here's what we're working on:</p>
 {next_cards}
 
-<hr/>
 
 <h2>About this benchmark</h2>
 <ul class="foot">
