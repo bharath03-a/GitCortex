@@ -1,0 +1,7 @@
+# Real benchmark run artifacts — machine-local, regenerate with real-harness.sh
+real-*.json
+*.prefix.json
+
+# Generated HTML reports — regenerate with report.py / real-report.py
+report.html
+real-report.html
