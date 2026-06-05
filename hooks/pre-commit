@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Pre-commit gate: auto-format with rustfmt, then lint with clippy.
+# rustfmt runs --edition 2021 and re-stages any files it touches so the
+# commit includes the formatted version — no more "fmt drift" failures.
+set -e
+
+# ── rustfmt ──────────────────────────────────────────────────────────────────
+echo "→ cargo fmt"
+cargo fmt --all
+# Re-stage any .rs files that rustfmt changed so the commit is clean.
+git diff --name-only | grep '\.rs$' | xargs -r git add
+
+# ── clippy ────────────────────────────────────────────────────────────────────
+echo "→ cargo clippy"
+cargo clippy --workspace --all-targets -- -D warnings
+
+echo "✓ pre-commit passed"

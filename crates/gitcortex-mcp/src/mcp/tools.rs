@@ -293,8 +293,10 @@ impl GitCortexServer {
                         })
                         .collect();
                     let risk = match total {
-                        0..=2 => "LOW", 3..=10 => "MEDIUM",
-                        11..=30 => "HIGH", _ => "CRITICAL",
+                        0..=2 => "LOW",
+                        3..=10 => "MEDIUM",
+                        11..=30 => "HIGH",
+                        _ => "CRITICAL",
                     };
                     CallToolResult::structured(json!({
                         "summary": format!("{total} caller(s) — risk {risk}{}",
@@ -964,20 +966,17 @@ impl GitCortexServer {
     ///
     /// Prefer this tool to keep per-turn schema overhead low. All individual
     /// tools remain available for direct use; this is an additive alias.
-    #[tool(
-        description = "Query the GitCortex code knowledge graph. \
+    #[tool(description = "Query the GitCortex code knowledge graph. \
         action: lookup_symbol | find_callers | find_callees | find_unused_symbols | \
         get_subgraph | search_code | start_tour | wiki_symbol | trace_path | \
         list_definitions | symbol_context | list_symbols_in_range | branch_diff_graph. \
         params: JSON object with the same fields as the individual tool (name/function_name/\
         seed_name/query/file/branch/depth/limit/direction as applicable). \
-        Returns identical output to the individual tool."
-    )]
-    fn gcx(
-        &self,
-        Parameters(p): Parameters<GcxDispatchParams>,
-    ) -> CallToolResult {
-        let branch_val = p.params.get("branch")
+        Returns identical output to the individual tool.")]
+    fn gcx(&self, Parameters(p): Parameters<GcxDispatchParams>) -> CallToolResult {
+        let branch_val = p
+            .params
+            .get("branch")
             .and_then(|v| v.as_str())
             .map(|s| s.to_owned());
 
@@ -986,9 +985,12 @@ impl GitCortexServer {
             ($key:expr) => {
                 match p.params.get($key).and_then(|v| v.as_str()) {
                     Some(s) => s.to_owned(),
-                    None => return CallToolResult::error(vec![Content::text(
-                        format!("gcx dispatch: params.{} is required for action={}", $key, p.action)
-                    )]),
+                    None => {
+                        return CallToolResult::error(vec![Content::text(format!(
+                            "gcx dispatch: params.{} is required for action={}",
+                            $key, p.action
+                        ))])
+                    }
                 }
             };
         }
@@ -1001,34 +1003,76 @@ impl GitCortexServer {
             })),
             "find_callers" => self.find_callers(Parameters(FindCallersParams {
                 function_name: str_field!("function_name"),
-                depth: p.params.get("depth").and_then(|v| v.as_u64()).map(|n| n as u8),
+                depth: p
+                    .params
+                    .get("depth")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as u8),
                 branch: branch_val,
             })),
             "find_callees" => self.find_callees(Parameters(FindCalleesParams {
                 function_name: str_field!("function_name"),
-                depth: p.params.get("depth").and_then(|v| v.as_u64()).map(|n| n as u8),
+                depth: p
+                    .params
+                    .get("depth")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as u8),
                 branch: branch_val,
             })),
-            "find_unused_symbols" => self.find_unused_symbols(Parameters(FindUnusedSymbolsParams {
-                kind: p.params.get("kind").and_then(|v| v.as_str()).map(|s| s.to_owned()),
-                limit: p.params.get("limit").and_then(|v| v.as_u64()).map(|n| n as usize),
-                branch: branch_val,
-            })),
+            "find_unused_symbols" => {
+                self.find_unused_symbols(Parameters(FindUnusedSymbolsParams {
+                    kind: p
+                        .params
+                        .get("kind")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_owned()),
+                    limit: p
+                        .params
+                        .get("limit")
+                        .and_then(|v| v.as_u64())
+                        .map(|n| n as usize),
+                    branch: branch_val,
+                }))
+            }
             "get_subgraph" => self.get_subgraph(Parameters(GetSubgraphParams {
                 seed_name: str_field!("seed_name"),
-                depth: p.params.get("depth").and_then(|v| v.as_u64()).map(|n| n as u8),
-                direction: p.params.get("direction").and_then(|v| v.as_str()).map(|s| s.to_owned()),
-                limit: p.params.get("limit").and_then(|v| v.as_u64()).map(|n| n as usize),
+                depth: p
+                    .params
+                    .get("depth")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as u8),
+                direction: p
+                    .params
+                    .get("direction")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_owned()),
+                limit: p
+                    .params
+                    .get("limit")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize),
                 branch: branch_val,
             })),
             "search_code" => self.search_code(Parameters(SearchCodeParams {
                 query: str_field!("query"),
-                limit: p.params.get("limit").and_then(|v| v.as_u64()).map(|n| n as usize),
+                limit: p
+                    .params
+                    .get("limit")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize),
                 branch: branch_val,
             })),
             "start_tour" => self.start_tour(Parameters(StartTourParams {
-                seed: p.params.get("seed").and_then(|v| v.as_str()).map(|s| s.to_owned()),
-                limit: p.params.get("limit").and_then(|v| v.as_u64()).map(|n| n as usize),
+                seed: p
+                    .params
+                    .get("seed")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_owned()),
+                limit: p
+                    .params
+                    .get("limit")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize),
                 branch: branch_val,
             })),
             "wiki_symbol" => self.wiki_symbol(Parameters(WikiSymbolParams {
@@ -1036,11 +1080,19 @@ impl GitCortexServer {
                 branch: branch_val,
             })),
             "trace_path" => self.trace_path(Parameters(TracePathParams {
-                from: p.params.get("from").or_else(|| p.params.get("src"))
-                    .and_then(|v| v.as_str()).map(|s| s.to_owned())
+                from: p
+                    .params
+                    .get("from")
+                    .or_else(|| p.params.get("src"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_owned())
                     .unwrap_or_default(),
-                to: p.params.get("to").or_else(|| p.params.get("dst"))
-                    .and_then(|v| v.as_str()).map(|s| s.to_owned())
+                to: p
+                    .params
+                    .get("to")
+                    .or_else(|| p.params.get("dst"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_owned())
                     .unwrap_or_default(),
                 branch: branch_val,
             })),
@@ -1052,12 +1104,22 @@ impl GitCortexServer {
                 name: str_field!("name"),
                 branch: branch_val,
             })),
-            "list_symbols_in_range" => self.list_symbols_in_range(Parameters(ListSymbolsInRangeParams {
-                file: str_field!("file"),
-                start_line: p.params.get("start_line").and_then(|v| v.as_u64()).unwrap_or(1) as u32,
-                end_line: p.params.get("end_line").and_then(|v| v.as_u64()).unwrap_or(u32::MAX as u64) as u32,
-                branch: branch_val,
-            })),
+            "list_symbols_in_range" => {
+                self.list_symbols_in_range(Parameters(ListSymbolsInRangeParams {
+                    file: str_field!("file"),
+                    start_line: p
+                        .params
+                        .get("start_line")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(1) as u32,
+                    end_line: p
+                        .params
+                        .get("end_line")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(u32::MAX as u64) as u32,
+                    branch: branch_val,
+                }))
+            }
             other => CallToolResult::error(vec![Content::text(format!(
                 "gcx dispatch: unknown action '{other}'. Valid: lookup_symbol, find_callers, \
                 find_callees, find_unused_symbols, get_subgraph, search_code, start_tour, \

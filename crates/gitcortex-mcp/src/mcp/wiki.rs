@@ -112,7 +112,11 @@ fn write_neighbor_list(out: &mut String, label: &str, nodes: &[Node]) {
         );
     }
     if nodes.len() > shown {
-        let _ = writeln!(out, "- _+{} more — use `find_callers` for the full list_", nodes.len() - shown);
+        let _ = writeln!(
+            out,
+            "- _+{} more — use `find_callers` for the full list_",
+            nodes.len() - shown
+        );
     }
     let _ = writeln!(out);
 }
