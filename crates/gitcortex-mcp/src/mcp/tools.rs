@@ -20,6 +20,18 @@ use serde_json::json;
 // ── Parameter types ───────────────────────────────────────────────────────────
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct GcxDispatchParams {
+    /// Which graph operation to run. One of: lookup_symbol, find_callers, find_callees,
+    /// find_unused_symbols, get_subgraph, search_code, start_tour, wiki_symbol,
+    /// trace_path, list_definitions, symbol_context, list_symbols_in_range.
+    pub action: String,
+    /// Parameters for the chosen action as a JSON object (same fields as the
+    /// individual tool: name, function_name, seed_name, query, file, branch,
+    /// depth, limit, direction, src, dst, start_line, end_line).
+    pub params: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct LookupSymbolParams {
     /// Symbol name to search for (unqualified).
     pub name: String,
@@ -107,6 +119,9 @@ pub struct ListSymbolsInRangeParams {
 pub struct FindUnusedSymbolsParams {
     /// Optional NodeKind filter: "function", "method", "struct", etc.
     pub kind: Option<String>,
+    /// Max symbols returned (default 30, capped at 200). `count` always reports
+    /// the true total; `truncated` flags when the list was longer.
+    pub limit: Option<usize>,
     pub branch: Option<String>,
 }
 
@@ -114,10 +129,14 @@ pub struct FindUnusedSymbolsParams {
 pub struct GetSubgraphParams {
     /// Seed symbol name (unqualified).
     pub seed_name: String,
-    /// How many hops to expand from the seed (1–5, default 2).
+    /// How many hops to expand from the seed (1–5, default 1). Depth 2+ on a
+    /// high-degree hub returns a large subgraph — raise deliberately.
     pub depth: Option<u8>,
     /// Direction: "in" (callers/ancestors), "out" (callees/descendants), "both" (default).
     pub direction: Option<String>,
+    /// Max nodes returned (default 30, capped at 200). Edges are filtered to the
+    /// kept node set; `truncated` flags when the neighbourhood was larger.
+    pub limit: Option<usize>,
     pub branch: Option<String>,
 }
 
@@ -132,7 +151,7 @@ pub struct WikiSymbolParams {
 pub struct SearchCodeParams {
     /// Free-text query — substring matched against `name` and `qualified_name`.
     pub query: String,
-    /// Max results (default 25, capped at 200).
+    /// Max results (default 10, capped at 200).
     pub limit: Option<usize>,
     pub branch: Option<String>,
 }
@@ -236,9 +255,8 @@ impl GitCortexServer {
 
     /// Find all callers of a function or method, with optional multi-hop depth.
     #[tool(
-        description = "Find all functions/methods that call the named function. \
-        Use depth=1 (default) for direct callers only, or depth=2..5 to walk the call graph \
-        multiple hops. Returns callers grouped by hop distance with a risk level."
+        description = "Find callers of a function. depth=1 (default) = direct callers; \
+        depth=2..5 = multi-hop. Results capped per hop; total count always returned."
     )]
     fn find_callers(&self, Parameters(p): Parameters<FindCallersParams>) -> CallToolResult {
         let branch = p
@@ -252,11 +270,17 @@ impl GitCortexServer {
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
         };
 
+        // Cap the caller list. The risk level is computed from the true total,
+        // so a hub symbol still reports CRITICAL even though we return a head.
+        const MAX_CALLERS: usize = 25;
+        const MAX_PER_HOP: usize = 15;
         if depth == 1 {
             match store.find_callers(&branch, &p.function_name) {
                 Ok(nodes) => {
+                    let total = nodes.len();
                     let items: Vec<_> = nodes
                         .iter()
+                        .take(MAX_CALLERS)
                         .map(|n| {
                             json!({
                                 "hop": 1,
@@ -268,15 +292,21 @@ impl GitCortexServer {
                             })
                         })
                         .collect();
+                    let risk = match total {
+                        0..=2 => "LOW", 3..=10 => "MEDIUM",
+                        11..=30 => "HIGH", _ => "CRITICAL",
+                    };
                     CallToolResult::structured(json!({
+                        "summary": format!("{total} caller(s) — risk {risk}{}",
+                            if total > items.len() {
+                                format!(", showing top {}", items.len())
+                            } else { String::new() }),
                         "function": p.function_name,
                         "depth": 1,
-                        "risk_level": match items.len() {
-                            0..=2 => "LOW",
-                            3..=10 => "MEDIUM",
-                            11..=30 => "HIGH",
-                            _ => "CRITICAL",
-                        },
+                        "risk_level": risk,
+                        "total_callers": total,
+                        "returned": items.len(),
+                        "truncated": total > items.len(),
                         "callers": items,
                     }))
                 }
@@ -290,8 +320,10 @@ impl GitCortexServer {
                         .iter()
                         .enumerate()
                         .map(|(i, nodes)| {
+                            let total = nodes.len();
                             let callers: Vec<_> = nodes
                                 .iter()
+                                .take(MAX_PER_HOP)
                                 .map(|n| {
                                     json!({
                                         "kind": n.kind.to_string(),
@@ -302,7 +334,12 @@ impl GitCortexServer {
                                     })
                                 })
                                 .collect();
-                            json!({ "hop": i + 1, "callers": callers })
+                            json!({
+                                "hop": i + 1,
+                                "total": total,
+                                "truncated": total > MAX_PER_HOP,
+                                "callers": callers,
+                            })
                         })
                         .collect();
                     CallToolResult::structured(json!({
@@ -738,10 +775,15 @@ impl GitCortexServer {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
         };
+        let limit = p.limit.unwrap_or(30).min(200);
         match store.find_unused_symbols(&branch, kind) {
             Ok(nodes) => {
+                // Return a ranked head, not the whole list. An agent acts on the
+                // first handful; dumping every unused symbol costs more tokens
+                // than a grep the model would have run instead.
                 let items: Vec<_> = nodes
                     .iter()
+                    .take(limit)
                     .map(|n| {
                         json!({
                             "kind": n.kind.to_string(),
@@ -757,6 +799,8 @@ impl GitCortexServer {
                     "branch": branch,
                     "unused_symbols": items,
                     "count": nodes.len(),
+                    "returned": items.len(),
+                    "truncated": nodes.len() > items.len(),
                 }))
             }
             Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
@@ -765,9 +809,10 @@ impl GitCortexServer {
 
     /// Return a neighbourhood subgraph around a seed symbol.
     #[tool(
-        description = "Return the subgraph centred on a seed symbol — all nodes and edges reachable \
-        within `depth` hops. Use direction='out' for downstream only, 'in' for upstream only, \
-        or 'both' (default) for both directions. Ideal for architecture rendering and impact analysis."
+        description = "Return the subgraph centred on a seed symbol — nodes and edges reachable \
+        within `depth` hops (default 1; raise for wider context). Direction='out' downstream, \
+        'in' upstream, 'both' (default). Capped at `limit` nodes (default 30) with a `truncated` \
+        flag — prefer find_callers/find_callees for a targeted answer over a wide neighbourhood dump."
     )]
     fn get_subgraph(&self, Parameters(p): Parameters<GetSubgraphParams>) -> CallToolResult {
         let branch = p
@@ -775,7 +820,8 @@ impl GitCortexServer {
             .as_deref()
             .unwrap_or(&self.default_branch)
             .to_owned();
-        let depth = p.depth.unwrap_or(2);
+        let depth = p.depth.unwrap_or(1).clamp(1, 5);
+        let max_nodes = p.limit.unwrap_or(30).min(200);
         let direction = p.direction.as_deref().unwrap_or("both").to_owned();
         let store = match self.store.lock() {
             Ok(g) => g,
@@ -783,8 +829,13 @@ impl GitCortexServer {
         };
         match store.get_subgraph(&branch, &p.seed_name, depth, &direction) {
             Ok(sg) => {
-                let nodes: Vec<_> = sg
-                    .nodes
+                // Cap the node set, then keep only edges whose endpoints both
+                // survive — a full neighbourhood dump on a hub symbol otherwise
+                // costs more tokens than reading the file it describes.
+                let kept: Vec<_> = sg.nodes.iter().take(max_nodes).collect();
+                let kept_ids: std::collections::HashSet<String> =
+                    kept.iter().map(|n| n.id.as_str()).collect();
+                let nodes: Vec<_> = kept
                     .iter()
                     .map(|n| {
                         json!({
@@ -799,6 +850,9 @@ impl GitCortexServer {
                 let edges: Vec<_> = sg
                     .edges
                     .iter()
+                    .filter(|e| {
+                        kept_ids.contains(&e.src.as_str()) && kept_ids.contains(&e.dst.as_str())
+                    })
                     .map(|e| {
                         json!({
                             "src": e.src.as_str(),
@@ -813,6 +867,9 @@ impl GitCortexServer {
                     "direction": direction,
                     "node_count": sg.nodes.len(),
                     "edge_count": sg.edges.len(),
+                    "returned_nodes": nodes.len(),
+                    "returned_edges": edges.len(),
+                    "truncated": sg.nodes.len() > nodes.len(),
                     "nodes": nodes,
                     "edges": edges,
                 }))
@@ -823,9 +880,8 @@ impl GitCortexServer {
 
     /// Render a wiki-style markdown summary for a symbol.
     #[tool(
-        description = "Render a wiki page for a symbol — definition signature, doc-comment, callers, \
-        callees, and used-by, formatted as markdown. Combines `lookup_symbol`, `find_callers`, and \
-        `find_callees` in one structured view ready to paste into a README or PR description."
+        description = "Markdown wiki for a symbol: signature, doc-comment, top callers/callees. \
+        Use for deep explanation; use lookup_symbol for a quick definition."
     )]
     fn wiki_symbol(&self, Parameters(p): Parameters<WikiSymbolParams>) -> CallToolResult {
         let branch = p
@@ -849,10 +905,8 @@ impl GitCortexServer {
 
     /// Search the graph by name + qualified-name with deterministic ranking.
     #[tool(
-        description = "Fuzzy search the code knowledge graph. Matches the query against both the \
-        unqualified `name` and full `qualified_name`, ranks by exactness (exact > prefix > \
-        substring), and applies kind boosts (functions/structs rank above generic nodes). \
-        Returns up to `limit` hits with scores."
+        description = "Search the code graph by name. Ranks exact > prefix > substring; \
+        functions/structs boosted. Use before grep for symbol discovery. Default limit=10."
     )]
     fn search_code(&self, Parameters(p): Parameters<SearchCodeParams>) -> CallToolResult {
         let branch = p
@@ -903,6 +957,112 @@ impl GitCortexServer {
                 }))
             }
             Err(e) => CallToolResult::error(vec![Content::text(format!("tour failed: {e}"))]),
+        }
+    }
+
+    /// Single-entry dispatch — one schema instead of fifteen.
+    ///
+    /// Prefer this tool to keep per-turn schema overhead low. All individual
+    /// tools remain available for direct use; this is an additive alias.
+    #[tool(
+        description = "Query the GitCortex code knowledge graph. \
+        action: lookup_symbol | find_callers | find_callees | find_unused_symbols | \
+        get_subgraph | search_code | start_tour | wiki_symbol | trace_path | \
+        list_definitions | symbol_context | list_symbols_in_range | branch_diff_graph. \
+        params: JSON object with the same fields as the individual tool (name/function_name/\
+        seed_name/query/file/branch/depth/limit/direction as applicable). \
+        Returns identical output to the individual tool."
+    )]
+    fn gcx(
+        &self,
+        Parameters(p): Parameters<GcxDispatchParams>,
+    ) -> CallToolResult {
+        let branch_val = p.params.get("branch")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_owned());
+
+        // Helper: extract a string field from params.
+        macro_rules! str_field {
+            ($key:expr) => {
+                match p.params.get($key).and_then(|v| v.as_str()) {
+                    Some(s) => s.to_owned(),
+                    None => return CallToolResult::error(vec![Content::text(
+                        format!("gcx dispatch: params.{} is required for action={}", $key, p.action)
+                    )]),
+                }
+            };
+        }
+
+        match p.action.as_str() {
+            "lookup_symbol" => self.lookup_symbol(Parameters(LookupSymbolParams {
+                name: str_field!("name"),
+                fuzzy: p.params.get("fuzzy").and_then(|v| v.as_bool()),
+                branch: branch_val,
+            })),
+            "find_callers" => self.find_callers(Parameters(FindCallersParams {
+                function_name: str_field!("function_name"),
+                depth: p.params.get("depth").and_then(|v| v.as_u64()).map(|n| n as u8),
+                branch: branch_val,
+            })),
+            "find_callees" => self.find_callees(Parameters(FindCalleesParams {
+                function_name: str_field!("function_name"),
+                depth: p.params.get("depth").and_then(|v| v.as_u64()).map(|n| n as u8),
+                branch: branch_val,
+            })),
+            "find_unused_symbols" => self.find_unused_symbols(Parameters(FindUnusedSymbolsParams {
+                kind: p.params.get("kind").and_then(|v| v.as_str()).map(|s| s.to_owned()),
+                limit: p.params.get("limit").and_then(|v| v.as_u64()).map(|n| n as usize),
+                branch: branch_val,
+            })),
+            "get_subgraph" => self.get_subgraph(Parameters(GetSubgraphParams {
+                seed_name: str_field!("seed_name"),
+                depth: p.params.get("depth").and_then(|v| v.as_u64()).map(|n| n as u8),
+                direction: p.params.get("direction").and_then(|v| v.as_str()).map(|s| s.to_owned()),
+                limit: p.params.get("limit").and_then(|v| v.as_u64()).map(|n| n as usize),
+                branch: branch_val,
+            })),
+            "search_code" => self.search_code(Parameters(SearchCodeParams {
+                query: str_field!("query"),
+                limit: p.params.get("limit").and_then(|v| v.as_u64()).map(|n| n as usize),
+                branch: branch_val,
+            })),
+            "start_tour" => self.start_tour(Parameters(StartTourParams {
+                seed: p.params.get("seed").and_then(|v| v.as_str()).map(|s| s.to_owned()),
+                limit: p.params.get("limit").and_then(|v| v.as_u64()).map(|n| n as usize),
+                branch: branch_val,
+            })),
+            "wiki_symbol" => self.wiki_symbol(Parameters(WikiSymbolParams {
+                name: str_field!("name"),
+                branch: branch_val,
+            })),
+            "trace_path" => self.trace_path(Parameters(TracePathParams {
+                from: p.params.get("from").or_else(|| p.params.get("src"))
+                    .and_then(|v| v.as_str()).map(|s| s.to_owned())
+                    .unwrap_or_default(),
+                to: p.params.get("to").or_else(|| p.params.get("dst"))
+                    .and_then(|v| v.as_str()).map(|s| s.to_owned())
+                    .unwrap_or_default(),
+                branch: branch_val,
+            })),
+            "list_definitions" => self.list_definitions(Parameters(ListDefinitionsParams {
+                file: str_field!("file"),
+                branch: branch_val,
+            })),
+            "symbol_context" => self.symbol_context(Parameters(SymbolContextParams {
+                name: str_field!("name"),
+                branch: branch_val,
+            })),
+            "list_symbols_in_range" => self.list_symbols_in_range(Parameters(ListSymbolsInRangeParams {
+                file: str_field!("file"),
+                start_line: p.params.get("start_line").and_then(|v| v.as_u64()).unwrap_or(1) as u32,
+                end_line: p.params.get("end_line").and_then(|v| v.as_u64()).unwrap_or(u32::MAX as u64) as u32,
+                branch: branch_val,
+            })),
+            other => CallToolResult::error(vec![Content::text(format!(
+                "gcx dispatch: unknown action '{other}'. Valid: lookup_symbol, find_callers, \
+                find_callees, find_unused_symbols, get_subgraph, search_code, start_tour, \
+                wiki_symbol, trace_path, list_definitions, symbol_context, list_symbols_in_range"
+            ))]),
         }
     }
 }
