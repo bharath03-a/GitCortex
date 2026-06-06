@@ -91,7 +91,7 @@ pub fn run() -> Result<()> {
         }
     }
 
-    // 6. MCP editor registrations
+    // 6. Assistant/editor registrations
     check_editor_mcp(&repo_root, &mut all_ok);
 
     eprintln!();
@@ -175,23 +175,37 @@ fn check_editor_mcp(repo_root: &Path, all_ok: &mut bool) {
                 }
             }),
         ),
+        (
+            "Codex",
+            Box::new({
+                let root = repo_root.to_path_buf();
+                move || {
+                    root.join("AGENTS.md").exists()
+                        && root.join(".codex").join("config.toml").exists()
+                }
+            }),
+        ),
     ];
 
     let mut any_registered = false;
     for (name, check) in editors {
         if check() {
-            ok(&format!("MCP registered  ({name})"));
+            ok(&format!("assistant configured  ({name})"));
             any_registered = true;
         } else {
             info(&format!(
-                "MCP not configured for {name}  (run: gcx init --editor {})",
+                "assistant not configured for {name}  (run: gcx init --editor {})",
                 name.to_ascii_lowercase().replace(' ', "-")
             ));
         }
     }
 
     if !any_registered {
-        fail("MCP not registered for any editor", "run: gcx init", all_ok);
+        fail(
+            "assistant not configured for any editor",
+            "run: gcx init",
+            all_ok,
+        );
     }
 }
 

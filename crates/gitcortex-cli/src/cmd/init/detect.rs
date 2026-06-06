@@ -22,6 +22,9 @@ pub fn detect_editors() -> Vec<EditorKind> {
     if env_prefix(&["ANTIGRAVITY_"]) {
         detected.push(EditorKind::Antigravity);
     }
+    if env_prefix(&["CODEX_HOME", "CODEX_CLI_PATH", "CODEX_"]) {
+        detected.push(EditorKind::Codex);
+    }
 
     if detected.is_empty() {
         EditorKind::all()
@@ -39,6 +42,7 @@ pub fn parse_editor_flag(value: &str) -> Vec<EditorKind> {
         "windsurf" => vec![EditorKind::Windsurf],
         "copilot" | "github-copilot" => vec![EditorKind::Copilot],
         "antigravity" => vec![EditorKind::Antigravity],
+        "codex" | "openai-codex" => vec![EditorKind::Codex],
         other => {
             eprintln!("warning: unknown editor '{other}', installing for all editors");
             EditorKind::all()

@@ -74,13 +74,6 @@ We ran Claude twice on 4 developer questions per repo — once with grep/read to
 | "If I change X, what breaks?"     | Refactor impact — honest about limits             |
 | "Show everything connected to X"  | Neighbourhood — honest loss case on large hubs    |
 
-<p align="center">
-  <img src="assets/bench-ratio.svg" alt="Token ratio by question type" width="640"/>
-</p>
-<p align="center">
-  <img src="assets/bench-cost.svg" alt="AI cost: grep vs GitCortex per repo" width="520"/>
-</p>
-
 ### Real results (Claude Haiku, 4 repos × 4 questions = 32 sessions)
 
 | Repo    | Language   | Cost (grep) | Cost (graph) |   Saving | Typical ratio |

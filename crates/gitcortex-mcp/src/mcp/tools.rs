@@ -4,6 +4,7 @@ use std::sync::Arc;
 use gitcortex_core::{schema::NodeKind, store::GraphStore};
 use gitcortex_store::kuzu::KuzuGraphStore;
 use rmcp::{
+    handler::server::router::tool::ToolRouter,
     handler::server::wrapper::Parameters,
     model::{
         CallToolResult, Content, GetPromptRequestParams, GetPromptResult, ListPromptsResult,
@@ -176,17 +177,49 @@ pub struct GitCortexServer {
     store: Arc<std::sync::Mutex<KuzuGraphStore>>,
     repo_root: PathBuf,
     default_branch: String,
+    compact: bool,
 }
 
 impl GitCortexServer {
     pub fn new(repo_root: &Path) -> anyhow::Result<Self> {
+        Self::new_with_mode(repo_root, false)
+    }
+
+    pub fn new_with_mode(repo_root: &Path, compact: bool) -> anyhow::Result<Self> {
         let store = KuzuGraphStore::open(repo_root)?;
         let default_branch = detect_current_branch(repo_root).unwrap_or_else(|| "main".into());
         Ok(Self {
             store: Arc::new(std::sync::Mutex::new(store)),
             repo_root: repo_root.to_owned(),
             default_branch,
+            compact,
         })
+    }
+
+    fn active_tool_router(&self) -> ToolRouter<Self> {
+        let mut router = Self::tool_router();
+        if self.compact {
+            for name in [
+                "lookup_symbol",
+                "find_callers",
+                "symbol_context",
+                "list_definitions",
+                "branch_diff_graph",
+                "detect_changes",
+                "find_callees",
+                "find_implementors",
+                "trace_path",
+                "list_symbols_in_range",
+                "find_unused_symbols",
+                "get_subgraph",
+                "wiki_symbol",
+                "search_code",
+                "start_tour",
+            ] {
+                router.disable_route(name);
+            }
+        }
+        router
     }
 }
 
@@ -1237,9 +1270,13 @@ Any circular dependencies, large fan-outs, or architectural concerns visible in 
 
 // ── Combined ServerHandler (tools + prompts) ──────────────────────────────────
 
-#[tool_handler]
+#[tool_handler(router = self.active_tool_router())]
 #[prompt_handler(router = Self::prompt_router())]
-impl rmcp::ServerHandler for GitCortexServer {}
+impl rmcp::ServerHandler for GitCortexServer {
+    fn get_tool(&self, name: &str) -> Option<rmcp::model::Tool> {
+        self.active_tool_router().get(name).cloned()
+    }
+}
 
 // ── Git diff helpers ──────────────────────────────────────────────────────────
 

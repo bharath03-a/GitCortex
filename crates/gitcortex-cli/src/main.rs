@@ -26,7 +26,7 @@ enum Commands {
         /// Also install the GitHub Actions blast-radius workflow.
         #[arg(long)]
         ci: bool,
-        /// Editor to configure: claude, cursor, windsurf, copilot, antigravity, all.
+        /// Editor to configure: claude, cursor, windsurf, copilot, antigravity, codex, all.
         /// Defaults to auto-detecting from environment variables; installs for all editors
         /// when no editor-specific env var is found.
         #[arg(long, value_name = "EDITOR")]
@@ -39,7 +39,11 @@ enum Commands {
         branch_switch: bool,
     },
     /// Start the MCP server (stdio transport by default).
-    Serve,
+    Serve {
+        /// Expose only the single dispatch tool (`gcx`) to reduce MCP schema overhead.
+        #[arg(long)]
+        compact: bool,
+    },
     /// One-shot query commands — useful for manual testing.
     #[command(subcommand)]
     Query(QueryCmd),
@@ -206,7 +210,7 @@ fn main() {
     let result = match cli.command {
         Commands::Init { ci, editor } => cmd::init::run(ci, editor.as_deref()),
         Commands::Hook { branch_switch } => cmd::hook::run(branch_switch),
-        Commands::Serve => cmd::serve::run(),
+        Commands::Serve { compact } => cmd::serve::run(compact),
         Commands::Query(q) => cmd::query::run(q),
         Commands::Viz {
             branch,
