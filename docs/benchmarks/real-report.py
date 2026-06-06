@@ -638,11 +638,50 @@ on file changes take under 500 ms. Index cost is not included in these numbers.<
 </body></html>"""
 
 
+def svg_wrapper(svg_body: str, bg: str = "#faf9f5") -> str:
+    """Wrap a bare SVG fragment with a background rect for standalone use."""
+    # Extract viewBox from the inner svg tag
+    import re
+    m = re.search(r'viewBox="([^"]+)"', svg_body)
+    vb = m.group(1) if m else "0 0 660 200"
+    parts = vb.split()
+    w, h = parts[2], parts[3]
+    inner = re.sub(r"</?svg[^>]*>", "", svg_body).strip()
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{vb}" '
+        f'style="background:{bg};border-radius:12px;padding:8px">'
+        f'<rect width="{w}" height="{h}" rx="12" fill="{bg}"/>'
+        f'{inner}</svg>'
+    )
+
+
+def export_assets(reports: list[dict], assets_dir: str) -> None:
+    """Export standalone SVG charts to assets/ for README embedding."""
+    os.makedirs(assets_dir, exist_ok=True)
+    qr = q_ratios(reports)
+    q_labels_present = [l for l in Q_TO_TOOL
+                        if any(q.get("q") == l for r in reports for q in r["questions"])]
+    chart_labels = [Q_PLAIN.get(l, l) for l in q_labels_present]
+    chart_ratios_vals = [geomean(qr[l]) for l in q_labels_present]
+
+    ratio_svg = ratio_bar_svg(chart_labels, chart_ratios_vals, width=620)
+    cost_svg = cost_comparison_svg(reports, width=500)
+
+    with open(os.path.join(assets_dir, "bench-ratio.svg"), "w") as f:
+        f.write(svg_wrapper(ratio_svg))
+    with open(os.path.join(assets_dir, "bench-cost.svg"), "w") as f:
+        f.write(svg_wrapper(cost_svg))
+    print(f"exported bench-ratio.svg + bench-cost.svg → {assets_dir}")
+
+
 def main() -> None:
     here = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.join(here, "..", "..")
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("bench_dir", nargs="?", default=here)
     ap.add_argument("-o", "--out", default=None)
+    ap.add_argument("--export-assets", action="store_true",
+                    help="also write bench-*.svg to assets/ for README embedding")
     args = ap.parse_args()
     reports = load(args.bench_dir)
     if not reports:
@@ -651,6 +690,8 @@ def main() -> None:
     with open(out, "w", encoding="utf-8") as fh:
         fh.write(render(reports))
     print(f"wrote {out}  ({len(reports)} repos)")
+    if args.export_assets:
+        export_assets(reports, os.path.join(repo_root, "assets"))
 
 
 if __name__ == "__main__":

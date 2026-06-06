@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="assets/logo-wordmark.svg" alt="GitCortex" height="56"/>
+  <picture>
+    <source media="(prefers-color-scheme: dark)"  srcset="assets/logo-wordmark-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/logo-wordmark.svg">
+    <img src="assets/logo-wordmark.svg" alt="GitCortex" height="60"/>
+  </picture>
 </p>
 
 <p align="center">A local-first, branch-aware <strong>code knowledge graph</strong> for Git repositories.</p>
@@ -70,6 +74,13 @@ We ran Claude twice on 4 developer questions per repo — once with grep/read to
 | "If I change X, what breaks?" | Refactor impact — honest about limits |
 | "Show everything connected to X" | Neighbourhood — honest loss case on large hubs |
 
+<p align="center">
+  <img src="assets/bench-ratio.svg" alt="Token ratio by question type" width="640"/>
+</p>
+<p align="center">
+  <img src="assets/bench-cost.svg" alt="AI cost: grep vs GitCortex per repo" width="520"/>
+</p>
+
 ### Real results (Claude Haiku, 4 repos × 4 questions = 32 sessions)
 
 | Repo | Language | Cost (grep) | Cost (graph) | Saving | Typical ratio |
@@ -136,6 +147,37 @@ Adding a language is a self-contained task — implement one `LanguageParser` in
 ---
 
 ## Installation
+
+**Direct binary download (no package manager required):**
+
+```bash
+# macOS Apple Silicon (M1/M2/M3)
+curl -LO https://github.com/bharath03-a/GitCortex/releases/latest/download/gitcortex-aarch64-apple-darwin.tar.xz
+tar -xf gitcortex-aarch64-apple-darwin.tar.xz
+sudo mv gcx /usr/local/bin/
+
+# macOS Intel
+curl -LO https://github.com/bharath03-a/GitCortex/releases/latest/download/gitcortex-x86_64-apple-darwin.tar.xz
+tar -xf gitcortex-x86_64-apple-darwin.tar.xz
+sudo mv gcx /usr/local/bin/
+
+# Linux x86_64
+curl -LO https://github.com/bharath03-a/GitCortex/releases/latest/download/gitcortex-x86_64-unknown-linux-gnu.tar.xz
+tar -xf gitcortex-x86_64-unknown-linux-gnu.tar.xz
+sudo mv gcx /usr/local/bin/
+
+# Linux ARM64
+curl -LO https://github.com/bharath03-a/GitCortex/releases/latest/download/gitcortex-aarch64-unknown-linux-gnu.tar.xz
+tar -xf gitcortex-aarch64-unknown-linux-gnu.tar.xz
+sudo mv gcx /usr/local/bin/
+```
+
+Or use the one-line installer:
+
+```bash
+curl --proto '=https' --tlsv1.2 -LsSf \
+  https://github.com/bharath03-a/GitCortex/releases/latest/download/gitcortex-installer.sh | sh
+```
 
 **npm / pnpm / yarn (Node.js — no Rust required):**
 
