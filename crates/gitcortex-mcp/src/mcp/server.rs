@@ -5,11 +5,12 @@ use rmcp::{transport::io::stdio, ServiceExt};
 
 use crate::mcp::tools::GitCortexServer;
 
-pub async fn serve(repo_root: PathBuf) -> Result<()> {
-    let handler = GitCortexServer::new(&repo_root).context("failed to open graph store")?;
+pub async fn serve(repo_root: PathBuf, compact: bool) -> Result<()> {
+    let handler = GitCortexServer::new_with_mode(&repo_root, compact)
+        .context("failed to open graph store")?;
 
     let transport = stdio();
-    tracing::info!("GitCortex MCP server started (stdio)");
+    tracing::info!("GitCortex MCP server started (stdio, compact={compact})");
 
     // `serve` returns a `RunningService` that owns the message loop. Dropping
     // it immediately tears the connection down — the client only ever sees the

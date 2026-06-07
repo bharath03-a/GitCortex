@@ -93,12 +93,15 @@ fn format(ctx: SymbolContext) -> String {
     out
 }
 
+const WIKI_NEIGHBOR_LIMIT: usize = 5;
+
 fn write_neighbor_list(out: &mut String, label: &str, nodes: &[Node]) {
     if nodes.is_empty() {
         return;
     }
+    let shown = nodes.len().min(WIKI_NEIGHBOR_LIMIT);
     let _ = writeln!(out, "## {label} ({})", nodes.len());
-    for n in nodes {
+    for n in &nodes[..shown] {
         let _ = writeln!(
             out,
             "- `{}` ({})  — `{}:{}`",
@@ -106,6 +109,13 @@ fn write_neighbor_list(out: &mut String, label: &str, nodes: &[Node]) {
             n.kind,
             n.file.display(),
             n.span.start_line
+        );
+    }
+    if nodes.len() > shown {
+        let _ = writeln!(
+            out,
+            "- _+{} more — use `find_callers` for the full list_",
+            nodes.len() - shown
         );
     }
     let _ = writeln!(out);

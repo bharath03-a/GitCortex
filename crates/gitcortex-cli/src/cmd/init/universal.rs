@@ -99,19 +99,40 @@ pub fn install_hooks(repo_root: &Path) -> Result<usize> {
 pub fn initial_index(repo_root: &Path) -> Result<(usize, usize)> {
     let mut store = KuzuGraphStore::open(repo_root).context("failed to open graph store")?;
     let branch = current_branch(repo_root)?;
+    let head_sha = head_sha(repo_root)?;
+    let last_sha = store.last_indexed_sha(&branch)?;
 
-    if store.last_indexed_sha(&branch)?.is_none() {
+    if last_sha.as_deref() != Some(head_sha.as_str()) {
         let indexer = IncrementalIndexer::new(repo_root).context("failed to create indexer")?;
-        let (diff, head_sha) = indexer.run(None).context("initial index failed")?;
+        let (diff, indexed_head_sha) = indexer
+            .run(last_sha.as_deref())
+            .context("initial index failed")?;
         store.apply_diff(&branch, &diff).context("apply diff")?;
         store
-            .set_last_indexed_sha(&branch, &head_sha)
+            .set_last_indexed_sha(&branch, &indexed_head_sha)
             .context("persist sha")?;
     }
 
     let nodes = store.list_all_nodes(&branch)?.len();
     let edges = store.list_all_edges(&branch)?.len();
+    if nodes == 0 && edges > 0 {
+        anyhow::bail!(
+            "graph store looks inconsistent: {nodes} nodes but {edges} edges on {branch}; run `gcx clean && gcx init`"
+        );
+    }
     Ok((nodes, edges))
+}
+
+fn head_sha(repo_root: &Path) -> Result<String> {
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(repo_root)
+        .output()
+        .context("git rev-parse HEAD failed")?;
+    if !output.status.success() {
+        anyhow::bail!("git rev-parse HEAD failed");
+    }
+    Ok(String::from_utf8(output.stdout)?.trim().to_owned())
 }
 
 pub fn write_agent_guide(repo_root: &Path) -> Result<()> {

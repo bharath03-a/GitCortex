@@ -19,6 +19,10 @@ installers = ["shell"]
 targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu"]
 # Build artifacts on PRs to verify cross-platform builds before merge
 pr-run-mode = "upload"
+# release.yml has manual additions (PyPI / npm publish triggers chained from
+# the announce job, plus `actions: write` permission). Tell cargo-dist to
+# leave those edits alone instead of failing `dist plan` on a dirty diff.
+allow-dirty = ["ci"]
 
 [dist.github-custom-runners]
 x86_64-unknown-linux-gnu = "ubuntu-24.04"

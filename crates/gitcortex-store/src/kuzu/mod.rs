@@ -416,7 +416,8 @@ impl GraphStore for KuzuGraphStore {
                 "MATCH (fn_node:{nt} {{id: '{fn_esc}'}}), (ty:{nt}) \
                  WHERE ty.name = '{ty}' \
                  AND (ty.kind = 'struct' OR ty.kind = 'enum' \
-                      OR ty.kind = 'trait' OR ty.kind = 'type_alias'){scope} \
+                      OR ty.kind = 'trait' OR ty.kind = 'interface' \
+                      OR ty.kind = 'type_alias'){scope} \
                  CREATE (fn_node)-[:{et} {{kind: 'uses'}}]->(ty)"
             ))
             .map_err(|e| GitCortexError::Store(format!("deferred use '{type_name}': {e}")))?;

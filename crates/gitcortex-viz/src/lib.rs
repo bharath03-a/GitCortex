@@ -23,10 +23,21 @@ static VIZ_WEBGL: &[u8] = include_bytes!("../dist-viz/assets/webgl-device.js");
 /// Output format for `gcx viz`.
 #[derive(clap::ValueEnum, Clone)]
 pub enum VizFormat {
-    /// Open an interactive force-directed graph in the browser.
+    /// Open the interactive WebGL force-directed graph in the browser
+    /// (Cosmograph, served from a local Axum process).
     Web,
+    /// Self-contained `graph.html` printed to stdout. Uses vis-network from a
+    /// CDN, embeds the graph as inline JSON. No server, can be opened offline
+    /// after the first load. Pipe to a file: `gcx viz --format html > graph.html`.
+    Html,
     /// Print a Graphviz DOT file to stdout.
     Dot,
+    /// Print a static SVG (kind-grouped concentric layout) to stdout.
+    Svg,
+    /// Print a GraphML XML document to stdout (importable by Gephi, yEd, …).
+    Graphml,
+    /// Print Cypher `CREATE` statements to stdout, importable by Neo4j.
+    Cypher,
 }
 
 /// Shared app state. `KuzuGraphStore` is held behind a `std::sync::Mutex` because
@@ -46,6 +57,22 @@ pub fn run(branch: String, port: u16, format: VizFormat) -> Result<()> {
         VizFormat::Dot => {
             let dot = build_dot(&store, &branch)?;
             print!("{dot}");
+        }
+        VizFormat::Html => {
+            let html = build_html(&store, &branch)?;
+            print!("{html}");
+        }
+        VizFormat::Svg => {
+            let svg = build_svg(&store, &branch)?;
+            print!("{svg}");
+        }
+        VizFormat::Graphml => {
+            let xml = build_graphml(&store, &branch)?;
+            print!("{xml}");
+        }
+        VizFormat::Cypher => {
+            let cy = build_cypher(&store, &branch)?;
+            print!("{cy}");
         }
         VizFormat::Web => {
             let state = Arc::new(AppState {
@@ -480,6 +507,276 @@ fn build_dot(store: &KuzuGraphStore, branch: &str) -> Result<String> {
 
 fn dot_escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+// ─── HTML (vis-network, self-contained) ───────────────────────────────────────
+//
+// Emits a single HTML document that loads vis-network from a CDN, embeds the
+// full graph as inline JSON, and renders a force-directed layout in the
+// browser. No server, no build step. Pipe to a file:
+//   gcx viz --format html > graph.html
+// Then double-click `graph.html`. After the first load vis-network caches
+// in the browser, so subsequent opens work offline too.
+fn build_html(store: &KuzuGraphStore, branch: &str) -> Result<String> {
+    let nodes = store.list_all_nodes(branch)?;
+    let edges = store.list_all_edges(branch)?;
+
+    let nodes_json: Vec<Value> = nodes
+        .iter()
+        .map(|n| {
+            json!({
+                "id":    n.id.as_str(),
+                "label": format!("{}\n{}", n.name, n.kind),
+                "title": format!(
+                    "{} ({})\\n{}:{}\\nkind: {}",
+                    n.name, n.qualified_name, n.file.display(), n.span.start_line, n.kind
+                ),
+                "color": kind_dot_color(&n.kind),
+                "group": n.kind.to_string(),
+                "shape": "box",
+            })
+        })
+        .collect();
+
+    let edges_json: Vec<Value> = edges
+        .iter()
+        .map(|e| {
+            json!({
+                "from":  e.src.as_str(),
+                "to":    e.dst.as_str(),
+                "label": e.kind.to_string(),
+                "arrows": "to",
+            })
+        })
+        .collect();
+
+    let payload = json!({ "nodes": nodes_json, "edges": edges_json });
+    let payload_str = serde_json::to_string(&payload)?;
+    let branch_esc = branch.replace('"', "&quot;");
+    let total_nodes = nodes.len();
+    let total_edges = edges.len();
+
+    Ok(format!(
+        r#"<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>GitCortex graph — {branch_esc}</title>
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<style>
+  html, body {{ margin: 0; padding: 0; height: 100%; background: #1e1e2e; color: #cdd6f4; font-family: -apple-system, sans-serif; }}
+  #header {{ padding: 10px 16px; background: #181825; border-bottom: 1px solid #313244; font-size: 13px; }}
+  #header strong {{ color: #89b4fa; }}
+  #header input {{ background: #313244; color: #cdd6f4; border: 1px solid #45475a; padding: 4px 8px; border-radius: 4px; margin-left: 12px; }}
+  #net {{ width: 100vw; height: calc(100vh - 48px); }}
+</style>
+</head>
+<body>
+<div id="header">
+  <strong>GitCortex</strong> · branch <code>{branch_esc}</code> · {total_nodes} nodes, {total_edges} edges
+  <input id="q" type="search" placeholder="search by name…">
+</div>
+<div id="net"></div>
+<script>
+  const DATA = {payload_str};
+  const nodes = new vis.DataSet(DATA.nodes);
+  const edges = new vis.DataSet(DATA.edges);
+  const net = new vis.Network(document.getElementById('net'), {{ nodes, edges }}, {{
+    nodes: {{ font: {{ color: '#1e1e2e', face: 'monospace', size: 12 }} }},
+    edges: {{ color: {{ color: '#6c7086', highlight: '#f5c2e7' }}, font: {{ color: '#bac2de', size: 10, strokeWidth: 0, background: 'rgba(30,30,46,0.7)' }}, smooth: false }},
+    physics: {{ stabilization: {{ iterations: 200 }}, barnesHut: {{ gravitationalConstant: -8000, springLength: 120 }} }},
+    interaction: {{ hover: true, tooltipDelay: 200 }}
+  }});
+  document.getElementById('q').addEventListener('input', (e) => {{
+    const term = e.target.value.toLowerCase();
+    if (!term) {{ net.unselectAll(); return; }}
+    const hits = DATA.nodes.filter(n => (n.label || '').toLowerCase().includes(term)).map(n => n.id);
+    net.selectNodes(hits);
+    if (hits.length) net.focus(hits[0], {{ animation: true, scale: 0.8 }});
+  }});
+</script>
+</body>
+</html>"#
+    ))
+}
+
+// ─── SVG (kind-grouped concentric layout) ─────────────────────────────────────
+//
+// Simple deterministic layout: group nodes by NodeKind, lay each group on a
+// concentric ring, edges drawn as straight lines. Not pretty for huge graphs,
+// but readable for small/medium repos and useful for embedding in docs.
+fn build_svg(store: &KuzuGraphStore, branch: &str) -> Result<String> {
+    use std::collections::HashMap;
+
+    let nodes = store.list_all_nodes(branch)?;
+    let edges = store.list_all_edges(branch)?;
+
+    let mut by_kind: HashMap<String, Vec<&Node>> = HashMap::new();
+    for n in &nodes {
+        by_kind.entry(n.kind.to_string()).or_default().push(n);
+    }
+    let mut kinds: Vec<String> = by_kind.keys().cloned().collect();
+    kinds.sort();
+
+    let cx = 600.0_f64;
+    let cy = 600.0_f64;
+    let ring_base = 80.0_f64;
+    let ring_step = 95.0_f64;
+
+    let mut pos: HashMap<String, (f64, f64)> = HashMap::new();
+    let mut svg = String::new();
+    svg.push_str(&format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1200 1200\" font-family=\"monospace\" font-size=\"9\">\n  <rect width=\"1200\" height=\"1200\" fill=\"#1e1e2e\"/>\n  <text x=\"20\" y=\"24\" fill=\"#cdd6f4\">GitCortex · branch {branch} · {n} nodes · {e} edges</text>\n",
+        n = nodes.len(),
+        e = edges.len()
+    ));
+
+    for (i, kind) in kinds.iter().enumerate() {
+        let radius = ring_base + ring_step * (i as f64);
+        let group = &by_kind[kind];
+        let n = group.len() as f64;
+        for (j, node) in group.iter().enumerate() {
+            let theta = (j as f64) * std::f64::consts::TAU / n.max(1.0);
+            let x = cx + radius * theta.cos();
+            let y = cy + radius * theta.sin();
+            pos.insert(node.id.as_str(), (x, y));
+        }
+    }
+
+    // Draw edges first (behind nodes).
+    for e in &edges {
+        let src = e.src.as_str();
+        let dst = e.dst.as_str();
+        let (Some(&(x1, y1)), Some(&(x2, y2))) = (pos.get(&src), pos.get(&dst)) else {
+            continue;
+        };
+        svg.push_str(&format!(
+            "  <line x1=\"{x1:.1}\" y1=\"{y1:.1}\" x2=\"{x2:.1}\" y2=\"{y2:.1}\" stroke=\"#45475a\" stroke-width=\"0.5\" opacity=\"0.5\"/>\n"
+        ));
+    }
+
+    // Draw nodes + labels.
+    for n in &nodes {
+        let nid = n.id.as_str();
+        let Some(&(x, y)) = pos.get(&nid) else {
+            continue;
+        };
+        let color = kind_dot_color(&n.kind);
+        let name = svg_escape(&n.name);
+        svg.push_str(&format!(
+            "  <circle cx=\"{x:.1}\" cy=\"{y:.1}\" r=\"3.5\" fill=\"{color}\" stroke=\"#11111b\" stroke-width=\"0.5\"/>\n  <text x=\"{tx:.1}\" y=\"{ty:.1}\" fill=\"#cdd6f4\">{name}</text>\n",
+            tx = x + 5.0,
+            ty = y + 3.0
+        ));
+    }
+
+    svg.push_str("</svg>\n");
+    Ok(svg)
+}
+
+fn svg_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+// ─── GraphML (Gephi / yEd / Cytoscape) ────────────────────────────────────────
+fn build_graphml(store: &KuzuGraphStore, branch: &str) -> Result<String> {
+    let nodes = store.list_all_nodes(branch)?;
+    let edges = store.list_all_edges(branch)?;
+    let mut out = String::new();
+    out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    out.push_str("<graphml xmlns=\"http://graphml.graphdrawing.org/xmlns\">\n");
+    out.push_str("  <key id=\"name\" for=\"node\" attr.name=\"name\" attr.type=\"string\"/>\n");
+    out.push_str("  <key id=\"kind\" for=\"node\" attr.name=\"kind\" attr.type=\"string\"/>\n");
+    out.push_str("  <key id=\"file\" for=\"node\" attr.name=\"file\" attr.type=\"string\"/>\n");
+    out.push_str(
+        "  <key id=\"qname\" for=\"node\" attr.name=\"qualified_name\" attr.type=\"string\"/>\n",
+    );
+    out.push_str("  <key id=\"line\" for=\"node\" attr.name=\"start_line\" attr.type=\"int\"/>\n");
+    out.push_str("  <key id=\"ekind\" for=\"edge\" attr.name=\"kind\" attr.type=\"string\"/>\n");
+    out.push_str(&format!(
+        "  <graph id=\"gitcortex-{}\" edgedefault=\"directed\">\n",
+        svg_escape(branch)
+    ));
+    for n in &nodes {
+        out.push_str(&format!(
+            "    <node id=\"{id}\">\n      <data key=\"name\">{name}</data>\n      <data key=\"kind\">{kind}</data>\n      <data key=\"file\">{file}</data>\n      <data key=\"qname\">{qname}</data>\n      <data key=\"line\">{line}</data>\n    </node>\n",
+            id = svg_escape(&n.id.as_str()),
+            name = svg_escape(&n.name),
+            kind = n.kind,
+            file = svg_escape(&n.file.display().to_string()),
+            qname = svg_escape(&n.qualified_name),
+            line = n.span.start_line
+        ));
+    }
+    for (i, e) in edges.iter().enumerate() {
+        out.push_str(&format!(
+            "    <edge id=\"e{i}\" source=\"{src}\" target=\"{dst}\">\n      <data key=\"ekind\">{kind}</data>\n    </edge>\n",
+            src = svg_escape(&e.src.as_str()),
+            dst = svg_escape(&e.dst.as_str()),
+            kind = e.kind
+        ));
+    }
+    out.push_str("  </graph>\n</graphml>\n");
+    Ok(out)
+}
+
+// ─── Cypher (Neo4j bulk import) ───────────────────────────────────────────────
+//
+// Emits `CREATE` statements with a single :Symbol label and properties.
+// Edges keep their EdgeKind as the relationship type. Pipe to `cypher-shell`
+// or paste into the Neo4j browser. Keeping each statement on its own line so
+// large dumps can be sliced with `split -l`.
+fn build_cypher(store: &KuzuGraphStore, branch: &str) -> Result<String> {
+    let nodes = store.list_all_nodes(branch)?;
+    let edges = store.list_all_edges(branch)?;
+    let mut out = String::new();
+    out.push_str(&format!(
+        "// GitCortex Cypher export — branch {branch} — {} nodes, {} edges\n",
+        nodes.len(),
+        edges.len()
+    ));
+    for n in &nodes {
+        out.push_str(&format!(
+            "CREATE (`{id}`:Symbol {{name: '{name}', kind: '{kind}', file: '{file}', qualified_name: '{qname}', start_line: {line}}});\n",
+            id = cypher_id(&n.id.as_str()),
+            name = cypher_str(&n.name),
+            kind = n.kind,
+            file = cypher_str(&n.file.display().to_string()),
+            qname = cypher_str(&n.qualified_name),
+            line = n.span.start_line
+        ));
+    }
+    for e in &edges {
+        // Map to ALL_CAPS relationship types per Neo4j convention.
+        let rel = e.kind.to_string().to_uppercase();
+        out.push_str(&format!(
+            "MATCH (a:Symbol), (b:Symbol) WHERE a.name IS NOT NULL AND id(a) = id(`{src}`) AND id(b) = id(`{dst}`) CREATE (a)-[:{rel}]->(b);\n",
+            src = cypher_id(&e.src.as_str()),
+            dst = cypher_id(&e.dst.as_str())
+        ));
+    }
+    Ok(out)
+}
+
+fn cypher_id(s: &str) -> String {
+    // Backticked node-variable name: strip anything not [A-Za-z0-9_].
+    s.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn cypher_str(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('\'', "\\'")
 }
 
 fn kind_dot_color(k: &NodeKind) -> &'static str {

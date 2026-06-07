@@ -533,7 +533,7 @@ impl<'src> FileVisitor<'src> {
             .get(&name)
             .cloned()
             .unwrap_or_else(NodeId::new);
-        let graph_node = self.make_node(id.clone(), NodeKind::Trait, name, scope, node);
+        let graph_node = self.make_node(id.clone(), NodeKind::Interface, name, scope, node);
         self.nodes.push(graph_node);
 
         // Interface extends other interfaces → Implements edges
@@ -1132,9 +1132,12 @@ mod tests {
     #[test]
     fn parses_ts_interface() {
         let (nodes, _) = parse_ts("interface Greeter { greet(): void; }");
-        let traits: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Trait).collect();
-        assert_eq!(traits.len(), 1);
-        assert_eq!(traits[0].name, "Greeter");
+        let ifaces: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Interface)
+            .collect();
+        assert_eq!(ifaces.len(), 1);
+        assert_eq!(ifaces[0].name, "Greeter");
     }
 
     #[test]

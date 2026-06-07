@@ -330,6 +330,16 @@ impl<'src> FileVisitor<'src> {
                             });
                         }
                     }
+                    "record_declaration" => {
+                        let nested_id = self.visit_record_nested(child, &class_scope);
+                        if let Some(nid) = nested_id {
+                            self.edges.push(Edge {
+                                src: id.clone(),
+                                dst: nid,
+                                kind: EdgeKind::Contains,
+                            });
+                        }
+                    }
                     "field_declaration" => {
                         self.extract_field_uses(child, &id);
                     }
@@ -380,6 +390,14 @@ impl<'src> FileVisitor<'src> {
                     "method_declaration" | "constructor_declaration"
                 ) {
                     self.visit_method(child, &nested_scope, id.clone());
+                } else if child.kind() == "record_declaration" {
+                    if let Some(nid) = self.visit_record_nested(child, &nested_scope) {
+                        self.edges.push(Edge {
+                            src: id.clone(),
+                            dst: nid,
+                            kind: EdgeKind::Contains,
+                        });
+                    }
                 } else if child.kind() == "field_declaration" {
                     self.extract_field_uses(child, &id);
                 }
@@ -539,6 +557,32 @@ impl<'src> FileVisitor<'src> {
                 }
             }
         }
+    }
+
+    /// Visit a nested record declaration (inside a class body), returning its NodeId.
+    fn visit_record_nested(&mut self, node: TsNode<'_>, scope: &[String]) -> Option<NodeId> {
+        let name_node = node.child_by_field_name("name")?;
+        let name = self.text(name_node).to_owned();
+        let id = self
+            .type_index
+            .get(&name)
+            .cloned()
+            .unwrap_or_else(NodeId::new);
+        let graph_node = self.make_node(id.clone(), NodeKind::Struct, name.clone(), scope, node);
+        self.nodes.push(graph_node);
+
+        let mut record_scope = scope.to_vec();
+        record_scope.push(name);
+
+        if let Some(body) = node.child_by_field_name("body") {
+            let mut c = body.walk();
+            for child in body.named_children(&mut c).collect::<Vec<_>>() {
+                if child.kind() == "method_declaration" {
+                    self.visit_method(child, &record_scope, id.clone());
+                }
+            }
+        }
+        Some(id)
     }
 
     fn visit_method(&mut self, node: TsNode<'_>, scope: &[String], container_id: NodeId) {

@@ -24,7 +24,7 @@ pub struct SearchHit {
 }
 
 /// Default result cap when caller does not specify.
-const DEFAULT_LIMIT: usize = 25;
+const DEFAULT_LIMIT: usize = 10;
 const MAX_LIMIT: usize = 200;
 
 /// Run a fuzzy search across all nodes of `branch`. The lookup matches both

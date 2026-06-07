@@ -4,6 +4,8 @@ use anyhow::{Context, Result};
 use gitcortex_core::store::GraphStore;
 use gitcortex_store::kuzu::KuzuGraphStore;
 
+use crate::style::{header_style, hint_style, kind_style_from_str, name_style, paint};
+
 pub fn run(branch: Option<String>) -> Result<()> {
     let repo_root = repo_root()?;
     let branch = match branch {
@@ -29,19 +31,48 @@ pub fn run(branch: Option<String>) -> Result<()> {
         *by_edge.entry(e.kind.to_string()).or_default() += 1;
     }
 
-    println!("branch:     {branch}");
-    println!("last sha:   {last_sha}");
-    println!("nodes:      {}", nodes.len());
+    println!(
+        "{}     {}",
+        paint(header_style(), "branch:"),
+        paint(name_style(), &branch)
+    );
+    println!(
+        "{}   {}",
+        paint(header_style(), "last sha:"),
+        paint(hint_style(), &last_sha)
+    );
+    println!(
+        "{}      {}",
+        paint(header_style(), "nodes:"),
+        paint(name_style(), &nodes.len().to_string())
+    );
     let mut kinds: Vec<_> = by_kind.iter().collect();
     kinds.sort_by_key(|(k, _)| k.as_str());
     for (k, c) in &kinds {
-        println!("  {k:<12} {c}");
+        // Pad raw text to a fixed width BEFORE colouring — ANSI escape
+        // sequences are non-printing but still count toward `{:<12}`, so
+        // colouring first breaks column alignment.
+        let padded = format!("{k:<12}");
+        println!(
+            "  {} {}",
+            paint(kind_style_from_str(k), &padded),
+            paint(hint_style(), &c.to_string())
+        );
     }
-    println!("edges:      {}", edges.len());
+    println!(
+        "{}      {}",
+        paint(header_style(), "edges:"),
+        paint(name_style(), &edges.len().to_string())
+    );
     let mut ekinds: Vec<_> = by_edge.iter().collect();
     ekinds.sort_by_key(|(k, _)| k.as_str());
     for (k, c) in &ekinds {
-        println!("  {k:<12} {c}");
+        let padded = format!("{k:<12}");
+        println!(
+            "  {} {}",
+            paint(hint_style(), &padded),
+            paint(hint_style(), &c.to_string())
+        );
     }
 
     Ok(())

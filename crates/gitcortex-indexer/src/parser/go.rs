@@ -401,7 +401,7 @@ impl<'src> FileVisitor<'src> {
                         .cloned()
                         .unwrap_or_else(NodeId::new);
                     let mut graph_node =
-                        self.make_node(id.clone(), NodeKind::Trait, name, &[], spec);
+                        self.make_node(id.clone(), NodeKind::Interface, name, &[], spec);
                     // Capture generic type parameter constraints (Go 1.18+).
                     graph_node.metadata.generic_bounds = self.collect_generic_bounds(spec);
                     self.nodes.push(graph_node);
@@ -890,9 +890,12 @@ mod tests {
     fn parses_interface() {
         let src = "package main\ntype Greeter interface { Greet() string }";
         let (nodes, _) = parse(src);
-        let traits: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Trait).collect();
-        assert_eq!(traits.len(), 1);
-        assert_eq!(traits[0].name, "Greeter");
+        let ifaces: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Interface)
+            .collect();
+        assert_eq!(ifaces.len(), 1);
+        assert_eq!(ifaces[0].name, "Greeter");
     }
 
     #[test]

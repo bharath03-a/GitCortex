@@ -16,6 +16,7 @@ name = "gcx"
 path = "src/main.rs"
 
 [dependencies]
+anstyle = "1"
 anyhow.workspace = true
 clap.workspace = true
 gitcortex-core.workspace = true
