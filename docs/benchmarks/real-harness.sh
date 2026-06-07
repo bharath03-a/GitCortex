@@ -52,8 +52,14 @@ BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
 
 # MCP config that exposes the GitCortex graph as the "gcx" server.
 MCP_GCX="$REPO_DIR/.mcp-gcx.json"
+# COMPACT=1 → only expose the single gcx dispatch tool (lower schema overhead)
+if [ "${COMPACT:-0}" = "1" ]; then
+  MCP_ARGS='["serve","--compact"]'
+else
+  MCP_ARGS='["serve"]'
+fi
 cat > "$MCP_GCX" <<EOF
-{"mcpServers":{"gcx":{"command":"$GCX","args":["serve"]}}}
+{"mcpServers":{"gcx":{"command":"$GCX","args":$MCP_ARGS}}}
 EOF
 MCP_EMPTY='{"mcpServers":{}}'
 
@@ -147,6 +153,8 @@ STATUS=$("$GCX" status 2>/dev/null || true)
 NODES=$(echo "$STATUS" | awk '/^nodes:/{print $2; exit}')
 EDGES=$(echo "$STATUS" | awk '/^edges:/{print $2; exit}')
 
+NODES_VAL="${NODES:-0}"
+EDGES_VAL="${EDGES:-0}"
 echo "[$QUESTIONS_JSON]" > "$REPO_DIR/.real-q.json"
 python3 - "$OUT_JSON" "$REPO_DIR/.real-q.json" <<PY
 import json, sys
@@ -160,9 +168,9 @@ ratios = [q['token_ratio'] for q in qs if q['token_ratio']>0]
 geo = round(math.exp(sum(math.log(r) for r in ratios)/len(ratios)),2) if ratios else 0
 out = {
   "repo": "$REPO_NAME", "url": "$REPO_URL", "branch": "$BRANCH",
-  "model": "$MODEL", "measured": "real_claude_usage",
+  "model": "$MODEL", "measured": "real_claude_usage", "compact": ${COMPACT:-0},
   "symbols": {"type": "$SYM_TYPE", "fn": "$SYM_FN", "other": "$SYM_OTHER", "concept": "$PICK_TERM"},
-  "nodes": ${NODES:-0}, "edges": ${EDGES:-0},
+  "nodes": $NODES_VAL, "edges": $EDGES_VAL,
   "totals": {
     "baseline_tokens": tb, "gcx_tokens": tg,
     "saved_tokens": tb-tg,

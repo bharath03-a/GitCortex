@@ -1,8 +1,11 @@
 # Benchmark run artifacts — regenerate with dev-harness.sh / real-harness.sh
 dev-*.json
 real-*.json
+codex-*.json
 *.prefix.json
+codex-report-data/
 
 # Generated HTML reports — regenerate with report.py / real-report.py
 report.html
 real-report.html
+codex-report.html

@@ -14,7 +14,7 @@
 [![PyPI](https://img.shields.io/pypi/v/gitcortex.svg)](https://pypi.org/project/gitcortex/)
 [![CI](https://github.com/bharath03-a/GitCortex/actions/workflows/ci.yml/badge.svg)](https://github.com/bharath03-a/GitCortex/actions/workflows/ci.yml)
 
-GitCortex (`gcx`) indexes your codebase incrementally on every commit using tree-sitter AST parsing, persists the graph in an embedded KuzuDB database, and exposes it to AI coding assistants via an MCP server — in Cursor, Claude Code, Windsurf, GitHub Copilot, and Google Antigravity.
+GitCortex (`gcx`) indexes your codebase incrementally on every commit using tree-sitter AST parsing, persists the graph in an embedded KuzuDB database, and exposes it to AI coding assistants via an MCP server — in Codex, Claude Code, Cursor, Windsurf, GitHub Copilot, and Google Antigravity.
 
 ```bash
 cargo install gitcortex   # or: npm i -g gitcortex · pip install gitcortex
@@ -39,8 +39,8 @@ GitCortex gives your AI editor a pre-built, queryable call graph of your repo �
 - **Auto-indexing on every git op** — incremental, sub-500 ms on changed files; a full index of a 520k-LOC repo (Django) takes ~4 s.
 - **Per-branch graphs** — switching branches is instant, no re-index.
 - **Wiki, search, tour, blast-radius** — built-in discovery surface for AI assistants and humans.
-- **Works in Cursor, Claude Code, Windsurf, GitHub Copilot, Google Antigravity** via MCP.
-- **Up to 58 % cheaper AI sessions** — measured with real Claude API usage across 5 OSS repos: search and tour questions use 2× less context; cost savings exceed token savings because the graph answers in fewer turns (see [benchmark below](#benchmark)).
+- **Works in Codex, Claude Code, Cursor, Windsurf, GitHub Copilot, Google Antigravity** via MCP.
+- **38 % fewer raw Codex tokens across 5 OSS repos** — measured with real `codex exec --json` usage across Rust, Python, TypeScript, Go, and Java; targeted graph questions save the most context (see [benchmark below](#benchmark)).
 - **`gcx` single-dispatch MCP tool** — one compact schema covers all graph operations, cutting per-turn context overhead vs. loading 15 separate tool schemas.
 - **Six viz formats** — WebGL Cosmograph UI, self-contained HTML, SVG, DOT, GraphML, Neo4j Cypher.
 
@@ -65,7 +65,7 @@ GitCortex gives your AI editor a pre-built, queryable call graph of your repo �
 
 ## Benchmark
 
-We ran Claude twice on 4 developer questions per repo — once with grep/read tools only, once with the GitCortex graph — and recorded real API `usage` tokens and cost. No chars/4 proxy.
+We run real assistant sessions twice on the same questions — once with normal source search/read, once with GitCortex graph access — and record the assistant-reported token usage. No chars/4 proxy.
 
 | Question                          | What it tests                                     |
 | --------------------------------- | ------------------------------------------------- |
@@ -74,30 +74,43 @@ We ran Claude twice on 4 developer questions per repo — once with grep/read to
 | "If I change X, what breaks?"     | Refactor impact — honest about limits             |
 | "Show everything connected to X"  | Neighbourhood — honest loss case on large hubs    |
 
-### Real results (Claude Haiku, 4 repos × 4 questions = 32 sessions)
+### Real results (compact MCP, 5 repos × 4 questions = 40 sessions)
 
-| Repo    | Language   | Cost (grep) | Cost (graph) |   Saving | Typical ratio |
-| ------- | ---------- | ----------: | -----------: | -------: | ------------: |
-| ripgrep | Rust       |      $0.247 |       $0.110 | **55 %** |     **2.15×** |
-| hono    | TypeScript |      $0.265 |       $0.112 | **58 %** |     **2.03×** |
-| cobra   | Go         |      $0.231 |       $0.151 | **35 %** |     **1.39×** |
-| gson    | Java       |      $0.115 |       $0.132 |    −14 % |         0.92× |
+| Repo    | Language   | Baseline tokens | Graph tokens | Raw saving | Uncached saving |
+| ------- | ---------- | --------------: | -----------: | ---------: | ---------------: |
+| ripgrep | Rust       |         420,093 |      294,887 | **29.80 %** |       **32.41 %** |
+| fastapi | Python     |         731,212 |      424,381 | **41.96 %** |       **49.88 %** |
+| hono    | TypeScript |         702,055 |      381,283 | **45.69 %** |       **28.88 %** |
+| cobra   | Go         |         583,299 |      361,718 | **37.99 %** |         **0.99 %** |
+| gson    | Java       |         644,937 |      438,918 | **31.94 %** |       **33.70 %** |
 
-**Why does cost fall more than token count?** The graph answers in fewer turns. Each extra turn re-reads the ~14k-token tool-schema set from cache — cheaper per token, but it adds up. The graph arm avoids most of those re-reads.
+Aggregate: `3,081,596` baseline tokens vs. `1,901,187` graph tokens — **1,180,409 tokens saved** (**38.31 % raw**, **29.86 % uncached**, geomean **1.59×**).
 
-**Where the graph loses:** broad neighbourhood dumps (`get_subgraph`, `find_callers` on hub symbols with hundreds of callers) return more tokens than Claude would have produced by grepping selectively. We've capped both in v0.3.1 — the fix lands in the next run.
+**What improves most:** targeted discovery and impact questions (`search_code`, `find_callers`, `get_subgraph` on bounded seeds) consistently reduce source wandering.
+
+**Where the graph is still weak:** broad "tour this repo" questions are less reliable in smaller repos because the current `start_tour` payload is a graph walk, not a purpose-built architecture summary. That is the next obvious product improvement.
+
+📊 **[Full interactive benchmark report →](https://htmlpreview.github.io/?https://github.com/bharath03-a/GitCortex/blob/main/docs/benchmarks/final-report.html)** — per-language breakdown, full vs. compact MCP comparison, charts, and methodology. (Source: [`docs/benchmarks/final-report.html`](docs/benchmarks/final-report.html))
 
 ### Reproducing
 
 ```bash
 cargo build --release --bin gcx
-# Full 5-language sweep (haiku, 4 questions, ~$3–5)
+# Codex compact-MCP sweep (5 languages, 4 questions)
+bash docs/benchmarks/codex-sweep.sh gpt-5.4-mini 4
+# Claude sweep (haiku, release-gate benchmark)
 bash docs/benchmarks/real-sweep.sh
-# Single repo
+# Single Codex repo
+bash docs/benchmarks/codex-harness.sh \
+    https://github.com/BurntSushi/ripgrep \
+    /tmp/ripgrep-codex.json gpt-5.4-mini 4
+# Single Claude repo
 bash docs/benchmarks/real-harness.sh \
     https://github.com/BurntSushi/ripgrep \
     /tmp/ripgrep.json claude-haiku-4-5-20251001 4
-# Render HTML report
+# Render HTML reports from existing JSON
+python3 docs/benchmarks/real-report.py docs/benchmarks/codex-report-data \
+    -o docs/benchmarks/codex-report.html
 python3 docs/benchmarks/real-report.py
 ```
 
@@ -107,7 +120,7 @@ python3 docs/benchmarks/real-report.py
 
 1. `gcx init` installs four git hooks and runs an initial full index.
 2. On every local HEAD change the hook fires, diffs only the changed files, and updates the graph in under 500ms.
-3. `gcx serve` starts an MCP server on stdio so Claude Code (or any MCP client) can query the graph.
+3. `gcx serve` starts an MCP server on stdio so Codex, Claude Code, or any MCP client can query the graph.
 4. `gcx viz` opens an interactive force-directed graph in your browser.
 
 The graph is namespaced per branch — switching branches instantly gives you the graph for that branch with no re-indexing.
@@ -251,7 +264,7 @@ Installs four git hooks, runs the initial full index, registers the MCP server i
 
 ```bash
 gcx init                      # auto-detects editor(s) from environment
-gcx init --editor cursor      # explicit target: claude, cursor, windsurf, copilot, antigravity
+gcx init --editor codex       # explicit target: codex, claude, cursor, windsurf, copilot, antigravity
 gcx init --editor all         # write configs for every supported editor
 gcx init --ci                 # also writes .github/workflows/gcx-blast-radius.yml
 ```
@@ -262,13 +275,14 @@ Output:
 GitCortex initialised  (820ms)
   Graph:     2 141 nodes | 5 328 edges
   Hooks:     4 git hooks installed
-  Editors:   Cursor, Claude Code (auto-detected)
+  Editors:   Codex, Cursor, Claude Code (auto-detected)
   Universal: .gitcortex/AGENT_GUIDE.md
 ```
 
 | Editor      | Files written                                                                                       |
 | ----------- | --------------------------------------------------------------------------------------------------- |
 | Claude Code | `.claude/hooks/`, `.claude/settings.json`, `.claude/skills/`, `.claude/commands/`, `~/.claude.json` |
+| Codex       | `AGENTS.md`, `.codex/config.toml`                                                                   |
 | Cursor      | `.cursor/rules/gitcortex.mdc`, `.cursor/mcp.json`                                                   |
 | Windsurf    | `.windsurfrules`, `~/.codeium/windsurf/mcp_config.json`                                             |
 | Copilot     | `.github/copilot-instructions.md`                                                                   |
@@ -285,10 +299,11 @@ gcx hook --branch-switch   # post-checkout (no re-index, just updates branch poi
 
 ### `gcx serve`
 
-Starts the MCP server on stdio. Wire this up in your `.mcp.json` to give Claude Code access to the knowledge graph.
+Starts the MCP server on stdio. Wire this up in your assistant's MCP config to give it access to the knowledge graph.
 
 ```bash
-gcx serve
+gcx serve             # full MCP surface
+gcx serve --compact   # single-dispatch `gcx` tool only; recommended for Codex/token-sensitive agents
 ```
 
 ### `gcx query`
@@ -473,6 +488,7 @@ gcx doctor
   [ok] graph store accessible  (1 842 nodes, 4 217 edges on main)
   [ok] index is current  (HEAD abc1234)
   [ok] MCP registered  (Claude Code)
+  [ok] assistant configured  (Codex)
   [--] MCP not configured for Cursor  (run: gcx init --editor cursor)
 
 All checks passed.
@@ -511,13 +527,30 @@ This writes `.github/workflows/gcx-blast-radius.yml`. On every pull request it r
 
 ## MCP integration
 
-`gcx init` registers the MCP server in `~/.claude.json` — no per-project config needed. The server is available in every Claude Code session on this machine automatically.
+`gcx init` registers the MCP server for the detected editor(s). Use `--editor` to force one target:
+
+```bash
+gcx init --editor codex
+gcx init --editor claude
+gcx init --editor all
+```
+
+Codex uses the compact server by default:
+
+```toml
+[mcp_servers.gitcortex]
+command = "gcx"
+args = ["serve", "--compact"]
+startup_timeout_sec = 30
+```
+
+Claude Code and the other editors use the full MCP surface unless you manually switch their config to `["serve", "--compact"]`.
 
 ### Available MCP tools
 
 | Tool                    | Description                                                                                                                                                                |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gcx`                   | **Single-dispatch tool** — one schema covers all operations below. Pass `action` + `params` to avoid loading 15 separate schemas per turn. Preferred for token efficiency. |
+| `gcx`                   | **Single-dispatch tool** — one schema covers all operations below. Pass `action` + `params` to avoid loading 15 separate schemas per turn. Preferred for token efficiency; the compact server exposes only this tool. |
 | `lookup_symbol`         | Find all nodes matching a name across the codebase                                                                                                                         |
 | `find_callers`          | All functions that call a given function (backward trace, capped at 25)                                                                                                    |
 | `find_callees`          | All functions called by a given function (forward trace, configurable depth)                                                                                               |
@@ -544,6 +577,8 @@ All tools accept an optional `branch` parameter. Defaults to the branch active w
 | `generate_map`  | Architecture diagram — produces a Mermaid module map, key types table, and core execution flows                              |
 
 Prompts are multi-step workflows your AI assistant executes automatically using the tools above. In Claude Code, invoke them via the prompt picker or with `/mcp__gitcortex__detect_impact`.
+
+Compact MCP mode intentionally hides the individual tools and keeps only `gcx`; prompts may not be available in clients that only load exposed tools.
 
 ### Claude Code slash commands
 
@@ -682,7 +717,7 @@ flowchart TD
         viz["gcx viz\nbrowser graph · DOT export"]
     end
 
-    claude["Claude Code\nMCP tools · slash commands · skills"]
+    assistants["AI assistants\nCodex compact MCP · Claude Code\nCursor · Windsurf · Copilot"]
     gh["GitHub Actions\nsticky PR blast-radius comment"]
 
     hooks -->|"gcx hook — incremental diff"| differ
@@ -691,7 +726,7 @@ flowchart TD
     kuzu --> server
     kuzu --> blast
     kuzu --> viz
-    server --> claude
+    server --> assistants
     blast --> gh
 ```
 

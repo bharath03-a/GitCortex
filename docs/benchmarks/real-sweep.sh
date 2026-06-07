@@ -29,7 +29,7 @@ export BUDGET="${BUDGET:-1.50}"
 # One canonical repo per language — sized to be representative but not huge.
 REPOS=(
   "https://github.com/BurntSushi/ripgrep"   # Rust  — ~30k LOC, search tool
-  "https://github.com/tiangolo/fastapi"     # Python — ~20k LOC, web framework
+  "https://github.com/psf/requests"         # Python — ~10k LOC, HTTP library
   "https://github.com/honojs/hono"          # TypeScript — ~15k LOC, web framework
   "https://github.com/spf13/cobra"          # Go    — ~5k LOC, CLI framework
   "https://github.com/google/gson"          # Java  — ~10k LOC, JSON library
@@ -43,6 +43,7 @@ run_one() {
   local url="$1" name
   name=$(basename "$url")
   echo ">>> $name"
+  mkdir -p "$WORK"
   bash "$HERE/real-harness.sh" "$url" "$HERE/real-$name.json" "$MODEL" "$NQ" \
     > "$WORK/real-$name.log" 2>&1
   echo "<<< $name done"
