@@ -1,6 +1,6 @@
 # Codebase Map
 
-> Branch: `feat/v0-3-1-viz-bench` · 945 definitions · SHA: `66a4473bfbefb2cd56d55e64f2f9a1b3363615a4`
+> Branch: `feat/v0-3-1-viz-bench` · 966 definitions · SHA: `f97bd826e0397f62fdb56160349f69f1967f966e`
 
 ## crates
 
@@ -872,28 +872,33 @@
 
 - `pub folder docs` :1
   - `pub folder benchmarks` :1
-    - `pub file real-report.py` :1
-      - `pub constant Q_TO_TOOL` :20
-      - `pub constant Q_PLAIN` :31
-      - `pub constant REPO_LANG` :41
-      - `pub constant LANG_COLOR` :50
-      - `pub function load` :58
-      - `pub function fmt` :82
-      - `pub function geomean` :86
-      - `pub function q_ratios` :91
-      - `pub function ratio_bar_svg` :104
-      - `pub function cost_comparison_svg` :163
-      - `pub constant CSS` :216
-      - `pub constant LOGO` :325
-      - `pub constant JS` :335
-      - `pub function stat` :338
-      - `pub function render_detail_rows` :347
-      - `pub function render` :370
-      - `pub function svg_wrapper` :641
-      - `pub function export_assets` :658
-      - `pub function main` :677
+    - `pub file final-report.py` :1
+      - `pub constant Q_TO_TOOL` :18
+      - `pub constant Q_PLAIN` :28
+      - `pub constant REPO_LANG` :38
+      - `pub constant LANG_COLOR` :46
+      - `pub function fmt` :54
+      - `pub function pct` :58
+      - `pub function geomean` :62
+      - `pub function load_arm` :67
+      - `pub function arm_geo` :93
+      - `pub function arm_cost_saved` :99
+      - `pub function matrix_table` :105
+      - `pub constant QUESTION_DESIGN` :141
+      - `pub function lang_of` :157
+      - `function _ratio_color` :163
+      - `pub function chart_full_vs_compact` :167
+      - `pub function chart_by_question` :229
+      - `pub function lang_summary_table` :277
+      - `pub constant CSS` :314
+      - `pub constant LOGO` :574
+      - `pub function render` :585
+      - `pub function main` :831
 
 ## docs/benchmarks
+
+
+## docs/benchmarks/final-report.py
 
 
 ## docs/benchmarks/real-report.py
