@@ -625,7 +625,7 @@ dependencies = [
 
 [[package]]
 name = "gitcortex"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anstyle",
  "anyhow",
@@ -645,7 +645,7 @@ dependencies = [
 
 [[package]]
 name = "gitcortex-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "petgraph",
  "serde",
@@ -655,7 +655,7 @@ dependencies = [
 
 [[package]]
 name = "gitcortex-indexer"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "git2",
  "gitcortex-core",
@@ -672,7 +672,7 @@ dependencies = [
 
 [[package]]
 name = "gitcortex-mcp"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "gitcortex-core",
@@ -689,7 +689,7 @@ dependencies = [
 
 [[package]]
 name = "gitcortex-store"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "dashmap",
  "gitcortex-core",
@@ -700,7 +700,7 @@ dependencies = [
 
 [[package]]
 name = "gitcortex-viz"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "axum",
