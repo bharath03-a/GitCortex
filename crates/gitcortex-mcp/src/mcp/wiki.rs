@@ -53,15 +53,20 @@ fn format(ctx: SymbolContext) -> String {
 
     let _ = writeln!(out, "# {} ({})", def.name, def.kind);
     let _ = writeln!(out);
+    let complexity_part = match def.metadata.lld.complexity {
+        Some(c) => format!("  ·  complexity={c}"),
+        None => String::new(),
+    };
     let _ = writeln!(
         out,
-        "**Defined in** `{}:{}-{}`  ·  visibility={}  ·  async={}  ·  loc={}",
+        "**Defined in** `{}:{}-{}`  ·  visibility={}  ·  async={}  ·  loc={}{}",
         def.file.display(),
         def.span.start_line,
         def.span.end_line,
         def.metadata.visibility,
         def.metadata.is_async,
         def.metadata.loc,
+        complexity_part,
     );
     if def.qualified_name != def.name {
         let _ = writeln!(out, "**Qualified** `{}`", def.qualified_name);

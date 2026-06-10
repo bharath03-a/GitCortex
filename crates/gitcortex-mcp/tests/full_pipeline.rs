@@ -11,6 +11,56 @@ use std::sync::Mutex;
 
 static KUZU_LOCK: Mutex<()> = Mutex::new(());
 
+/// Commit multiple fixture files in a single git commit.
+fn commit_files(dir: &Path, fixtures: &[&str]) {
+    for name in fixtures {
+        let src = Path::new(FIXTURES).join(name);
+        std::fs::copy(&src, dir.join(name)).expect("copy fixture");
+    }
+    let names: Vec<&str> = fixtures.to_vec();
+    let mut add_args = vec!["add"];
+    add_args.extend_from_slice(&names);
+    let status = Command::new("git")
+        .args(&add_args)
+        .current_dir(dir)
+        .status()
+        .expect("git add failed");
+    assert!(status.success(), "git add failed");
+    let status = Command::new("git")
+        .args(["commit", "-m", "add fixtures"])
+        .current_dir(dir)
+        .status()
+        .expect("git commit failed");
+    assert!(status.success(), "git commit failed");
+}
+
+/// Run the full pipeline against multiple fixture files committed together.
+fn run_pipeline_multi(
+    fixtures: &[&str],
+) -> (
+    Vec<gitcortex_core::graph::Node>,
+    Vec<gitcortex_core::graph::Edge>,
+    KuzuGraphStore,
+) {
+    let _lock = KUZU_LOCK.lock().expect("lock");
+    let tmp = tempfile::tempdir().expect("tempdir");
+    init_repo(tmp.path());
+    commit_files(tmp.path(), fixtures);
+
+    let indexer = IncrementalIndexer::new(tmp.path()).expect("indexer");
+    let (diff, head_sha) = indexer.run(None).expect("indexer.run");
+
+    let mut store = KuzuGraphStore::open(tmp.path()).expect("store");
+    store.apply_diff("main", &diff).expect("apply_diff");
+    store
+        .set_last_indexed_sha("main", &head_sha)
+        .expect("set sha");
+
+    let nodes = store.list_all_nodes("main").expect("list_all_nodes");
+    let edges = store.list_all_edges("main").expect("list_all_edges");
+    (nodes, edges, store)
+}
+
 use gitcortex_core::store::GraphStore;
 use gitcortex_indexer::IncrementalIndexer;
 use gitcortex_store::kuzu::KuzuGraphStore;
@@ -397,5 +447,106 @@ fn python_comprehensive_dataclass_is_struct() {
         user.unwrap().kind,
         NodeKind::Struct,
         "@dataclass User should be Struct kind"
+    );
+}
+
+// ── Cross-file deferred edge tests ────────────────────────────────────────────
+// These tests verify that deferred edge resolution works across file boundaries:
+// callers in one file resolve to callees defined in a separate file.
+
+#[test]
+fn cross_file_calls_edge_resolved() {
+    let (nodes, _edges, store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
+
+    // Both files' nodes should be indexed.
+    assert!(
+        nodes.iter().any(|n| n.name == "compute_value"),
+        "expected 'compute_value' node from xfile_callee.rs"
+    );
+    assert!(
+        nodes.iter().any(|n| n.name == "run"),
+        "expected 'run' node from xfile_caller.rs"
+    );
+
+    // Deferred call from `run` in xfile_caller.rs → `compute_value` in xfile_callee.rs
+    // should have been resolved as a Calls edge.
+    let callers = store
+        .find_callers("main", "compute_value")
+        .expect("find_callers");
+    assert!(
+        callers.iter().any(|n| n.name == "run"),
+        "expected 'run' as a caller of 'compute_value' across files; got: {:?}",
+        callers.iter().map(|n| &n.name).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn cross_file_calls_edge_multiple_callers() {
+    let (_nodes, _, store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
+
+    // Both `run` and `run_with_branch` call `compute_value`.
+    let callers = store
+        .find_callers("main", "compute_value")
+        .expect("find_callers");
+    let caller_names: Vec<&str> = callers.iter().map(|n| n.name.as_str()).collect();
+    assert!(
+        caller_names.contains(&"run"),
+        "expected 'run' in callers; got {caller_names:?}"
+    );
+    assert!(
+        caller_names.contains(&"run_with_branch"),
+        "expected 'run_with_branch' in callers; got {caller_names:?}"
+    );
+}
+
+#[test]
+fn cross_file_implements_edge_resolved() {
+    let (nodes, edges, _store) = run_pipeline_multi(&["xfile_trait.rs", "xfile_impl.rs"]);
+
+    assert!(
+        nodes.iter().any(|n| n.name == "Processor"),
+        "expected 'Processor' trait from xfile_trait.rs"
+    );
+    assert!(
+        nodes.iter().any(|n| n.name == "Worker"),
+        "expected 'Worker' struct from xfile_impl.rs"
+    );
+
+    // Worker implements Processor — deferred Implements edge should be present.
+    let impl_edges: Vec<_> = edges
+        .iter()
+        .filter(|e| e.kind == EdgeKind::Implements)
+        .collect();
+    assert!(
+        !impl_edges.is_empty(),
+        "expected at least one Implements edge (Worker → Processor)"
+    );
+}
+
+#[test]
+fn cyclomatic_complexity_simple_function() {
+    let (nodes, _) = run_pipeline("sample.rs");
+    // make_greeting calls h.greet() — linear function, complexity should be 1.
+    let f = nodes.iter().find(|n| n.name == "make_greeting");
+    assert!(f.is_some(), "expected 'make_greeting'");
+    let complexity = f.unwrap().metadata.lld.complexity;
+    assert_eq!(
+        complexity,
+        Some(1),
+        "linear function should have complexity 1, got {complexity:?}"
+    );
+}
+
+#[test]
+fn cyclomatic_complexity_branching_function() {
+    let (nodes, _, _store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
+    // run_with_branch has one `if` → complexity 2.
+    let f = nodes.iter().find(|n| n.name == "run_with_branch");
+    assert!(f.is_some(), "expected 'run_with_branch'");
+    let complexity = f.unwrap().metadata.lld.complexity;
+    assert_eq!(
+        complexity,
+        Some(2),
+        "function with one `if` should have complexity 2, got {complexity:?}"
     );
 }

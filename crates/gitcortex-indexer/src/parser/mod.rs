@@ -5,12 +5,15 @@ use gitcortex_core::{
     graph::{Edge, Node, NodeId},
 };
 
+mod complexity;
 mod deftext;
 pub mod go;
 pub mod java;
 pub mod python;
 pub mod rust;
 pub mod typescript;
+
+pub(crate) use complexity::cyclomatic_complexity;
 
 pub(crate) use deftext::capture as capture_definition;
 

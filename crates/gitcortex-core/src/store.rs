@@ -77,6 +77,26 @@ pub trait GraphStore: Send + Sync {
     /// Return all edges in `branch`'s graph.
     fn list_all_edges(&self, branch: &str) -> Result<Vec<Edge>>;
 
+    /// Return nodes whose `name` or `qualified_name` contains `query` (case-
+    /// sensitive substring), up to `limit` results. Implementations should push
+    /// the filter to the store rather than scanning all nodes in memory.
+    ///
+    /// The default falls back to `list_all_nodes` for stores that don't
+    /// override this method (e.g. the in-memory test stub).
+    fn search_nodes(&self, branch: &str, query: &str, limit: usize) -> Result<Vec<Node>> {
+        let q = query.to_ascii_lowercase();
+        let mut nodes: Vec<Node> = self
+            .list_all_nodes(branch)?
+            .into_iter()
+            .filter(|n| {
+                n.name.to_ascii_lowercase().contains(&q)
+                    || n.qualified_name.to_ascii_lowercase().contains(&q)
+            })
+            .collect();
+        nodes.truncate(limit);
+        Ok(nodes)
+    }
+
     /// Return the graph delta between two branches as a `GraphDiff`.
     /// Nodes/edges present in `to` but not `from` are in `added_*`.
     /// Nodes/edges present in `from` but not `to` are in `removed_*`.

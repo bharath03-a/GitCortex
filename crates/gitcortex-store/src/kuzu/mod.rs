@@ -50,6 +50,10 @@ fn node_struct_literal(node: &Node) -> String {
     let def_doc = esc_multiline(m.definition.doc_comment.as_deref().unwrap_or(""));
     let def_start_byte = m.definition.start_byte as i64;
     let def_end_byte = m.definition.end_byte as i64;
+    let complexity = match m.lld.complexity {
+        Some(c) => c as i64,
+        None => -1i64,
+    };
 
     format!(
         "{{id:'{id}', kind:'{kind}', name:'{name}', qualified_name:'{qname}', file:'{file}', \
@@ -57,7 +61,8 @@ fn node_struct_literal(node: &Node) -> String {
          is_async:{ia}, is_unsafe:{iu}, is_static:{ist}, is_abstract:{iab}, is_final:{ifi}, \
          is_property:{ip}, is_generator:{ig}, is_const:{ic}, generic_bounds:'{generic_bounds}', \
          def_signature:'{def_sig}', def_body:'{def_body}', def_doc:'{def_doc}', \
-         def_start_byte:{def_start_byte}, def_end_byte:{def_end_byte}}}",
+         def_start_byte:{def_start_byte}, def_end_byte:{def_end_byte}, \
+         complexity:{complexity}}}",
         ia = m.is_async,
         iu = m.is_unsafe,
         ist = m.is_static,
@@ -109,6 +114,62 @@ fn bulk_apply(conn: &Connection, nt: &str, et: &str, diff: &GraphDiff) -> Result
     let _ = std::fs::remove_dir_all(&stage);
 
     result.map(|_| ())
+}
+
+const DEFERRED_CHUNK: usize = 500;
+
+/// Resolve a batch of deferred cross-file edges via one UNWIND query per
+/// language-scope group instead of one query per pair.
+///
+/// Pairs are grouped by the caller's language family so the scope clause is
+/// uniform across all rows in a chunk. Each group is split into chunks of at
+/// most [`DEFERRED_CHUNK`] pairs to keep query strings bounded.
+fn resolve_deferred_batch(
+    conn: &Connection,
+    nt: &str,
+    et: &str,
+    pairs: &[(NodeId, String)],
+    caller_file: &HashMap<String, String>,
+    edge_kind: &str,
+    kind_filter: &str,
+) -> Result<()> {
+    if pairs.is_empty() {
+        return Ok(());
+    }
+    let mut by_scope: HashMap<String, Vec<(String, String)>> = HashMap::new();
+    for (src_id, tgt_name) in pairs {
+        let src_str = src_id.as_str();
+        let scope = caller_file
+            .get(src_str.as_str())
+            .map(|f| lang_scope_clause(f, "tgt"))
+            .unwrap_or_default();
+        by_scope
+            .entry(scope)
+            .or_default()
+            .push((src_str, tgt_name.clone()));
+    }
+    for (scope_clause, group) in &by_scope {
+        for chunk in group.chunks(DEFERRED_CHUNK) {
+            let list = chunk
+                .iter()
+                .map(|(src, tgt)| format!("{{s:'{}',t:'{}'}}", esc(src), esc(tgt)))
+                .collect::<Vec<_>>()
+                .join(",");
+            let kind_and = if kind_filter.is_empty() {
+                String::new()
+            } else {
+                format!(" AND ({kind_filter})")
+            };
+            conn.query(&format!(
+                "UNWIND [{list}] AS r \
+                 MATCH (src:{nt} {{id: r.s}}), (tgt:{nt}) \
+                 WHERE tgt.name = r.t{kind_and}{scope_clause} \
+                 CREATE (src)-[:{et} {{kind: '{edge_kind}'}}]->(tgt)"
+            ))
+            .map_err(|e| GitCortexError::Store(format!("batch deferred {edge_kind}: {e}")))?;
+        }
+    }
+    Ok(())
 }
 
 // ── KuzuGraphStore ────────────────────────────────────────────────────────────
@@ -253,24 +314,36 @@ impl GraphStore for KuzuGraphStore {
         // Build a remap table: for each Folder node in the diff, if a folder at
         // that path already exists in the DB, reuse its ID so that existing
         // Contains edges to sibling files are preserved.
-        // Use the same connection (no open transaction between tx1 COMMIT and tx2 BEGIN).
+        // One batch query instead of one query per folder.
         let mut id_remap: HashMap<String, String> = HashMap::new();
-        for node in diff
+        let folder_nodes: Vec<&Node> = diff
             .added_nodes
             .iter()
             .filter(|n| n.kind == NodeKind::Folder)
-        {
-            let path_esc = esc(node.file.to_string_lossy().as_ref());
-            let mut check = conn
+            .collect();
+        if !folder_nodes.is_empty() {
+            let path_list = folder_nodes
+                .iter()
+                .map(|n| format!("'{}'", esc(n.file.to_string_lossy().as_ref())))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let mut rows = conn
                 .query(&format!(
-                    "MATCH (n:{nt}) WHERE n.file = '{path_esc}' AND n.kind = 'folder' \
-                     RETURN n.id LIMIT 1"
+                    "MATCH (n:{nt}) WHERE n.file IN [{path_list}] AND n.kind = 'folder' \
+                     RETURN n.file, n.id"
                 ))
                 .map_err(|e| GitCortexError::Store(e.to_string()))?;
-            if let Some(row) = check.by_ref().next() {
-                if let Ok(existing_id) = str_val(&row[0]) {
+            let mut existing_by_path: HashMap<String, String> = HashMap::new();
+            for row in rows.by_ref() {
+                if let (Ok(file), Ok(id)) = (str_val(&row[0]), str_val(&row[1])) {
+                    existing_by_path.insert(file, id);
+                }
+            }
+            for node in &folder_nodes {
+                let path_str = node.file.to_string_lossy().into_owned();
+                if let Some(existing_id) = existing_by_path.get(&path_str) {
                     tracing::debug!("folder remap: {} → {}", node.file.display(), existing_id);
-                    id_remap.insert(node.id.as_str().to_owned(), existing_id);
+                    id_remap.insert(node.id.as_str().to_owned(), existing_id.clone());
                 }
             }
         }
@@ -308,7 +381,8 @@ impl GraphStore for KuzuGraphStore {
                     is_property: r.is_property, is_generator: r.is_generator, is_const: r.is_const, \
                     generic_bounds: r.generic_bounds, \
                     def_signature: r.def_signature, def_body: r.def_body, def_doc: r.def_doc, \
-                    def_start_byte: r.def_start_byte, def_end_byte: r.def_end_byte\
+                    def_start_byte: r.def_start_byte, def_end_byte: r.def_end_byte, \
+                    complexity: r.complexity\
                  }})"
             ))
             .map_err(|e| GitCortexError::Store(format!("batch insert nodes: {e}")))?;
@@ -368,14 +442,8 @@ impl GraphStore for KuzuGraphStore {
 
         // 6. Resolve cross-file deferred edges against the full store.
         //    The diff-local pass couldn't find these callees/types because they
-        //    live in unchanged files. We match by name here — best-effort without
-        //    full type inference, filtered to the correct node kinds to reduce noise.
-        //
-        //    Scoping: the resolved candidate must live in a file whose extension
-        //    belongs to the same language family as the caller. Without this a
-        //    Rust `welcome()` would resolve to a Python `polite_greet()` simply
-        //    because they share a name. The caller-file map is built once from
-        //    `added_nodes` (all deferred caller ids are diff-local nodes).
+        //    live in unchanged files. Batched by language scope: one UNWIND query
+        //    per language per edge kind instead of one query per pair.
         let caller_file: HashMap<String, String> = diff
             .added_nodes
             .iter()
@@ -387,113 +455,61 @@ impl GraphStore for KuzuGraphStore {
             })
             .collect();
 
-        for (caller_id, callee_name) in &diff.deferred_calls {
-            let caller_id_str = caller_id.as_str();
-            let caller = esc(&caller_id_str);
-            let callee = esc(callee_name);
-            let scope = caller_file
-                .get(&caller_id_str)
-                .map(|f| lang_scope_clause(f, "callee"))
-                .unwrap_or_default();
-            conn.query(&format!(
-                "MATCH (caller:{nt} {{id: '{caller}'}}), (callee:{nt}) \
-                 WHERE callee.name = '{callee}' \
-                 AND (callee.kind = 'function' OR callee.kind = 'method'){scope} \
-                 CREATE (caller)-[:{et} {{kind: 'calls'}}]->(callee)"
-            ))
-            .map_err(|e| GitCortexError::Store(format!("deferred call '{callee_name}': {e}")))?;
-        }
-
-        for (fn_id, type_name) in &diff.deferred_uses {
-            let fn_id_str = fn_id.as_str();
-            let fn_esc = esc(&fn_id_str);
-            let ty = esc(type_name);
-            let scope = caller_file
-                .get(&fn_id_str)
-                .map(|f| lang_scope_clause(f, "ty"))
-                .unwrap_or_default();
-            conn.query(&format!(
-                "MATCH (fn_node:{nt} {{id: '{fn_esc}'}}), (ty:{nt}) \
-                 WHERE ty.name = '{ty}' \
-                 AND (ty.kind = 'struct' OR ty.kind = 'enum' \
-                      OR ty.kind = 'trait' OR ty.kind = 'interface' \
-                      OR ty.kind = 'type_alias'){scope} \
-                 CREATE (fn_node)-[:{et} {{kind: 'uses'}}]->(ty)"
-            ))
-            .map_err(|e| GitCortexError::Store(format!("deferred use '{type_name}': {e}")))?;
-        }
-
-        for (struct_id, trait_name) in &diff.deferred_implements {
-            let sid = struct_id.as_str();
-            let s = esc(&sid);
-            let t = esc(trait_name);
-            let scope = caller_file
-                .get(&sid)
-                .map(|f| lang_scope_clause(f, "tr"))
-                .unwrap_or_default();
-            conn.query(&format!(
-                "MATCH (st:{nt} {{id: '{s}'}}), (tr:{nt}) \
-                 WHERE tr.name = '{t}' AND (tr.kind = 'trait' OR tr.kind = 'interface'){scope} \
-                 CREATE (st)-[:{et} {{kind: 'implements'}}]->(tr)"
-            ))
-            .map_err(|e| GitCortexError::Store(format!("deferred impl '{trait_name}': {e}")))?;
-        }
-
-        for (subtype_id, supertype_name) in &diff.deferred_inherits {
-            let sid = subtype_id.as_str();
-            let s = esc(&sid);
-            let t = esc(supertype_name);
-            let scope = caller_file
-                .get(&sid)
-                .map(|f| lang_scope_clause(f, "sup"))
-                .unwrap_or_default();
-            conn.query(&format!(
-                "MATCH (sub:{nt} {{id: '{s}'}}), (sup:{nt}) \
-                 WHERE sup.name = '{t}' \
-                 AND (sup.kind = 'struct' OR sup.kind = 'interface' OR sup.kind = 'trait'){scope} \
-                 CREATE (sub)-[:{et} {{kind: 'inherits'}}]->(sup)"
-            ))
-            .map_err(|e| {
-                GitCortexError::Store(format!("deferred inherits '{supertype_name}': {e}"))
-            })?;
-        }
-
-        for (method_id, exception_name) in &diff.deferred_throws {
-            let mid = method_id.as_str();
-            let m = esc(&mid);
-            let e_name = esc(exception_name);
-            let scope = caller_file
-                .get(&mid)
-                .map(|f| lang_scope_clause(f, "ex"))
-                .unwrap_or_default();
-            conn.query(&format!(
-                "MATCH (m:{nt} {{id: '{m}'}}), (ex:{nt}) \
-                 WHERE ex.name = '{e_name}'{scope} \
-                 CREATE (m)-[:{et} {{kind: 'throws'}}]->(ex)"
-            ))
-            .map_err(|e| {
-                GitCortexError::Store(format!("deferred throws '{exception_name}': {e}"))
-            })?;
-        }
-
-        for (target_id, annotation_name) in &diff.deferred_annotated {
-            let tid = target_id.as_str();
-            let t = esc(&tid);
-            let a = esc(annotation_name);
-            let scope = caller_file
-                .get(&tid)
-                .map(|f| lang_scope_clause(f, "ann"))
-                .unwrap_or_default();
-            conn.query(&format!(
-                "MATCH (target:{nt} {{id: '{t}'}}), (ann:{nt}) \
-                 WHERE ann.name = '{a}' \
-                 AND (ann.kind = 'annotation' OR ann.kind = 'macro' OR ann.kind = 'function'){scope} \
-                 CREATE (target)-[:{et} {{kind: 'annotated'}}]->(ann)"
-            ))
-            .map_err(|e| {
-                GitCortexError::Store(format!("deferred annotated '{annotation_name}': {e}"))
-            })?;
-        }
+        resolve_deferred_batch(
+            &conn,
+            &nt,
+            &et,
+            &diff.deferred_calls,
+            &caller_file,
+            "calls",
+            "tgt.kind = 'function' OR tgt.kind = 'method'",
+        )?;
+        resolve_deferred_batch(
+            &conn,
+            &nt,
+            &et,
+            &diff.deferred_uses,
+            &caller_file,
+            "uses",
+            "tgt.kind = 'struct' OR tgt.kind = 'enum' OR tgt.kind = 'trait' \
+             OR tgt.kind = 'interface' OR tgt.kind = 'type_alias'",
+        )?;
+        resolve_deferred_batch(
+            &conn,
+            &nt,
+            &et,
+            &diff.deferred_implements,
+            &caller_file,
+            "implements",
+            "tgt.kind = 'trait' OR tgt.kind = 'interface'",
+        )?;
+        resolve_deferred_batch(
+            &conn,
+            &nt,
+            &et,
+            &diff.deferred_inherits,
+            &caller_file,
+            "inherits",
+            "tgt.kind = 'struct' OR tgt.kind = 'interface' OR tgt.kind = 'trait'",
+        )?;
+        resolve_deferred_batch(
+            &conn,
+            &nt,
+            &et,
+            &diff.deferred_throws,
+            &caller_file,
+            "throws",
+            "",
+        )?;
+        resolve_deferred_batch(
+            &conn,
+            &nt,
+            &et,
+            &diff.deferred_annotated,
+            &caller_file,
+            "annotated",
+            "tgt.kind = 'annotation' OR tgt.kind = 'macro' OR tgt.kind = 'function'",
+        )?;
 
         conn.query("COMMIT")
             .map_err(|e| GitCortexError::Store(format!("commit edges: {e}")))?;
@@ -714,6 +730,28 @@ impl GraphStore for KuzuGraphStore {
         let conn = self.conn()?;
         let mut result = conn
             .query(&format!("MATCH (n:{nt}) RETURN {NODE_COLS}"))
+            .map_err(|e| GitCortexError::Store(e.to_string()))?;
+        rows_to_nodes(&mut result)
+    }
+
+    fn search_nodes(&self, branch: &str, query: &str, limit: usize) -> Result<Vec<Node>> {
+        self.ensure_branch(branch)?;
+        let nt = db_schema::node_table(branch);
+        // Lowercase both sides for case-insensitive substring matching.
+        let q = esc(&query.to_ascii_lowercase());
+        let conn = self.conn()?;
+        // Push substring filter into Cypher so only matching rows cross the FFI
+        // boundary. A 500-candidate cap keeps scoring overhead bounded even on
+        // very large repos. The in-process scorer in search.rs re-ranks and
+        // truncates to the caller-supplied limit.
+        let cap = (limit * 50).max(500);
+        let mut result = conn
+            .query(&format!(
+                "MATCH (n:{nt}) \
+                 WHERE contains(lower(n.name), '{q}') OR contains(lower(n.qualified_name), '{q}') \
+                 RETURN {NODE_COLS} \
+                 LIMIT {cap}"
+            ))
             .map_err(|e| GitCortexError::Store(e.to_string()))?;
         rows_to_nodes(&mut result)
     }

@@ -426,6 +426,7 @@ impl GitCortexServer {
                         "end_line": ctx.definition.span.end_line,
                         "visibility": format!("{:?}", ctx.definition.metadata.visibility),
                         "is_async": ctx.definition.metadata.is_async,
+                        "complexity": ctx.definition.metadata.lld.complexity,
                     },
                     "callers": ctx.callers.iter().map(node_json).collect::<Vec<_>>(),
                     "callees": ctx.callees.iter().map(node_json).collect::<Vec<_>>(),

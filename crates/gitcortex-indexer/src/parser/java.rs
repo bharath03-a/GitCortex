@@ -606,7 +606,13 @@ impl<'src> FileVisitor<'src> {
         } else {
             NodeKind::Method
         };
-        let graph_node = self.make_node(id.clone(), kind, name, scope, node);
+        let mut graph_node = self.make_node(id.clone(), kind, name, scope, node);
+        if let Some(body) = node.child_by_field_name("body") {
+            graph_node.metadata.lld.complexity = Some(super::cyclomatic_complexity(
+                body,
+                &super::complexity::java_decision,
+            ));
+        }
         self.edges.push(Edge {
             src: container_id,
             dst: id.clone(),

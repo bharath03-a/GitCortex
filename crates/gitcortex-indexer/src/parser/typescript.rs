@@ -435,6 +435,13 @@ impl<'src> FileVisitor<'src> {
             graph_node.metadata.is_generator = true;
         }
 
+        if let Some(body) = node.child_by_field_name("body") {
+            graph_node.metadata.lld.complexity = Some(super::cyclomatic_complexity(
+                body,
+                &super::complexity::typescript_decision,
+            ));
+        }
+
         if let Some(cid) = container_id {
             self.edges.push(Edge {
                 src: cid,
@@ -506,7 +513,13 @@ impl<'src> FileVisitor<'src> {
             .get(&name)
             .cloned()
             .unwrap_or_else(NodeId::new);
-        let graph_node = self.make_node(id.clone(), NodeKind::Method, name, scope, node);
+        let mut graph_node = self.make_node(id.clone(), NodeKind::Method, name, scope, node);
+        if let Some(body) = node.child_by_field_name("body") {
+            graph_node.metadata.lld.complexity = Some(super::cyclomatic_complexity(
+                body,
+                &super::complexity::typescript_decision,
+            ));
+        }
         self.edges.push(Edge {
             src: class_id,
             dst: id.clone(),

@@ -328,6 +328,13 @@ impl<'src> FileVisitor<'src> {
             graph_node.metadata.is_generator = true;
         }
 
+        if let Some(body) = node.child_by_field_name("body") {
+            graph_node.metadata.lld.complexity = Some(super::cyclomatic_complexity(
+                body,
+                &super::complexity::python_decision,
+            ));
+        }
+
         if let Some(cid) = container_id {
             self.edges.push(Edge {
                 src: cid,

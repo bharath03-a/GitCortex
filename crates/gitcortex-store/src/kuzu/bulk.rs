@@ -43,8 +43,9 @@ fn node_csv_line(n: &Node) -> String {
     let m = &n.metadata;
     let d = &m.definition;
     // Order must match `schema::ensure_branch` node-table columns.
+    let complexity: i64 = m.lld.complexity.map(|c| c as i64).unwrap_or(-1);
     format!(
-        "{id},{kind},{name},{qname},{file},{sl},{el},{loc},{vis},{ia},{iu},{ist},{iab},{ifi},{ip},{ig},{ic},{gb},{ds},{db},{dd},{dsb},{deb}",
+        "{id},{kind},{name},{qname},{file},{sl},{el},{loc},{vis},{ia},{iu},{ist},{iab},{ifi},{ip},{ig},{ic},{gb},{ds},{db},{dd},{dsb},{deb},{cx}",
         id = csv_quote(&n.id.as_str()),
         kind = csv_quote(&n.kind.to_string()),
         name = csv_quote(&n.name),
@@ -68,6 +69,7 @@ fn node_csv_line(n: &Node) -> String {
         dd = csv_quote(d.doc_comment.as_deref().unwrap_or("")),
         dsb = d.start_byte,
         deb = d.end_byte,
+        cx = complexity,
     )
 }
 

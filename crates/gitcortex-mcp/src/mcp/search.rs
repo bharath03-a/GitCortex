@@ -42,9 +42,12 @@ pub fn search<S: GraphStore + ?Sized>(
         return Ok(Vec::new());
     }
 
-    // Pull every node once and score in-process. Cheap: typical repo graphs
-    // fit comfortably in memory and we avoid N queries.
-    let nodes = store.list_all_nodes(branch)?;
+    // Candidate set: store filters to nodes whose name/qualified_name contains
+    // the query string (case-sensitive at the Cypher level). The scorer below
+    // re-checks case-insensitively and ranks, so false negatives from case
+    // mismatch are avoided by the in-process pass via list_all_nodes fallback
+    // in stores that don't override search_nodes.
+    let nodes = store.search_nodes(branch, q, limit)?;
 
     let mut hits: Vec<SearchHit> = nodes
         .into_iter()

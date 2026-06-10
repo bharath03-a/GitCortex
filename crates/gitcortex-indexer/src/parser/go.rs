@@ -296,6 +296,13 @@ impl<'src> FileVisitor<'src> {
         // tree-sitter-go uses "type_parameters" for `func Foo[T any, U comparable]()`.
         graph_node.metadata.generic_bounds = self.collect_generic_bounds(node);
 
+        if let Some(body) = node.child_by_field_name("body") {
+            graph_node.metadata.lld.complexity = Some(super::cyclomatic_complexity(
+                body,
+                &super::complexity::go_decision,
+            ));
+        }
+
         self.nodes.push(graph_node);
 
         self.extract_fn_type_uses(node, &id);
@@ -320,7 +327,14 @@ impl<'src> FileVisitor<'src> {
             .get(&name)
             .cloned()
             .unwrap_or_else(NodeId::new);
-        let graph_node = self.make_node(id.clone(), NodeKind::Method, name, &scope, node);
+        let mut graph_node = self.make_node(id.clone(), NodeKind::Method, name, &scope, node);
+
+        if let Some(body) = node.child_by_field_name("body") {
+            graph_node.metadata.lld.complexity = Some(super::cyclomatic_complexity(
+                body,
+                &super::complexity::go_decision,
+            ));
+        }
 
         if let Some(cid) = container_id {
             self.edges.push(Edge {
