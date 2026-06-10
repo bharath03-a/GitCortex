@@ -1,8 +1,22 @@
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use gitcortex_core::{schema::NodeKind, store::GraphStore};
 use gitcortex_store::kuzu::KuzuGraphStore;
+
+use crate::embeddings::{Embedder, SemanticIndex};
+
+pub enum SemanticState {
+    /// Background initialiser not done yet — search is text-only.
+    Pending,
+    /// Model loaded and index populated.
+    Ready {
+        embedder: Box<Embedder>,
+        index: Box<SemanticIndex>,
+    },
+    /// Initialisation failed (no network, disk error, etc.) — text-only forever.
+    Disabled,
+}
 use rmcp::{
     handler::server::router::tool::ToolRouter,
     handler::server::wrapper::Parameters,
@@ -174,10 +188,15 @@ pub struct StartTourParams {
 /// so all handler calls can share state safely.
 #[derive(Clone)]
 pub struct GitCortexServer {
-    store: Arc<std::sync::Mutex<KuzuGraphStore>>,
+    store: Arc<Mutex<KuzuGraphStore>>,
     repo_root: PathBuf,
     default_branch: String,
     compact: bool,
+    /// Semantic search state. Starts as `Pending`; background task flips to
+    /// `Ready` once the model is loaded and missing vectors are embedded.
+    /// `Arc<Mutex<…>>` so the background task and all clone'd handler instances
+    /// share the same index.
+    pub semantic: Arc<Mutex<SemanticState>>,
 }
 
 impl GitCortexServer {
@@ -189,11 +208,27 @@ impl GitCortexServer {
         let store = KuzuGraphStore::open(repo_root)?;
         let default_branch = detect_current_branch(repo_root).unwrap_or_else(|| "main".into());
         Ok(Self {
-            store: Arc::new(std::sync::Mutex::new(store)),
+            store: Arc::new(Mutex::new(store)),
             repo_root: repo_root.to_owned(),
             default_branch,
             compact,
+            semantic: Arc::new(Mutex::new(SemanticState::Pending)),
         })
+    }
+
+    /// Return the shared arcs + branch needed by the background semantic indexer.
+    pub fn semantic_context(
+        &self,
+    ) -> (
+        Arc<Mutex<SemanticState>>,
+        Arc<Mutex<KuzuGraphStore>>,
+        String,
+    ) {
+        (
+            self.semantic.clone(),
+            self.store.clone(),
+            self.default_branch.clone(),
+        )
     }
 
     fn active_tool_router(&self) -> ToolRouter<Self> {
@@ -941,8 +976,10 @@ impl GitCortexServer {
 
     /// Search the graph by name + qualified-name with deterministic ranking.
     #[tool(
-        description = "Search the code graph by name. Ranks exact > prefix > substring; \
-        functions/structs boosted. Use before grep for symbol discovery. Default limit=10."
+        description = "Search the code graph by name or description. Combines token/fuzzy text \
+        matching (CamelCase-aware, typo-tolerant) with semantic vector similarity so you can \
+        search without knowing the exact symbol name. Ranks exact > prefix > semantic > \
+        substring; functions/structs boosted. Default limit=10."
     )]
     fn search_code(&self, Parameters(p): Parameters<SearchCodeParams>) -> CallToolResult {
         let branch = p
@@ -950,19 +987,93 @@ impl GitCortexServer {
             .as_deref()
             .unwrap_or(&self.default_branch)
             .to_owned();
-        let store = match self.store.lock() {
-            Ok(g) => g,
-            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+
+        // ── Text search ───────────────────────────────────────────────────────
+        let text_hits = {
+            let store = match self.store.lock() {
+                Ok(g) => g,
+                Err(_) => {
+                    return CallToolResult::error(vec![Content::text("store mutex poisoned")])
+                }
+            };
+            match super::search::search(&*store, &branch, &p.query, p.limit) {
+                Ok(h) => h,
+                Err(e) => {
+                    return CallToolResult::error(vec![Content::text(format!(
+                        "search failed: {e}"
+                    ))])
+                }
+            }
         };
-        match super::search::search(&*store, &branch, &p.query, p.limit) {
-            Ok(hits) => CallToolResult::structured(json!({
-                "query": p.query,
-                "branch": branch,
-                "count": hits.len(),
-                "hits": hits,
-            })),
-            Err(e) => CallToolResult::error(vec![Content::text(format!("search failed: {e}"))]),
+
+        // ── Semantic search (best-effort, non-blocking) ───────────────────────
+        // try_lock: never block an MCP call waiting for the background indexer.
+        let sem_hits = if let Ok(sem) = self.semantic.try_lock() {
+            if let SemanticState::Ready { embedder, index } = &*sem {
+                embedder.embed_one(&p.query).ok().map(|qvec| {
+                    let limit = p.limit.unwrap_or(10).min(200);
+                    index.top_k(&qvec, limit * 2)
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // ── Merge: resolve semantic IDs to full nodes, deduplicate ────────────
+        let mut all_hits = text_hits;
+        let text_names: std::collections::HashSet<String> =
+            all_hits.iter().map(|h| h.name.clone()).collect();
+
+        if let Some(sem_ids) = sem_hits {
+            if !sem_ids.is_empty() {
+                let store = match self.store.lock() {
+                    Ok(g) => g,
+                    Err(_) => {
+                        return CallToolResult::error(vec![Content::text("store mutex poisoned")])
+                    }
+                };
+                for id in sem_ids {
+                    // Resolve node ID → node name via a quick lookup.
+                    // We use list_all_nodes filtered here; acceptable because
+                    // semantic candidates are capped (limit*2 ≤ 400).
+                    if let Ok(nodes) = store.lookup_symbol(&branch, &id, false) {
+                        for n in nodes {
+                            if !text_names.contains(&n.name) {
+                                all_hits.push(super::search::SearchHit {
+                                    name: n.name,
+                                    qualified_name: n.qualified_name,
+                                    kind: n.kind.to_string(),
+                                    file: n.file.display().to_string(),
+                                    start_line: n.span.start_line,
+                                    score: 45, // semantic match: between prefix (60) and substring (30)
+                                });
+                            }
+                        }
+                    }
+                }
+            }
         }
+
+        let limit = p.limit.unwrap_or(10).min(200);
+        all_hits.sort_by(|a, b| {
+            b.score
+                .cmp(&a.score)
+                .then_with(|| a.name.len().cmp(&b.name.len()))
+        });
+        all_hits.truncate(limit);
+
+        CallToolResult::structured(json!({
+            "query": p.query,
+            "branch": branch,
+            "count": all_hits.len(),
+            "semantic_available": matches!(
+                self.semantic.try_lock().as_deref(),
+                Ok(SemanticState::Ready { .. })
+            ),
+            "hits": all_hits,
+        }))
     }
 
     /// Generate a guided tour through the repo's important symbols.
