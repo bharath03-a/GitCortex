@@ -66,6 +66,16 @@ impl SemanticIndex {
         self.vectors.is_empty()
     }
 
+    /// Drop vectors whose node ID is not in `live_ids`. Node UUIDs regenerate
+    /// on every re-index, so without pruning the index file grows with
+    /// orphaned vectors that can still surface as (unresolvable) hits.
+    /// Returns the number of vectors removed.
+    pub fn retain_ids(&mut self, live_ids: &std::collections::HashSet<String>) -> usize {
+        let before = self.vectors.len();
+        self.vectors.retain(|id, _| live_ids.contains(id));
+        before - self.vectors.len()
+    }
+
     pub fn save(&self) {
         if let Err(e) = save_bin(&self.path, &self.vectors) {
             tracing::warn!("failed to save semantic index: {e}");

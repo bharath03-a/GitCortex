@@ -1034,22 +1034,17 @@ impl GitCortexServer {
                         return CallToolResult::error(vec![Content::text("store mutex poisoned")])
                     }
                 };
-                for id in sem_ids {
-                    // Resolve node ID → node name via a quick lookup.
-                    // We use list_all_nodes filtered here; acceptable because
-                    // semantic candidates are capped (limit*2 ≤ 400).
-                    if let Ok(nodes) = store.lookup_symbol(&branch, &id, false) {
-                        for n in nodes {
-                            if !text_names.contains(&n.name) {
-                                all_hits.push(super::search::SearchHit {
-                                    name: n.name,
-                                    qualified_name: n.qualified_name,
-                                    kind: n.kind.to_string(),
-                                    file: n.file.display().to_string(),
-                                    start_line: n.span.start_line,
-                                    score: 45, // semantic match: between prefix (60) and substring (30)
-                                });
-                            }
+                if let Ok(nodes) = store.get_nodes_by_ids(&branch, &sem_ids) {
+                    for n in nodes {
+                        if !text_names.contains(&n.name) {
+                            all_hits.push(super::search::SearchHit {
+                                name: n.name,
+                                qualified_name: n.qualified_name,
+                                kind: n.kind.to_string(),
+                                file: n.file.display().to_string(),
+                                start_line: n.span.start_line,
+                                score: 45, // semantic match: between prefix (60) and substring (30)
+                            });
                         }
                     }
                 }

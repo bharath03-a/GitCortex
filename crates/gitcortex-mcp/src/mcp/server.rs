@@ -72,6 +72,13 @@ fn run_background_indexer(
         store.list_all_nodes(branch).unwrap_or_default()
     };
 
+    // Prune vectors for nodes that no longer exist (UUIDs change on re-index).
+    let live_ids: std::collections::HashSet<String> = nodes.iter().map(|n| n.id.as_str()).collect();
+    let pruned = index.retain_ids(&live_ids);
+    if pruned > 0 {
+        tracing::info!("semantic index: pruned {pruned} stale vectors");
+    }
+
     let missing: Vec<_> = nodes
         .iter()
         .filter(|n| !index.has(&n.id.as_str()))
@@ -97,6 +104,8 @@ fn run_background_indexer(
         }
         index.save();
         tracing::info!("semantic index: {} vectors", index.len());
+    } else if pruned > 0 {
+        index.save();
     } else {
         tracing::info!("semantic index up-to-date: {} vectors", index.len());
     }

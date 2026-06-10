@@ -97,6 +97,20 @@ pub trait GraphStore: Send + Sync {
         Ok(nodes)
     }
 
+    /// Resolve a set of node IDs to full nodes. Order is not guaranteed; IDs
+    /// that don't exist on `branch` are silently skipped.
+    ///
+    /// The default falls back to `list_all_nodes`; backends should override
+    /// with an indexed ID lookup.
+    fn get_nodes_by_ids(&self, branch: &str, ids: &[String]) -> Result<Vec<Node>> {
+        let idset: std::collections::HashSet<&str> = ids.iter().map(String::as_str).collect();
+        Ok(self
+            .list_all_nodes(branch)?
+            .into_iter()
+            .filter(|n| idset.contains(n.id.as_str().as_str()))
+            .collect())
+    }
+
     /// Return the graph delta between two branches as a `GraphDiff`.
     /// Nodes/edges present in `to` but not `from` are in `added_*`.
     /// Nodes/edges present in `from` but not `to` are in `removed_*`.

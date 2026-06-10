@@ -756,6 +756,26 @@ impl GraphStore for KuzuGraphStore {
         rows_to_nodes(&mut result)
     }
 
+    fn get_nodes_by_ids(&self, branch: &str, ids: &[String]) -> Result<Vec<Node>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        self.ensure_branch(branch)?;
+        let nt = db_schema::node_table(branch);
+        let conn = self.conn()?;
+        let id_list = ids
+            .iter()
+            .map(|id| format!("'{}'", esc(id)))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let mut result = conn
+            .query(&format!(
+                "MATCH (n:{nt}) WHERE n.id IN [{id_list}] RETURN {NODE_COLS}"
+            ))
+            .map_err(|e| GitCortexError::Store(e.to_string()))?;
+        rows_to_nodes(&mut result)
+    }
+
     fn list_all_edges(&self, branch: &str) -> Result<Vec<Edge>> {
         self.ensure_branch(branch)?;
         let nt = db_schema::node_table(branch);
