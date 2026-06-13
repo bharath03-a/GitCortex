@@ -524,6 +524,41 @@ fn cross_file_implements_edge_resolved() {
 }
 
 #[test]
+fn find_unused_symbols_returns_uncalled_nodes() {
+    // compute_value is CALLED by run() and run_with_branch(), so it should NOT
+    // appear as unused. DataStore is defined but never called or used as a type.
+    let (_, _, store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
+    let unused = store
+        .find_unused_symbols("main", None)
+        .expect("find_unused_symbols");
+    let unused_names: Vec<&str> = unused.iter().map(|n| n.name.as_str()).collect();
+
+    assert!(
+        !unused_names.contains(&"compute_value"),
+        "compute_value is called by run() — must not appear in unused: {unused_names:?}"
+    );
+    assert!(
+        unused_names.contains(&"DataStore"),
+        "DataStore has no callers or uses — must appear in unused: {unused_names:?}"
+    );
+}
+
+#[test]
+fn find_unused_symbols_kind_filter() {
+    // With kind=function, only functions/methods should be returned.
+    let (_, _, store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
+    let unused = store
+        .find_unused_symbols("main", Some(NodeKind::Function))
+        .expect("find_unused_symbols kind=function");
+    for node in &unused {
+        assert!(
+            matches!(node.kind, NodeKind::Function | NodeKind::Method),
+            "kind filter returned non-function: {node:?}"
+        );
+    }
+}
+
+#[test]
 fn cyclomatic_complexity_simple_function() {
     let (nodes, _) = run_pipeline("sample.rs");
     // make_greeting calls h.greet() — linear function, complexity should be 1.

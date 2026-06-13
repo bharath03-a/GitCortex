@@ -43,7 +43,7 @@ fn tokenize(s: &str) -> Vec<String> {
     let mut current = String::new();
     let chars: Vec<char> = s.chars().collect();
     for (i, &ch) in chars.iter().enumerate() {
-        if ch == '_' || ch == '-' || ch == '.' || ch == ':' || ch == '/' {
+        if ch == '_' || ch == '-' || ch == '.' || ch == ':' || ch == '/' || ch == ' ' {
             if !current.is_empty() {
                 tokens.push(current.to_ascii_lowercase());
                 current = String::new();
@@ -217,6 +217,14 @@ pub fn search<S: GraphStore + ?Sized>(
             &mut seen,
             store.search_nodes(branch, token, candidate_limit)?,
         );
+    }
+
+    // Typo-fallback: CONTAINS can't find misspelled queries ("Greetter" won't
+    // match "Greeter"). When no candidates found and query is short enough for
+    // edit-distance to be meaningful, scan all nodes so the scorer can apply
+    // typo tolerance.
+    if nodes.is_empty() && q_lower.len() >= 4 && q_lower.len() <= 20 {
+        push(&mut nodes, &mut seen, store.list_all_nodes(branch)?);
     }
 
     let mut hits: Vec<SearchHit> = nodes
