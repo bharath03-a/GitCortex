@@ -42,7 +42,7 @@ pub struct GcxDispatchParams {
     /// Which graph operation to run. One of: lookup_symbol, find_callers, find_callees,
     /// find_unused_symbols, get_subgraph, search_code, start_tour, wiki_symbol,
     /// trace_path, list_definitions, symbol_context, list_symbols_in_range, graph_stats,
-    /// ast_search.
+    /// ast_search, type_hierarchy.
     pub action: String,
     /// Parameters for the chosen action as a JSON object (same fields as the
     /// individual tool: name, function_name, seed_name, query, file, branch,
@@ -111,6 +111,13 @@ pub struct FindCalleesParams {
 pub struct FindImplementorsParams {
     /// Trait, interface, or abstract class name to find implementors of.
     pub trait_name: String,
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct TypeHierarchyParams {
+    /// Type name (struct/class/trait/interface) to map relationships for.
+    pub name: String,
     pub branch: Option<String>,
 }
 
@@ -906,6 +913,44 @@ impl GitCortexServer {
         }
     }
 
+    /// Map both directions of a type's relationships in one call.
+    #[tool(
+        description = "Map a type's full relationship hierarchy in one call: supertypes (the traits/interfaces/classes it implements or extends) AND subtypes (the types that implement or extend it). Where find_implementors gives only the downward direction, this gives both. Works across Rust traits, Java/TypeScript interfaces, and inheritance chains."
+    )]
+    fn type_hierarchy(&self, Parameters(p): Parameters<TypeHierarchyParams>) -> CallToolResult {
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        match store.type_hierarchy(&branch, &p.name) {
+            Ok(h) => {
+                let to_items = |nodes: &[gitcortex_core::graph::Node]| -> serde_json::Value {
+                    json!(nodes
+                        .iter()
+                        .map(|n| json!({
+                            "kind": n.kind.to_string(),
+                            "name": n.name,
+                            "qualified_name": n.qualified_name,
+                            "file": n.file.display().to_string(),
+                            "start_line": n.span.start_line,
+                        }))
+                        .collect::<Vec<_>>())
+                };
+                CallToolResult::structured(json!({
+                    "type": p.name,
+                    "supertypes": to_items(&h.supertypes),
+                    "subtypes": to_items(&h.subtypes),
+                }))
+            }
+            Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
+        }
+    }
+
     /// Find a call path between two symbols in the codebase.
     #[tool(
         description = "Find a call path from one function to another. Returns the shortest chain of \
@@ -1283,7 +1328,8 @@ impl GitCortexServer {
     #[tool(description = "Query the GitCortex code knowledge graph. \
         action: lookup_symbol | find_callers | find_callees | find_unused_symbols | \
         get_subgraph | search_code | start_tour | wiki_symbol | trace_path | \
-        list_definitions | symbol_context | list_symbols_in_range | graph_stats | ast_search | branch_diff_graph. \
+        list_definitions | symbol_context | list_symbols_in_range | graph_stats | ast_search | \
+        type_hierarchy | branch_diff_graph. \
         params: JSON object with the same fields as the individual tool (name/function_name/\
         seed_name/query/file/branch/depth/limit/direction as applicable). \
         Returns identical output to the individual tool.")]
@@ -1419,6 +1465,10 @@ impl GitCortexServer {
                 branch: branch_val,
             })),
             "graph_stats" => self.graph_stats(Parameters(GraphStatsParams { branch: branch_val })),
+            "type_hierarchy" => self.type_hierarchy(Parameters(TypeHierarchyParams {
+                name: str_field!("name"),
+                branch: branch_val,
+            })),
             "ast_search" => self.ast_search(Parameters(AstSearchParams {
                 kind: p
                     .params
@@ -1473,7 +1523,7 @@ impl GitCortexServer {
                 "gcx dispatch: unknown action '{other}'. Valid: lookup_symbol, find_callers, \
                 find_callees, find_unused_symbols, get_subgraph, search_code, start_tour, \
                 wiki_symbol, trace_path, list_definitions, symbol_context, list_symbols_in_range, \
-                graph_stats, ast_search"
+                graph_stats, ast_search, type_hierarchy"
             ))]),
         }
     }

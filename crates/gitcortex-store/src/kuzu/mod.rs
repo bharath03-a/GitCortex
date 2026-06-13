@@ -7,7 +7,10 @@ use gitcortex_core::{
     error::{GitCortexError, Result},
     graph::{Edge, GraphDiff, Node, NodeId},
     schema::{NodeKind, SCHEMA_VERSION},
-    store::{AttributeFilter, CallersDeep, GraphStats, GraphStore, SubGraph, SymbolContext},
+    store::{
+        AttributeFilter, CallersDeep, GraphStats, GraphStore, SubGraph, SymbolContext,
+        TypeHierarchy,
+    },
 };
 use kuzu::{Connection, Database, SystemConfig};
 
@@ -950,6 +953,45 @@ impl GraphStore for KuzuGraphStore {
             ))
             .map_err(|e| GitCortexError::Store(e.to_string()))?;
         rows_to_nodes(&mut result)
+    }
+
+    fn type_hierarchy(&self, branch: &str, name: &str) -> Result<TypeHierarchy> {
+        self.ensure_branch(branch)?;
+        let nt = db_schema::node_table(branch);
+        let et = db_schema::edge_table(branch);
+        let name_esc = esc(name);
+        let conn = self.conn()?;
+
+        // Supertypes: types this type implements or extends (self → super).
+        let mut super_result = conn
+            .query(&format!(
+                "MATCH (n:{nt})-[e:{et}]->(super:{nt}) \
+                 WHERE n.name = '{name_esc}' \
+                 AND (e.kind = 'implements' OR e.kind = 'inherits') \
+                 RETURN DISTINCT {} ORDER BY {}",
+                NODE_COLS.replace("n.", "super."),
+                SYMBOL_RANK.replace("n.", "super.")
+            ))
+            .map_err(|e| GitCortexError::Store(e.to_string()))?;
+        let supertypes = rows_to_nodes(&mut super_result)?;
+
+        // Subtypes: types that implement or extend this type (sub → self).
+        let mut sub_result = conn
+            .query(&format!(
+                "MATCH (sub:{nt})-[e:{et}]->(n:{nt}) \
+                 WHERE n.name = '{name_esc}' \
+                 AND (e.kind = 'implements' OR e.kind = 'inherits') \
+                 RETURN DISTINCT {} ORDER BY {}",
+                NODE_COLS.replace("n.", "sub."),
+                SYMBOL_RANK.replace("n.", "sub.")
+            ))
+            .map_err(|e| GitCortexError::Store(e.to_string()))?;
+        let subtypes = rows_to_nodes(&mut sub_result)?;
+
+        Ok(TypeHierarchy {
+            supertypes,
+            subtypes,
+        })
     }
 
     fn trace_path(&self, branch: &str, from: &str, to: &str) -> Result<Vec<Node>> {

@@ -101,6 +101,14 @@ pub struct GraphStats {
     pub edges_by_kind: Vec<(String, u64)>,
 }
 
+/// Up-and-down type relationships for a named type, returned by `type_hierarchy`.
+pub struct TypeHierarchy {
+    /// Types this type implements or extends (its supertypes / interfaces).
+    pub supertypes: Vec<Node>,
+    /// Types that implement or extend this type (its subtypes / implementors).
+    pub subtypes: Vec<Node>,
+}
+
 /// 360-degree view of a single symbol.
 pub struct SymbolContext {
     /// The node matching `name` (first match if multiple).
@@ -256,6 +264,54 @@ pub trait GraphStore: Send + Sync {
 
     /// Find all structs/classes that implement/inherit `trait_or_interface_name`.
     fn find_implementors(&self, branch: &str, trait_or_interface_name: &str) -> Result<Vec<Node>>;
+
+    /// Return both directions of the type relation for `name`: the types it
+    /// implements/extends (supertypes) and the types that implement/extend it
+    /// (subtypes), following `Implements` and `Inherits` edges.
+    ///
+    /// The default walks `list_all_edges`; backends should override with a
+    /// directed Cypher match.
+    fn type_hierarchy(&self, branch: &str, name: &str) -> Result<TypeHierarchy> {
+        use crate::schema::EdgeKind;
+        use std::collections::HashSet;
+
+        let nodes = self.list_all_nodes(branch)?;
+        let edges = self.list_all_edges(branch)?;
+
+        let self_ids: HashSet<String> = nodes
+            .iter()
+            .filter(|n| n.name == name)
+            .map(|n| n.id.as_str())
+            .collect();
+        if self_ids.is_empty() {
+            return Ok(TypeHierarchy {
+                supertypes: Vec::new(),
+                subtypes: Vec::new(),
+            });
+        }
+
+        let is_hierarchy = |k: &EdgeKind| matches!(k, EdgeKind::Implements | EdgeKind::Inherits);
+        let mut super_ids: Vec<String> = Vec::new();
+        let mut sub_ids: Vec<String> = Vec::new();
+        for e in &edges {
+            if !is_hierarchy(&e.kind) {
+                continue;
+            }
+            // self → super
+            if self_ids.contains(&e.src.as_str()) {
+                super_ids.push(e.dst.as_str());
+            }
+            // sub → self
+            if self_ids.contains(&e.dst.as_str()) {
+                sub_ids.push(e.src.as_str());
+            }
+        }
+
+        Ok(TypeHierarchy {
+            supertypes: self.get_nodes_by_ids(branch, &super_ids)?,
+            subtypes: self.get_nodes_by_ids(branch, &sub_ids)?,
+        })
+    }
 
     /// Find all call paths between `from` and `to` using BFS.
     /// Returns at most one path (the shortest), as a sequence of nodes.

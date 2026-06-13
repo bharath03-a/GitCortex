@@ -524,6 +524,44 @@ fn cross_file_implements_edge_resolved() {
 }
 
 #[test]
+fn type_hierarchy_subtypes_from_trait() {
+    // xfile_trait.rs: trait Processor; xfile_impl.rs: impl Processor for Worker.
+    // Querying the trait should list Worker as a subtype.
+    let (_, _, store) = run_pipeline_multi(&["xfile_trait.rs", "xfile_impl.rs"]);
+    let h = store
+        .type_hierarchy("main", "Processor")
+        .expect("type_hierarchy");
+    let sub_names: Vec<&str> = h.subtypes.iter().map(|n| n.name.as_str()).collect();
+    assert!(
+        sub_names.contains(&"Worker"),
+        "Processor subtypes should include Worker, got: {sub_names:?}"
+    );
+}
+
+#[test]
+fn type_hierarchy_supertypes_from_impl() {
+    // From the concrete type's side: Worker implements Processor (supertype).
+    let (_, _, store) = run_pipeline_multi(&["xfile_trait.rs", "xfile_impl.rs"]);
+    let h = store
+        .type_hierarchy("main", "Worker")
+        .expect("type_hierarchy");
+    let super_names: Vec<&str> = h.supertypes.iter().map(|n| n.name.as_str()).collect();
+    assert!(
+        super_names.contains(&"Processor"),
+        "Worker supertypes should include Processor, got: {super_names:?}"
+    );
+}
+
+#[test]
+fn type_hierarchy_unknown_type_is_empty() {
+    let (_, _, store) = run_pipeline_multi(&["sample.rs"]);
+    let h = store
+        .type_hierarchy("main", "NoSuchTypeXyz")
+        .expect("type_hierarchy");
+    assert!(h.supertypes.is_empty() && h.subtypes.is_empty());
+}
+
+#[test]
 fn ast_search_async_methods_only() {
     use gitcortex_core::store::AttributeFilter;
     let (_, _, store) = run_pipeline_multi(&["python_comprehensive.py"]);
