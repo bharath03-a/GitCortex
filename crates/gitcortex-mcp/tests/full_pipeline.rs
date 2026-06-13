@@ -524,6 +524,85 @@ fn cross_file_implements_edge_resolved() {
 }
 
 #[test]
+fn ast_search_async_methods_only() {
+    use gitcortex_core::store::AttributeFilter;
+    let (_, _, store) = run_pipeline_multi(&["python_comprehensive.py"]);
+    let filter = AttributeFilter {
+        kind: Some(NodeKind::Method),
+        is_async: Some(true),
+        ..Default::default()
+    };
+    let hits = store
+        .search_by_attributes("main", &filter, 50)
+        .expect("search_by_attributes");
+    let names: Vec<&str> = hits.iter().map(|n| n.name.as_str()).collect();
+    // AsyncService.fetch_user / save_user are async methods.
+    assert!(
+        names.contains(&"fetch_user"),
+        "expected async method fetch_user, got: {names:?}"
+    );
+    // Every result must actually be an async method.
+    for n in &hits {
+        assert_eq!(n.kind, NodeKind::Method);
+        assert!(n.metadata.is_async, "{} not async", n.name);
+    }
+}
+
+#[test]
+fn ast_search_kind_filter_excludes_others() {
+    use gitcortex_core::store::AttributeFilter;
+    let (_, _, store) = run_pipeline_multi(&["sample.rs"]);
+    let filter = AttributeFilter {
+        kind: Some(NodeKind::Trait),
+        ..Default::default()
+    };
+    let hits = store
+        .search_by_attributes("main", &filter, 50)
+        .expect("search_by_attributes");
+    assert!(!hits.is_empty(), "expected at least the Greeter trait");
+    for n in &hits {
+        assert_eq!(n.kind, NodeKind::Trait, "{} is not a trait", n.name);
+    }
+}
+
+#[test]
+fn ast_search_complexity_lower_bound() {
+    use gitcortex_core::store::AttributeFilter;
+    // run_with_branch has complexity 2; a min of 2 must include it, min of 3 must not.
+    let (_, _, store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
+
+    let at_least_2 = store
+        .search_by_attributes(
+            "main",
+            &AttributeFilter {
+                min_complexity: Some(2),
+                ..Default::default()
+            },
+            50,
+        )
+        .expect("search");
+    assert!(
+        at_least_2.iter().any(|n| n.name == "run_with_branch"),
+        "complexity≥2 should include run_with_branch"
+    );
+
+    let at_least_3 = store
+        .search_by_attributes(
+            "main",
+            &AttributeFilter {
+                min_complexity: Some(3),
+                ..Default::default()
+            },
+            50,
+        )
+        .expect("search");
+    assert!(
+        !at_least_3.iter().any(|n| n.name == "run_with_branch"),
+        "complexity≥3 should exclude run_with_branch (complexity 2)"
+    );
+}
+
+#[test]
 fn graph_stats_totals_match_kind_sums() {
     let (nodes, edges, store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
     let stats = store.graph_stats("main").expect("graph_stats");

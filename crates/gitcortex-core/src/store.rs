@@ -3,8 +3,77 @@ use std::path::Path;
 use crate::{
     error::Result,
     graph::{Edge, GraphDiff, Node},
-    schema::NodeKind,
+    schema::{NodeKind, Visibility},
 };
+
+/// Structural predicate set for `search_by_attributes`. All fields are
+/// optional; a `None` field imposes no constraint. Set fields are ANDed.
+#[derive(Debug, Default, Clone)]
+pub struct AttributeFilter {
+    pub kind: Option<NodeKind>,
+    pub is_async: Option<bool>,
+    pub visibility: Option<Visibility>,
+    /// Inclusive lower bound on cyclomatic complexity. Nodes without a recorded
+    /// complexity never match a complexity bound.
+    pub min_complexity: Option<u32>,
+    /// Inclusive upper bound on cyclomatic complexity.
+    pub max_complexity: Option<u32>,
+    /// Case-insensitive substring the node name must contain.
+    pub name_contains: Option<String>,
+}
+
+impl AttributeFilter {
+    /// True when every set predicate holds for `node`.
+    pub fn matches(&self, node: &Node) -> bool {
+        if let Some(k) = &self.kind {
+            if &node.kind != k {
+                return false;
+            }
+        }
+        if let Some(a) = self.is_async {
+            if node.metadata.is_async != a {
+                return false;
+            }
+        }
+        if let Some(v) = &self.visibility {
+            if &node.metadata.visibility != v {
+                return false;
+            }
+        }
+        if let Some(min) = self.min_complexity {
+            match node.metadata.lld.complexity {
+                Some(c) if c >= min => {}
+                _ => return false,
+            }
+        }
+        if let Some(max) = self.max_complexity {
+            match node.metadata.lld.complexity {
+                Some(c) if c <= max => {}
+                _ => return false,
+            }
+        }
+        if let Some(sub) = &self.name_contains {
+            if !node
+                .name
+                .to_ascii_lowercase()
+                .contains(&sub.to_ascii_lowercase())
+            {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// True when no predicate is set — an unconstrained filter.
+    pub fn is_empty(&self) -> bool {
+        self.kind.is_none()
+            && self.is_async.is_none()
+            && self.visibility.is_none()
+            && self.min_complexity.is_none()
+            && self.max_complexity.is_none()
+            && self.name_contains.is_none()
+    }
+}
 
 /// A subgraph centred on a seed node, returned by `get_subgraph`.
 pub struct SubGraph {
@@ -88,6 +157,26 @@ pub trait GraphStore: Send + Sync {
 
     /// Return all edges in `branch`'s graph.
     fn list_all_edges(&self, branch: &str) -> Result<Vec<Edge>>;
+
+    /// Find nodes matching a structural `filter` (kind, async, visibility,
+    /// complexity range, name substring), up to `limit` results.
+    ///
+    /// The default filters `list_all_nodes` in-memory; backends should override
+    /// with a `WHERE`-clause push-down.
+    fn search_by_attributes(
+        &self,
+        branch: &str,
+        filter: &AttributeFilter,
+        limit: usize,
+    ) -> Result<Vec<Node>> {
+        let mut nodes: Vec<Node> = self
+            .list_all_nodes(branch)?
+            .into_iter()
+            .filter(|n| filter.matches(n))
+            .collect();
+        nodes.truncate(limit);
+        Ok(nodes)
+    }
 
     /// Aggregate node/edge counts (total + per-kind) for `branch`.
     ///

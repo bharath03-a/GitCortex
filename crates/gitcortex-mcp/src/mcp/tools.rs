@@ -1,7 +1,10 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use gitcortex_core::{schema::NodeKind, store::GraphStore};
+use gitcortex_core::{
+    schema::{NodeKind, Visibility},
+    store::{AttributeFilter, GraphStore},
+};
 use gitcortex_store::kuzu::KuzuGraphStore;
 
 use crate::embeddings::{Embedder, SemanticIndex};
@@ -38,7 +41,8 @@ use serde_json::json;
 pub struct GcxDispatchParams {
     /// Which graph operation to run. One of: lookup_symbol, find_callers, find_callees,
     /// find_unused_symbols, get_subgraph, search_code, start_tour, wiki_symbol,
-    /// trace_path, list_definitions, symbol_context, list_symbols_in_range, graph_stats.
+    /// trace_path, list_definitions, symbol_context, list_symbols_in_range, graph_stats,
+    /// ast_search.
     pub action: String,
     /// Parameters for the chosen action as a JSON object (same fields as the
     /// individual tool: name, function_name, seed_name, query, file, branch,
@@ -188,6 +192,27 @@ pub struct GraphStatsParams {
     pub branch: Option<String>,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct AstSearchParams {
+    /// NodeKind filter: "function", "method", "struct", "trait", "interface",
+    /// "enum", "constant", "type_alias", "module", etc. Omit for any kind.
+    pub kind: Option<String>,
+    /// When set, match only async (true) or only non-async (false) symbols.
+    pub is_async: Option<bool>,
+    /// Visibility filter: "pub", "pub_crate", or "private".
+    pub visibility: Option<String>,
+    /// Inclusive lower bound on cyclomatic complexity. Symbols without a
+    /// recorded complexity are excluded when this is set.
+    pub min_complexity: Option<u32>,
+    /// Inclusive upper bound on cyclomatic complexity.
+    pub max_complexity: Option<u32>,
+    /// Case-insensitive substring the symbol name must contain.
+    pub name_contains: Option<String>,
+    /// Max results (default 30, capped at 200).
+    pub limit: Option<usize>,
+    pub branch: Option<String>,
+}
+
 // ── Server ────────────────────────────────────────────────────────────────────
 
 /// The MCP server handler. One shared `KuzuGraphStore` wrapped in `Arc<Mutex>`
@@ -262,6 +287,38 @@ impl GitCortexServer {
         }
         router
     }
+}
+
+/// Parse a NodeKind from its snake_case string form (matches `NodeKind::Display`).
+fn parse_node_kind(s: &str) -> Option<NodeKind> {
+    Some(match s {
+        "folder" => NodeKind::Folder,
+        "file" => NodeKind::File,
+        "module" => NodeKind::Module,
+        "struct" => NodeKind::Struct,
+        "enum" => NodeKind::Enum,
+        "trait" => NodeKind::Trait,
+        "interface" => NodeKind::Interface,
+        "type_alias" => NodeKind::TypeAlias,
+        "function" => NodeKind::Function,
+        "method" => NodeKind::Method,
+        "property" => NodeKind::Property,
+        "constant" => NodeKind::Constant,
+        "macro" => NodeKind::Macro,
+        "annotation" => NodeKind::Annotation,
+        "enum_member" => NodeKind::EnumMember,
+        _ => return None,
+    })
+}
+
+/// Parse a Visibility from its snake_case string form.
+fn parse_visibility(s: &str) -> Option<Visibility> {
+    Some(match s {
+        "pub" => Visibility::Pub,
+        "pub_crate" => Visibility::PubCrate,
+        "private" => Visibility::Private,
+        _ => return None,
+    })
 }
 
 fn detect_current_branch(repo_root: &Path) -> Option<String> {
@@ -543,6 +600,83 @@ impl GitCortexServer {
                     "total_edges": stats.total_edges,
                     "nodes_by_kind": to_obj(&stats.nodes_by_kind),
                     "edges_by_kind": to_obj(&stats.edges_by_kind),
+                }))
+            }
+            Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
+        }
+    }
+
+    /// Structural search over node attributes (no name needed).
+    #[tool(
+        description = "Find symbols by structural attributes rather than name: kind (function/method/struct/...), is_async, visibility (pub/pub_crate/private), and cyclomatic complexity range. Combine filters to answer questions like 'all async methods', 'public structs', or 'functions with complexity ≥ 10'. Optional name_contains narrows further. Default limit=30."
+    )]
+    fn ast_search(&self, Parameters(p): Parameters<AstSearchParams>) -> CallToolResult {
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
+        let limit = p.limit.unwrap_or(30).min(200);
+
+        let kind = p.kind.as_deref().and_then(parse_node_kind);
+        // Reject an unknown kind string rather than silently ignoring it.
+        if p.kind.is_some() && kind.is_none() {
+            return CallToolResult::error(vec![Content::text(format!(
+                "unknown kind '{}'. Valid: function, method, struct, enum, trait, \
+                 interface, type_alias, property, constant, macro, annotation, \
+                 enum_member, module, file, folder",
+                p.kind.as_deref().unwrap_or("")
+            ))]);
+        }
+        let visibility = p.visibility.as_deref().and_then(parse_visibility);
+        if p.visibility.is_some() && visibility.is_none() {
+            return CallToolResult::error(vec![Content::text(
+                "unknown visibility. Valid: pub, pub_crate, private".to_owned(),
+            )]);
+        }
+
+        let filter = AttributeFilter {
+            kind,
+            is_async: p.is_async,
+            visibility,
+            min_complexity: p.min_complexity,
+            max_complexity: p.max_complexity,
+            name_contains: p.name_contains.clone(),
+        };
+
+        if filter.is_empty() {
+            return CallToolResult::error(vec![Content::text(
+                "ast_search needs at least one filter (kind, is_async, visibility, \
+                 complexity bound, or name_contains)"
+                    .to_owned(),
+            )]);
+        }
+
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        match store.search_by_attributes(&branch, &filter, limit) {
+            Ok(nodes) => {
+                let items: Vec<_> = nodes
+                    .iter()
+                    .map(|n| {
+                        json!({
+                            "kind": n.kind.to_string(),
+                            "name": n.name,
+                            "qualified_name": n.qualified_name,
+                            "file": n.file.display().to_string(),
+                            "start_line": n.span.start_line,
+                            "visibility": format!("{:?}", n.metadata.visibility),
+                            "is_async": n.metadata.is_async,
+                            "complexity": n.metadata.lld.complexity,
+                        })
+                    })
+                    .collect();
+                CallToolResult::structured(json!({
+                    "branch": branch,
+                    "results": items,
+                    "returned": items.len(),
                 }))
             }
             Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
@@ -1149,7 +1283,7 @@ impl GitCortexServer {
     #[tool(description = "Query the GitCortex code knowledge graph. \
         action: lookup_symbol | find_callers | find_callees | find_unused_symbols | \
         get_subgraph | search_code | start_tour | wiki_symbol | trace_path | \
-        list_definitions | symbol_context | list_symbols_in_range | graph_stats | branch_diff_graph. \
+        list_definitions | symbol_context | list_symbols_in_range | graph_stats | ast_search | branch_diff_graph. \
         params: JSON object with the same fields as the individual tool (name/function_name/\
         seed_name/query/file/branch/depth/limit/direction as applicable). \
         Returns identical output to the individual tool.")]
@@ -1285,6 +1419,40 @@ impl GitCortexServer {
                 branch: branch_val,
             })),
             "graph_stats" => self.graph_stats(Parameters(GraphStatsParams { branch: branch_val })),
+            "ast_search" => self.ast_search(Parameters(AstSearchParams {
+                kind: p
+                    .params
+                    .get("kind")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_owned()),
+                is_async: p.params.get("is_async").and_then(|v| v.as_bool()),
+                visibility: p
+                    .params
+                    .get("visibility")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_owned()),
+                min_complexity: p
+                    .params
+                    .get("min_complexity")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as u32),
+                max_complexity: p
+                    .params
+                    .get("max_complexity")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as u32),
+                name_contains: p
+                    .params
+                    .get("name_contains")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_owned()),
+                limit: p
+                    .params
+                    .get("limit")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize),
+                branch: branch_val,
+            })),
             "list_symbols_in_range" => {
                 self.list_symbols_in_range(Parameters(ListSymbolsInRangeParams {
                     file: str_field!("file"),
@@ -1305,7 +1473,7 @@ impl GitCortexServer {
                 "gcx dispatch: unknown action '{other}'. Valid: lookup_symbol, find_callers, \
                 find_callees, find_unused_symbols, get_subgraph, search_code, start_tour, \
                 wiki_symbol, trace_path, list_definitions, symbol_context, list_symbols_in_range, \
-                graph_stats"
+                graph_stats, ast_search"
             ))]),
         }
     }

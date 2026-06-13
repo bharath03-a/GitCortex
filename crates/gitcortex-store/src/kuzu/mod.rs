@@ -7,7 +7,7 @@ use gitcortex_core::{
     error::{GitCortexError, Result},
     graph::{Edge, GraphDiff, Node, NodeId},
     schema::{NodeKind, SCHEMA_VERSION},
-    store::{CallersDeep, GraphStats, GraphStore, SubGraph, SymbolContext},
+    store::{AttributeFilter, CallersDeep, GraphStats, GraphStore, SubGraph, SymbolContext},
 };
 use kuzu::{Connection, Database, SystemConfig};
 
@@ -801,6 +801,56 @@ impl GraphStore for KuzuGraphStore {
             });
         }
         Ok(out)
+    }
+
+    fn search_by_attributes(
+        &self,
+        branch: &str,
+        filter: &AttributeFilter,
+        limit: usize,
+    ) -> Result<Vec<Node>> {
+        self.ensure_branch(branch)?;
+        let nt = db_schema::node_table(branch);
+        let conn = self.conn()?;
+
+        // Build AND-joined WHERE clauses from the set predicates.
+        let mut clauses: Vec<String> = Vec::new();
+        if let Some(k) = &filter.kind {
+            clauses.push(format!("n.kind = '{}'", esc(&k.to_string())));
+        }
+        if let Some(a) = filter.is_async {
+            clauses.push(format!("n.is_async = {a}"));
+        }
+        if let Some(v) = &filter.visibility {
+            clauses.push(format!("n.visibility = '{}'", esc(&vis_str(v))));
+        }
+        // complexity is stored as -1 when absent; a bound must also exclude -1.
+        if let Some(min) = filter.min_complexity {
+            clauses.push(format!("n.complexity >= {min} AND n.complexity >= 0"));
+        }
+        if let Some(max) = filter.max_complexity {
+            clauses.push(format!("n.complexity <= {max} AND n.complexity >= 0"));
+        }
+        if let Some(sub) = &filter.name_contains {
+            clauses.push(format!(
+                "contains(lower(n.name), '{}')",
+                esc(&sub.to_ascii_lowercase())
+            ));
+        }
+
+        let where_clause = if clauses.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", clauses.join(" AND "))
+        };
+
+        let mut result = conn
+            .query(&format!(
+                "MATCH (n:{nt}) {where_clause} \
+                 RETURN {NODE_COLS} ORDER BY {SYMBOL_RANK} LIMIT {limit}"
+            ))
+            .map_err(|e| GitCortexError::Store(e.to_string()))?;
+        rows_to_nodes(&mut result)
     }
 
     fn graph_stats(&self, branch: &str) -> Result<GraphStats> {
