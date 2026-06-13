@@ -7,7 +7,7 @@ use gitcortex_core::{
     error::{GitCortexError, Result},
     graph::{Edge, GraphDiff, Node, NodeId},
     schema::{NodeKind, SCHEMA_VERSION},
-    store::{CallersDeep, GraphStore, SubGraph, SymbolContext},
+    store::{CallersDeep, GraphStats, GraphStore, SubGraph, SymbolContext},
 };
 use kuzu::{Connection, Database, SystemConfig};
 
@@ -22,7 +22,7 @@ mod values;
 use conv::{edge_kind_from_str, lang_scope_clause, vis_str};
 use escape::{esc, esc_multiline};
 use queries::{collect_ids, rows_to_nodes, NODE_COLS, SYMBOL_RANK};
-use values::str_val;
+use values::{i64_val, str_val};
 
 // Batch sizes for `UNWIND`-based inserts. Nodes carry a (≤16 KB) def_body, so
 // their chunk is kept small to bound query-string size; edges are three ids
@@ -801,6 +801,41 @@ impl GraphStore for KuzuGraphStore {
             });
         }
         Ok(out)
+    }
+
+    fn graph_stats(&self, branch: &str) -> Result<GraphStats> {
+        self.ensure_branch(branch)?;
+        let nt = db_schema::node_table(branch);
+        let et = db_schema::edge_table(branch);
+        let conn = self.conn()?;
+
+        // Per-kind counts pushed into Cypher so only aggregate rows cross FFI.
+        let read_counts = |query: &str| -> Result<Vec<(String, u64)>> {
+            let result = conn
+                .query(query)
+                .map_err(|e| GitCortexError::Store(e.to_string()))?;
+            let mut pairs: Vec<(String, u64)> = Vec::new();
+            for row in result {
+                let kind = str_val(&row[0])?;
+                let count = i64_val(&row[1])?.max(0) as u64;
+                pairs.push((kind, count));
+            }
+            // Count desc, then kind asc — deterministic, matches trait default.
+            pairs.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+            Ok(pairs)
+        };
+
+        let nodes_by_kind = read_counts(&format!("MATCH (n:{nt}) RETURN n.kind, count(*) AS c"))?;
+        let edges_by_kind = read_counts(&format!(
+            "MATCH (:{nt})-[e:{et}]->(:{nt}) RETURN e.kind, count(*) AS c"
+        ))?;
+
+        Ok(GraphStats {
+            total_nodes: nodes_by_kind.iter().map(|(_, c)| c).sum(),
+            total_edges: edges_by_kind.iter().map(|(_, c)| c).sum(),
+            nodes_by_kind,
+            edges_by_kind,
+        })
     }
 
     fn find_callees(&self, branch: &str, function_name: &str, depth: u8) -> Result<CallersDeep> {

@@ -524,6 +524,54 @@ fn cross_file_implements_edge_resolved() {
 }
 
 #[test]
+fn graph_stats_totals_match_kind_sums() {
+    let (nodes, edges, store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
+    let stats = store.graph_stats("main").expect("graph_stats");
+
+    // Totals must equal the raw node/edge counts.
+    assert_eq!(stats.total_nodes as usize, nodes.len());
+    assert_eq!(stats.total_edges as usize, edges.len());
+
+    // Per-kind tallies must sum to the totals.
+    let node_sum: u64 = stats.nodes_by_kind.iter().map(|(_, c)| c).sum();
+    let edge_sum: u64 = stats.edges_by_kind.iter().map(|(_, c)| c).sum();
+    assert_eq!(node_sum, stats.total_nodes);
+    assert_eq!(edge_sum, stats.total_edges);
+
+    // Known fixtures: function nodes and at least one calls edge exist.
+    assert!(
+        stats
+            .nodes_by_kind
+            .iter()
+            .any(|(k, c)| k == "function" && *c >= 2),
+        "expected ≥2 function nodes, got: {:?}",
+        stats.nodes_by_kind
+    );
+    assert!(
+        stats
+            .edges_by_kind
+            .iter()
+            .any(|(k, c)| k == "calls" && *c >= 1),
+        "expected ≥1 calls edge, got: {:?}",
+        stats.edges_by_kind
+    );
+}
+
+#[test]
+fn graph_stats_kind_counts_sorted_descending() {
+    let (_, _, store) = run_pipeline_multi(&["sample.py", "python_comprehensive.py"]);
+    let stats = store.graph_stats("main").expect("graph_stats");
+    // Output must be sorted by count descending for deterministic display.
+    for w in stats.nodes_by_kind.windows(2) {
+        assert!(
+            w[0].1 >= w[1].1,
+            "nodes_by_kind not sorted desc: {:?}",
+            stats.nodes_by_kind
+        );
+    }
+}
+
+#[test]
 fn find_unused_symbols_returns_uncalled_nodes() {
     // compute_value is CALLED by run() and run_with_branch(), so it should NOT
     // appear as unused. DataStore is defined but never called or used as a type.

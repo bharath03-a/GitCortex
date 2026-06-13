@@ -38,7 +38,7 @@ use serde_json::json;
 pub struct GcxDispatchParams {
     /// Which graph operation to run. One of: lookup_symbol, find_callers, find_callees,
     /// find_unused_symbols, get_subgraph, search_code, start_tour, wiki_symbol,
-    /// trace_path, list_definitions, symbol_context, list_symbols_in_range.
+    /// trace_path, list_definitions, symbol_context, list_symbols_in_range, graph_stats.
     pub action: String,
     /// Parameters for the chosen action as a JSON object (same fields as the
     /// individual tool: name, function_name, seed_name, query, file, branch,
@@ -179,6 +179,12 @@ pub struct StartTourParams {
     pub seed: Option<String>,
     /// How many steps in the tour (default 12, capped at 50).
     pub limit: Option<usize>,
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GraphStatsParams {
+    /// Branch to summarise (defaults to current branch if omitted).
     pub branch: Option<String>,
 }
 
@@ -504,6 +510,40 @@ impl GitCortexServer {
                     })
                     .collect();
                 CallToolResult::structured(json!(items))
+            }
+            Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
+        }
+    }
+
+    /// Aggregate counts for the branch's graph — orientation before exploring.
+    #[tool(
+        description = "Get aggregate counts for the code graph: total nodes/edges plus per-kind breakdowns (how many functions, structs, calls edges, etc). Use this first to gauge codebase size and shape before drilling into specific symbols."
+    )]
+    fn graph_stats(&self, Parameters(p): Parameters<GraphStatsParams>) -> CallToolResult {
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        match store.graph_stats(&branch) {
+            Ok(stats) => {
+                let to_obj = |pairs: &[(String, u64)]| -> serde_json::Value {
+                    json!(pairs
+                        .iter()
+                        .map(|(k, c)| json!({ "kind": k, "count": c }))
+                        .collect::<Vec<_>>())
+                };
+                CallToolResult::structured(json!({
+                    "branch": branch,
+                    "total_nodes": stats.total_nodes,
+                    "total_edges": stats.total_edges,
+                    "nodes_by_kind": to_obj(&stats.nodes_by_kind),
+                    "edges_by_kind": to_obj(&stats.edges_by_kind),
+                }))
             }
             Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
         }
@@ -1109,7 +1149,7 @@ impl GitCortexServer {
     #[tool(description = "Query the GitCortex code knowledge graph. \
         action: lookup_symbol | find_callers | find_callees | find_unused_symbols | \
         get_subgraph | search_code | start_tour | wiki_symbol | trace_path | \
-        list_definitions | symbol_context | list_symbols_in_range | branch_diff_graph. \
+        list_definitions | symbol_context | list_symbols_in_range | graph_stats | branch_diff_graph. \
         params: JSON object with the same fields as the individual tool (name/function_name/\
         seed_name/query/file/branch/depth/limit/direction as applicable). \
         Returns identical output to the individual tool.")]
@@ -1244,6 +1284,7 @@ impl GitCortexServer {
                 name: str_field!("name"),
                 branch: branch_val,
             })),
+            "graph_stats" => self.graph_stats(Parameters(GraphStatsParams { branch: branch_val })),
             "list_symbols_in_range" => {
                 self.list_symbols_in_range(Parameters(ListSymbolsInRangeParams {
                     file: str_field!("file"),
@@ -1263,7 +1304,8 @@ impl GitCortexServer {
             other => CallToolResult::error(vec![Content::text(format!(
                 "gcx dispatch: unknown action '{other}'. Valid: lookup_symbol, find_callers, \
                 find_callees, find_unused_symbols, get_subgraph, search_code, start_tour, \
-                wiki_symbol, trace_path, list_definitions, symbol_context, list_symbols_in_range"
+                wiki_symbol, trace_path, list_definitions, symbol_context, list_symbols_in_range, \
+                graph_stats"
             ))]),
         }
     }

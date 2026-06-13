@@ -20,6 +20,18 @@ pub struct CallersDeep {
     pub risk_level: &'static str,
 }
 
+/// Aggregate counts for a branch's graph, returned by `graph_stats`.
+/// First-call orientation for an agent: how big is the graph, what kinds of
+/// symbols dominate, how connected is it.
+pub struct GraphStats {
+    pub total_nodes: u64,
+    pub total_edges: u64,
+    /// `(kind, count)` pairs, sorted by count descending.
+    pub nodes_by_kind: Vec<(String, u64)>,
+    /// `(kind, count)` pairs, sorted by count descending.
+    pub edges_by_kind: Vec<(String, u64)>,
+}
+
 /// 360-degree view of a single symbol.
 pub struct SymbolContext {
     /// The node matching `name` (first match if multiple).
@@ -76,6 +88,37 @@ pub trait GraphStore: Send + Sync {
 
     /// Return all edges in `branch`'s graph.
     fn list_all_edges(&self, branch: &str) -> Result<Vec<Edge>>;
+
+    /// Aggregate node/edge counts (total + per-kind) for `branch`.
+    ///
+    /// The default counts in-memory from `list_all_nodes`/`list_all_edges`;
+    /// backends should override with a `COUNT` push-down.
+    fn graph_stats(&self, branch: &str) -> Result<GraphStats> {
+        use std::collections::HashMap;
+
+        fn tally<T, F>(items: &[T], key: F) -> Vec<(String, u64)>
+        where
+            F: Fn(&T) -> String,
+        {
+            let mut counts: HashMap<String, u64> = HashMap::new();
+            for item in items {
+                *counts.entry(key(item)).or_insert(0) += 1;
+            }
+            let mut pairs: Vec<(String, u64)> = counts.into_iter().collect();
+            // Sort by count desc, then kind name asc for deterministic output.
+            pairs.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+            pairs
+        }
+
+        let nodes = self.list_all_nodes(branch)?;
+        let edges = self.list_all_edges(branch)?;
+        Ok(GraphStats {
+            total_nodes: nodes.len() as u64,
+            total_edges: edges.len() as u64,
+            nodes_by_kind: tally(&nodes, |n| n.kind.to_string()),
+            edges_by_kind: tally(&edges, |e| e.kind.to_string()),
+        })
+    }
 
     /// Return nodes whose `name` or `qualified_name` contains `query` (case-
     /// sensitive substring), up to `limit` results. Implementations should push
