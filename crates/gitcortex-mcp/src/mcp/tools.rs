@@ -42,7 +42,7 @@ pub struct GcxDispatchParams {
     /// Which graph operation to run. One of: lookup_symbol, find_callers, find_callees,
     /// find_unused_symbols, get_subgraph, search_code, start_tour, wiki_symbol,
     /// trace_path, list_definitions, symbol_context, list_symbols_in_range, graph_stats,
-    /// ast_search, type_hierarchy, find_importers.
+    /// ast_search, type_hierarchy, find_importers, find_type_usages.
     pub action: String,
     /// Parameters for the chosen action as a JSON object (same fields as the
     /// individual tool: name, function_name, seed_name, query, file, branch,
@@ -124,6 +124,13 @@ pub struct TypeHierarchyParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct FindImportersParams {
     /// Symbol name to find importers of (the imported thing, unqualified).
+    pub name: String,
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct FindTypeUsagesParams {
+    /// Type name (struct/class/trait/interface/enum) to find usages of.
     pub name: String,
     pub branch: Option<String>,
 }
@@ -920,6 +927,43 @@ impl GitCortexServer {
         }
     }
 
+    /// Find functions/methods that use a type in their signature.
+    #[tool(
+        description = "Find functions/methods that reference a type as a parameter or return type (follows Uses edges). The type-level analogue of find_callers: answers 'what would break if I change type T's shape'. Returns the using functions/methods."
+    )]
+    fn find_type_usages(&self, Parameters(p): Parameters<FindTypeUsagesParams>) -> CallToolResult {
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        match store.find_type_usages(&branch, &p.name) {
+            Ok(nodes) => {
+                let items: Vec<_> = nodes
+                    .iter()
+                    .map(|n| {
+                        json!({
+                            "kind": n.kind.to_string(),
+                            "name": n.name,
+                            "qualified_name": n.qualified_name,
+                            "file": n.file.display().to_string(),
+                            "start_line": n.span.start_line,
+                        })
+                    })
+                    .collect();
+                CallToolResult::structured(json!({
+                    "type": p.name,
+                    "usages": items,
+                }))
+            }
+            Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
+        }
+    }
+
     /// Find which files/modules import a given symbol.
     #[tool(
         description = "Find which files/modules import a given symbol (follows Imports edges). Answers 'who depends on X' at the import level — useful before renaming or moving a symbol. Returns the importing module nodes."
@@ -1373,7 +1417,7 @@ impl GitCortexServer {
         action: lookup_symbol | find_callers | find_callees | find_unused_symbols | \
         get_subgraph | search_code | start_tour | wiki_symbol | trace_path | \
         list_definitions | symbol_context | list_symbols_in_range | graph_stats | ast_search | \
-        type_hierarchy | find_importers | branch_diff_graph. \
+        type_hierarchy | find_importers | find_type_usages | branch_diff_graph. \
         params: JSON object with the same fields as the individual tool (name/function_name/\
         seed_name/query/file/branch/depth/limit/direction as applicable). \
         Returns identical output to the individual tool.")]
@@ -1517,6 +1561,10 @@ impl GitCortexServer {
                 name: str_field!("name"),
                 branch: branch_val,
             })),
+            "find_type_usages" => self.find_type_usages(Parameters(FindTypeUsagesParams {
+                name: str_field!("name"),
+                branch: branch_val,
+            })),
             "ast_search" => self.ast_search(Parameters(AstSearchParams {
                 kind: p
                     .params
@@ -1571,7 +1619,7 @@ impl GitCortexServer {
                 "gcx dispatch: unknown action '{other}'. Valid: lookup_symbol, find_callers, \
                 find_callees, find_unused_symbols, get_subgraph, search_code, start_tour, \
                 wiki_symbol, trace_path, list_definitions, symbol_context, list_symbols_in_range, \
-                graph_stats, ast_search, type_hierarchy, find_importers"
+                graph_stats, ast_search, type_hierarchy, find_importers, find_type_usages"
             ))]),
         }
     }

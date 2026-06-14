@@ -524,6 +524,34 @@ fn cross_file_implements_edge_resolved() {
 }
 
 #[test]
+fn find_type_usages_finds_signature_references() {
+    // python_comprehensive: create_user(...) -> User; find_users(repository: Repository) -> List[User]
+    // User is used as a return type by multiple functions → Uses edges point to it.
+    let (_, _, store) = run_pipeline_multi(&["python_comprehensive.py"]);
+    let users = store
+        .find_type_usages("main", "User")
+        .expect("find_type_usages");
+    let names: Vec<&str> = users.iter().map(|n| n.name.as_str()).collect();
+    assert!(
+        !users.is_empty(),
+        "User is referenced in several signatures; expected non-empty usages"
+    );
+    assert!(
+        names.contains(&"create_user") || names.contains(&"find_users"),
+        "expected create_user or find_users among User's users, got: {names:?}"
+    );
+}
+
+#[test]
+fn find_type_usages_unknown_type_is_empty() {
+    let (_, _, store) = run_pipeline_multi(&["sample.rs"]);
+    let users = store
+        .find_type_usages("main", "NoSuchTypeXyz")
+        .expect("find_type_usages");
+    assert!(users.is_empty());
+}
+
+#[test]
 fn find_importers_resolves_cross_file_rust_import() {
     // xfile_caller.rs: `use crate::xfile_callee::compute_value;`
     // The importer's file-level module node must be found for compute_value.

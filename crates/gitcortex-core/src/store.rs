@@ -265,6 +265,36 @@ pub trait GraphStore: Send + Sync {
     /// Find all structs/classes that implement/inherit `trait_or_interface_name`.
     fn find_implementors(&self, branch: &str, trait_or_interface_name: &str) -> Result<Vec<Node>>;
 
+    /// Find functions/methods that reference a type named `type_name` as a
+    /// parameter or return type (following `Uses` edges). Answers "where is
+    /// type T used in a signature" — the type-level analogue of find_callers.
+    ///
+    /// The default walks `list_all_edges`; backends should override with a
+    /// directed Cypher match.
+    fn find_type_usages(&self, branch: &str, type_name: &str) -> Result<Vec<Node>> {
+        use crate::schema::EdgeKind;
+        use std::collections::HashSet;
+
+        let nodes = self.list_all_nodes(branch)?;
+        let edges = self.list_all_edges(branch)?;
+
+        let target_ids: HashSet<String> = nodes
+            .iter()
+            .filter(|n| n.name == type_name)
+            .map(|n| n.id.as_str())
+            .collect();
+        if target_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let user_ids: Vec<String> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Uses) && target_ids.contains(&e.dst.as_str()))
+            .map(|e| e.src.as_str())
+            .collect();
+        self.get_nodes_by_ids(branch, &user_ids)
+    }
+
     /// Find the module/file nodes that import a symbol named `symbol_name`
     /// (following `Imports` edges). Answers "who imports X".
     ///

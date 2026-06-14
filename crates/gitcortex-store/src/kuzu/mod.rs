@@ -955,6 +955,22 @@ impl GraphStore for KuzuGraphStore {
         rows_to_nodes(&mut result)
     }
 
+    fn find_type_usages(&self, branch: &str, type_name: &str) -> Result<Vec<Node>> {
+        self.ensure_branch(branch)?;
+        let nt = db_schema::node_table(branch);
+        let et = db_schema::edge_table(branch);
+        let name_esc = esc(type_name);
+        let conn = self.conn()?;
+        let mut result = conn
+            .query(&format!(
+                "MATCH (n:{nt})-[e:{et} {{kind: 'uses'}}]->(ty:{nt}) \
+                 WHERE ty.name = '{name_esc}' \
+                 RETURN DISTINCT {NODE_COLS} ORDER BY {SYMBOL_RANK}"
+            ))
+            .map_err(|e| GitCortexError::Store(e.to_string()))?;
+        rows_to_nodes(&mut result)
+    }
+
     fn find_importers(&self, branch: &str, symbol_name: &str) -> Result<Vec<Node>> {
         self.ensure_branch(branch)?;
         let nt = db_schema::node_table(branch);
