@@ -550,7 +550,7 @@ Claude Code and the other editors use the full MCP surface unless you manually s
 
 | Tool                    | Description                                                                                                                                                                |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gcx`                   | **Single-dispatch tool** — one schema covers all operations below. Pass `action` + `params` to avoid loading 15 separate schemas per turn. Preferred for token efficiency; the compact server exposes only this tool. |
+| `gcx`                   | **Single-dispatch tool** — one schema covers all operations below. Pass `action` + `params` to avoid loading 20 separate schemas per turn. Preferred for token efficiency; the compact server exposes only this tool. |
 | `lookup_symbol`         | Find all nodes matching a name across the codebase                                                                                                                         |
 | `find_callers`          | All functions that call a given function (backward trace, capped at 25)                                                                                                    |
 | `find_callees`          | All functions called by a given function (forward trace, configurable depth)                                                                                               |
@@ -566,6 +566,11 @@ Claude Code and the other editors use the full MCP surface unless you manually s
 | `wiki_symbol`           | Markdown wiki page: signature, doc-comment, top callers/callees                                                                                                            |
 | `search_code`           | Ranked fuzzy search over name + qualified path (default 10 results)                                                                                                        |
 | `start_tour`            | Centrality-ranked guided tour — entry points ordered by graph importance                                                                                                   |
+| `graph_stats`           | Aggregate node/edge counts (total + per-kind) — first-call orientation                                                                                                     |
+| `ast_search`            | Structural search by kind, is_async, visibility, and complexity range                                                                                                      |
+| `type_hierarchy`        | Supertypes and subtypes of a type in one call (both directions)                                                                                                            |
+| `find_importers`        | Files/modules that import a given symbol (in-repo imports)                                                                                                                  |
+| `find_type_usages`      | Functions/methods that use a type as a parameter or return type                                                                                                            |
 
 All tools accept an optional `branch` parameter. Defaults to the branch active when `gcx serve` was started (auto-detected from `git symbolic-ref HEAD`).
 

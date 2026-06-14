@@ -154,7 +154,7 @@ gcx serve [OPTIONS]
 **Examples:**
 
 ```bash
-gcx serve             # full surface (15 tools + prompts)
+gcx serve             # full surface (20 tools + prompts)
 gcx serve --compact   # single dispatch tool only
 ```
 
@@ -603,7 +603,7 @@ The compact server exposes only this tool. Use it to keep per-turn schema overhe
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `action` | `string` | yes | One of: `lookup_symbol`, `find_callers`, `find_callees`, `find_unused_symbols`, `get_subgraph`, `search_code`, `start_tour`, `wiki_symbol`, `trace_path`, `list_definitions`, `symbol_context`, `list_symbols_in_range`, `branch_diff_graph` |
+| `action` | `string` | yes | One of: `lookup_symbol`, `find_callers`, `find_callees`, `find_unused_symbols`, `get_subgraph`, `search_code`, `start_tour`, `wiki_symbol`, `trace_path`, `list_definitions`, `symbol_context`, `list_symbols_in_range`, `graph_stats`, `ast_search`, `type_hierarchy`, `find_importers`, `find_type_usages`, `branch_diff_graph` |
 | `params` | `object` | yes | Same fields as the individual tool for the chosen action |
 
 **Example:**
@@ -970,6 +970,124 @@ Generate a guided tour through the codebase's most important symbols.
 
 ```json
 { "seed": "main", "limit": 20 }
+```
+
+---
+
+#### `graph_stats`
+
+Aggregate counts for the graph — orientation before drilling in.
+
+**Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `branch` | `string` | no | current | — |
+
+**Returns:** `{ branch, total_nodes, total_edges, nodes_by_kind[], edges_by_kind[] }`. Each `*_by_kind` entry is `{ kind, count }`, sorted by count descending.
+
+**Example:**
+
+```json
+{}
+```
+
+---
+
+#### `ast_search`
+
+Find symbols by structural attributes rather than name. At least one filter is required.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `kind` | `string` | no | NodeKind: `function`, `method`, `struct`, `trait`, `interface`, `enum`, `constant`, `type_alias`, `property`, `macro`, `annotation`, `enum_member`, `module`, `file`, `folder` |
+| `is_async` | `boolean` | no | Match only async (`true`) or only non-async (`false`) symbols |
+| `visibility` | `string` | no | `pub`, `pub_crate`, or `private` |
+| `min_complexity` | `integer` | no | Inclusive lower bound on cyclomatic complexity (symbols without complexity excluded) |
+| `max_complexity` | `integer` | no | Inclusive upper bound on cyclomatic complexity |
+| `name_contains` | `string` | no | Case-insensitive name substring |
+| `limit` | `integer` | no | Max results (default 30, capped at 200) |
+| `branch` | `string` | no | — |
+
+**Returns:** `{ branch, results[], returned }`. Each result includes kind, name, qualified_name, file, start_line, visibility, is_async, complexity.
+
+**Example:** all async methods:
+
+```json
+{ "kind": "method", "is_async": true }
+```
+
+complex functions:
+
+```json
+{ "kind": "function", "min_complexity": 10 }
+```
+
+---
+
+#### `type_hierarchy`
+
+Map both directions of a type's relationships in one call.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | `string` | yes | Type name (struct/class/trait/interface) |
+| `branch` | `string` | no | — |
+
+**Returns:** `{ type, supertypes[], subtypes[] }`. `supertypes` = types it implements/extends; `subtypes` = types that implement/extend it.
+
+**Example:**
+
+```json
+{ "name": "GraphStore" }
+```
+
+---
+
+#### `find_importers`
+
+Find which files/modules import a given symbol (follows `Imports` edges). Useful before renaming or moving a symbol.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | `string` | yes | Imported symbol name (unqualified) |
+| `branch` | `string` | no | — |
+
+**Returns:** `{ symbol, importers[] }`. Importers are the importing module nodes.
+
+> Resolves in-repo imports only; imports of external/stdlib symbols are not graphed.
+
+**Example:**
+
+```json
+{ "name": "GraphStore" }
+```
+
+---
+
+#### `find_type_usages`
+
+Find functions/methods that reference a type as a parameter or return type (follows `Uses` edges). The type-level analogue of `find_callers`.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | `string` | yes | Type name (struct/class/trait/interface/enum) |
+| `branch` | `string` | no | — |
+
+**Returns:** `{ type, usages[] }`. Usages are the using functions/methods.
+
+**Example:**
+
+```json
+{ "name": "Node" }
 ```
 
 ---
