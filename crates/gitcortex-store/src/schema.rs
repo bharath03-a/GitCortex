@@ -58,7 +58,8 @@ pub fn ensure_branch(conn: &mut Connection, branch: &str) -> Result<()> {
     conn.query(&format!(
         "CREATE REL TABLE IF NOT EXISTS {et} (\
             FROM {nt} TO {nt},\
-            kind STRING\
+            kind STRING,\
+            line INT64\
         )"
     ))
     .map_err(|e| GitCortexError::Store(format!("create edge table: {e}")))?;

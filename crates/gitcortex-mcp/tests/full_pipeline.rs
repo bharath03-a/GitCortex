@@ -578,6 +578,38 @@ fn find_type_usages_unknown_type_is_empty() {
 }
 
 #[test]
+fn get_call_sites_records_caller_and_line() {
+    // xfile_caller.rs: run() and run_with_branch() both call compute_value().
+    // Each call site must report the caller and a concrete line number.
+    let (_, _, store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
+    let sites = store
+        .find_call_sites("main", "compute_value")
+        .expect("find_call_sites");
+    let callers: Vec<&str> = sites.iter().map(|s| s.caller.name.as_str()).collect();
+    assert!(
+        callers.contains(&"run") && callers.contains(&"run_with_branch"),
+        "expected run and run_with_branch as callers, got: {callers:?}"
+    );
+    // Every call site must carry a concrete line number.
+    for s in &sites {
+        assert!(
+            s.line.is_some(),
+            "call site from {} missing a line number",
+            s.caller.name
+        );
+    }
+}
+
+#[test]
+fn get_call_sites_unknown_function_is_empty() {
+    let (_, _, store) = run_pipeline_multi(&["sample.rs"]);
+    let sites = store
+        .find_call_sites("main", "no_such_fn")
+        .expect("find_call_sites");
+    assert!(sites.is_empty());
+}
+
+#[test]
 fn find_importers_resolves_cross_file_rust_import() {
     // xfile_caller.rs: `use crate::xfile_callee::compute_value;`
     // The importer's file-level module node must be found for compute_value.

@@ -145,7 +145,7 @@ gcx serve [OPTIONS]
 
 | Flag | Description |
 |------|-------------|
-| `--compact` | Expose only the single dispatch tool (`gcx`) instead of all 21 individual tools. Reduces per-turn schema overhead ~95%. Codex uses this by default. |
+| `--compact` | Expose only the single dispatch tool (`gcx`) instead of all 22 individual tools. Reduces per-turn schema overhead ~95%. Codex uses this by default. |
 
 **Notes:**
 - The server auto-detects the current branch from `git symbolic-ref HEAD` at startup. All tools default to that branch.
@@ -154,7 +154,7 @@ gcx serve [OPTIONS]
 **Examples:**
 
 ```bash
-gcx serve             # full surface (21 tools + prompts)
+gcx serve             # full surface (22 tools + prompts)
 gcx serve --compact   # single dispatch tool only
 ```
 
@@ -603,7 +603,7 @@ The compact server exposes only this tool. Use it to keep per-turn schema overhe
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `action` | `string` | yes | One of: `lookup_symbol`, `find_callers`, `find_callees`, `find_unused_symbols`, `get_subgraph`, `search_code`, `start_tour`, `wiki_symbol`, `trace_path`, `list_definitions`, `symbol_context`, `list_symbols_in_range`, `graph_stats`, `ast_search`, `type_hierarchy`, `find_importers`, `find_type_usages`, `module_dependencies`, `branch_diff_graph` |
+| `action` | `string` | yes | One of: `lookup_symbol`, `find_callers`, `find_callees`, `find_unused_symbols`, `get_subgraph`, `search_code`, `start_tour`, `wiki_symbol`, `trace_path`, `list_definitions`, `symbol_context`, `list_symbols_in_range`, `graph_stats`, `ast_search`, `type_hierarchy`, `find_importers`, `find_type_usages`, `module_dependencies`, `get_call_sites`, `branch_diff_graph` |
 | `params` | `object` | yes | Same fields as the individual tool for the chosen action |
 
 **Example:**
@@ -1112,6 +1112,27 @@ List the in-repo modules a given module depends on, resolved by following its im
 
 ```json
 { "name": "indexer" }
+```
+
+---
+
+#### `get_call_sites`
+
+Find every call site of a function: the calling symbol **and** the source line of each call. Where `find_callers` returns only the calling functions, this pinpoints the exact line each call happens on.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | `string` | yes | Function/method name |
+| `branch` | `string` | no | — |
+
+**Returns:** `{ function, call_sites[], count }`. Each call site is `{ caller, caller_kind, file, line, caller_start_line }` where `line` is the 1-indexed line of the call expression.
+
+**Example:**
+
+```json
+{ "name": "apply_diff" }
 ```
 
 ---

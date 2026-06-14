@@ -88,7 +88,7 @@ struct FileVisitor<'src> {
     edges: Vec<Edge>,
     type_index: HashMap<String, NodeId>,
     fn_index: HashMap<String, NodeId>,
-    deferred_calls: Vec<(NodeId, String)>,
+    deferred_calls: Vec<(NodeId, String, u32)>,
     deferred_uses: Vec<(NodeId, String)>,
     deferred_implements: Vec<(NodeId, String)>,
     deferred_imports: Vec<(NodeId, String)>,
@@ -410,6 +410,7 @@ impl<'src> FileVisitor<'src> {
                 src: cid,
                 dst: id.clone(),
                 kind: EdgeKind::Contains,
+                line: None,
             });
         }
 
@@ -459,6 +460,7 @@ impl<'src> FileVisitor<'src> {
                     src: fn_id.clone(),
                     dst: tid,
                     kind: EdgeKind::Uses,
+                    line: None,
                 });
             } else if !tname.is_empty()
                 && !is_primitive(&tname)
@@ -481,7 +483,7 @@ impl<'src> FileVisitor<'src> {
         match node.kind() {
             "call_expression" => {
                 if let Some(callee) = self.callee_name(node) {
-                    self.record_call(caller_id.clone(), callee);
+                    self.record_call(caller_id.clone(), callee, Self::span(node).start_line);
                 }
                 if let Some(args) = node.child_by_field_name("arguments") {
                     self.collect_calls(args, caller_id);
@@ -501,7 +503,7 @@ impl<'src> FileVisitor<'src> {
                 // but method_call_expression may appear for other constructs.
                 if let Some(name_node) = node.child_by_field_name("name") {
                     let method = self.text(name_node).to_owned();
-                    self.record_call(caller_id.clone(), method);
+                    self.record_call(caller_id.clone(), method, Self::span(node).start_line);
                 }
                 if let Some(args) = node.child_by_field_name("arguments") {
                     self.collect_calls(args, caller_id);
@@ -538,25 +540,22 @@ impl<'src> FileVisitor<'src> {
     }
 
     /// Resolve a call: create an intra-file edge or push to deferred list.
-    fn record_call(&mut self, caller_id: NodeId, callee_name: String) {
+    /// `line` is the 1-indexed source line of the call expression.
+    fn record_call(&mut self, caller_id: NodeId, callee_name: String, line: u32) {
         if callee_name.is_empty() {
             return;
         }
         if let Some(callee_id) = self.fn_index.get(&callee_name).cloned() {
-            let edge = Edge {
-                src: caller_id,
-                dst: callee_id,
-                kind: EdgeKind::Calls,
-            };
+            let edge = Edge::call(caller_id, callee_id, line);
             if !self.edges.contains(&edge) {
                 self.edges.push(edge);
             }
         } else if !self
             .deferred_calls
             .iter()
-            .any(|(c, n)| c == &caller_id && n == &callee_name)
+            .any(|(c, n, _)| c == &caller_id && n == &callee_name)
         {
-            self.deferred_calls.push((caller_id, callee_name));
+            self.deferred_calls.push((caller_id, callee_name, line));
         }
     }
 
@@ -581,6 +580,7 @@ impl<'src> FileVisitor<'src> {
                 src: cid,
                 dst: id.clone(),
                 kind: EdgeKind::Contains,
+                line: None,
             });
         }
         for attr_name in self.collect_attributes(node) {
@@ -604,6 +604,7 @@ impl<'src> FileVisitor<'src> {
                 src: cid,
                 dst: id.clone(),
                 kind: EdgeKind::Contains,
+                line: None,
             });
         }
         for attr_name in self.collect_attributes(node) {
@@ -633,6 +634,7 @@ impl<'src> FileVisitor<'src> {
                             src: tid,
                             dst: trid,
                             kind: EdgeKind::Implements,
+                            line: None,
                         });
                     }
                     (Some(tid), None)
@@ -674,6 +676,7 @@ impl<'src> FileVisitor<'src> {
                 src: cid,
                 dst: id.clone(),
                 kind: EdgeKind::Contains,
+                line: None,
             });
         }
         self.nodes.push(graph_node);
@@ -696,6 +699,7 @@ impl<'src> FileVisitor<'src> {
                 src: cid,
                 dst: id.clone(),
                 kind: EdgeKind::Contains,
+                line: None,
             });
         }
         self.nodes.push(graph_node);
@@ -717,6 +721,7 @@ impl<'src> FileVisitor<'src> {
                 src: cid,
                 dst: id.clone(),
                 kind: EdgeKind::Contains,
+                line: None,
             });
         }
         self.nodes.push(graph_node);
@@ -738,6 +743,7 @@ impl<'src> FileVisitor<'src> {
                 src: cid,
                 dst: id.clone(),
                 kind: EdgeKind::Contains,
+                line: None,
             });
         }
         self.nodes.push(graph_node);

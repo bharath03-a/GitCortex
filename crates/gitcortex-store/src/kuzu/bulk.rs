@@ -128,8 +128,16 @@ pub(super) fn bulk_load(
             if !seen_edges.insert((s.clone(), d.clone(), k.clone())) {
                 continue;
             }
-            writeln!(w, "{},{},{}", csv_quote(&s), csv_quote(&d), csv_quote(&k))
-                .map_err(|e| GitCortexError::Store(format!("write edges.csv: {e}")))?;
+            let line = e.line.map(|l| l as i64).unwrap_or(-1);
+            writeln!(
+                w,
+                "{},{},{},{}",
+                csv_quote(&s),
+                csv_quote(&d),
+                csv_quote(&k),
+                line
+            )
+            .map_err(|e| GitCortexError::Store(format!("write edges.csv: {e}")))?;
             edge_count += 1;
         }
         w.flush()

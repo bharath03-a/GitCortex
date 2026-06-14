@@ -42,7 +42,8 @@ pub struct GcxDispatchParams {
     /// Which graph operation to run. One of: lookup_symbol, find_callers, find_callees,
     /// find_unused_symbols, get_subgraph, search_code, start_tour, wiki_symbol,
     /// trace_path, list_definitions, symbol_context, list_symbols_in_range, graph_stats,
-    /// ast_search, type_hierarchy, find_importers, find_type_usages, module_dependencies.
+    /// ast_search, type_hierarchy, find_importers, find_type_usages, module_dependencies,
+    /// get_call_sites.
     pub action: String,
     /// Parameters for the chosen action as a JSON object (same fields as the
     /// individual tool: name, function_name, seed_name, query, file, branch,
@@ -124,6 +125,13 @@ pub struct TypeHierarchyParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct FindImportersParams {
     /// Symbol name to find importers of (the imported thing, unqualified).
+    pub name: String,
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GetCallSitesParams {
+    /// Function/method name to find call sites of.
     pub name: String,
     pub branch: Option<String>,
 }
@@ -1014,6 +1022,44 @@ impl GitCortexServer {
         }
     }
 
+    /// Find the exact call sites (caller + line) of a function.
+    #[tool(
+        description = "Find every call site of a function: the calling symbol AND the source line of each call. Where find_callers gives only the calling functions, this pinpoints the exact line each call happens on — useful for reviewing or editing every invocation."
+    )]
+    fn get_call_sites(&self, Parameters(p): Parameters<GetCallSitesParams>) -> CallToolResult {
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        match store.find_call_sites(&branch, &p.name) {
+            Ok(sites) => {
+                let items: Vec<_> = sites
+                    .iter()
+                    .map(|s| {
+                        json!({
+                            "caller": s.caller.name,
+                            "caller_kind": s.caller.kind.to_string(),
+                            "file": s.caller.file.display().to_string(),
+                            "line": s.line,
+                            "caller_start_line": s.caller.span.start_line,
+                        })
+                    })
+                    .collect();
+                CallToolResult::structured(json!({
+                    "function": p.name,
+                    "call_sites": items,
+                    "count": items.len(),
+                }))
+            }
+            Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
+        }
+    }
+
     /// Find which files/modules import a given symbol.
     #[tool(
         description = "Find which files/modules import a given symbol (follows Imports edges). Answers 'who depends on X' at the import level — useful before renaming or moving a symbol. Returns the importing module nodes."
@@ -1467,7 +1513,8 @@ impl GitCortexServer {
         action: lookup_symbol | find_callers | find_callees | find_unused_symbols | \
         get_subgraph | search_code | start_tour | wiki_symbol | trace_path | \
         list_definitions | symbol_context | list_symbols_in_range | graph_stats | ast_search | \
-        type_hierarchy | find_importers | find_type_usages | module_dependencies | branch_diff_graph. \
+        type_hierarchy | find_importers | find_type_usages | module_dependencies | \
+        get_call_sites | branch_diff_graph. \
         params: JSON object with the same fields as the individual tool (name/function_name/\
         seed_name/query/file/branch/depth/limit/direction as applicable). \
         Returns identical output to the individual tool.")]
@@ -1611,6 +1658,10 @@ impl GitCortexServer {
                 name: str_field!("name"),
                 branch: branch_val,
             })),
+            "get_call_sites" => self.get_call_sites(Parameters(GetCallSitesParams {
+                name: str_field!("name"),
+                branch: branch_val,
+            })),
             "find_type_usages" => self.find_type_usages(Parameters(FindTypeUsagesParams {
                 name: str_field!("name"),
                 branch: branch_val,
@@ -1681,7 +1732,7 @@ impl GitCortexServer {
                 find_callees, find_unused_symbols, get_subgraph, search_code, start_tour, \
                 wiki_symbol, trace_path, list_definitions, symbol_context, list_symbols_in_range, \
                 graph_stats, ast_search, type_hierarchy, find_importers, find_type_usages, \
-                module_dependencies"
+                module_dependencies, get_call_sites"
             ))]),
         }
     }

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use gitcortex_core::{
     graph::{Edge, GraphDiff, Node, NodeId, NodeMetadata, Span},
-    schema::{EdgeKind, NodeKind, Visibility},
+    schema::{NodeKind, Visibility},
     store::GraphStore,
 };
 use gitcortex_store::kuzu::KuzuGraphStore;
@@ -89,11 +89,7 @@ fn find_callers_via_calls_edge() {
 
     let caller = make_node("announce", NodeKind::Function, "src/lib.rs", 10);
     let callee = make_node("greet", NodeKind::Method, "src/lib.rs", 1);
-    let edge = Edge {
-        src: caller.id.clone(),
-        dst: callee.id.clone(),
-        kind: EdgeKind::Calls,
-    };
+    let edge = Edge::call(caller.id.clone(), callee.id.clone(), 12);
 
     let diff = GraphDiff {
         added_nodes: vec![caller.clone(), callee],

@@ -8,7 +8,7 @@ use gitcortex_core::{
     graph::{Edge, GraphDiff, Node, NodeId},
     schema::{NodeKind, SCHEMA_VERSION},
     store::{
-        AttributeFilter, CallersDeep, GraphStats, GraphStore, SubGraph, SymbolContext,
+        AttributeFilter, CallSite, CallersDeep, GraphStats, GraphStore, SubGraph, SymbolContext,
         TypeHierarchy,
     },
 };
@@ -171,6 +171,51 @@ fn resolve_deferred_batch(
                  CREATE (src)-[:{et} {{kind: '{edge_kind}'}}]->(tgt)"
             ))
             .map_err(|e| GitCortexError::Store(format!("batch deferred {edge_kind}: {e}")))?;
+        }
+    }
+    Ok(())
+}
+
+/// Like [`resolve_deferred_batch`] but for `Calls` edges, carrying each call's
+/// source line onto the created edge. Tuples are `(caller_id, callee_name, line)`.
+fn resolve_calls_batch(
+    conn: &Connection,
+    nt: &str,
+    et: &str,
+    triples: &[(NodeId, String, u32)],
+    caller_file: &HashMap<String, String>,
+) -> Result<()> {
+    if triples.is_empty() {
+        return Ok(());
+    }
+    let mut by_scope: HashMap<String, Vec<(String, String, u32)>> = HashMap::new();
+    for (src_id, tgt_name, line) in triples {
+        let src_str = src_id.as_str();
+        let scope = caller_file
+            .get(src_str.as_str())
+            .map(|f| lang_scope_clause(f, "tgt"))
+            .unwrap_or_default();
+        by_scope
+            .entry(scope)
+            .or_default()
+            .push((src_str, tgt_name.clone(), *line));
+    }
+    for (scope_clause, group) in &by_scope {
+        for chunk in group.chunks(DEFERRED_CHUNK) {
+            let list = chunk
+                .iter()
+                .map(|(src, tgt, line)| {
+                    format!("{{s:'{}',t:'{}',ln:{}}}", esc(src), esc(tgt), line)
+                })
+                .collect::<Vec<_>>()
+                .join(",");
+            conn.query(&format!(
+                "UNWIND [{list}] AS r \
+                 MATCH (src:{nt} {{id: r.s}}), (tgt:{nt}) \
+                 WHERE tgt.name = r.t AND (tgt.kind = 'function' OR tgt.kind = 'method'){scope_clause} \
+                 CREATE (src)-[:{et} {{kind: 'calls', line: r.ln}}]->(tgt)"
+            ))
+            .map_err(|e| GitCortexError::Store(format!("batch deferred calls: {e}")))?;
         }
     }
     Ok(())
@@ -426,7 +471,8 @@ impl GraphStore for KuzuGraphStore {
                     .map(String::as_str)
                     .unwrap_or(&dst_raw));
                 let k = esc(&edge.kind.to_string());
-                format!("{{s:'{s}', d:'{d}', k:'{k}'}}")
+                let line = edge.line.map(|l| l as i64).unwrap_or(-1);
+                format!("{{s:'{s}', d:'{d}', k:'{k}', ln:{line}}}")
             })
             .collect();
 
@@ -439,7 +485,7 @@ impl GraphStore for KuzuGraphStore {
             conn.query(&format!(
                 "UNWIND [{list}] AS r \
                  MATCH (s:{nt} {{id: r.s}}), (d:{nt} {{id: r.d}}) \
-                 CREATE (s)-[:{et} {{kind: r.k}}]->(d)"
+                 CREATE (s)-[:{et} {{kind: r.k, line: r.ln}}]->(d)"
             ))
             .map_err(|e| GitCortexError::Store(format!("batch insert edges: {e}")))?;
         }
@@ -459,15 +505,7 @@ impl GraphStore for KuzuGraphStore {
             })
             .collect();
 
-        resolve_deferred_batch(
-            &conn,
-            &nt,
-            &et,
-            &diff.deferred_calls,
-            &caller_file,
-            "calls",
-            "tgt.kind = 'function' OR tgt.kind = 'method'",
-        )?;
+        resolve_calls_batch(&conn, &nt, &et, &diff.deferred_calls, &caller_file)?;
         resolve_deferred_batch(
             &conn,
             &nt,
@@ -787,7 +825,7 @@ impl GraphStore for KuzuGraphStore {
         let conn = self.conn()?;
         let result = conn
             .query(&format!(
-                "MATCH (s:{nt})-[e:{et}]->(d:{nt}) RETURN s.id, d.id, e.kind"
+                "MATCH (s:{nt})-[e:{et}]->(d:{nt}) RETURN s.id, d.id, e.kind, e.line"
             ))
             .map_err(|e| GitCortexError::Store(e.to_string()))?;
 
@@ -796,12 +834,14 @@ impl GraphStore for KuzuGraphStore {
             let src_str = str_val(&row[0])?;
             let dst_str = str_val(&row[1])?;
             let kind_str = str_val(&row[2])?;
+            let line = i64_val(&row[3]).ok().filter(|l| *l >= 0).map(|l| l as u32);
             out.push(Edge {
                 src: NodeId::try_from(src_str.as_str())
                     .map_err(|e| GitCortexError::Store(format!("bad src id: {e}")))?,
                 dst: NodeId::try_from(dst_str.as_str())
                     .map_err(|e| GitCortexError::Store(format!("bad dst id: {e}")))?,
                 kind: edge_kind_from_str(&kind_str),
+                line,
             });
         }
         Ok(out)
@@ -977,6 +1017,37 @@ impl GraphStore for KuzuGraphStore {
             ))
             .map_err(|e| GitCortexError::Store(e.to_string()))?;
         rows_to_nodes(&mut result)
+    }
+
+    fn find_call_sites(&self, branch: &str, function_name: &str) -> Result<Vec<CallSite>> {
+        self.ensure_branch(branch)?;
+        let nt = db_schema::node_table(branch);
+        let et = db_schema::edge_table(branch);
+        let name_esc = esc(function_name);
+        let conn = self.conn()?;
+        // Return the caller columns plus the call edge's line. Alias caller as
+        // `n` so NODE_COLS maps positionally; append e.line as the last column.
+        let mut result = conn
+            .query(&format!(
+                "MATCH (n:{nt})-[e:{et} {{kind: 'calls'}}]->(callee:{nt}) \
+                 WHERE callee.name = '{name_esc}' \
+                 RETURN {NODE_COLS}, e.line ORDER BY {SYMBOL_RANK}"
+            ))
+            .map_err(|e| GitCortexError::Store(e.to_string()))?;
+
+        let mut sites = Vec::new();
+        for row in result.by_ref() {
+            // NODE_COLS is 25 columns; e.line is the 26th (index 25).
+            let line = row.get(25).and_then(|v| match v {
+                kuzu::Value::Int64(n) if *n >= 0 => Some(*n as u32),
+                _ => None,
+            });
+            match queries::row_to_node(row) {
+                Ok(caller) => sites.push(CallSite { caller, line }),
+                Err(e) => tracing::debug!("skipping malformed call-site row: {e}"),
+            }
+        }
+        Ok(sites)
     }
 
     fn find_importers(&self, branch: &str, symbol_name: &str) -> Result<Vec<Node>> {
@@ -1248,7 +1319,7 @@ impl GraphStore for KuzuGraphStore {
                 .query(&format!(
                     "MATCH (s:{nt})-[e:{et}]->(d:{nt}) \
                      WHERE s.id IN [{ids_str}] AND d.id IN [{ids_str}] \
-                     RETURN s.id, d.id, e.kind"
+                     RETURN s.id, d.id, e.kind, e.line"
                 ))
                 .map_err(|e| GitCortexError::Store(e.to_string()))?;
             let mut edges = Vec::new();
@@ -1256,12 +1327,14 @@ impl GraphStore for KuzuGraphStore {
                 let src_str = str_val(&row[0])?;
                 let dst_str = str_val(&row[1])?;
                 let kind_str = str_val(&row[2])?;
+                let line = i64_val(&row[3]).ok().filter(|l| *l >= 0).map(|l| l as u32);
                 edges.push(Edge {
                     src: NodeId::try_from(src_str.as_str())
                         .map_err(|e| GitCortexError::Store(format!("bad src id: {e}")))?,
                     dst: NodeId::try_from(dst_str.as_str())
                         .map_err(|e| GitCortexError::Store(format!("bad dst id: {e}")))?,
                     kind: edge_kind_from_str(&kind_str),
+                    line,
                 });
             }
             edges

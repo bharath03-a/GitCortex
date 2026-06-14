@@ -125,7 +125,7 @@ struct FileVisitor<'src> {
     type_index: HashMap<String, NodeId>,
     /// function/method name → NodeId
     fn_index: HashMap<String, NodeId>,
-    deferred_calls: Vec<(NodeId, String)>,
+    deferred_calls: Vec<(NodeId, String, u32)>,
     deferred_uses: Vec<(NodeId, String)>,
     deferred_implements: Vec<(NodeId, String)>,
     deferred_inherits: Vec<(NodeId, String)>,
@@ -447,6 +447,7 @@ impl<'src> FileVisitor<'src> {
                 src: cid,
                 dst: id.clone(),
                 kind: EdgeKind::Contains,
+                line: None,
             });
         }
         self.nodes.push(graph_node);
@@ -524,6 +525,7 @@ impl<'src> FileVisitor<'src> {
             src: class_id,
             dst: id.clone(),
             kind: EdgeKind::Contains,
+            line: None,
         });
         self.nodes.push(graph_node);
 
@@ -621,6 +623,7 @@ impl<'src> FileVisitor<'src> {
                         src: enum_id.clone(),
                         dst: mid,
                         kind: EdgeKind::Contains,
+                        line: None,
                     });
                 }
             }
@@ -639,6 +642,7 @@ impl<'src> FileVisitor<'src> {
             src: self.module_id.clone(),
             dst: ns_id.clone(),
             kind: EdgeKind::Contains,
+            line: None,
         });
 
         // Visit namespace body
@@ -959,7 +963,8 @@ impl<'src> FileVisitor<'src> {
             match child.kind() {
                 "call_expression" | "new_expression" => {
                     if let Some(callee) = self.callee_name(child) {
-                        self.record_call(caller_id.clone(), callee);
+                        let line = child.start_position().row as u32 + 1;
+                        self.record_call(caller_id.clone(), callee, line);
                     }
                     if let Some(args) = child.child_by_field_name("arguments") {
                         self.collect_calls(args, caller_id);
@@ -981,25 +986,21 @@ impl<'src> FileVisitor<'src> {
         }
     }
 
-    fn record_call(&mut self, caller_id: NodeId, callee_name: String) {
+    fn record_call(&mut self, caller_id: NodeId, callee_name: String, line: u32) {
         if callee_name.is_empty() {
             return;
         }
         if let Some(callee_id) = self.fn_index.get(&callee_name).cloned() {
-            let edge = Edge {
-                src: caller_id,
-                dst: callee_id,
-                kind: EdgeKind::Calls,
-            };
+            let edge = Edge::call(caller_id, callee_id, line);
             if !self.edges.contains(&edge) {
                 self.edges.push(edge);
             }
         } else if !self
             .deferred_calls
             .iter()
-            .any(|(c, n)| c == &caller_id && n == &callee_name)
+            .any(|(c, n, _)| c == &caller_id && n == &callee_name)
         {
-            self.deferred_calls.push((caller_id, callee_name));
+            self.deferred_calls.push((caller_id, callee_name, line));
         }
     }
 }
@@ -1077,7 +1078,7 @@ mod tests {
     ) -> (
         Vec<gitcortex_core::graph::Node>,
         Vec<gitcortex_core::graph::Edge>,
-        Vec<(gitcortex_core::graph::NodeId, String)>,
+        Vec<(gitcortex_core::graph::NodeId, String, u32)>,
         Vec<(gitcortex_core::graph::NodeId, String)>,
         Vec<(gitcortex_core::graph::NodeId, String)>,
         Vec<(gitcortex_core::graph::NodeId, String)>,

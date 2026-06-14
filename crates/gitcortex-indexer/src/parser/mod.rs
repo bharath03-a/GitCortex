@@ -22,7 +22,7 @@ pub struct ParseResult {
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
     /// Unresolved call sites — resolved cross-file by the indexer.
-    pub deferred_calls: Vec<(NodeId, String)>,
+    pub deferred_calls: Vec<(NodeId, String, u32)>,
     /// Unresolved parameter/return-type references: (fn_id, type_name).
     pub deferred_uses: Vec<(NodeId, String)>,
     /// Unresolved trait implementations: (struct_id, trait_name).

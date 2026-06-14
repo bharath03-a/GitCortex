@@ -41,7 +41,7 @@ GitCortex gives your AI editor a pre-built, queryable call graph of your repo �
 - **Wiki, search, tour, blast-radius** — built-in discovery surface for AI assistants and humans.
 - **Works in Codex, Claude Code, Cursor, Windsurf, GitHub Copilot, Google Antigravity** via MCP.
 - **38 % fewer raw Codex tokens across 5 OSS repos** — measured with real `codex exec --json` usage across Rust, Python, TypeScript, Go, and Java; targeted graph questions save the most context (see [benchmark below](#benchmark)).
-- **`gcx` single-dispatch MCP tool** — one compact schema covers all graph operations, cutting per-turn context overhead vs. loading 21 separate tool schemas.
+- **`gcx` single-dispatch MCP tool** — one compact schema covers all graph operations, cutting per-turn context overhead vs. loading 22 separate tool schemas.
 - **Six viz formats** — WebGL Cosmograph UI, self-contained HTML, SVG, DOT, GraphML, Neo4j Cypher.
 
 ---
@@ -550,7 +550,7 @@ Claude Code and the other editors use the full MCP surface unless you manually s
 
 | Tool                    | Description                                                                                                                                                                |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gcx`                   | **Single-dispatch tool** — one schema covers all operations below. Pass `action` + `params` to avoid loading 21 separate schemas per turn. Preferred for token efficiency; the compact server exposes only this tool. |
+| `gcx`                   | **Single-dispatch tool** — one schema covers all operations below. Pass `action` + `params` to avoid loading 22 separate schemas per turn. Preferred for token efficiency; the compact server exposes only this tool. |
 | `lookup_symbol`         | Find all nodes matching a name across the codebase                                                                                                                         |
 | `find_callers`          | All functions that call a given function (backward trace, capped at 25)                                                                                                    |
 | `find_callees`          | All functions called by a given function (forward trace, configurable depth)                                                                                               |
@@ -571,6 +571,8 @@ Claude Code and the other editors use the full MCP surface unless you manually s
 | `type_hierarchy`        | Supertypes and subtypes of a type in one call (both directions)                                                                                                            |
 | `find_importers`        | Files/modules that import a given symbol (in-repo imports)                                                                                                                  |
 | `find_type_usages`      | Functions/methods that use a type as a parameter or return type                                                                                                            |
+| `module_dependencies`   | In-repo modules a module depends on (via imports)                                                                                                                          |
+| `get_call_sites`        | Every call site of a function — caller plus the exact call line                                                                                                            |
 
 All tools accept an optional `branch` parameter. Defaults to the branch active when `gcx serve` was started (auto-detected from `git symbolic-ref HEAD`).
 

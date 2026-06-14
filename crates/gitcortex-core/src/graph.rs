@@ -146,6 +146,33 @@ pub struct Edge {
     pub src: NodeId,
     pub dst: NodeId,
     pub kind: EdgeKind,
+    /// Source line of the relationship's origin, when meaningful. Set for
+    /// `Calls` edges (the line of the call expression) so call sites can be
+    /// pinpointed; `None` for structural edges (Contains, Implements, …).
+    #[serde(default)]
+    pub line: Option<u32>,
+}
+
+impl Edge {
+    /// Construct an edge with no associated source line (structural edges).
+    pub fn new(src: NodeId, dst: NodeId, kind: EdgeKind) -> Self {
+        Self {
+            src,
+            dst,
+            kind,
+            line: None,
+        }
+    }
+
+    /// Construct a `Calls` edge carrying the call-expression line.
+    pub fn call(src: NodeId, dst: NodeId, line: u32) -> Self {
+        Self {
+            src,
+            dst,
+            kind: EdgeKind::Calls,
+            line: Some(line),
+        }
+    }
 }
 
 // ── Graph diff ────────────────────────────────────────────────────────────────
@@ -167,7 +194,8 @@ pub struct GraphDiff {
     /// Cross-file calls that couldn't be resolved against the diff-local node
     /// set (because the callee lives in an unchanged file). The store resolves
     /// these after inserting the new nodes, using its full existing data.
-    pub deferred_calls: Vec<(NodeId, String)>,
+    /// Tuple: `(caller_id, callee_name, call_line)`.
+    pub deferred_calls: Vec<(NodeId, String, u32)>,
     /// Same for parameter/return-type Uses edges.
     pub deferred_uses: Vec<(NodeId, String)>,
     /// Same for struct→trait Implements edges.

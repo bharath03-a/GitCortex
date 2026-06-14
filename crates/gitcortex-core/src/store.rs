@@ -117,6 +117,13 @@ pub struct GraphStats {
     pub edges_by_kind: Vec<(String, u64)>,
 }
 
+/// A single call site: the calling symbol and the source line of the call.
+pub struct CallSite {
+    pub caller: Node,
+    /// 1-indexed line of the call expression, when recorded.
+    pub line: Option<u32>,
+}
+
 /// Up-and-down type relationships for a named type, returned by `type_hierarchy`.
 pub struct TypeHierarchy {
     /// Types this type implements or extends (its supertypes / interfaces).
@@ -373,6 +380,45 @@ pub trait GraphStore: Send + Sync {
             .map(|e| e.src.as_str())
             .collect();
         self.get_nodes_by_ids(branch, &user_ids)
+    }
+
+    /// Find every call site of the function named `function_name`: the calling
+    /// symbol plus the source line of each call expression (following `Calls`
+    /// edges). Where `find_callers` returns only the calling symbols, this also
+    /// pinpoints the line each call happens on.
+    ///
+    /// The default walks `list_all_edges`; backends should override with a
+    /// directed Cypher match that returns the edge line.
+    fn find_call_sites(&self, branch: &str, function_name: &str) -> Result<Vec<CallSite>> {
+        use crate::schema::EdgeKind;
+        use std::collections::HashMap;
+
+        let nodes = self.list_all_nodes(branch)?;
+        let edges = self.list_all_edges(branch)?;
+
+        let target_ids: std::collections::HashSet<String> = nodes
+            .iter()
+            .filter(|n| n.name == function_name)
+            .map(|n| n.id.as_str())
+            .collect();
+        if target_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let by_id: HashMap<String, &Node> = nodes.iter().map(|n| (n.id.as_str(), n)).collect();
+
+        let mut sites = Vec::new();
+        for e in &edges {
+            if matches!(e.kind, EdgeKind::Calls) && target_ids.contains(&e.dst.as_str()) {
+                if let Some(caller) = by_id.get(&e.src.as_str()) {
+                    sites.push(CallSite {
+                        caller: (*caller).clone(),
+                        line: e.line,
+                    });
+                }
+            }
+        }
+        Ok(sites)
     }
 
     /// Find the module/file nodes that import a symbol named `symbol_name`
