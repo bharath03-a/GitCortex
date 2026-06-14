@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 /// Bumped whenever the on-disk graph schema changes.
 /// Stores compare this against the persisted version and re-index on mismatch.
-pub const SCHEMA_VERSION: u32 = 7;
+pub const SCHEMA_VERSION: u32 = 8;
 
 /// Every named, referenceable syntactic entity becomes a node of one of these kinds.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

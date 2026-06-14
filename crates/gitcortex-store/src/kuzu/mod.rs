@@ -955,6 +955,22 @@ impl GraphStore for KuzuGraphStore {
         rows_to_nodes(&mut result)
     }
 
+    fn find_importers(&self, branch: &str, symbol_name: &str) -> Result<Vec<Node>> {
+        self.ensure_branch(branch)?;
+        let nt = db_schema::node_table(branch);
+        let et = db_schema::edge_table(branch);
+        let name_esc = esc(symbol_name);
+        let conn = self.conn()?;
+        let mut result = conn
+            .query(&format!(
+                "MATCH (n:{nt})-[e:{et} {{kind: 'imports'}}]->(target:{nt}) \
+                 WHERE target.name = '{name_esc}' \
+                 RETURN DISTINCT {NODE_COLS} ORDER BY {SYMBOL_RANK}"
+            ))
+            .map_err(|e| GitCortexError::Store(e.to_string()))?;
+        rows_to_nodes(&mut result)
+    }
+
     fn type_hierarchy(&self, branch: &str, name: &str) -> Result<TypeHierarchy> {
         self.ensure_branch(branch)?;
         let nt = db_schema::node_table(branch);

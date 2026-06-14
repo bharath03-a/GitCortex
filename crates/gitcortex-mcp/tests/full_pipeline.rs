@@ -524,6 +524,52 @@ fn cross_file_implements_edge_resolved() {
 }
 
 #[test]
+fn find_importers_resolves_cross_file_rust_import() {
+    // xfile_caller.rs: `use crate::xfile_callee::compute_value;`
+    // The importer's file-level module node must be found for compute_value.
+    let (_, _, store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
+    let importers = store
+        .find_importers("main", "compute_value")
+        .expect("find_importers");
+    assert!(
+        !importers.is_empty(),
+        "compute_value should have at least one importer (xfile_caller module)"
+    );
+    // Importer is the caller file's module node.
+    assert!(
+        importers
+            .iter()
+            .any(|n| n.file.to_string_lossy().contains("xfile_caller")),
+        "expected an importer in xfile_caller.rs, got: {:?}",
+        importers
+            .iter()
+            .map(|n| n.file.display().to_string())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn find_importers_unknown_symbol_is_empty() {
+    let (_, _, store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
+    let importers = store
+        .find_importers("main", "NoSuchSymbolXyz")
+        .expect("find_importers");
+    assert!(importers.is_empty());
+}
+
+#[test]
+fn rust_file_gets_module_node() {
+    // The file-level module node (added for import attachment) must exist.
+    let (nodes, _) = run_pipeline("sample.rs");
+    assert!(
+        nodes
+            .iter()
+            .any(|n| n.kind == NodeKind::Module && n.name == "sample"),
+        "expected a file-level module node named 'sample'"
+    );
+}
+
+#[test]
 fn type_hierarchy_subtypes_from_trait() {
     // xfile_trait.rs: trait Processor; xfile_impl.rs: impl Processor for Worker.
     // Querying the trait should list Worker as a subtype.

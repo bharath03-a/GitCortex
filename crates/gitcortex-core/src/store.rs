@@ -265,6 +265,35 @@ pub trait GraphStore: Send + Sync {
     /// Find all structs/classes that implement/inherit `trait_or_interface_name`.
     fn find_implementors(&self, branch: &str, trait_or_interface_name: &str) -> Result<Vec<Node>>;
 
+    /// Find the module/file nodes that import a symbol named `symbol_name`
+    /// (following `Imports` edges). Answers "who imports X".
+    ///
+    /// The default walks `list_all_edges`; backends should override with a
+    /// directed Cypher match.
+    fn find_importers(&self, branch: &str, symbol_name: &str) -> Result<Vec<Node>> {
+        use crate::schema::EdgeKind;
+        use std::collections::HashSet;
+
+        let nodes = self.list_all_nodes(branch)?;
+        let edges = self.list_all_edges(branch)?;
+
+        let target_ids: HashSet<String> = nodes
+            .iter()
+            .filter(|n| n.name == symbol_name)
+            .map(|n| n.id.as_str())
+            .collect();
+        if target_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let importer_ids: Vec<String> = edges
+            .iter()
+            .filter(|e| matches!(e.kind, EdgeKind::Imports) && target_ids.contains(&e.dst.as_str()))
+            .map(|e| e.src.as_str())
+            .collect();
+        self.get_nodes_by_ids(branch, &importer_ids)
+    }
+
     /// Return both directions of the type relation for `name`: the types it
     /// implements/extends (supertypes) and the types that implement/extend it
     /// (subtypes), following `Implements` and `Inherits` edges.

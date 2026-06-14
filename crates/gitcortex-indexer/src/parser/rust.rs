@@ -81,6 +81,9 @@ impl LanguageParser for RustParser {
 struct FileVisitor<'src> {
     source: &'src [u8],
     file: PathBuf,
+    /// File-level module node id — the `src` for this file's `Imports` edges,
+    /// mirroring the Python/Go/Java/TypeScript parsers.
+    module_id: NodeId,
     nodes: Vec<Node>,
     edges: Vec<Edge>,
     type_index: HashMap<String, NodeId>,
@@ -94,10 +97,35 @@ struct FileVisitor<'src> {
 
 impl<'src> FileVisitor<'src> {
     fn new(file: &Path, source: &'src str) -> Self {
+        // File-level module node — derive the name from the file stem
+        // (e.g. "auth" from "auth.rs"). Imports attach to this node.
+        let module_id = NodeId::new();
+        let module_name = file
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("crate")
+            .to_owned();
+        let module_node = Node {
+            id: module_id.clone(),
+            qualified_name: module_name.clone(),
+            kind: NodeKind::Module,
+            name: module_name,
+            file: file.to_owned(),
+            span: Span {
+                start_line: 1,
+                end_line: 1,
+            },
+            metadata: NodeMetadata {
+                loc: source.lines().count() as u32,
+                visibility: Visibility::Pub,
+                ..Default::default()
+            },
+        };
         Self {
             source: source.as_bytes(),
             file: file.to_owned(),
-            nodes: Vec::new(),
+            module_id,
+            nodes: vec![module_node],
             edges: Vec::new(),
             type_index: HashMap::new(),
             fn_index: HashMap::new(),
@@ -743,9 +771,9 @@ impl<'src> FileVisitor<'src> {
                     && name != "super"
                     && name != "crate"
                 {
-                    // Use file-level placeholder NodeId — resolved to real nodes in indexer.
-                    let placeholder = NodeId::new();
-                    self.deferred_imports.push((placeholder, name));
+                    // Attach the import to the file-level module node so the
+                    // edge has a real `src` that survives the store's load.
+                    self.deferred_imports.push((self.module_id.clone(), name));
                 }
             }
             "use_list" => {
@@ -862,9 +890,13 @@ mod tests {
     #[test]
     fn parses_free_function() {
         let (nodes, _) = parse("pub fn greet(name: &str) -> String { name.into() }");
-        assert_eq!(nodes.len(), 1);
-        assert_eq!(nodes[0].kind, NodeKind::Function);
-        assert_eq!(nodes[0].name, "greet");
+        // Nodes: the file-level module node + the function.
+        let fns: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Function)
+            .collect();
+        assert_eq!(fns.len(), 1);
+        assert_eq!(fns[0].name, "greet");
     }
 
     #[test]
@@ -932,7 +964,11 @@ pub mod utils {
             .filter(|e| e.kind == EdgeKind::Contains)
             .collect();
 
-        assert_eq!(mods.len(), 1, "expected utils module");
+        // Two modules now: the file-level module node + the `utils` module.
+        assert!(
+            mods.iter().any(|n| n.name == "utils"),
+            "expected utils module"
+        );
         assert_eq!(fns.len(), 1, "expected helper function");
         assert!(!contains.is_empty(), "expected Contains edges");
     }
