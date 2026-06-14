@@ -265,6 +265,70 @@ pub trait GraphStore: Send + Sync {
     /// Find all structs/classes that implement/inherit `trait_or_interface_name`.
     fn find_implementors(&self, branch: &str, trait_or_interface_name: &str) -> Result<Vec<Node>>;
 
+    /// Return the in-repo modules that a module named `module_name` depends on,
+    /// resolved by following its `Imports` edges to the defining module of each
+    /// imported symbol. Answers "what does this module depend on".
+    ///
+    /// External/stdlib imports are not graphed, so only intra-repo dependencies
+    /// appear. The default walks nodes + edges in-memory; backends should
+    /// override with a join query.
+    fn module_dependencies(&self, branch: &str, module_name: &str) -> Result<Vec<Node>> {
+        use crate::schema::{EdgeKind, NodeKind};
+        use std::collections::{HashMap, HashSet};
+
+        let nodes = self.list_all_nodes(branch)?;
+        let edges = self.list_all_edges(branch)?;
+
+        // Source module node ids (there may be several files with this stem).
+        let src_ids: HashSet<String> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Module && n.name == module_name)
+            .map(|n| n.id.as_str())
+            .collect();
+        if src_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Map every node id to its file, and every file to its module node.
+        let id_to_file: HashMap<String, String> = nodes
+            .iter()
+            .map(|n| (n.id.as_str(), n.file.to_string_lossy().into_owned()))
+            .collect();
+        let file_to_module: HashMap<String, &Node> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Module)
+            .map(|n| (n.file.to_string_lossy().into_owned(), n))
+            .collect();
+
+        let src_files: HashSet<&String> =
+            src_ids.iter().filter_map(|id| id_to_file.get(id)).collect();
+
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut deps: Vec<Node> = Vec::new();
+        for e in &edges {
+            if !matches!(e.kind, EdgeKind::Imports) {
+                continue;
+            }
+            if !src_ids.contains(&e.src.as_str()) {
+                continue;
+            }
+            // Resolve the imported symbol's defining module.
+            let Some(sym_file) = id_to_file.get(&e.dst.as_str()) else {
+                continue;
+            };
+            // Skip self-imports within the same module file.
+            if src_files.contains(sym_file) {
+                continue;
+            }
+            if let Some(dst_mod) = file_to_module.get(sym_file) {
+                if seen.insert(dst_mod.id.as_str()) {
+                    deps.push((*dst_mod).clone());
+                }
+            }
+        }
+        Ok(deps)
+    }
+
     /// Find functions/methods that reference a type named `type_name` as a
     /// parameter or return type (following `Uses` edges). Answers "where is
     /// type T used in a signature" — the type-level analogue of find_callers.

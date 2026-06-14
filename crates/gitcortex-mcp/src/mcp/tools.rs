@@ -42,7 +42,7 @@ pub struct GcxDispatchParams {
     /// Which graph operation to run. One of: lookup_symbol, find_callers, find_callees,
     /// find_unused_symbols, get_subgraph, search_code, start_tour, wiki_symbol,
     /// trace_path, list_definitions, symbol_context, list_symbols_in_range, graph_stats,
-    /// ast_search, type_hierarchy, find_importers, find_type_usages.
+    /// ast_search, type_hierarchy, find_importers, find_type_usages, module_dependencies.
     pub action: String,
     /// Parameters for the chosen action as a JSON object (same fields as the
     /// individual tool: name, function_name, seed_name, query, file, branch,
@@ -131,6 +131,13 @@ pub struct FindImportersParams {
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct FindTypeUsagesParams {
     /// Type name (struct/class/trait/interface/enum) to find usages of.
+    pub name: String,
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ModuleDependenciesParams {
+    /// Module name (file stem, e.g. "tools" for tools.rs) to list dependencies of.
     pub name: String,
     pub branch: Option<String>,
 }
@@ -927,6 +934,43 @@ impl GitCortexServer {
         }
     }
 
+    /// List the in-repo modules a module depends on.
+    #[tool(
+        description = "List the in-repo modules a given module depends on, resolved by following its imports to the defining module of each imported symbol. Useful for understanding internal coupling and architecture. Only intra-repo dependencies appear (external/stdlib imports are not graphed)."
+    )]
+    fn module_dependencies(
+        &self,
+        Parameters(p): Parameters<ModuleDependenciesParams>,
+    ) -> CallToolResult {
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        match store.module_dependencies(&branch, &p.name) {
+            Ok(nodes) => {
+                let items: Vec<_> = nodes
+                    .iter()
+                    .map(|n| {
+                        json!({
+                            "name": n.name,
+                            "file": n.file.display().to_string(),
+                        })
+                    })
+                    .collect();
+                CallToolResult::structured(json!({
+                    "module": p.name,
+                    "depends_on": items,
+                }))
+            }
+            Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
+        }
+    }
+
     /// Find functions/methods that use a type in their signature.
     #[tool(
         description = "Find functions/methods that reference a type as a parameter or return type (follows Uses edges). The type-level analogue of find_callers: answers 'what would break if I change type T's shape'. Returns the using functions/methods."
@@ -1417,7 +1461,7 @@ impl GitCortexServer {
         action: lookup_symbol | find_callers | find_callees | find_unused_symbols | \
         get_subgraph | search_code | start_tour | wiki_symbol | trace_path | \
         list_definitions | symbol_context | list_symbols_in_range | graph_stats | ast_search | \
-        type_hierarchy | find_importers | find_type_usages | branch_diff_graph. \
+        type_hierarchy | find_importers | find_type_usages | module_dependencies | branch_diff_graph. \
         params: JSON object with the same fields as the individual tool (name/function_name/\
         seed_name/query/file/branch/depth/limit/direction as applicable). \
         Returns identical output to the individual tool.")]
@@ -1565,6 +1609,12 @@ impl GitCortexServer {
                 name: str_field!("name"),
                 branch: branch_val,
             })),
+            "module_dependencies" => {
+                self.module_dependencies(Parameters(ModuleDependenciesParams {
+                    name: str_field!("name"),
+                    branch: branch_val,
+                }))
+            }
             "ast_search" => self.ast_search(Parameters(AstSearchParams {
                 kind: p
                     .params
@@ -1619,7 +1669,8 @@ impl GitCortexServer {
                 "gcx dispatch: unknown action '{other}'. Valid: lookup_symbol, find_callers, \
                 find_callees, find_unused_symbols, get_subgraph, search_code, start_tour, \
                 wiki_symbol, trace_path, list_definitions, symbol_context, list_symbols_in_range, \
-                graph_stats, ast_search, type_hierarchy, find_importers, find_type_usages"
+                graph_stats, ast_search, type_hierarchy, find_importers, find_type_usages, \
+                module_dependencies"
             ))]),
         }
     }

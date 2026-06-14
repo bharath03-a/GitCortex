@@ -524,6 +524,32 @@ fn cross_file_implements_edge_resolved() {
 }
 
 #[test]
+fn module_dependencies_resolves_cross_file() {
+    // xfile_caller imports compute_value (defined in xfile_callee.rs) →
+    // module xfile_caller depends on module xfile_callee.
+    let (_, _, store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
+    let deps = store
+        .module_dependencies("main", "xfile_caller")
+        .expect("module_dependencies");
+    let names: Vec<&str> = deps.iter().map(|n| n.name.as_str()).collect();
+    assert!(
+        names.contains(&"xfile_callee"),
+        "xfile_caller should depend on xfile_callee, got: {names:?}"
+    );
+    // A module never lists itself as a dependency.
+    assert!(!names.contains(&"xfile_caller"), "self-dependency leaked");
+}
+
+#[test]
+fn module_dependencies_unknown_module_is_empty() {
+    let (_, _, store) = run_pipeline_multi(&["sample.rs"]);
+    let deps = store
+        .module_dependencies("main", "no_such_module")
+        .expect("module_dependencies");
+    assert!(deps.is_empty());
+}
+
+#[test]
 fn find_type_usages_finds_signature_references() {
     // python_comprehensive: create_user(...) -> User; find_users(repository: Repository) -> List[User]
     // User is used as a return type by multiple functions → Uses edges point to it.

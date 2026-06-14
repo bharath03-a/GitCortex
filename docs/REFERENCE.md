@@ -145,7 +145,7 @@ gcx serve [OPTIONS]
 
 | Flag | Description |
 |------|-------------|
-| `--compact` | Expose only the single dispatch tool (`gcx`) instead of all 15 individual tools. Reduces per-turn schema overhead ~95%. Codex uses this by default. |
+| `--compact` | Expose only the single dispatch tool (`gcx`) instead of all 21 individual tools. Reduces per-turn schema overhead ~95%. Codex uses this by default. |
 
 **Notes:**
 - The server auto-detects the current branch from `git symbolic-ref HEAD` at startup. All tools default to that branch.
@@ -154,7 +154,7 @@ gcx serve [OPTIONS]
 **Examples:**
 
 ```bash
-gcx serve             # full surface (20 tools + prompts)
+gcx serve             # full surface (21 tools + prompts)
 gcx serve --compact   # single dispatch tool only
 ```
 
@@ -603,7 +603,7 @@ The compact server exposes only this tool. Use it to keep per-turn schema overhe
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `action` | `string` | yes | One of: `lookup_symbol`, `find_callers`, `find_callees`, `find_unused_symbols`, `get_subgraph`, `search_code`, `start_tour`, `wiki_symbol`, `trace_path`, `list_definitions`, `symbol_context`, `list_symbols_in_range`, `graph_stats`, `ast_search`, `type_hierarchy`, `find_importers`, `find_type_usages`, `branch_diff_graph` |
+| `action` | `string` | yes | One of: `lookup_symbol`, `find_callers`, `find_callees`, `find_unused_symbols`, `get_subgraph`, `search_code`, `start_tour`, `wiki_symbol`, `trace_path`, `list_definitions`, `symbol_context`, `list_symbols_in_range`, `graph_stats`, `ast_search`, `type_hierarchy`, `find_importers`, `find_type_usages`, `module_dependencies`, `branch_diff_graph` |
 | `params` | `object` | yes | Same fields as the individual tool for the chosen action |
 
 **Example:**
@@ -1088,6 +1088,29 @@ Find functions/methods that reference a type as a parameter or return type (foll
 
 ```json
 { "name": "Node" }
+```
+
+---
+
+#### `module_dependencies`
+
+List the in-repo modules a given module depends on, resolved by following its imports to the defining module of each imported symbol.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | `string` | yes | Module name (file stem, e.g. `tools` for `tools.rs`) |
+| `branch` | `string` | no | — |
+
+**Returns:** `{ module, depends_on[] }`. Each dependency is `{ name, file }`. Self-dependencies are excluded.
+
+> Only intra-repo dependencies appear; imports of external/stdlib modules are not graphed.
+
+**Example:**
+
+```json
+{ "name": "indexer" }
 ```
 
 ---
