@@ -662,6 +662,54 @@ fn type_hierarchy_unknown_type_is_empty() {
 }
 
 #[test]
+fn annotations_captured_as_metadata_for_external_decorators() {
+    // @dataclass is external (stdlib) — its Annotated edge is dropped, but the
+    // name must still be captured on the decorated node's metadata.
+    let (nodes, _) = run_pipeline("python_comprehensive.py");
+    let user = nodes
+        .iter()
+        .find(|n| n.name == "User")
+        .expect("User class node");
+    assert!(
+        user.metadata.annotations.iter().any(|a| a == "dataclass"),
+        "User should carry the dataclass annotation, got: {:?}",
+        user.metadata.annotations
+    );
+}
+
+#[test]
+fn ast_search_by_annotation_finds_decorated() {
+    use gitcortex_core::store::AttributeFilter;
+    let (_, _, store) = run_pipeline_multi(&["python_comprehensive.py"]);
+    let hits = store
+        .search_by_attributes(
+            "main",
+            &AttributeFilter {
+                annotation: Some("staticmethod".into()),
+                ..Default::default()
+            },
+            50,
+        )
+        .expect("search_by_attributes");
+    let names: Vec<&str> = hits.iter().map(|n| n.name.as_str()).collect();
+    assert!(
+        names.contains(&"from_dict"),
+        "@staticmethod search should find from_dict, got: {names:?}"
+    );
+    // Every hit must actually carry the annotation.
+    for n in &hits {
+        assert!(
+            n.metadata
+                .annotations
+                .iter()
+                .any(|a| a.contains("staticmethod")),
+            "{} lacks staticmethod annotation",
+            n.name
+        );
+    }
+}
+
+#[test]
 fn ast_search_async_methods_only() {
     use gitcortex_core::store::AttributeFilter;
     let (_, _, store) = run_pipeline_multi(&["python_comprehensive.py"]);

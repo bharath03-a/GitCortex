@@ -1008,6 +1008,7 @@ Find symbols by structural attributes rather than name. At least one filter is r
 | `min_complexity` | `integer` | no | Inclusive lower bound on cyclomatic complexity (symbols without complexity excluded) |
 | `max_complexity` | `integer` | no | Inclusive upper bound on cyclomatic complexity |
 | `name_contains` | `string` | no | Case-insensitive name substring |
+| `annotation` | `string` | no | Annotation/decorator name substring: `Test` → `@Test`, `route` → `@app.route`, `derive` → `#[derive(...)]` |
 | `limit` | `integer` | no | Max results (default 30, capped at 200) |
 | `branch` | `string` | no | — |
 
@@ -1281,6 +1282,7 @@ Every node carries the following metadata:
 | `is_generator` | `bool` | Python `yield`, TS `function*` |
 | `is_const` | `bool` | Rust `const fn`, TS `const` assertion |
 | `generic_bounds` | `string[]` | e.g. `["T: Send", "T: 'static"]` |
+| `annotations` | `string[]` | Decorator/annotation names, e.g. `["dataclass"]`, `["Override"]`, `["derive", "Serialize"]`. Captured even when the decorator is external/undefined in-repo. Query via `ast_search`'s `annotation` filter. |
 
 ### Cyclomatic complexity
 

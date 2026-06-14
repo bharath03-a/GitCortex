@@ -236,6 +236,10 @@ pub struct AstSearchParams {
     pub max_complexity: Option<u32>,
     /// Case-insensitive substring the symbol name must contain.
     pub name_contains: Option<String>,
+    /// Annotation/decorator name the symbol must carry (case-insensitive
+    /// substring): "Test" finds `@Test`, "route" finds `@app.route`,
+    /// "derive" finds `#[derive(...)]`.
+    pub annotation: Option<String>,
     /// Max results (default 30, capped at 200).
     pub limit: Option<usize>,
     pub branch: Option<String>,
@@ -636,7 +640,7 @@ impl GitCortexServer {
 
     /// Structural search over node attributes (no name needed).
     #[tool(
-        description = "Find symbols by structural attributes rather than name: kind (function/method/struct/...), is_async, visibility (pub/pub_crate/private), and cyclomatic complexity range. Combine filters to answer questions like 'all async methods', 'public structs', or 'functions with complexity ≥ 10'. Optional name_contains narrows further. Default limit=30."
+        description = "Find symbols by structural attributes rather than name: kind (function/method/struct/...), is_async, visibility (pub/pub_crate/private), cyclomatic complexity range, and annotation/decorator (e.g. annotation='Test' finds @Test methods, 'route' finds @app.route handlers, 'derive' finds #[derive(...)]). Combine filters to answer 'all async methods', 'public structs', 'functions with complexity ≥ 10', or 'all test functions'. Optional name_contains narrows further. Default limit=30."
     )]
     fn ast_search(&self, Parameters(p): Parameters<AstSearchParams>) -> CallToolResult {
         let branch = p
@@ -670,12 +674,13 @@ impl GitCortexServer {
             min_complexity: p.min_complexity,
             max_complexity: p.max_complexity,
             name_contains: p.name_contains.clone(),
+            annotation: p.annotation.clone(),
         };
 
         if filter.is_empty() {
             return CallToolResult::error(vec![Content::text(
                 "ast_search needs at least one filter (kind, is_async, visibility, \
-                 complexity bound, or name_contains)"
+                 complexity bound, name_contains, or annotation)"
                     .to_owned(),
             )]);
         }
@@ -698,6 +703,7 @@ impl GitCortexServer {
                             "visibility": format!("{:?}", n.metadata.visibility),
                             "is_async": n.metadata.is_async,
                             "complexity": n.metadata.lld.complexity,
+                            "annotations": n.metadata.annotations,
                         })
                     })
                     .collect();
@@ -1640,6 +1646,11 @@ impl GitCortexServer {
                 name_contains: p
                     .params
                     .get("name_contains")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_owned()),
+                annotation: p
+                    .params
+                    .get("annotation")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_owned()),
                 limit: p

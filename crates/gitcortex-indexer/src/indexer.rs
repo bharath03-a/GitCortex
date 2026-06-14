@@ -213,6 +213,31 @@ impl IncrementalIndexer {
             merged.added_edges.len()
         ));
 
+        // Mirror annotation NAMES onto each decorated node's metadata. The
+        // `Annotated` edge above only survives when the decorator is defined
+        // in-repo; most framework decorators (`@app.route`, `@Test`) are
+        // external and dropped. Storing the names as metadata keeps them
+        // queryable regardless.
+        {
+            let mut ann_by_id: HashMap<String, Vec<String>> = HashMap::new();
+            for (node_id, name) in &all_annotated {
+                ann_by_id
+                    .entry(node_id.as_str())
+                    .or_default()
+                    .push(name.clone());
+            }
+            for node in &mut merged.added_nodes {
+                if let Some(names) = ann_by_id.get(&node.id.as_str()) {
+                    let mut seen: HashSet<String> = HashSet::new();
+                    node.metadata.annotations = names
+                        .iter()
+                        .filter(|n| seen.insert((*n).clone()))
+                        .cloned()
+                        .collect();
+                }
+            }
+        }
+
         for deleted in to_delete {
             merged.removed_files.push(deleted.path().to_owned());
         }

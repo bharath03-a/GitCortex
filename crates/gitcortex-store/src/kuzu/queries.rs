@@ -20,7 +20,7 @@ pub(super) const NODE_COLS: &str = "n.id, n.kind, n.name, n.qualified_name, n.fi
      n.start_line, n.end_line, n.loc, n.visibility, n.is_async, n.is_unsafe, \
      n.is_static, n.is_abstract, n.is_final, n.is_property, n.is_generator, n.is_const, \
      n.generic_bounds, n.def_signature, n.def_body, n.def_doc, n.def_start_byte, n.def_end_byte, \
-     n.complexity";
+     n.complexity, n.annotations";
 
 /// Cypher `ORDER BY` fragment that ranks a node by "how likely the user meant
 /// THIS one" when several share a name. Type declarations win over
@@ -50,9 +50,9 @@ pub(super) fn rows_to_nodes(result: &mut kuzu::QueryResult) -> Result<Vec<Node>>
 }
 
 pub(super) fn row_to_node(row: Vec<Value>) -> Result<Node> {
-    if row.len() < 24 {
+    if row.len() < 25 {
         return Err(GitCortexError::Store(format!(
-            "expected 24 columns, got {}",
+            "expected 25 columns, got {}",
             row.len()
         )));
     }
@@ -92,6 +92,12 @@ pub(super) fn row_to_node(row: Vec<Value>) -> Result<Node> {
     let complexity = i64_val(&row[23])
         .ok()
         .and_then(|c| if c >= 0 { Some(c as u32) } else { None });
+    let annotations_str = str_val(&row[24])?;
+    let annotations: Vec<String> = if annotations_str.is_empty() {
+        Vec::new()
+    } else {
+        annotations_str.split('|').map(String::from).collect()
+    };
 
     Ok(Node {
         id: NodeId::try_from(id_str.as_str())
@@ -116,6 +122,7 @@ pub(super) fn row_to_node(row: Vec<Value>) -> Result<Node> {
             is_generator,
             is_const,
             generic_bounds,
+            annotations,
             definition: DefinitionText {
                 signature: def_signature,
                 body: def_body,

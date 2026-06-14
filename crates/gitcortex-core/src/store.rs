@@ -20,6 +20,10 @@ pub struct AttributeFilter {
     pub max_complexity: Option<u32>,
     /// Case-insensitive substring the node name must contain.
     pub name_contains: Option<String>,
+    /// Case-insensitive: the node must carry an annotation/decorator whose name
+    /// contains this string (e.g. "route" matches `@app.route`, "Test" matches
+    /// `@Test`).
+    pub annotation: Option<String>,
 }
 
 impl AttributeFilter {
@@ -61,6 +65,17 @@ impl AttributeFilter {
                 return false;
             }
         }
+        if let Some(ann) = &self.annotation {
+            let needle = ann.to_ascii_lowercase();
+            if !node
+                .metadata
+                .annotations
+                .iter()
+                .any(|a| a.to_ascii_lowercase().contains(&needle))
+            {
+                return false;
+            }
+        }
         true
     }
 
@@ -72,6 +87,7 @@ impl AttributeFilter {
             && self.min_complexity.is_none()
             && self.max_complexity.is_none()
             && self.name_contains.is_none()
+            && self.annotation.is_none()
     }
 }
 

@@ -48,6 +48,7 @@ fn node_struct_literal(node: &Node) -> String {
     let vis = esc(&vis_str(&node.metadata.visibility));
     let m = &node.metadata;
     let generic_bounds = esc(&m.generic_bounds.join("|"));
+    let annotations = esc(&m.annotations.join("|"));
     let def_sig = esc_multiline(&m.definition.signature);
     let def_body = esc_multiline(&m.definition.body);
     let def_doc = esc_multiline(m.definition.doc_comment.as_deref().unwrap_or(""));
@@ -65,7 +66,7 @@ fn node_struct_literal(node: &Node) -> String {
          is_property:{ip}, is_generator:{ig}, is_const:{ic}, generic_bounds:'{generic_bounds}', \
          def_signature:'{def_sig}', def_body:'{def_body}', def_doc:'{def_doc}', \
          def_start_byte:{def_start_byte}, def_end_byte:{def_end_byte}, \
-         complexity:{complexity}}}",
+         complexity:{complexity}, annotations:'{annotations}'}}",
         ia = m.is_async,
         iu = m.is_unsafe,
         ist = m.is_static,
@@ -385,7 +386,7 @@ impl GraphStore for KuzuGraphStore {
                     generic_bounds: r.generic_bounds, \
                     def_signature: r.def_signature, def_body: r.def_body, def_doc: r.def_doc, \
                     def_start_byte: r.def_start_byte, def_end_byte: r.def_end_byte, \
-                    complexity: r.complexity\
+                    complexity: r.complexity, annotations: r.annotations\
                  }})"
             ))
             .map_err(|e| GitCortexError::Store(format!("batch insert nodes: {e}")))?;
@@ -838,6 +839,13 @@ impl GraphStore for KuzuGraphStore {
             clauses.push(format!(
                 "contains(lower(n.name), '{}')",
                 esc(&sub.to_ascii_lowercase())
+            ));
+        }
+        if let Some(ann) = &filter.annotation {
+            // annotations stored pipe-joined; substring match finds the name.
+            clauses.push(format!(
+                "contains(lower(n.annotations), '{}')",
+                esc(&ann.to_ascii_lowercase())
             ));
         }
 

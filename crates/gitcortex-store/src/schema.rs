@@ -49,6 +49,7 @@ pub fn ensure_branch(conn: &mut Connection, branch: &str) -> Result<()> {
             def_start_byte INT64,  \
             def_end_byte   INT64,  \
             complexity     INT64,  \
+            annotations    STRING, \
             PRIMARY KEY(id)\
         )"
     ))

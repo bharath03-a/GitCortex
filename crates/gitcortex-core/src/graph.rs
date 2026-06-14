@@ -111,6 +111,12 @@ pub struct NodeMetadata {
     /// Captured generic constraints, e.g. `["T: Send", "T: 'static"]` or
     /// `["T extends Base", "K extends keyof T"]`.
     pub generic_bounds: Vec<String>,
+    /// Decorator / annotation names applied to this symbol, e.g.
+    /// `["dataclass"]`, `["Override"]`, `["derive", "Serialize"]`. Captured
+    /// regardless of whether the decorator is defined in-repo, so framework
+    /// decorators (`@app.route`, `@Test`) remain queryable even though their
+    /// `Annotated` edge target is external and dropped.
+    pub annotations: Vec<String>,
     /// Pass-2 LLD annotations. Empty until pass 2 runs.
     pub lld: LldLabels,
     /// Raw source-text capture — signature, body, doc-comment, byte range.
