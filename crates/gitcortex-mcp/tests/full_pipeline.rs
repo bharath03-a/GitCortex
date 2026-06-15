@@ -578,6 +578,39 @@ fn find_type_usages_unknown_type_is_empty() {
 }
 
 #[test]
+fn tour_no_seed_produces_component_summary() {
+    // A no-seed tour must emit a component-grouped architecture summary, and
+    // the markdown must lead with the Architecture/Components section.
+    let (_, _, store) = run_pipeline_multi(&[
+        "xfile_callee.rs",
+        "xfile_caller.rs",
+        "xfile_trait.rs",
+        "xfile_impl.rs",
+    ]);
+    let tour = gitcortex_mcp::mcp::tour::generate(&store, "main", None, Some(12)).expect("tour");
+    assert!(
+        !tour.components.is_empty(),
+        "no-seed tour should produce components"
+    );
+    let md = gitcortex_mcp::mcp::tour::render_markdown(&tour);
+    assert!(
+        md.contains("# Architecture") && md.contains("## Components"),
+        "markdown should lead with architecture summary:\n{md}"
+    );
+}
+
+#[test]
+fn tour_seeded_has_no_components() {
+    let (_, _, store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
+    let tour =
+        gitcortex_mcp::mcp::tour::generate(&store, "main", Some("run"), Some(12)).expect("tour");
+    assert!(
+        tour.components.is_empty(),
+        "seeded tour should not compute components"
+    );
+}
+
+#[test]
 fn get_call_sites_records_caller_and_line() {
     // xfile_caller.rs: run() and run_with_branch() both call compute_value().
     // Each call site must report the caller and a concrete line number.

@@ -32,11 +32,27 @@ pub struct TourStep {
     pub reason: String,
 }
 
+/// A component (directory/module) in the architecture summary.
+#[derive(Debug, Clone, Serialize)]
+pub struct Component {
+    /// Directory path that groups the component's files, e.g. `src/parser`.
+    pub path: String,
+    /// Number of distinct source files in the component.
+    pub files: u32,
+    /// Highest-centrality public symbols in the component (up to 4).
+    pub key_symbols: Vec<String>,
+    /// Other components this one calls into / uses / imports from.
+    pub depends_on: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Tour {
     pub seed: Option<String>,
     pub branch: String,
     pub steps: Vec<TourStep>,
+    /// Component-level architecture summary (no-seed tours only). Answers
+    /// "what are the main components and how do they fit together" in one call.
+    pub components: Vec<Component>,
 }
 
 /// Default tour length when caller doesn't specify.
@@ -69,18 +85,117 @@ pub fn generate<S: GraphStore + ?Sized>(
         }
     }
 
+    // Cross-component dependency edges (Calls/Uses/Imports), kept for the
+    // architecture summary so we can show how components fit together.
+    let mut dep_edges: Vec<(String, String)> = Vec::new();
+    for e in &edges {
+        if matches!(e.kind, EdgeKind::Calls | EdgeKind::Uses | EdgeKind::Imports) {
+            dep_edges.push((e.src.as_str(), e.dst.as_str()));
+        }
+    }
+
     let by_id: HashMap<String, Node> = nodes.into_iter().map(|n| (n.id.as_str(), n)).collect();
 
-    let steps = match seed {
-        Some(name) => seeded_tour(&by_id, &callees_of, &in_degree, name, limit),
-        None => global_tour(&by_id, &in_degree, limit),
+    let (steps, components) = match seed {
+        Some(name) => (
+            seeded_tour(&by_id, &callees_of, &in_degree, name, limit),
+            Vec::new(),
+        ),
+        None => (
+            global_tour(&by_id, &in_degree, limit),
+            architecture_summary(&by_id, &in_degree, &dep_edges, limit),
+        ),
     };
 
     Ok(Tour {
         seed: seed.map(str::to_owned),
         branch: branch.to_owned(),
         steps,
+        components,
     })
+}
+
+/// Derive a component label from a file path: the parent directory, or the
+/// stem when the file is at the repo root.
+fn component_of(file: &str) -> String {
+    match file.rfind('/') {
+        Some(i) => file[..i].to_owned(),
+        None => file.to_owned(),
+    }
+}
+
+/// Group symbols into components (directories) and summarise each: file count,
+/// top central symbols, and the other components it depends on. Components are
+/// ranked by aggregate centrality so the most important appear first.
+fn architecture_summary(
+    by_id: &HashMap<String, Node>,
+    in_degree: &HashMap<String, u32>,
+    dep_edges: &[(String, String)],
+    limit: usize,
+) -> Vec<Component> {
+    // id → component, for edge resolution.
+    let comp_of_id: HashMap<&str, String> = by_id
+        .iter()
+        .map(|(id, n)| (id.as_str(), component_of(&n.file.display().to_string())))
+        .collect();
+
+    // Per-component aggregates.
+    let mut files: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut score: HashMap<String, u32> = HashMap::new();
+    // (component, symbol_name, degree) for picking key symbols.
+    let mut symbols: HashMap<String, Vec<(String, u32)>> = HashMap::new();
+    for n in by_id.values() {
+        let file = n.file.display().to_string();
+        let comp = component_of(&file);
+        files.entry(comp.clone()).or_default().insert(file);
+        let deg = in_degree.get(&n.id.as_str()).copied().unwrap_or(0);
+        *score.entry(comp.clone()).or_insert(0) += deg;
+        if matches!(
+            n.kind,
+            NodeKind::Function
+                | NodeKind::Method
+                | NodeKind::Struct
+                | NodeKind::Trait
+                | NodeKind::Interface
+        ) {
+            symbols.entry(comp).or_default().push((n.name.clone(), deg));
+        }
+    }
+
+    // Cross-component dependencies.
+    let mut deps: HashMap<String, HashSet<String>> = HashMap::new();
+    for (src, dst) in dep_edges {
+        if let (Some(sc), Some(dc)) = (comp_of_id.get(src.as_str()), comp_of_id.get(dst.as_str())) {
+            if sc != dc {
+                deps.entry(sc.clone()).or_default().insert(dc.clone());
+            }
+        }
+    }
+
+    let mut ranked: Vec<(String, u32)> = score.into_iter().collect();
+    ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+
+    ranked
+        .into_iter()
+        .take(limit)
+        .map(|(comp, _)| {
+            let mut key = symbols.remove(&comp).unwrap_or_default();
+            key.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+            key.dedup_by(|a, b| a.0 == b.0);
+            let key_symbols: Vec<String> = key.into_iter().take(4).map(|(name, _)| name).collect();
+            let mut depends_on: Vec<String> = deps
+                .get(&comp)
+                .map(|s| s.iter().cloned().collect())
+                .unwrap_or_default();
+            depends_on.sort();
+            Component {
+                files: files.get(&comp).map(|f| f.len() as u32).unwrap_or(0),
+                path: comp,
+                key_symbols,
+                depends_on,
+            }
+        })
+        .collect()
 }
 
 /// Pick highest-centrality public functions/methods across the repo.
@@ -194,16 +309,46 @@ fn seeded_tour(
 pub fn render_markdown(tour: &Tour) -> String {
     use std::fmt::Write;
     let mut out = String::with_capacity(512);
-    let _ = writeln!(
-        out,
-        "# Tour ({} steps, branch={})",
-        tour.steps.len(),
-        tour.branch
-    );
-    if let Some(seed) = &tour.seed {
-        let _ = writeln!(out, "Seed: `{seed}`");
+
+    // No-seed tours lead with the component-level architecture map — a
+    // self-contained answer to "what are the main components and how do they
+    // fit together", so the reader rarely needs follow-up exploration.
+    if tour.seed.is_none() && !tour.components.is_empty() {
+        let _ = writeln!(out, "# Architecture (branch={})", tour.branch);
+        let _ = writeln!(
+            out,
+            "\n## Components ({} shown, ranked by centrality)\n",
+            tour.components.len()
+        );
+        for c in &tour.components {
+            let _ = writeln!(out, "### `{}` ({} files)", c.path, c.files);
+            if !c.key_symbols.is_empty() {
+                let keys = c
+                    .key_symbols
+                    .iter()
+                    .map(|s| format!("`{s}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let _ = writeln!(out, "- key: {keys}");
+            }
+            if !c.depends_on.is_empty() {
+                let _ = writeln!(out, "- depends on: {}", c.depends_on.join(", "));
+            }
+        }
+        let _ = writeln!(out, "\n## Central symbols\n");
+    } else {
+        let _ = writeln!(
+            out,
+            "# Tour ({} steps, branch={})",
+            tour.steps.len(),
+            tour.branch
+        );
+        if let Some(seed) = &tour.seed {
+            let _ = writeln!(out, "Seed: `{seed}`");
+        }
+        let _ = writeln!(out);
     }
-    let _ = writeln!(out);
+
     for s in &tour.steps {
         let _ = writeln!(
             out,

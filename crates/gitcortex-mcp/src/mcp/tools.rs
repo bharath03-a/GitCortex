@@ -1497,6 +1497,7 @@ impl GitCortexServer {
                 CallToolResult::structured(json!({
                     "branch": tour.branch,
                     "seed": tour.seed,
+                    "components": tour.components,
                     "steps": tour.steps,
                     "markdown": markdown,
                 }))
