@@ -263,12 +263,22 @@ pub struct GitCortexServer {
     repo_root: PathBuf,
     default_branch: String,
     compact: bool,
+    /// Approximate token budget for a single tool's list payload. List-returning
+    /// tools truncate their items to fit this, setting `truncated: true`, so a
+    /// high-fan-out symbol can never make the graph arm dump more than a grep
+    /// would read. Configurable via `GCX_RESPONSE_BUDGET` (token count).
+    response_budget: usize,
     /// Semantic search state. Starts as `Pending`; background task flips to
     /// `Ready` once the model is loaded and missing vectors are embedded.
     /// `Arc<Mutex<…>>` so the background task and all clone'd handler instances
     /// share the same index.
     pub semantic: Arc<Mutex<SemanticState>>,
 }
+
+/// Default per-tool response token budget when `GCX_RESPONSE_BUDGET` is unset.
+const DEFAULT_RESPONSE_BUDGET: usize = 2000;
+/// Floor so a misconfigured tiny budget still returns something useful.
+const MIN_RESPONSE_BUDGET: usize = 400;
 
 impl GitCortexServer {
     pub fn new(repo_root: &Path) -> anyhow::Result<Self> {
@@ -278,13 +288,41 @@ impl GitCortexServer {
     pub fn new_with_mode(repo_root: &Path, compact: bool) -> anyhow::Result<Self> {
         let store = KuzuGraphStore::open(repo_root)?;
         let default_branch = detect_current_branch(repo_root).unwrap_or_else(|| "main".into());
+        let response_budget = std::env::var("GCX_RESPONSE_BUDGET")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(DEFAULT_RESPONSE_BUDGET)
+            .max(MIN_RESPONSE_BUDGET);
         Ok(Self {
             store: Arc::new(Mutex::new(store)),
             repo_root: repo_root.to_owned(),
             default_branch,
             compact,
+            response_budget,
             semantic: Arc::new(Mutex::new(SemanticState::Pending)),
         })
+    }
+
+    /// Truncate a list of JSON items to fit `response_budget`, returning the
+    /// kept items and whether truncation occurred. Token size is estimated as
+    /// serialized bytes / 4 (the usual rule of thumb) — cheap and good enough
+    /// to bound payloads. Always keeps at least one item so a single large
+    /// result is never dropped to nothing.
+    fn budget_items(&self, items: Vec<serde_json::Value>) -> (Vec<serde_json::Value>, bool) {
+        let budget_bytes = self.response_budget * 4;
+        let mut kept: Vec<serde_json::Value> = Vec::with_capacity(items.len());
+        let mut used = 0usize;
+        let total = items.len();
+        for item in items {
+            let sz = item.to_string().len() + 2; // +2 for ", " separators
+            if !kept.is_empty() && used + sz > budget_bytes {
+                break;
+            }
+            used += sz;
+            kept.push(item);
+        }
+        let truncated = kept.len() < total;
+        (kept, truncated)
     }
 
     /// Return the shared arcs + branch needed by the background semantic indexer.
@@ -439,6 +477,7 @@ impl GitCortexServer {
                         })
                     })
                     .collect();
+                let (items, _) = self.budget_items(items);
                 CallToolResult::structured(json!(items))
             }
             Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
@@ -488,6 +527,7 @@ impl GitCortexServer {
                             })
                         })
                         .collect();
+                    let (items, budget_trunc) = self.budget_items(items);
                     let risk = match total {
                         0..=2 => "LOW",
                         3..=10 => "MEDIUM",
@@ -504,7 +544,7 @@ impl GitCortexServer {
                         "risk_level": risk,
                         "total_callers": total,
                         "returned": items.len(),
-                        "truncated": total > items.len(),
+                        "truncated": total > items.len() || budget_trunc,
                         "callers": items,
                     }))
                 }
@@ -632,6 +672,7 @@ impl GitCortexServer {
                         })
                     })
                     .collect();
+                let (items, _) = self.budget_items(items);
                 CallToolResult::structured(json!(items))
             }
             Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
@@ -741,10 +782,12 @@ impl GitCortexServer {
                         })
                     })
                     .collect();
+                let (items, truncated) = self.budget_items(items);
                 CallToolResult::structured(json!({
                     "branch": branch,
                     "results": items,
                     "returned": items.len(),
+                    "truncated": truncated,
                 }))
             }
             Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
@@ -965,9 +1008,11 @@ impl GitCortexServer {
                         })
                     })
                     .collect();
+                let (items, truncated) = self.budget_items(items);
                 CallToolResult::structured(json!({
                     "trait": p.trait_name,
                     "implementors": items,
+                    "truncated": truncated,
                 }))
             }
             Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
@@ -1039,9 +1084,11 @@ impl GitCortexServer {
                         })
                     })
                     .collect();
+                let (items, truncated) = self.budget_items(items);
                 CallToolResult::structured(json!({
                     "type": p.name,
                     "usages": items,
+                    "truncated": truncated,
                 }))
             }
             Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
@@ -1076,10 +1123,14 @@ impl GitCortexServer {
                         })
                     })
                     .collect();
+                let total = items.len();
+                let (items, truncated) = self.budget_items(items);
                 CallToolResult::structured(json!({
                     "function": p.name,
                     "call_sites": items,
-                    "count": items.len(),
+                    "count": total,
+                    "returned": items.len(),
+                    "truncated": truncated,
                 }))
             }
             Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
@@ -1114,9 +1165,11 @@ impl GitCortexServer {
                         })
                     })
                     .collect();
+                let (items, truncated) = self.budget_items(items);
                 CallToolResult::structured(json!({
                     "symbol": p.name,
                     "importers": items,
+                    "truncated": truncated,
                 }))
             }
             Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
@@ -1236,10 +1289,12 @@ impl GitCortexServer {
                         })
                     })
                     .collect();
+                let (items, truncated) = self.budget_items(items);
                 CallToolResult::structured(json!({
                     "file": p.file,
                     "range": { "start": p.start_line, "end": p.end_line },
                     "symbols": items,
+                    "truncated": truncated,
                 }))
             }
             Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
@@ -1295,12 +1350,14 @@ impl GitCortexServer {
                         })
                     })
                     .collect();
+                let total = nodes.len();
+                let (items, budget_trunc) = self.budget_items(items);
                 CallToolResult::structured(json!({
                     "branch": branch,
                     "unused_symbols": items,
-                    "count": nodes.len(),
+                    "count": total,
                     "returned": items.len(),
-                    "truncated": nodes.len() > items.len(),
+                    "truncated": total > items.len() || budget_trunc,
                 }))
             }
             Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
@@ -1366,6 +1423,9 @@ impl GitCortexServer {
                         })
                     })
                     .collect();
+                // Enforce the response token budget across both lists.
+                let (nodes, n_trunc) = self.budget_items(nodes);
+                let (edges, e_trunc) = self.budget_items(edges);
                 CallToolResult::structured(json!({
                     "seed": p.seed_name,
                     "depth": depth,
@@ -1374,7 +1434,7 @@ impl GitCortexServer {
                     "edge_count": sg.edges.len(),
                     "returned_nodes": nodes.len(),
                     "returned_edges": edges.len(),
-                    "truncated": sg.nodes.len() > nodes.len(),
+                    "truncated": sg.nodes.len() > nodes.len() || n_trunc || e_trunc,
                     "nodes": nodes,
                     "edges": edges,
                 }))
