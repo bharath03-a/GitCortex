@@ -1,0 +1,123 @@
+{
+  "repo": "hono",
+  "url": "https://github.com/honojs/hono",
+  "branch": "main",
+  "model": "claude-haiku-4-5-20251001",
+  "measured": "real_claude_usage",
+  "compact": 1,
+  "symbols": {
+    "type": "toString",
+    "fn": "match",
+    "other": "header",
+    "concept": "auth"
+  },
+  "nodes": 2128,
+  "edges": 6906,
+  "totals": {
+    "baseline_tokens": 21904,
+    "gcx_tokens": 23150,
+    "saved_tokens": -1246,
+    "saved_pct": -5.69,
+    "baseline_cost_usd": 0.04739,
+    "gcx_cost_usd": 0.05224,
+    "geomean_ratio": 0.95
+  },
+  "questions": [
+    {
+      "q": "search_concept",
+      "question": "Where in this codebase is 'auth' handled? List the relevant files and symbols.",
+      "baseline": {
+        "input": 20017,
+        "output": 1887,
+        "total": 21904,
+        "cache_read": 129591,
+        "cost": 0.04739,
+        "turns": 14,
+        "error": false
+      },
+      "gcx": {
+        "input": 21268,
+        "output": 1882,
+        "total": 23150,
+        "cache_read": 162625,
+        "cost": 0.05224,
+        "turns": 9,
+        "error": false
+      },
+      "token_ratio": 0.95,
+      "tokens_saved": -1246
+    },
+    {
+      "q": "tour_onboarding",
+      "question": "Give me a concise tour of this codebase: what are the main components and how do they fit together?",
+      "baseline": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "cache_read": 0,
+        "cost": 0,
+        "turns": 1,
+        "error": true
+      },
+      "gcx": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "cache_read": 0,
+        "cost": 0,
+        "turns": 1,
+        "error": true
+      },
+      "token_ratio": 0,
+      "tokens_saved": 0
+    },
+    {
+      "q": "refactor_impact",
+      "question": "If I change 'match', what breaks? List the direct callers and any important indirect callers.",
+      "baseline": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "cache_read": 0,
+        "cost": 0,
+        "turns": 1,
+        "error": true
+      },
+      "gcx": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "cache_read": 0,
+        "cost": 0,
+        "turns": 1,
+        "error": true
+      },
+      "token_ratio": 0,
+      "tokens_saved": 0
+    },
+    {
+      "q": "subgraph_around",
+      "question": "Show everything directly connected to 'toString' \u2014 what calls it, what it calls, what it uses.",
+      "baseline": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "cache_read": 0,
+        "cost": 0,
+        "turns": 1,
+        "error": true
+      },
+      "gcx": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "cache_read": 0,
+        "cost": 0,
+        "turns": 1,
+        "error": true
+      },
+      "token_ratio": 0,
+      "tokens_saved": 0
+    }
+  ]
+}

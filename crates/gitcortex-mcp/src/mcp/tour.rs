@@ -59,6 +59,9 @@ pub struct Tour {
 const DEFAULT_TOUR_LEN: usize = 12;
 /// Hard cap to keep tour outputs bounded.
 const MAX_TOUR_LEN: usize = 50;
+/// No-seed tours lead with the component map; the global central-symbol list is
+/// kept short so the result is a compact, self-contained overview.
+const NO_SEED_STEP_CAP: usize = 5;
 
 /// Generate a tour for `branch`. If `seed` is `Some`, the tour is rooted at
 /// that symbol and walks outward via `Calls` and `Contains` edges. If `None`,
@@ -102,7 +105,10 @@ pub fn generate<S: GraphStore + ?Sized>(
             Vec::new(),
         ),
         None => (
-            global_tour(&by_id, &in_degree, limit),
+            // No-seed: the component map is the answer. Keep only a short
+            // "most central overall" list (top 5) so the payload stays small —
+            // per-component key symbols already cover the important ones.
+            global_tour(&by_id, &in_degree, limit.min(NO_SEED_STEP_CAP)),
             architecture_summary(&by_id, &in_degree, &dep_edges, limit),
         ),
     };
@@ -310,9 +316,10 @@ pub fn render_markdown(tour: &Tour) -> String {
     use std::fmt::Write;
     let mut out = String::with_capacity(512);
 
-    // No-seed tours lead with the component-level architecture map — a
+    // No-seed tours ARE the component-level architecture map — a compact,
     // self-contained answer to "what are the main components and how do they
-    // fit together", so the reader rarely needs follow-up exploration.
+    // fit together". A short "most central" list follows; we deliberately do
+    // not dump a long step list, keeping the result token-cheap.
     if tour.seed.is_none() && !tour.components.is_empty() {
         let _ = writeln!(out, "# Architecture (branch={})", tour.branch);
         let _ = writeln!(
@@ -335,20 +342,28 @@ pub fn render_markdown(tour: &Tour) -> String {
                 let _ = writeln!(out, "- depends on: {}", c.depends_on.join(", "));
             }
         }
-        let _ = writeln!(out, "\n## Central symbols\n");
-    } else {
-        let _ = writeln!(
-            out,
-            "# Tour ({} steps, branch={})",
-            tour.steps.len(),
-            tour.branch
-        );
-        if let Some(seed) = &tour.seed {
-            let _ = writeln!(out, "Seed: `{seed}`");
+        if !tour.steps.is_empty() {
+            let names = tour
+                .steps
+                .iter()
+                .map(|s| format!("`{}`", s.name))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let _ = writeln!(out, "\n## Most central overall\n{names}");
         }
-        let _ = writeln!(out);
+        return out;
     }
 
+    let _ = writeln!(
+        out,
+        "# Tour ({} steps, branch={})",
+        tour.steps.len(),
+        tour.branch
+    );
+    if let Some(seed) = &tour.seed {
+        let _ = writeln!(out, "Seed: `{seed}`");
+    }
+    let _ = writeln!(out);
     for s in &tour.steps {
         let _ = writeln!(
             out,

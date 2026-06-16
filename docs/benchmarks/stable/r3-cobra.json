@@ -1,0 +1,123 @@
+{
+  "repo": "cobra",
+  "url": "https://github.com/spf13/cobra",
+  "branch": "main",
+  "model": "claude-haiku-4-5-20251001",
+  "measured": "real_claude_usage",
+  "compact": 1,
+  "symbols": {
+    "type": "executeCommand",
+    "fn": "AddCommand",
+    "other": "String",
+    "concept": "parse"
+  },
+  "nodes": 731,
+  "edges": 2448,
+  "totals": {
+    "baseline_tokens": 0,
+    "gcx_tokens": 0,
+    "saved_tokens": 0,
+    "saved_pct": 0,
+    "baseline_cost_usd": 0,
+    "gcx_cost_usd": 0,
+    "geomean_ratio": 0
+  },
+  "questions": [
+    {
+      "q": "search_concept",
+      "question": "Where in this codebase is 'parse' handled? List the relevant files and symbols.",
+      "baseline": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "cache_read": 0,
+        "cost": 0,
+        "turns": 1,
+        "error": true
+      },
+      "gcx": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "cache_read": 0,
+        "cost": 0,
+        "turns": 1,
+        "error": true
+      },
+      "token_ratio": 0,
+      "tokens_saved": 0
+    },
+    {
+      "q": "tour_onboarding",
+      "question": "Give me a concise tour of this codebase: what are the main components and how do they fit together?",
+      "baseline": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "cache_read": 0,
+        "cost": 0,
+        "turns": 1,
+        "error": true
+      },
+      "gcx": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "cache_read": 0,
+        "cost": 0,
+        "turns": 1,
+        "error": true
+      },
+      "token_ratio": 0,
+      "tokens_saved": 0
+    },
+    {
+      "q": "refactor_impact",
+      "question": "If I change 'AddCommand', what breaks? List the direct callers and any important indirect callers.",
+      "baseline": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "cache_read": 0,
+        "cost": 0,
+        "turns": 1,
+        "error": true
+      },
+      "gcx": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "cache_read": 0,
+        "cost": 0,
+        "turns": 1,
+        "error": true
+      },
+      "token_ratio": 0,
+      "tokens_saved": 0
+    },
+    {
+      "q": "subgraph_around",
+      "question": "Show everything directly connected to 'executeCommand' \u2014 what calls it, what it calls, what it uses.",
+      "baseline": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "cache_read": 0,
+        "cost": 0,
+        "turns": 1,
+        "error": true
+      },
+      "gcx": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "cache_read": 0,
+        "cost": 0,
+        "turns": 1,
+        "error": true
+      },
+      "token_ratio": 0,
+      "tokens_saved": 0
+    }
+  ]
+}

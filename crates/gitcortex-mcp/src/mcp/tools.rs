@@ -329,6 +329,27 @@ impl GitCortexServer {
     }
 }
 
+/// First line of a node's captured signature, trimmed and length-capped, for
+/// embedding in tool results so the model can judge a symbol without opening
+/// its file. Empty string when no signature was captured.
+fn sig_line(n: &gitcortex_core::graph::Node) -> String {
+    const MAX: usize = 120;
+    let first = n
+        .metadata
+        .definition
+        .signature
+        .lines()
+        .next()
+        .unwrap_or("")
+        .trim();
+    if first.chars().count() > MAX {
+        let truncated: String = first.chars().take(MAX).collect();
+        format!("{truncated}…")
+    } else {
+        first.to_owned()
+    }
+}
+
 /// Parse a NodeKind from its snake_case string form (matches `NodeKind::Display`).
 fn parse_node_kind(s: &str) -> Option<NodeKind> {
     Some(match s {
@@ -460,6 +481,10 @@ impl GitCortexServer {
                                 "qualified_name": n.qualified_name,
                                 "file": n.file.display().to_string(),
                                 "start_line": n.span.start_line,
+                                // Signature lets the model judge impact without
+                                // opening the caller's file — the biggest token
+                                // sink on refactor-impact questions.
+                                "signature": sig_line(n),
                             })
                         })
                         .collect();
@@ -504,6 +529,7 @@ impl GitCortexServer {
                                         "qualified_name": n.qualified_name,
                                         "file": n.file.display().to_string(),
                                         "start_line": n.span.start_line,
+                                        "signature": sig_line(n),
                                     })
                                 })
                                 .collect();
@@ -1295,7 +1321,7 @@ impl GitCortexServer {
             .unwrap_or(&self.default_branch)
             .to_owned();
         let depth = p.depth.unwrap_or(1).clamp(1, 5);
-        let max_nodes = p.limit.unwrap_or(30).min(200);
+        let max_nodes = p.limit.unwrap_or(20).min(200);
         let direction = p.direction.as_deref().unwrap_or("both").to_owned();
         let store = match self.store.lock() {
             Ok(g) => g,
@@ -1309,11 +1335,16 @@ impl GitCortexServer {
                 let kept: Vec<_> = sg.nodes.iter().take(max_nodes).collect();
                 let kept_ids: std::collections::HashSet<String> =
                     kept.iter().map(|n| n.id.as_str()).collect();
+                // id → name, so edges read as names (the model can't use UUIDs;
+                // emitting them twice per edge is pure token waste).
+                let name_of: std::collections::HashMap<String, &str> = kept
+                    .iter()
+                    .map(|n| (n.id.as_str(), n.name.as_str()))
+                    .collect();
                 let nodes: Vec<_> = kept
                     .iter()
                     .map(|n| {
                         json!({
-                            "id": n.id.as_str(),
                             "kind": n.kind.to_string(),
                             "name": n.name,
                             "file": n.file.display().to_string(),
@@ -1329,8 +1360,8 @@ impl GitCortexServer {
                     })
                     .map(|e| {
                         json!({
-                            "src": e.src.as_str(),
-                            "dst": e.dst.as_str(),
+                            "from": name_of.get(&e.src.as_str()).copied().unwrap_or(""),
+                            "to": name_of.get(&e.dst.as_str()).copied().unwrap_or(""),
                             "kind": e.kind.to_string(),
                         })
                     })

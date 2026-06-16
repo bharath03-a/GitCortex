@@ -1,0 +1,123 @@
+{
+  "repo": "requests",
+  "url": "https://github.com/psf/requests",
+  "branch": "main",
+  "model": "claude-haiku-4-5-20251001",
+  "measured": "real_claude_usage",
+  "compact": 1,
+  "symbols": {
+    "type": "httpbin",
+    "fn": "get",
+    "other": "Session",
+    "concept": "auth"
+  },
+  "nodes": 839,
+  "edges": 2885,
+  "totals": {
+    "baseline_tokens": 73968,
+    "gcx_tokens": 75884,
+    "saved_tokens": -1916,
+    "saved_pct": -2.59,
+    "baseline_cost_usd": 0.15515,
+    "gcx_cost_usd": 0.15442,
+    "geomean_ratio": 0.95
+  },
+  "questions": [
+    {
+      "q": "search_concept",
+      "question": "Where in this codebase is 'auth' handled? List the relevant files and symbols.",
+      "baseline": {
+        "input": 16103,
+        "output": 1002,
+        "total": 17105,
+        "cache_read": 63000,
+        "cost": 0.03143,
+        "turns": 6,
+        "error": false
+      },
+      "gcx": {
+        "input": 12812,
+        "output": 980,
+        "total": 13792,
+        "cache_read": 30492,
+        "cost": 0.02396,
+        "turns": 3,
+        "error": false
+      },
+      "token_ratio": 1.24,
+      "tokens_saved": 3313
+    },
+    {
+      "q": "tour_onboarding",
+      "question": "Give me a concise tour of this codebase: what are the main components and how do they fit together?",
+      "baseline": {
+        "input": 21154,
+        "output": 2085,
+        "total": 23239,
+        "cache_read": 150115,
+        "cost": 0.05186,
+        "turns": 16,
+        "error": false
+      },
+      "gcx": {
+        "input": 20979,
+        "output": 1655,
+        "total": 22634,
+        "cache_read": 96759,
+        "cost": 0.04416,
+        "turns": 11,
+        "error": false
+      },
+      "token_ratio": 1.03,
+      "tokens_saved": 605
+    },
+    {
+      "q": "refactor_impact",
+      "question": "If I change 'get', what breaks? List the direct callers and any important indirect callers.",
+      "baseline": {
+        "input": 9842,
+        "output": 755,
+        "total": 10597,
+        "cache_read": 57237,
+        "cost": 0.02179,
+        "turns": 6,
+        "error": false
+      },
+      "gcx": {
+        "input": 19912,
+        "output": 2923,
+        "total": 22835,
+        "cache_read": 193513,
+        "cost": 0.05883,
+        "turns": 14,
+        "error": false
+      },
+      "token_ratio": 0.46,
+      "tokens_saved": -12238
+    },
+    {
+      "q": "subgraph_around",
+      "question": "Show everything directly connected to 'httpbin' \u2014 what calls it, what it calls, what it uses.",
+      "baseline": {
+        "input": 20846,
+        "output": 2181,
+        "total": 23027,
+        "cache_read": 137585,
+        "cost": 0.05007,
+        "turns": 16,
+        "error": false
+      },
+      "gcx": {
+        "input": 15653,
+        "output": 970,
+        "total": 16623,
+        "cache_read": 30564,
+        "cost": 0.02747,
+        "turns": 5,
+        "error": false
+      },
+      "token_ratio": 1.39,
+      "tokens_saved": 6404
+    }
+  ]
+}

@@ -1,0 +1,123 @@
+{
+  "repo": "gson",
+  "url": "https://github.com/google/gson",
+  "branch": "main",
+  "model": "claude-haiku-4-5-20251001",
+  "measured": "real_claude_usage",
+  "compact": 1,
+  "symbols": {
+    "type": "JsonReader",
+    "fn": "beginArray",
+    "other": "getType",
+    "concept": "auth"
+  },
+  "nodes": 4008,
+  "edges": 20054,
+  "totals": {
+    "baseline_tokens": 90014,
+    "gcx_tokens": 75609,
+    "saved_tokens": 14405,
+    "saved_pct": 16.0,
+    "baseline_cost_usd": 0.19412,
+    "gcx_cost_usd": 0.37343,
+    "geomean_ratio": 1.18
+  },
+  "questions": [
+    {
+      "q": "search_concept",
+      "question": "Where in this codebase is 'auth' handled? List the relevant files and symbols.",
+      "baseline": {
+        "input": 16028,
+        "output": 1145,
+        "total": 17173,
+        "cache_read": 87265,
+        "cost": 0.03447,
+        "turns": 6,
+        "error": false
+      },
+      "gcx": {
+        "input": 10681,
+        "output": 878,
+        "total": 11559,
+        "cache_read": 45293,
+        "cost": 0.02226,
+        "turns": 4,
+        "error": false
+      },
+      "token_ratio": 1.49,
+      "tokens_saved": 5614
+    },
+    {
+      "q": "tour_onboarding",
+      "question": "Give me a concise tour of this codebase: what are the main components and how do they fit together?",
+      "baseline": {
+        "input": 15755,
+        "output": 1212,
+        "total": 16967,
+        "cache_read": 73855,
+        "cost": 0.03268,
+        "turns": 10,
+        "error": false
+      },
+      "gcx": {
+        "input": 19337,
+        "output": 1901,
+        "total": 21238,
+        "cache_read": 114121,
+        "cost": 0.04506,
+        "turns": 11,
+        "error": false
+      },
+      "token_ratio": 0.8,
+      "tokens_saved": -4271
+    },
+    {
+      "q": "refactor_impact",
+      "question": "If I change 'beginArray', what breaks? List the direct callers and any important indirect callers.",
+      "baseline": {
+        "input": 32525,
+        "output": 1954,
+        "total": 34479,
+        "cache_read": 226172,
+        "cost": 0.07302,
+        "turns": 13,
+        "error": false
+      },
+      "gcx": {
+        "input": 20442,
+        "output": 4015,
+        "total": 24457,
+        "cache_read": 263984,
+        "cost": 0.27504,
+        "turns": 18,
+        "error": false
+      },
+      "token_ratio": 1.41,
+      "tokens_saved": 10022
+    },
+    {
+      "q": "subgraph_around",
+      "question": "Show everything directly connected to 'JsonReader' \u2014 what calls it, what it calls, what it uses.",
+      "baseline": {
+        "input": 18308,
+        "output": 3087,
+        "total": 21395,
+        "cache_read": 167119,
+        "cost": 0.05395,
+        "turns": 21,
+        "error": false
+      },
+      "gcx": {
+        "input": 17006,
+        "output": 1349,
+        "total": 18355,
+        "cache_read": 30749,
+        "cost": 0.03107,
+        "turns": 5,
+        "error": false
+      },
+      "token_ratio": 1.17,
+      "tokens_saved": 3040
+    }
+  ]
+}
