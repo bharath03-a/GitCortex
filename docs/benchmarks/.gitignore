@@ -4,6 +4,8 @@ real-*.json
 codex-*.json
 *.prefix.json
 codex-report-data/
+# Stable multi-round sweep artifacts — regenerate with stable-sweep.sh
+stable/
 
 # Generated HTML reports — regenerate with report.py / real-report.py
 report.html
