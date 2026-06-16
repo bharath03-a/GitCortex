@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 /// Bumped whenever the on-disk graph schema changes.
 /// Stores compare this against the persisted version and re-index on mismatch.
-pub const SCHEMA_VERSION: u32 = 10;
+pub const SCHEMA_VERSION: u32 = 11;
 
 /// Every named, referenceable syntactic entity becomes a node of one of these kinds.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -91,6 +91,39 @@ impl std::fmt::Display for EdgeKind {
             EdgeKind::Throws => "throws",
         };
         f.write_str(s)
+    }
+}
+
+/// How confident the indexer is that an edge is real. Direct edges resolved
+/// within a single file are `Extracted`; cross-file edges resolved by matching
+/// an unqualified name against the symbol table are `Inferred` (a same-named
+/// symbol in another module could in principle be the true target).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum EdgeConfidence {
+    /// Directly observed in the source (same-file resolution). High confidence.
+    #[default]
+    Extracted,
+    /// Resolved cross-file by name match. Lower confidence.
+    Inferred,
+}
+
+impl std::fmt::Display for EdgeConfidence {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            EdgeConfidence::Extracted => "extracted",
+            EdgeConfidence::Inferred => "inferred",
+        })
+    }
+}
+
+impl EdgeConfidence {
+    /// Parse from the stored string form; unknown/empty defaults to `Extracted`.
+    pub fn from_label(s: &str) -> Self {
+        match s {
+            "inferred" => EdgeConfidence::Inferred,
+            _ => EdgeConfidence::Extracted,
+        }
     }
 }
 

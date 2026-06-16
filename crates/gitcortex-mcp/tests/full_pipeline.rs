@@ -611,6 +611,34 @@ fn tour_seeded_has_no_components() {
 }
 
 #[test]
+fn edge_confidence_inferred_cross_file_extracted_structural() {
+    use gitcortex_core::schema::EdgeConfidence;
+    // Cross-file run()/run_with_branch() -> compute_value() resolve by name
+    // across files => Inferred. Structural Contains edges are always direct
+    // => Extracted.
+    let (_, edges, _store) =
+        run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs", "sample.rs"]);
+    let calls: Vec<_> = edges.iter().filter(|e| e.kind == EdgeKind::Calls).collect();
+    assert!(
+        calls
+            .iter()
+            .any(|e| e.confidence == EdgeConfidence::Inferred),
+        "expected at least one Inferred (cross-file) calls edge"
+    );
+    let contains: Vec<_> = edges
+        .iter()
+        .filter(|e| e.kind == EdgeKind::Contains)
+        .collect();
+    assert!(!contains.is_empty(), "expected Contains edges");
+    assert!(
+        contains
+            .iter()
+            .all(|e| e.confidence == EdgeConfidence::Extracted),
+        "structural Contains edges must all be Extracted"
+    );
+}
+
+#[test]
 fn get_call_sites_records_caller_and_line() {
     // xfile_caller.rs: run() and run_with_branch() both call compute_value().
     // Each call site must report the caller and a concrete line number.

@@ -7,7 +7,7 @@ use std::{
 use gitcortex_core::{
     error::{GitCortexError, Result},
     graph::{Edge, GraphDiff, Node, NodeId, NodeMetadata, Span},
-    schema::{EdgeKind, NodeKind, Visibility},
+    schema::{EdgeConfidence, EdgeKind, NodeKind, Visibility},
 };
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use rayon::prelude::*;
@@ -400,12 +400,12 @@ fn resolve_deferred(
             matched_any = true;
             let key = (src_id.as_str(), dst_id.as_str(), kind.to_string());
             if seen.insert(key) {
-                edges.push(Edge {
-                    src: src_id.clone(),
-                    dst: dst_id.clone(),
-                    kind: kind.clone(),
-                    line: None,
-                });
+                // Cross-file name resolution — lower confidence than a direct
+                // same-file edge.
+                edges.push(
+                    Edge::new(src_id.clone(), dst_id.clone(), kind.clone())
+                        .with_confidence(EdgeConfidence::Inferred),
+                );
             }
         }
         if !matched_any {
@@ -461,7 +461,10 @@ fn resolve_calls(
                 EdgeKind::Calls.to_string(),
             );
             if seen.insert(key) {
-                edges.push(Edge::call(src_id.clone(), dst_id.clone(), *line));
+                edges.push(
+                    Edge::call(src_id.clone(), dst_id.clone(), *line)
+                        .with_confidence(EdgeConfidence::Inferred),
+                );
             }
         }
         if !matched_any {
@@ -551,6 +554,7 @@ fn build_structural_nodes(diff: &GraphDiff) -> (Vec<Node>, Vec<Edge>) {
                     dst: node.id.clone(),
                     kind: EdgeKind::Contains,
                     line: None,
+                    confidence: EdgeConfidence::Extracted,
                 });
             }
         }
@@ -597,6 +601,7 @@ fn build_structural_nodes(diff: &GraphDiff) -> (Vec<Node>, Vec<Edge>) {
                     dst: file_id.clone(),
                     kind: EdgeKind::Contains,
                     line: None,
+                    confidence: EdgeConfidence::Extracted,
                 });
             }
         }
@@ -613,6 +618,7 @@ fn build_structural_nodes(diff: &GraphDiff) -> (Vec<Node>, Vec<Edge>) {
                     dst: child_id,
                     kind: EdgeKind::Contains,
                     line: None,
+                    confidence: EdgeConfidence::Extracted,
                 });
             }
         }

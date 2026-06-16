@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::{
     error::GitCortexError,
-    schema::{CodeSmell, DesignPattern, EdgeKind, NodeKind, SolidHint, Visibility},
+    schema::{CodeSmell, DesignPattern, EdgeConfidence, EdgeKind, NodeKind, SolidHint, Visibility},
 };
 
 // ── Identifiers ──────────────────────────────────────────────────────────────
@@ -151,16 +151,21 @@ pub struct Edge {
     /// pinpointed; `None` for structural edges (Contains, Implements, …).
     #[serde(default)]
     pub line: Option<u32>,
+    /// How confident the indexer is this edge is real (see [`EdgeConfidence`]).
+    #[serde(default)]
+    pub confidence: EdgeConfidence,
 }
 
 impl Edge {
     /// Construct an edge with no associated source line (structural edges).
+    /// Defaults to `Extracted` confidence.
     pub fn new(src: NodeId, dst: NodeId, kind: EdgeKind) -> Self {
         Self {
             src,
             dst,
             kind,
             line: None,
+            confidence: EdgeConfidence::Extracted,
         }
     }
 
@@ -171,7 +176,15 @@ impl Edge {
             dst,
             kind: EdgeKind::Calls,
             line: Some(line),
+            confidence: EdgeConfidence::Extracted,
         }
+    }
+
+    /// Set the edge's confidence (builder-style), e.g. mark a cross-file
+    /// name-resolved edge as `Inferred`.
+    pub fn with_confidence(mut self, confidence: EdgeConfidence) -> Self {
+        self.confidence = confidence;
+        self
     }
 }
 

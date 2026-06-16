@@ -6,7 +6,7 @@ use std::{
 use gitcortex_core::{
     error::{GitCortexError, Result},
     graph::{Edge, GraphDiff, Node, NodeId},
-    schema::{NodeKind, SCHEMA_VERSION},
+    schema::{EdgeConfidence, NodeKind, SCHEMA_VERSION},
     store::{
         AttributeFilter, CallSite, CallersDeep, GraphStats, GraphStore, SubGraph, SymbolContext,
         TypeHierarchy,
@@ -168,7 +168,7 @@ fn resolve_deferred_batch(
                 "UNWIND [{list}] AS r \
                  MATCH (src:{nt} {{id: r.s}}), (tgt:{nt}) \
                  WHERE tgt.name = r.t{kind_and}{scope_clause} \
-                 CREATE (src)-[:{et} {{kind: '{edge_kind}'}}]->(tgt)"
+                 CREATE (src)-[:{et} {{kind: '{edge_kind}', line: -1, confidence: 'inferred'}}]->(tgt)"
             ))
             .map_err(|e| GitCortexError::Store(format!("batch deferred {edge_kind}: {e}")))?;
         }
@@ -213,7 +213,7 @@ fn resolve_calls_batch(
                 "UNWIND [{list}] AS r \
                  MATCH (src:{nt} {{id: r.s}}), (tgt:{nt}) \
                  WHERE tgt.name = r.t AND (tgt.kind = 'function' OR tgt.kind = 'method'){scope_clause} \
-                 CREATE (src)-[:{et} {{kind: 'calls', line: r.ln}}]->(tgt)"
+                 CREATE (src)-[:{et} {{kind: 'calls', line: r.ln, confidence: 'inferred'}}]->(tgt)"
             ))
             .map_err(|e| GitCortexError::Store(format!("batch deferred calls: {e}")))?;
         }
@@ -472,7 +472,8 @@ impl GraphStore for KuzuGraphStore {
                     .unwrap_or(&dst_raw));
                 let k = esc(&edge.kind.to_string());
                 let line = edge.line.map(|l| l as i64).unwrap_or(-1);
-                format!("{{s:'{s}', d:'{d}', k:'{k}', ln:{line}}}")
+                let conf = esc(&edge.confidence.to_string());
+                format!("{{s:'{s}', d:'{d}', k:'{k}', ln:{line}, cf:'{conf}'}}")
             })
             .collect();
 
@@ -485,7 +486,7 @@ impl GraphStore for KuzuGraphStore {
             conn.query(&format!(
                 "UNWIND [{list}] AS r \
                  MATCH (s:{nt} {{id: r.s}}), (d:{nt} {{id: r.d}}) \
-                 CREATE (s)-[:{et} {{kind: r.k, line: r.ln}}]->(d)"
+                 CREATE (s)-[:{et} {{kind: r.k, line: r.ln, confidence: r.cf}}]->(d)"
             ))
             .map_err(|e| GitCortexError::Store(format!("batch insert edges: {e}")))?;
         }
@@ -825,7 +826,7 @@ impl GraphStore for KuzuGraphStore {
         let conn = self.conn()?;
         let result = conn
             .query(&format!(
-                "MATCH (s:{nt})-[e:{et}]->(d:{nt}) RETURN s.id, d.id, e.kind, e.line"
+                "MATCH (s:{nt})-[e:{et}]->(d:{nt}) RETURN s.id, d.id, e.kind, e.line, e.confidence"
             ))
             .map_err(|e| GitCortexError::Store(e.to_string()))?;
 
@@ -835,6 +836,7 @@ impl GraphStore for KuzuGraphStore {
             let dst_str = str_val(&row[1])?;
             let kind_str = str_val(&row[2])?;
             let line = i64_val(&row[3]).ok().filter(|l| *l >= 0).map(|l| l as u32);
+            let confidence = EdgeConfidence::from_label(&str_val(&row[4]).unwrap_or_default());
             out.push(Edge {
                 src: NodeId::try_from(src_str.as_str())
                     .map_err(|e| GitCortexError::Store(format!("bad src id: {e}")))?,
@@ -842,6 +844,7 @@ impl GraphStore for KuzuGraphStore {
                     .map_err(|e| GitCortexError::Store(format!("bad dst id: {e}")))?,
                 kind: edge_kind_from_str(&kind_str),
                 line,
+                confidence,
             });
         }
         Ok(out)
@@ -1319,7 +1322,7 @@ impl GraphStore for KuzuGraphStore {
                 .query(&format!(
                     "MATCH (s:{nt})-[e:{et}]->(d:{nt}) \
                      WHERE s.id IN [{ids_str}] AND d.id IN [{ids_str}] \
-                     RETURN s.id, d.id, e.kind, e.line"
+                     RETURN s.id, d.id, e.kind, e.line, e.confidence"
                 ))
                 .map_err(|e| GitCortexError::Store(e.to_string()))?;
             let mut edges = Vec::new();
@@ -1328,6 +1331,7 @@ impl GraphStore for KuzuGraphStore {
                 let dst_str = str_val(&row[1])?;
                 let kind_str = str_val(&row[2])?;
                 let line = i64_val(&row[3]).ok().filter(|l| *l >= 0).map(|l| l as u32);
+                let confidence = EdgeConfidence::from_label(&str_val(&row[4]).unwrap_or_default());
                 edges.push(Edge {
                     src: NodeId::try_from(src_str.as_str())
                         .map_err(|e| GitCortexError::Store(format!("bad src id: {e}")))?,
@@ -1335,6 +1339,7 @@ impl GraphStore for KuzuGraphStore {
                         .map_err(|e| GitCortexError::Store(format!("bad dst id: {e}")))?,
                     kind: edge_kind_from_str(&kind_str),
                     line,
+                    confidence,
                 });
             }
             edges

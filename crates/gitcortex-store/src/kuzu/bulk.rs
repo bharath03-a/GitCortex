@@ -131,11 +131,12 @@ pub(super) fn bulk_load(
             let line = e.line.map(|l| l as i64).unwrap_or(-1);
             writeln!(
                 w,
-                "{},{},{},{}",
+                "{},{},{},{},{}",
                 csv_quote(&s),
                 csv_quote(&d),
                 csv_quote(&k),
-                line
+                line,
+                csv_quote(&e.confidence.to_string())
             )
             .map_err(|e| GitCortexError::Store(format!("write edges.csv: {e}")))?;
             edge_count += 1;

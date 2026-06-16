@@ -1420,6 +1420,7 @@ impl GitCortexServer {
                             "from": name_of.get(&e.src.as_str()).copied().unwrap_or(""),
                             "to": name_of.get(&e.dst.as_str()).copied().unwrap_or(""),
                             "kind": e.kind.to_string(),
+                            "confidence": e.confidence.to_string(),
                         })
                     })
                     .collect();

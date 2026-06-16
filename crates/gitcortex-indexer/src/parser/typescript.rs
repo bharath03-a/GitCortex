@@ -10,7 +10,7 @@ use std::{
 use gitcortex_core::{
     error::{GitCortexError, Result},
     graph::{Edge, Node, NodeId, NodeMetadata, Span},
-    schema::{EdgeKind, NodeKind, Visibility},
+    schema::{EdgeConfidence, EdgeKind, NodeKind, Visibility},
 };
 use tree_sitter::{Node as TsNode, Parser};
 
@@ -448,6 +448,7 @@ impl<'src> FileVisitor<'src> {
                 dst: id.clone(),
                 kind: EdgeKind::Contains,
                 line: None,
+                confidence: EdgeConfidence::Extracted,
             });
         }
         self.nodes.push(graph_node);
@@ -526,6 +527,7 @@ impl<'src> FileVisitor<'src> {
             dst: id.clone(),
             kind: EdgeKind::Contains,
             line: None,
+            confidence: EdgeConfidence::Extracted,
         });
         self.nodes.push(graph_node);
 
@@ -624,6 +626,7 @@ impl<'src> FileVisitor<'src> {
                         dst: mid,
                         kind: EdgeKind::Contains,
                         line: None,
+                        confidence: EdgeConfidence::Extracted,
                     });
                 }
             }
@@ -643,6 +646,7 @@ impl<'src> FileVisitor<'src> {
             dst: ns_id.clone(),
             kind: EdgeKind::Contains,
             line: None,
+            confidence: EdgeConfidence::Extracted,
         });
 
         // Visit namespace body

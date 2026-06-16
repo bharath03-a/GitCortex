@@ -6,7 +6,7 @@ use std::{
 use gitcortex_core::{
     error::{GitCortexError, Result},
     graph::{Edge, Node, NodeId, NodeMetadata, Span},
-    schema::{EdgeKind, NodeKind, Visibility},
+    schema::{EdgeConfidence, EdgeKind, NodeKind, Visibility},
 };
 use tree_sitter::{Node as TsNode, Parser};
 
@@ -411,6 +411,7 @@ impl<'src> FileVisitor<'src> {
                 dst: id.clone(),
                 kind: EdgeKind::Contains,
                 line: None,
+                confidence: EdgeConfidence::Extracted,
             });
         }
 
@@ -461,6 +462,7 @@ impl<'src> FileVisitor<'src> {
                     dst: tid,
                     kind: EdgeKind::Uses,
                     line: None,
+                    confidence: EdgeConfidence::Extracted,
                 });
             } else if !tname.is_empty()
                 && !is_primitive(&tname)
@@ -581,6 +583,7 @@ impl<'src> FileVisitor<'src> {
                 dst: id.clone(),
                 kind: EdgeKind::Contains,
                 line: None,
+                confidence: EdgeConfidence::Extracted,
             });
         }
         for attr_name in self.collect_attributes(node) {
@@ -605,6 +608,7 @@ impl<'src> FileVisitor<'src> {
                 dst: id.clone(),
                 kind: EdgeKind::Contains,
                 line: None,
+                confidence: EdgeConfidence::Extracted,
             });
         }
         for attr_name in self.collect_attributes(node) {
@@ -635,6 +639,7 @@ impl<'src> FileVisitor<'src> {
                             dst: trid,
                             kind: EdgeKind::Implements,
                             line: None,
+                            confidence: EdgeConfidence::Extracted,
                         });
                     }
                     (Some(tid), None)
@@ -677,6 +682,7 @@ impl<'src> FileVisitor<'src> {
                 dst: id.clone(),
                 kind: EdgeKind::Contains,
                 line: None,
+                confidence: EdgeConfidence::Extracted,
             });
         }
         self.nodes.push(graph_node);
@@ -700,6 +706,7 @@ impl<'src> FileVisitor<'src> {
                 dst: id.clone(),
                 kind: EdgeKind::Contains,
                 line: None,
+                confidence: EdgeConfidence::Extracted,
             });
         }
         self.nodes.push(graph_node);
@@ -722,6 +729,7 @@ impl<'src> FileVisitor<'src> {
                 dst: id.clone(),
                 kind: EdgeKind::Contains,
                 line: None,
+                confidence: EdgeConfidence::Extracted,
             });
         }
         self.nodes.push(graph_node);
@@ -744,6 +752,7 @@ impl<'src> FileVisitor<'src> {
                 dst: id.clone(),
                 kind: EdgeKind::Contains,
                 line: None,
+                confidence: EdgeConfidence::Extracted,
             });
         }
         self.nodes.push(graph_node);
