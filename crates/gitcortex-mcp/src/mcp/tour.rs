@@ -148,12 +148,13 @@ fn architecture_summary(
     // Per-component aggregates.
     let mut files: HashMap<String, HashSet<String>> = HashMap::new();
     let mut score: HashMap<String, u32> = HashMap::new();
-    // (component, symbol_name, degree) for picking key symbols.
+    // (symbol_name "name — file:line", degree) for picking key symbols. The
+    // location is embedded so a tour answer needs no follow-up lookups.
     let mut symbols: HashMap<String, Vec<(String, u32)>> = HashMap::new();
     for n in by_id.values() {
         let file = n.file.display().to_string();
         let comp = component_of(&file);
-        files.entry(comp.clone()).or_default().insert(file);
+        files.entry(comp.clone()).or_default().insert(file.clone());
         let deg = in_degree.get(&n.id.as_str()).copied().unwrap_or(0);
         *score.entry(comp.clone()).or_insert(0) += deg;
         if matches!(
@@ -164,7 +165,8 @@ fn architecture_summary(
                 | NodeKind::Trait
                 | NodeKind::Interface
         ) {
-            symbols.entry(comp).or_default().push((n.name.clone(), deg));
+            let label = format!("{} — {}:{}", n.name, file, n.span.start_line);
+            symbols.entry(comp).or_default().push((label, deg));
         }
     }
 
