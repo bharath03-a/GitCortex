@@ -40,7 +40,7 @@ GitCortex gives your AI editor a pre-built, queryable call graph of your repo �
 - **Per-branch graphs** — switching branches is instant, no re-index.
 - **Wiki, search, tour, blast-radius** — built-in discovery surface for AI assistants and humans.
 - **Works in Codex, Claude Code, Cursor, Windsurf, GitHub Copilot, Google Antigravity** via MCP.
-- **38 % fewer raw Codex tokens across 5 OSS repos** — measured with real `codex exec --json` usage across Rust, Python, TypeScript, Go, and Java; targeted graph questions save the most context (see [benchmark below](#benchmark)).
+- **Net token savings on real sessions** — median of 3 runs across 5 OSS repos (Rust, Python, TS, Go, Java): **+7.7 % overall**, geomean **1.06×**, with discovery queries (`search_code`) winning **1.30×** and landing in ~half the turns of grep (see [benchmark below](#benchmark)).
 - **`gcx` single-dispatch MCP tool** — one compact schema covers all graph operations, cutting per-turn context overhead vs. loading 22 separate tool schemas.
 - **Six viz formats** — WebGL Cosmograph UI, self-contained HTML, SVG, DOT, GraphML, Neo4j Cypher.
 
@@ -74,21 +74,23 @@ We run real assistant sessions twice on the same questions — once with normal 
 | "If I change X, what breaks?"     | Refactor impact — honest about limits             |
 | "Show everything connected to X"  | Neighbourhood — honest loss case on large hubs    |
 
-### Real results (compact MCP, 5 repos × 4 questions = 40 sessions)
+### Real results (compact MCP, 5 repos × 4 questions, **median of 3 runs**)
 
-| Repo    | Language   | Baseline tokens | Graph tokens | Raw saving | Uncached saving |
-| ------- | ---------- | --------------: | -----------: | ---------: | ---------------: |
-| ripgrep | Rust       |         420,093 |      294,887 | **29.80 %** |       **32.41 %** |
-| fastapi | Python     |         731,212 |      424,381 | **41.96 %** |       **49.88 %** |
-| hono    | TypeScript |         702,055 |      381,283 | **45.69 %** |       **28.88 %** |
-| cobra   | Go         |         583,299 |      361,718 | **37.99 %** |         **0.99 %** |
-| gson    | Java       |         644,937 |      438,918 | **31.94 %** |       **33.70 %** |
+| Repo    | Language   | Baseline tokens | Graph tokens | Saved |
+| ------- | ---------- | --------------: | -----------: | ----: |
+| ripgrep | Rust       |          95,824 |       73,711 | **+23.1 %** |
+| requests| Python     |          81,650 |       64,712 | **+20.7 %** |
+| hono    | TypeScript |          76,963 |       81,940 | −6.5 % |
+| cobra   | Go         |          70,033 |       72,271 | −3.2 % |
+| gson    | Java       |          70,043 |       71,548 | −2.2 % |
 
-Aggregate: `3,081,596` baseline tokens vs. `1,901,187` graph tokens — **1,180,409 tokens saved** (**38.31 % raw**, **29.86 % uncached**, geomean **1.59×**).
+Aggregate: **+7.7 % tokens saved**, geomean **1.06×**. Per question (median ratio): `search_code` **1.30×**, `start_tour` **1.02×**, `find_callers` **0.96×**, `get_subgraph` **0.94×**.
 
-**What improves most:** targeted discovery and impact questions (`search_code`, `find_callers`, `get_subgraph` on bounded seeds) consistently reduce source wandering.
+> **Why these numbers are lower than older claims.** Earlier reports quoted ~38 % from a single run; run-to-run variance is large (one repo swung ±70 pp between identical runs), so single-run aggregates aren't trustworthy. These are medians of 3 rounds with rate-limited/errored sessions excluded — the honest, noise-resistant view. See the [full report](#benchmark) for the previous run behind a dated toggle.
 
-**Where the graph is still weak:** broad "tour this repo" questions are less reliable in smaller repos because the current `start_tour` payload is a graph walk, not a purpose-built architecture summary. That is the next obvious product improvement.
+**What improves most:** targeted discovery — `search_code` reliably wins (1.30×) and lands the answer in roughly **half the turns** of grep. Larger, idiomatic repos (Rust, Python) benefit most.
+
+**Where the graph is still weak:** broad "tour" and "what breaks" questions stay near break-even (the model reads code either way), and Java (gson) is the consistent drag — its parser is the shallowest. Both are active work.
 
 📊 **[Full interactive benchmark report →](https://htmlpreview.github.io/?https://github.com/bharath03-a/GitCortex/blob/main/docs/benchmarks/final-report.html)** — per-language breakdown, full vs. compact MCP comparison, charts, and methodology. (Source: [`docs/benchmarks/final-report.html`](docs/benchmarks/final-report.html))
 
