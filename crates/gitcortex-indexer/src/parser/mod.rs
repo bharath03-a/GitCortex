@@ -5,12 +5,15 @@ use gitcortex_core::{
     graph::{Edge, Node, NodeId},
 };
 
+mod complexity;
 mod deftext;
 pub mod go;
 pub mod java;
 pub mod python;
 pub mod rust;
 pub mod typescript;
+
+pub(crate) use complexity::cyclomatic_complexity;
 
 pub(crate) use deftext::capture as capture_definition;
 
@@ -19,7 +22,7 @@ pub struct ParseResult {
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
     /// Unresolved call sites — resolved cross-file by the indexer.
-    pub deferred_calls: Vec<(NodeId, String)>,
+    pub deferred_calls: Vec<(NodeId, String, u32)>,
     /// Unresolved parameter/return-type references: (fn_id, type_name).
     pub deferred_uses: Vec<(NodeId, String)>,
     /// Unresolved trait implementations: (struct_id, trait_name).

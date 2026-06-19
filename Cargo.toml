@@ -10,7 +10,7 @@ members = [
 ]
 
 [workspace.package]
-version      = "0.4.0"
+version      = "0.5.0"
 edition      = "2021"
 license      = "MIT"
 repository   = "https://github.com/bharath03-a/GitCortex"
@@ -19,11 +19,11 @@ rust-version = "1.80"
 # Declare all shared dep versions once here.
 # Member crates reference these with `{ workspace = true }`.
 [workspace.dependencies]
-gitcortex-core    = { path = "crates/gitcortex-core",    version = "0.4" }
-gitcortex-indexer = { path = "crates/gitcortex-indexer", version = "0.4" }
-gitcortex-store   = { path = "crates/gitcortex-store",   version = "0.4" }
-gitcortex-mcp     = { path = "crates/gitcortex-mcp",     version = "0.4" }
-gitcortex-viz     = { path = "crates/gitcortex-viz",     version = "0.4" }
+gitcortex-core    = { path = "crates/gitcortex-core",    version = "0.5" }
+gitcortex-indexer = { path = "crates/gitcortex-indexer", version = "0.5" }
+gitcortex-store   = { path = "crates/gitcortex-store",   version = "0.5" }
+gitcortex-mcp     = { path = "crates/gitcortex-mcp",     version = "0.5" }
+gitcortex-viz     = { path = "crates/gitcortex-viz",     version = "0.5" }
 
 serde              = { version = "1",   features = ["derive"] }
 schemars           = "1"
@@ -52,6 +52,7 @@ serde_json         = "1"
 rmcp               = { version = "1.7", features = ["server", "transport-io"] }
 axum               = "0.7"
 open               = "5"
+fastembed          = { version = "4", features = ["ort-download-binaries", "online"] }
 
 [profile.release]
 opt-level     = 3

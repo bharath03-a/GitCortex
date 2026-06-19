@@ -1,8 +1,25 @@
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-use gitcortex_core::{schema::NodeKind, store::GraphStore};
+use gitcortex_core::{
+    schema::{NodeKind, Visibility},
+    store::{AttributeFilter, GraphStore},
+};
 use gitcortex_store::kuzu::KuzuGraphStore;
+
+use crate::embeddings::{Embedder, SemanticIndex};
+
+pub enum SemanticState {
+    /// Background initialiser not done yet — search is text-only.
+    Pending,
+    /// Model loaded and index populated.
+    Ready {
+        embedder: Box<Embedder>,
+        index: Box<SemanticIndex>,
+    },
+    /// Initialisation failed (no network, disk error, etc.) — text-only forever.
+    Disabled,
+}
 use rmcp::{
     handler::server::router::tool::ToolRouter,
     handler::server::wrapper::Parameters,
@@ -24,7 +41,9 @@ use serde_json::json;
 pub struct GcxDispatchParams {
     /// Which graph operation to run. One of: lookup_symbol, find_callers, find_callees,
     /// find_unused_symbols, get_subgraph, search_code, start_tour, wiki_symbol,
-    /// trace_path, list_definitions, symbol_context, list_symbols_in_range.
+    /// trace_path, list_definitions, symbol_context, list_symbols_in_range, graph_stats,
+    /// ast_search, type_hierarchy, find_importers, find_type_usages, module_dependencies,
+    /// get_call_sites.
     pub action: String,
     /// Parameters for the chosen action as a JSON object (same fields as the
     /// individual tool: name, function_name, seed_name, query, file, branch,
@@ -93,6 +112,41 @@ pub struct FindCalleesParams {
 pub struct FindImplementorsParams {
     /// Trait, interface, or abstract class name to find implementors of.
     pub trait_name: String,
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct TypeHierarchyParams {
+    /// Type name (struct/class/trait/interface) to map relationships for.
+    pub name: String,
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct FindImportersParams {
+    /// Symbol name to find importers of (the imported thing, unqualified).
+    pub name: String,
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GetCallSitesParams {
+    /// Function/method name to find call sites of.
+    pub name: String,
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct FindTypeUsagesParams {
+    /// Type name (struct/class/trait/interface/enum) to find usages of.
+    pub name: String,
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ModuleDependenciesParams {
+    /// Module name (file stem, e.g. "tools" for tools.rs) to list dependencies of.
+    pub name: String,
     pub branch: Option<String>,
 }
 
@@ -168,17 +222,63 @@ pub struct StartTourParams {
     pub branch: Option<String>,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GraphStatsParams {
+    /// Branch to summarise (defaults to current branch if omitted).
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct AstSearchParams {
+    /// NodeKind filter: "function", "method", "struct", "trait", "interface",
+    /// "enum", "constant", "type_alias", "module", etc. Omit for any kind.
+    pub kind: Option<String>,
+    /// When set, match only async (true) or only non-async (false) symbols.
+    pub is_async: Option<bool>,
+    /// Visibility filter: "pub", "pub_crate", or "private".
+    pub visibility: Option<String>,
+    /// Inclusive lower bound on cyclomatic complexity. Symbols without a
+    /// recorded complexity are excluded when this is set.
+    pub min_complexity: Option<u32>,
+    /// Inclusive upper bound on cyclomatic complexity.
+    pub max_complexity: Option<u32>,
+    /// Case-insensitive substring the symbol name must contain.
+    pub name_contains: Option<String>,
+    /// Annotation/decorator name the symbol must carry (case-insensitive
+    /// substring): "Test" finds `@Test`, "route" finds `@app.route`,
+    /// "derive" finds `#[derive(...)]`.
+    pub annotation: Option<String>,
+    /// Max results (default 30, capped at 200).
+    pub limit: Option<usize>,
+    pub branch: Option<String>,
+}
+
 // ── Server ────────────────────────────────────────────────────────────────────
 
 /// The MCP server handler. One shared `KuzuGraphStore` wrapped in `Arc<Mutex>`
 /// so all handler calls can share state safely.
 #[derive(Clone)]
 pub struct GitCortexServer {
-    store: Arc<std::sync::Mutex<KuzuGraphStore>>,
+    store: Arc<Mutex<KuzuGraphStore>>,
     repo_root: PathBuf,
     default_branch: String,
     compact: bool,
+    /// Approximate token budget for a single tool's list payload. List-returning
+    /// tools truncate their items to fit this, setting `truncated: true`, so a
+    /// high-fan-out symbol can never make the graph arm dump more than a grep
+    /// would read. Configurable via `GCX_RESPONSE_BUDGET` (token count).
+    response_budget: usize,
+    /// Semantic search state. Starts as `Pending`; background task flips to
+    /// `Ready` once the model is loaded and missing vectors are embedded.
+    /// `Arc<Mutex<…>>` so the background task and all clone'd handler instances
+    /// share the same index.
+    pub semantic: Arc<Mutex<SemanticState>>,
 }
+
+/// Default per-tool response token budget when `GCX_RESPONSE_BUDGET` is unset.
+const DEFAULT_RESPONSE_BUDGET: usize = 2000;
+/// Floor so a misconfigured tiny budget still returns something useful.
+const MIN_RESPONSE_BUDGET: usize = 400;
 
 impl GitCortexServer {
     pub fn new(repo_root: &Path) -> anyhow::Result<Self> {
@@ -188,12 +288,56 @@ impl GitCortexServer {
     pub fn new_with_mode(repo_root: &Path, compact: bool) -> anyhow::Result<Self> {
         let store = KuzuGraphStore::open(repo_root)?;
         let default_branch = detect_current_branch(repo_root).unwrap_or_else(|| "main".into());
+        let response_budget = std::env::var("GCX_RESPONSE_BUDGET")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(DEFAULT_RESPONSE_BUDGET)
+            .max(MIN_RESPONSE_BUDGET);
         Ok(Self {
-            store: Arc::new(std::sync::Mutex::new(store)),
+            store: Arc::new(Mutex::new(store)),
             repo_root: repo_root.to_owned(),
             default_branch,
             compact,
+            response_budget,
+            semantic: Arc::new(Mutex::new(SemanticState::Pending)),
         })
+    }
+
+    /// Truncate a list of JSON items to fit `response_budget`, returning the
+    /// kept items and whether truncation occurred. Token size is estimated as
+    /// serialized bytes / 4 (the usual rule of thumb) — cheap and good enough
+    /// to bound payloads. Always keeps at least one item so a single large
+    /// result is never dropped to nothing.
+    fn budget_items(&self, items: Vec<serde_json::Value>) -> (Vec<serde_json::Value>, bool) {
+        let budget_bytes = self.response_budget * 4;
+        let mut kept: Vec<serde_json::Value> = Vec::with_capacity(items.len());
+        let mut used = 0usize;
+        let total = items.len();
+        for item in items {
+            let sz = item.to_string().len() + 2; // +2 for ", " separators
+            if !kept.is_empty() && used + sz > budget_bytes {
+                break;
+            }
+            used += sz;
+            kept.push(item);
+        }
+        let truncated = kept.len() < total;
+        (kept, truncated)
+    }
+
+    /// Return the shared arcs + branch needed by the background semantic indexer.
+    pub fn semantic_context(
+        &self,
+    ) -> (
+        Arc<Mutex<SemanticState>>,
+        Arc<Mutex<KuzuGraphStore>>,
+        String,
+    ) {
+        (
+            self.semantic.clone(),
+            self.store.clone(),
+            self.default_branch.clone(),
+        )
     }
 
     fn active_tool_router(&self) -> ToolRouter<Self> {
@@ -221,6 +365,59 @@ impl GitCortexServer {
         }
         router
     }
+}
+
+/// First line of a node's captured signature, trimmed and length-capped, for
+/// embedding in tool results so the model can judge a symbol without opening
+/// its file. Empty string when no signature was captured.
+fn sig_line(n: &gitcortex_core::graph::Node) -> String {
+    const MAX: usize = 120;
+    let first = n
+        .metadata
+        .definition
+        .signature
+        .lines()
+        .next()
+        .unwrap_or("")
+        .trim();
+    if first.chars().count() > MAX {
+        let truncated: String = first.chars().take(MAX).collect();
+        format!("{truncated}…")
+    } else {
+        first.to_owned()
+    }
+}
+
+/// Parse a NodeKind from its snake_case string form (matches `NodeKind::Display`).
+fn parse_node_kind(s: &str) -> Option<NodeKind> {
+    Some(match s {
+        "folder" => NodeKind::Folder,
+        "file" => NodeKind::File,
+        "module" => NodeKind::Module,
+        "struct" => NodeKind::Struct,
+        "enum" => NodeKind::Enum,
+        "trait" => NodeKind::Trait,
+        "interface" => NodeKind::Interface,
+        "type_alias" => NodeKind::TypeAlias,
+        "function" => NodeKind::Function,
+        "method" => NodeKind::Method,
+        "property" => NodeKind::Property,
+        "constant" => NodeKind::Constant,
+        "macro" => NodeKind::Macro,
+        "annotation" => NodeKind::Annotation,
+        "enum_member" => NodeKind::EnumMember,
+        _ => return None,
+    })
+}
+
+/// Parse a Visibility from its snake_case string form.
+fn parse_visibility(s: &str) -> Option<Visibility> {
+    Some(match s {
+        "pub" => Visibility::Pub,
+        "pub_crate" => Visibility::PubCrate,
+        "private" => Visibility::Private,
+        _ => return None,
+    })
 }
 
 fn detect_current_branch(repo_root: &Path) -> Option<String> {
@@ -280,6 +477,7 @@ impl GitCortexServer {
                         })
                     })
                     .collect();
+                let (items, _) = self.budget_items(items);
                 CallToolResult::structured(json!(items))
             }
             Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
@@ -322,9 +520,14 @@ impl GitCortexServer {
                                 "qualified_name": n.qualified_name,
                                 "file": n.file.display().to_string(),
                                 "start_line": n.span.start_line,
+                                // Signature lets the model judge impact without
+                                // opening the caller's file — the biggest token
+                                // sink on refactor-impact questions.
+                                "signature": sig_line(n),
                             })
                         })
                         .collect();
+                    let (items, budget_trunc) = self.budget_items(items);
                     let risk = match total {
                         0..=2 => "LOW",
                         3..=10 => "MEDIUM",
@@ -341,7 +544,7 @@ impl GitCortexServer {
                         "risk_level": risk,
                         "total_callers": total,
                         "returned": items.len(),
-                        "truncated": total > items.len(),
+                        "truncated": total > items.len() || budget_trunc,
                         "callers": items,
                     }))
                 }
@@ -366,6 +569,7 @@ impl GitCortexServer {
                                         "qualified_name": n.qualified_name,
                                         "file": n.file.display().to_string(),
                                         "start_line": n.span.start_line,
+                                        "signature": sig_line(n),
                                     })
                                 })
                                 .collect();
@@ -426,6 +630,7 @@ impl GitCortexServer {
                         "end_line": ctx.definition.span.end_line,
                         "visibility": format!("{:?}", ctx.definition.metadata.visibility),
                         "is_async": ctx.definition.metadata.is_async,
+                        "complexity": ctx.definition.metadata.lld.complexity,
                     },
                     "callers": ctx.callers.iter().map(node_json).collect::<Vec<_>>(),
                     "callees": ctx.callees.iter().map(node_json).collect::<Vec<_>>(),
@@ -467,7 +672,123 @@ impl GitCortexServer {
                         })
                     })
                     .collect();
+                let (items, _) = self.budget_items(items);
                 CallToolResult::structured(json!(items))
+            }
+            Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
+        }
+    }
+
+    /// Aggregate counts for the branch's graph — orientation before exploring.
+    #[tool(
+        description = "Get aggregate counts for the code graph: total nodes/edges plus per-kind breakdowns (how many functions, structs, calls edges, etc). Use this first to gauge codebase size and shape before drilling into specific symbols."
+    )]
+    fn graph_stats(&self, Parameters(p): Parameters<GraphStatsParams>) -> CallToolResult {
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        match store.graph_stats(&branch) {
+            Ok(stats) => {
+                let to_obj = |pairs: &[(String, u64)]| -> serde_json::Value {
+                    json!(pairs
+                        .iter()
+                        .map(|(k, c)| json!({ "kind": k, "count": c }))
+                        .collect::<Vec<_>>())
+                };
+                CallToolResult::structured(json!({
+                    "branch": branch,
+                    "total_nodes": stats.total_nodes,
+                    "total_edges": stats.total_edges,
+                    "nodes_by_kind": to_obj(&stats.nodes_by_kind),
+                    "edges_by_kind": to_obj(&stats.edges_by_kind),
+                }))
+            }
+            Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
+        }
+    }
+
+    /// Structural search over node attributes (no name needed).
+    #[tool(
+        description = "Find symbols by structural attributes rather than name: kind (function/method/struct/...), is_async, visibility (pub/pub_crate/private), cyclomatic complexity range, and annotation/decorator (e.g. annotation='Test' finds @Test methods, 'route' finds @app.route handlers, 'derive' finds #[derive(...)]). Combine filters to answer 'all async methods', 'public structs', 'functions with complexity ≥ 10', or 'all test functions'. Optional name_contains narrows further. Default limit=30."
+    )]
+    fn ast_search(&self, Parameters(p): Parameters<AstSearchParams>) -> CallToolResult {
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
+        let limit = p.limit.unwrap_or(30).min(200);
+
+        let kind = p.kind.as_deref().and_then(parse_node_kind);
+        // Reject an unknown kind string rather than silently ignoring it.
+        if p.kind.is_some() && kind.is_none() {
+            return CallToolResult::error(vec![Content::text(format!(
+                "unknown kind '{}'. Valid: function, method, struct, enum, trait, \
+                 interface, type_alias, property, constant, macro, annotation, \
+                 enum_member, module, file, folder",
+                p.kind.as_deref().unwrap_or("")
+            ))]);
+        }
+        let visibility = p.visibility.as_deref().and_then(parse_visibility);
+        if p.visibility.is_some() && visibility.is_none() {
+            return CallToolResult::error(vec![Content::text(
+                "unknown visibility. Valid: pub, pub_crate, private".to_owned(),
+            )]);
+        }
+
+        let filter = AttributeFilter {
+            kind,
+            is_async: p.is_async,
+            visibility,
+            min_complexity: p.min_complexity,
+            max_complexity: p.max_complexity,
+            name_contains: p.name_contains.clone(),
+            annotation: p.annotation.clone(),
+        };
+
+        if filter.is_empty() {
+            return CallToolResult::error(vec![Content::text(
+                "ast_search needs at least one filter (kind, is_async, visibility, \
+                 complexity bound, name_contains, or annotation)"
+                    .to_owned(),
+            )]);
+        }
+
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        match store.search_by_attributes(&branch, &filter, limit) {
+            Ok(nodes) => {
+                let items: Vec<_> = nodes
+                    .iter()
+                    .map(|n| {
+                        json!({
+                            "kind": n.kind.to_string(),
+                            "name": n.name,
+                            "qualified_name": n.qualified_name,
+                            "file": n.file.display().to_string(),
+                            "start_line": n.span.start_line,
+                            "visibility": format!("{:?}", n.metadata.visibility),
+                            "is_async": n.metadata.is_async,
+                            "complexity": n.metadata.lld.complexity,
+                            "annotations": n.metadata.annotations,
+                        })
+                    })
+                    .collect();
+                let (items, truncated) = self.budget_items(items);
+                CallToolResult::structured(json!({
+                    "branch": branch,
+                    "results": items,
+                    "returned": items.len(),
+                    "truncated": truncated,
+                }))
             }
             Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
         }
@@ -687,9 +1008,206 @@ impl GitCortexServer {
                         })
                     })
                     .collect();
+                let (items, truncated) = self.budget_items(items);
                 CallToolResult::structured(json!({
                     "trait": p.trait_name,
                     "implementors": items,
+                    "truncated": truncated,
+                }))
+            }
+            Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
+        }
+    }
+
+    /// List the in-repo modules a module depends on.
+    #[tool(
+        description = "List the in-repo modules a given module depends on, resolved by following its imports to the defining module of each imported symbol. Useful for understanding internal coupling and architecture. Only intra-repo dependencies appear (external/stdlib imports are not graphed)."
+    )]
+    fn module_dependencies(
+        &self,
+        Parameters(p): Parameters<ModuleDependenciesParams>,
+    ) -> CallToolResult {
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        match store.module_dependencies(&branch, &p.name) {
+            Ok(nodes) => {
+                let items: Vec<_> = nodes
+                    .iter()
+                    .map(|n| {
+                        json!({
+                            "name": n.name,
+                            "file": n.file.display().to_string(),
+                        })
+                    })
+                    .collect();
+                CallToolResult::structured(json!({
+                    "module": p.name,
+                    "depends_on": items,
+                }))
+            }
+            Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
+        }
+    }
+
+    /// Find functions/methods that use a type in their signature.
+    #[tool(
+        description = "Find functions/methods that reference a type as a parameter or return type (follows Uses edges). The type-level analogue of find_callers: answers 'what would break if I change type T's shape'. Returns the using functions/methods."
+    )]
+    fn find_type_usages(&self, Parameters(p): Parameters<FindTypeUsagesParams>) -> CallToolResult {
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        match store.find_type_usages(&branch, &p.name) {
+            Ok(nodes) => {
+                let items: Vec<_> = nodes
+                    .iter()
+                    .map(|n| {
+                        json!({
+                            "kind": n.kind.to_string(),
+                            "name": n.name,
+                            "qualified_name": n.qualified_name,
+                            "file": n.file.display().to_string(),
+                            "start_line": n.span.start_line,
+                        })
+                    })
+                    .collect();
+                let (items, truncated) = self.budget_items(items);
+                CallToolResult::structured(json!({
+                    "type": p.name,
+                    "usages": items,
+                    "truncated": truncated,
+                }))
+            }
+            Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
+        }
+    }
+
+    /// Find the exact call sites (caller + line) of a function.
+    #[tool(
+        description = "Find every call site of a function: the calling symbol AND the source line of each call. Where find_callers gives only the calling functions, this pinpoints the exact line each call happens on — useful for reviewing or editing every invocation."
+    )]
+    fn get_call_sites(&self, Parameters(p): Parameters<GetCallSitesParams>) -> CallToolResult {
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        match store.find_call_sites(&branch, &p.name) {
+            Ok(sites) => {
+                let items: Vec<_> = sites
+                    .iter()
+                    .map(|s| {
+                        json!({
+                            "caller": s.caller.name,
+                            "caller_kind": s.caller.kind.to_string(),
+                            "file": s.caller.file.display().to_string(),
+                            "line": s.line,
+                            "caller_start_line": s.caller.span.start_line,
+                        })
+                    })
+                    .collect();
+                let total = items.len();
+                let (items, truncated) = self.budget_items(items);
+                CallToolResult::structured(json!({
+                    "function": p.name,
+                    "call_sites": items,
+                    "count": total,
+                    "returned": items.len(),
+                    "truncated": truncated,
+                }))
+            }
+            Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
+        }
+    }
+
+    /// Find which files/modules import a given symbol.
+    #[tool(
+        description = "Find which files/modules import a given symbol (follows Imports edges). Answers 'who depends on X' at the import level — useful before renaming or moving a symbol. Returns the importing module nodes."
+    )]
+    fn find_importers(&self, Parameters(p): Parameters<FindImportersParams>) -> CallToolResult {
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        match store.find_importers(&branch, &p.name) {
+            Ok(nodes) => {
+                let items: Vec<_> = nodes
+                    .iter()
+                    .map(|n| {
+                        json!({
+                            "kind": n.kind.to_string(),
+                            "name": n.name,
+                            "qualified_name": n.qualified_name,
+                            "file": n.file.display().to_string(),
+                            "start_line": n.span.start_line,
+                        })
+                    })
+                    .collect();
+                let (items, truncated) = self.budget_items(items);
+                CallToolResult::structured(json!({
+                    "symbol": p.name,
+                    "importers": items,
+                    "truncated": truncated,
+                }))
+            }
+            Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
+        }
+    }
+
+    /// Map both directions of a type's relationships in one call.
+    #[tool(
+        description = "Map a type's full relationship hierarchy in one call: supertypes (the traits/interfaces/classes it implements or extends) AND subtypes (the types that implement or extend it). Where find_implementors gives only the downward direction, this gives both. Works across Rust traits, Java/TypeScript interfaces, and inheritance chains."
+    )]
+    fn type_hierarchy(&self, Parameters(p): Parameters<TypeHierarchyParams>) -> CallToolResult {
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        match store.type_hierarchy(&branch, &p.name) {
+            Ok(h) => {
+                let to_items = |nodes: &[gitcortex_core::graph::Node]| -> serde_json::Value {
+                    json!(nodes
+                        .iter()
+                        .map(|n| json!({
+                            "kind": n.kind.to_string(),
+                            "name": n.name,
+                            "qualified_name": n.qualified_name,
+                            "file": n.file.display().to_string(),
+                            "start_line": n.span.start_line,
+                        }))
+                        .collect::<Vec<_>>())
+                };
+                CallToolResult::structured(json!({
+                    "type": p.name,
+                    "supertypes": to_items(&h.supertypes),
+                    "subtypes": to_items(&h.subtypes),
                 }))
             }
             Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
@@ -771,10 +1289,12 @@ impl GitCortexServer {
                         })
                     })
                     .collect();
+                let (items, truncated) = self.budget_items(items);
                 CallToolResult::structured(json!({
                     "file": p.file,
                     "range": { "start": p.start_line, "end": p.end_line },
                     "symbols": items,
+                    "truncated": truncated,
                 }))
             }
             Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
@@ -830,12 +1350,14 @@ impl GitCortexServer {
                         })
                     })
                     .collect();
+                let total = nodes.len();
+                let (items, budget_trunc) = self.budget_items(items);
                 CallToolResult::structured(json!({
                     "branch": branch,
                     "unused_symbols": items,
-                    "count": nodes.len(),
+                    "count": total,
                     "returned": items.len(),
-                    "truncated": nodes.len() > items.len(),
+                    "truncated": total > items.len() || budget_trunc,
                 }))
             }
             Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
@@ -856,7 +1378,7 @@ impl GitCortexServer {
             .unwrap_or(&self.default_branch)
             .to_owned();
         let depth = p.depth.unwrap_or(1).clamp(1, 5);
-        let max_nodes = p.limit.unwrap_or(30).min(200);
+        let max_nodes = p.limit.unwrap_or(20).min(200);
         let direction = p.direction.as_deref().unwrap_or("both").to_owned();
         let store = match self.store.lock() {
             Ok(g) => g,
@@ -870,11 +1392,16 @@ impl GitCortexServer {
                 let kept: Vec<_> = sg.nodes.iter().take(max_nodes).collect();
                 let kept_ids: std::collections::HashSet<String> =
                     kept.iter().map(|n| n.id.as_str()).collect();
+                // id → name, so edges read as names (the model can't use UUIDs;
+                // emitting them twice per edge is pure token waste).
+                let name_of: std::collections::HashMap<String, &str> = kept
+                    .iter()
+                    .map(|n| (n.id.as_str(), n.name.as_str()))
+                    .collect();
                 let nodes: Vec<_> = kept
                     .iter()
                     .map(|n| {
                         json!({
-                            "id": n.id.as_str(),
                             "kind": n.kind.to_string(),
                             "name": n.name,
                             "file": n.file.display().to_string(),
@@ -890,12 +1417,16 @@ impl GitCortexServer {
                     })
                     .map(|e| {
                         json!({
-                            "src": e.src.as_str(),
-                            "dst": e.dst.as_str(),
+                            "from": name_of.get(&e.src.as_str()).copied().unwrap_or(""),
+                            "to": name_of.get(&e.dst.as_str()).copied().unwrap_or(""),
                             "kind": e.kind.to_string(),
+                            "confidence": e.confidence.to_string(),
                         })
                     })
                     .collect();
+                // Enforce the response token budget across both lists.
+                let (nodes, n_trunc) = self.budget_items(nodes);
+                let (edges, e_trunc) = self.budget_items(edges);
                 CallToolResult::structured(json!({
                     "seed": p.seed_name,
                     "depth": depth,
@@ -904,7 +1435,7 @@ impl GitCortexServer {
                     "edge_count": sg.edges.len(),
                     "returned_nodes": nodes.len(),
                     "returned_edges": edges.len(),
-                    "truncated": sg.nodes.len() > nodes.len(),
+                    "truncated": sg.nodes.len() > nodes.len() || n_trunc || e_trunc,
                     "nodes": nodes,
                     "edges": edges,
                 }))
@@ -940,8 +1471,10 @@ impl GitCortexServer {
 
     /// Search the graph by name + qualified-name with deterministic ranking.
     #[tool(
-        description = "Search the code graph by name. Ranks exact > prefix > substring; \
-        functions/structs boosted. Use before grep for symbol discovery. Default limit=10."
+        description = "Search the code graph by name or description. Combines token/fuzzy text \
+        matching (CamelCase-aware, typo-tolerant) with semantic vector similarity so you can \
+        search without knowing the exact symbol name. Ranks exact > prefix > semantic > \
+        substring; functions/structs boosted. Default limit=10."
     )]
     fn search_code(&self, Parameters(p): Parameters<SearchCodeParams>) -> CallToolResult {
         let branch = p
@@ -949,19 +1482,88 @@ impl GitCortexServer {
             .as_deref()
             .unwrap_or(&self.default_branch)
             .to_owned();
-        let store = match self.store.lock() {
-            Ok(g) => g,
-            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+
+        // ── Text search ───────────────────────────────────────────────────────
+        let text_hits = {
+            let store = match self.store.lock() {
+                Ok(g) => g,
+                Err(_) => {
+                    return CallToolResult::error(vec![Content::text("store mutex poisoned")])
+                }
+            };
+            match super::search::search(&*store, &branch, &p.query, p.limit) {
+                Ok(h) => h,
+                Err(e) => {
+                    return CallToolResult::error(vec![Content::text(format!(
+                        "search failed: {e}"
+                    ))])
+                }
+            }
         };
-        match super::search::search(&*store, &branch, &p.query, p.limit) {
-            Ok(hits) => CallToolResult::structured(json!({
-                "query": p.query,
-                "branch": branch,
-                "count": hits.len(),
-                "hits": hits,
-            })),
-            Err(e) => CallToolResult::error(vec![Content::text(format!("search failed: {e}"))]),
+
+        // ── Semantic search (best-effort, non-blocking) ───────────────────────
+        // try_lock: never block an MCP call waiting for the background indexer.
+        let sem_hits = if let Ok(sem) = self.semantic.try_lock() {
+            if let SemanticState::Ready { embedder, index } = &*sem {
+                embedder.embed_one(&p.query).ok().map(|qvec| {
+                    let limit = p.limit.unwrap_or(10).min(200);
+                    index.top_k(&qvec, limit * 2)
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // ── Merge: resolve semantic IDs to full nodes, deduplicate ────────────
+        let mut all_hits = text_hits;
+        let text_names: std::collections::HashSet<String> =
+            all_hits.iter().map(|h| h.name.clone()).collect();
+
+        if let Some(sem_ids) = sem_hits {
+            if !sem_ids.is_empty() {
+                let store = match self.store.lock() {
+                    Ok(g) => g,
+                    Err(_) => {
+                        return CallToolResult::error(vec![Content::text("store mutex poisoned")])
+                    }
+                };
+                if let Ok(nodes) = store.get_nodes_by_ids(&branch, &sem_ids) {
+                    for n in nodes {
+                        if !text_names.contains(&n.name) {
+                            all_hits.push(super::search::SearchHit {
+                                name: n.name,
+                                qualified_name: n.qualified_name,
+                                kind: n.kind.to_string(),
+                                file: n.file.display().to_string(),
+                                start_line: n.span.start_line,
+                                score: 45, // semantic match: between prefix (60) and substring (30)
+                            });
+                        }
+                    }
+                }
+            }
         }
+
+        let limit = p.limit.unwrap_or(10).min(200);
+        all_hits.sort_by(|a, b| {
+            b.score
+                .cmp(&a.score)
+                .then_with(|| a.name.len().cmp(&b.name.len()))
+        });
+        all_hits.truncate(limit);
+
+        CallToolResult::structured(json!({
+            "query": p.query,
+            "branch": branch,
+            "count": all_hits.len(),
+            "semantic_available": matches!(
+                self.semantic.try_lock().as_deref(),
+                Ok(SemanticState::Ready { .. })
+            ),
+            "hits": all_hits,
+        }))
     }
 
     /// Generate a guided tour through the repo's important symbols.
@@ -987,6 +1589,7 @@ impl GitCortexServer {
                 CallToolResult::structured(json!({
                     "branch": tour.branch,
                     "seed": tour.seed,
+                    "components": tour.components,
                     "steps": tour.steps,
                     "markdown": markdown,
                 }))
@@ -1002,7 +1605,9 @@ impl GitCortexServer {
     #[tool(description = "Query the GitCortex code knowledge graph. \
         action: lookup_symbol | find_callers | find_callees | find_unused_symbols | \
         get_subgraph | search_code | start_tour | wiki_symbol | trace_path | \
-        list_definitions | symbol_context | list_symbols_in_range | branch_diff_graph. \
+        list_definitions | symbol_context | list_symbols_in_range | graph_stats | ast_search | \
+        type_hierarchy | find_importers | find_type_usages | module_dependencies | \
+        get_call_sites | branch_diff_graph. \
         params: JSON object with the same fields as the individual tool (name/function_name/\
         seed_name/query/file/branch/depth/limit/direction as applicable). \
         Returns identical output to the individual tool.")]
@@ -1137,6 +1742,68 @@ impl GitCortexServer {
                 name: str_field!("name"),
                 branch: branch_val,
             })),
+            "graph_stats" => self.graph_stats(Parameters(GraphStatsParams { branch: branch_val })),
+            "type_hierarchy" => self.type_hierarchy(Parameters(TypeHierarchyParams {
+                name: str_field!("name"),
+                branch: branch_val,
+            })),
+            "find_importers" => self.find_importers(Parameters(FindImportersParams {
+                name: str_field!("name"),
+                branch: branch_val,
+            })),
+            "get_call_sites" => self.get_call_sites(Parameters(GetCallSitesParams {
+                name: str_field!("name"),
+                branch: branch_val,
+            })),
+            "find_type_usages" => self.find_type_usages(Parameters(FindTypeUsagesParams {
+                name: str_field!("name"),
+                branch: branch_val,
+            })),
+            "module_dependencies" => {
+                self.module_dependencies(Parameters(ModuleDependenciesParams {
+                    name: str_field!("name"),
+                    branch: branch_val,
+                }))
+            }
+            "ast_search" => self.ast_search(Parameters(AstSearchParams {
+                kind: p
+                    .params
+                    .get("kind")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_owned()),
+                is_async: p.params.get("is_async").and_then(|v| v.as_bool()),
+                visibility: p
+                    .params
+                    .get("visibility")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_owned()),
+                min_complexity: p
+                    .params
+                    .get("min_complexity")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as u32),
+                max_complexity: p
+                    .params
+                    .get("max_complexity")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as u32),
+                name_contains: p
+                    .params
+                    .get("name_contains")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_owned()),
+                annotation: p
+                    .params
+                    .get("annotation")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_owned()),
+                limit: p
+                    .params
+                    .get("limit")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize),
+                branch: branch_val,
+            })),
             "list_symbols_in_range" => {
                 self.list_symbols_in_range(Parameters(ListSymbolsInRangeParams {
                     file: str_field!("file"),
@@ -1156,7 +1823,9 @@ impl GitCortexServer {
             other => CallToolResult::error(vec![Content::text(format!(
                 "gcx dispatch: unknown action '{other}'. Valid: lookup_symbol, find_callers, \
                 find_callees, find_unused_symbols, get_subgraph, search_code, start_tour, \
-                wiki_symbol, trace_path, list_definitions, symbol_context, list_symbols_in_range"
+                wiki_symbol, trace_path, list_definitions, symbol_context, list_symbols_in_range, \
+                graph_stats, ast_search, type_hierarchy, find_importers, find_type_usages, \
+                module_dependencies, get_call_sites"
             ))]),
         }
     }

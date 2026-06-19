@@ -92,7 +92,7 @@ Q_TEXT=(
 
 # Run one Claude session. Echoes a JSON usage object to stdout.
 #   $1 = arm tag (baseline|gcx)  $2 = question text
-run_arm() {
+_run_arm_once() {
   local arm="$1" q="$2" raw
   local common=(-p "$q" --output-format json --no-session-persistence
                 --model "$MODEL" --max-budget-usd "$BUDGET" --strict-mcp-config)
@@ -128,6 +128,28 @@ except Exception as e:
 "
 }
 
+# Retry wrapper around `_run_arm_once`. Rate limits and transient errors are the
+# dominant failure mode — without this, a throttled session silently writes a
+# zero/partial result that corrupts the aggregate. Retries up to 3× with
+# exponential backoff whenever the attempt errored or returned zero tokens.
+run_arm() {
+  local arm="$1" q="$2" result total err attempt
+  for attempt in 1 2 3; do
+    result=$(_run_arm_once "$arm" "$q")
+    total=$(printf '%s' "$result" | python3 -c 'import json,sys
+try: print(int(json.load(sys.stdin).get("total",0)))
+except Exception: print(0)' 2>/dev/null || echo 0)
+    err=$(printf '%s' "$result" | python3 -c 'import json,sys
+try: print(json.load(sys.stdin).get("error",True))
+except Exception: print(True)' 2>/dev/null || echo True)
+    if [ "$err" = "False" ] && [ "$total" -gt 0 ] 2>/dev/null; then
+      printf '%s' "$result"; return 0
+    fi
+    [ "$attempt" -lt 3 ] && sleep $((5 * attempt * attempt))  # 5s, 20s
+  done
+  printf '%s' "$result"  # exhausted retries — return last (errored) result
+}
+
 QUESTIONS_JSON=""
 N=${#Q_LABELS[@]}
 [ "$N_Q" -lt "$N" ] && N="$N_Q"
@@ -147,6 +169,8 @@ print(json.dumps({'q':'$label','question':'''$text''','baseline':b,'gcx':g,
 ")
   QUESTIONS_JSON="${QUESTIONS_JSON:+$QUESTIONS_JSON,}$q"
   echo "      base=$(echo "$base" | python3 -c 'import json,sys;print(json.load(sys.stdin)["total"])') tok  gcx=$(echo "$gcx" | python3 -c 'import json,sys;print(json.load(sys.stdin)["total"])') tok" >&2
+  # Throttle between questions to stay under API rate limits.
+  sleep "${THROTTLE:-3}"
 done
 
 STATUS=$("$GCX" status 2>/dev/null || true)
@@ -159,12 +183,19 @@ echo "[$QUESTIONS_JSON]" > "$REPO_DIR/.real-q.json"
 python3 - "$OUT_JSON" "$REPO_DIR/.real-q.json" <<PY
 import json, sys
 qs = json.load(open(sys.argv[2]))
-tb = sum(q['baseline']['total'] for q in qs)
-tg = sum(q['gcx']['total'] for q in qs)
-cb = round(sum(q['baseline']['cost'] for q in qs),5)
-cg = round(sum(q['gcx']['cost'] for q in qs),5)
+# Only count questions where BOTH arms succeeded — an errored/throttled session
+# returns a zero/partial total that would corrupt the aggregate.
+def ok(q):
+    return (not q['baseline'].get('error') and not q['gcx'].get('error')
+            and q['baseline']['total'] > 0 and q['gcx']['total'] > 0)
+valid = [q for q in qs if ok(q)]
+errored = [q['q'] for q in qs if not ok(q)]
+tb = sum(q['baseline']['total'] for q in valid)
+tg = sum(q['gcx']['total'] for q in valid)
+cb = round(sum(q['baseline']['cost'] for q in valid),5)
+cg = round(sum(q['gcx']['cost'] for q in valid),5)
 import math
-ratios = [q['token_ratio'] for q in qs if q['token_ratio']>0]
+ratios = [q['token_ratio'] for q in valid if q['token_ratio']>0]
 geo = round(math.exp(sum(math.log(r) for r in ratios)/len(ratios)),2) if ratios else 0
 out = {
   "repo": "$REPO_NAME", "url": "$REPO_URL", "branch": "$BRANCH",
@@ -177,6 +208,8 @@ out = {
     "saved_pct": round(100*(tb-tg)/tb,2) if tb else 0,
     "baseline_cost_usd": cb, "gcx_cost_usd": cg,
     "geomean_ratio": geo,
+    "valid_questions": len(valid),
+    "errored_questions": errored,
   },
   "questions": qs,
 }

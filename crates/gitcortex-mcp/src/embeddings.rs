@@ -1,0 +1,240 @@
+//! Semantic search via local embeddings (AllMiniLM-L6-v2, 384 dims).
+//!
+//! Model is downloaded from HuggingFace on first use (~23 MB, cached in
+//! `$XDG_CACHE_HOME/huggingface/hub`). All subsequent starts load from cache.
+//!
+//! Vector index is persisted per-branch at:
+//!   `~/.local/share/gitcortex/{repo_id}/embeddings_{branch}.bin`
+//!
+//! Background indexer (`index_missing`) embeds nodes that don't yet have a
+//! vector. Call it once after `gcx serve` opens the store. Search stays
+//! text-only while the indexer runs; it automatically uses semantic hits once
+//! at least one vector is loaded.
+
+use std::collections::HashMap;
+use std::io::{BufWriter, Write};
+use std::path::{Path, PathBuf};
+
+use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
+use gitcortex_core::graph::Node;
+
+/// Minimum cosine similarity to surface as a semantic hit.
+const SIMILARITY_THRESHOLD: f32 = 0.50;
+const DIM: usize = 384;
+
+// Binary format: magic + version + dim + count + entries
+const MAGIC: &[u8; 4] = b"GCXV";
+const FORMAT_VERSION: u32 = 1;
+
+// ── Vector index ──────────────────────────────────────────────────────────────
+
+pub struct SemanticIndex {
+    /// node_id → unit-normalised embedding
+    vectors: HashMap<String, Vec<f32>>,
+    path: PathBuf,
+}
+
+impl SemanticIndex {
+    pub fn load_or_create(path: &Path) -> Self {
+        let vectors = load_bin(path).unwrap_or_default();
+        if !vectors.is_empty() {
+            tracing::info!(
+                "semantic index loaded: {} vectors from {}",
+                vectors.len(),
+                path.display()
+            );
+        }
+        Self {
+            vectors,
+            path: path.to_owned(),
+        }
+    }
+
+    pub fn has(&self, node_id: &str) -> bool {
+        self.vectors.contains_key(node_id)
+    }
+
+    pub fn insert(&mut self, node_id: String, vec: Vec<f32>) {
+        self.vectors.insert(node_id, unit_normalise(vec));
+    }
+
+    pub fn len(&self) -> usize {
+        self.vectors.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.vectors.is_empty()
+    }
+
+    /// Drop vectors whose node ID is not in `live_ids`. Node UUIDs regenerate
+    /// on every re-index, so without pruning the index file grows with
+    /// orphaned vectors that can still surface as (unresolvable) hits.
+    /// Returns the number of vectors removed.
+    pub fn retain_ids(&mut self, live_ids: &std::collections::HashSet<String>) -> usize {
+        let before = self.vectors.len();
+        self.vectors.retain(|id, _| live_ids.contains(id));
+        before - self.vectors.len()
+    }
+
+    pub fn save(&self) {
+        if let Err(e) = save_bin(&self.path, &self.vectors) {
+            tracing::warn!("failed to save semantic index: {e}");
+        }
+    }
+
+    /// Return up to `k` node IDs with cosine similarity ≥ SIMILARITY_THRESHOLD.
+    /// Query vector need not be pre-normalised — normalised internally.
+    pub fn top_k(&self, query_vec: &[f32], k: usize) -> Vec<String> {
+        let q = unit_normalise(query_vec.to_vec());
+        let mut scores: Vec<(&String, f32)> = self
+            .vectors
+            .iter()
+            .map(|(id, v)| (id, dot(&q, v)))
+            .filter(|(_, s)| *s >= SIMILARITY_THRESHOLD)
+            .collect();
+        scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        scores
+            .into_iter()
+            .take(k)
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+}
+
+// ── Embedder ──────────────────────────────────────────────────────────────────
+
+pub struct Embedder {
+    model: TextEmbedding,
+}
+
+impl Embedder {
+    /// Download (first run) or load (cached) AllMiniLM-L6-v2.
+    pub fn new() -> anyhow::Result<Self> {
+        tracing::info!("initialising semantic embedder (AllMiniLM-L6-v2) …");
+        let model = TextEmbedding::try_new(
+            InitOptions::new(EmbeddingModel::AllMiniLML6V2).with_show_download_progress(false),
+        )?;
+        tracing::info!("semantic embedder ready");
+        Ok(Self { model })
+    }
+
+    pub fn embed_one(&self, text: &str) -> anyhow::Result<Vec<f32>> {
+        let mut out = self.model.embed(vec![text.to_owned()], None)?;
+        out.pop()
+            .ok_or_else(|| anyhow::anyhow!("embedder returned no vectors"))
+    }
+
+    /// Embed a batch of texts. Returns one vector per input in order.
+    pub fn embed_batch(&self, texts: Vec<String>) -> anyhow::Result<Vec<Vec<f32>>> {
+        self.model.embed(texts, None)
+    }
+}
+
+// ── Text representation for a node ────────────────────────────────────────────
+
+/// Build the text string that gets embedded for a node.
+/// Format: `"{kind} {qualified_name} {signature} {doc_comment}"`
+pub fn node_text(n: &Node) -> String {
+    let kind = n.kind.to_string();
+    let sig = &n.metadata.definition.signature;
+    let doc = n.metadata.definition.doc_comment.as_deref().unwrap_or("");
+    if sig.is_empty() && doc.is_empty() {
+        format!("{kind} {}", n.qualified_name)
+    } else if doc.is_empty() {
+        format!("{kind} {} {sig}", n.qualified_name)
+    } else {
+        format!("{kind} {} {sig} {doc}", n.qualified_name)
+    }
+}
+
+// ── Math helpers ──────────────────────────────────────────────────────────────
+
+fn dot(a: &[f32], b: &[f32]) -> f32 {
+    a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
+}
+
+fn unit_normalise(mut v: Vec<f32>) -> Vec<f32> {
+    let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if norm > f32::EPSILON {
+        for x in &mut v {
+            *x /= norm;
+        }
+    }
+    v
+}
+
+// ── Binary storage ────────────────────────────────────────────────────────────
+//
+// Layout (all integers little-endian):
+//   [4]  magic "GCXV"
+//   [4]  format version (u32)
+//   [4]  embedding dimension (u32)
+//   [4]  record count (u32)
+//   per record:
+//     [4]       id_len (u32)
+//     [id_len]  node_id (UTF-8)
+//     [dim × 4] f32 values
+
+fn load_bin(path: &Path) -> Option<HashMap<String, Vec<f32>>> {
+    let data = std::fs::read(path).ok()?;
+    let mut p = 0usize;
+
+    macro_rules! read_u32 {
+        () => {{
+            let b: [u8; 4] = data.get(p..p + 4)?.try_into().ok()?;
+            p += 4;
+            u32::from_le_bytes(b)
+        }};
+    }
+
+    if data.get(p..p + 4)? != MAGIC {
+        return None;
+    }
+    p += 4;
+
+    let _ver = read_u32!();
+    let dim = read_u32!() as usize;
+    let count = read_u32!() as usize;
+
+    let mut map = HashMap::with_capacity(count);
+    for _ in 0..count {
+        let id_len = read_u32!() as usize;
+        let id = String::from_utf8(data.get(p..p + id_len)?.to_vec()).ok()?;
+        p += id_len;
+        let end = p + dim * 4;
+        let vec: Vec<f32> = data
+            .get(p..end)?
+            .chunks_exact(4)
+            .map(|b| f32::from_le_bytes(b.try_into().unwrap()))
+            .collect();
+        p = end;
+        map.insert(id, vec);
+    }
+    Some(map)
+}
+
+fn save_bin(path: &Path, vectors: &HashMap<String, Vec<f32>>) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let tmp = path.with_extension("tmp");
+    {
+        let f = std::fs::File::create(&tmp)?;
+        let mut w = BufWriter::new(f);
+        w.write_all(MAGIC)?;
+        w.write_all(&FORMAT_VERSION.to_le_bytes())?;
+        w.write_all(&(DIM as u32).to_le_bytes())?;
+        w.write_all(&(vectors.len() as u32).to_le_bytes())?;
+        for (id, vec) in vectors {
+            let id_b = id.as_bytes();
+            w.write_all(&(id_b.len() as u32).to_le_bytes())?;
+            w.write_all(id_b)?;
+            for &v in vec {
+                w.write_all(&v.to_le_bytes())?;
+            }
+        }
+        w.flush()?;
+    }
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}

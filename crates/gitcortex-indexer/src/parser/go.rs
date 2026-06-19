@@ -6,7 +6,7 @@ use std::{
 use gitcortex_core::{
     error::{GitCortexError, Result},
     graph::{Edge, Node, NodeId, NodeMetadata, Span},
-    schema::{EdgeKind, NodeKind, Visibility},
+    schema::{EdgeConfidence, EdgeKind, NodeKind, Visibility},
 };
 use tree_sitter::{Node as TsNode, Parser};
 
@@ -84,7 +84,7 @@ struct FileVisitor<'src> {
     type_index: HashMap<String, NodeId>,
     /// function/method name → NodeId
     fn_index: HashMap<String, NodeId>,
-    deferred_calls: Vec<(NodeId, String)>,
+    deferred_calls: Vec<(NodeId, String, u32)>,
     deferred_uses: Vec<(NodeId, String)>,
     deferred_implements: Vec<(NodeId, String)>,
     deferred_imports: Vec<(NodeId, String)>,
@@ -296,6 +296,13 @@ impl<'src> FileVisitor<'src> {
         // tree-sitter-go uses "type_parameters" for `func Foo[T any, U comparable]()`.
         graph_node.metadata.generic_bounds = self.collect_generic_bounds(node);
 
+        if let Some(body) = node.child_by_field_name("body") {
+            graph_node.metadata.lld.complexity = Some(super::cyclomatic_complexity(
+                body,
+                &super::complexity::go_decision,
+            ));
+        }
+
         self.nodes.push(graph_node);
 
         self.extract_fn_type_uses(node, &id);
@@ -320,13 +327,22 @@ impl<'src> FileVisitor<'src> {
             .get(&name)
             .cloned()
             .unwrap_or_else(NodeId::new);
-        let graph_node = self.make_node(id.clone(), NodeKind::Method, name, &scope, node);
+        let mut graph_node = self.make_node(id.clone(), NodeKind::Method, name, &scope, node);
+
+        if let Some(body) = node.child_by_field_name("body") {
+            graph_node.metadata.lld.complexity = Some(super::cyclomatic_complexity(
+                body,
+                &super::complexity::go_decision,
+            ));
+        }
 
         if let Some(cid) = container_id {
             self.edges.push(Edge {
                 src: cid,
                 dst: id.clone(),
                 kind: EdgeKind::Contains,
+                line: None,
+                confidence: EdgeConfidence::Extracted,
             });
         }
         self.nodes.push(graph_node);
@@ -655,6 +671,8 @@ impl<'src> FileVisitor<'src> {
                     src: iface_id.clone(),
                     dst: id.clone(),
                     kind: EdgeKind::Contains,
+                    line: None,
+                    confidence: EdgeConfidence::Extracted,
                 });
                 self.nodes.push(graph_node);
             }
@@ -728,7 +746,8 @@ impl<'src> FileVisitor<'src> {
         for child in children {
             if child.kind() == "call_expression" {
                 if let Some(callee) = self.callee_name(child) {
-                    self.record_call(caller_id.clone(), callee);
+                    let line = child.start_position().row as u32 + 1;
+                    self.record_call(caller_id.clone(), callee, line);
                 }
                 if let Some(args) = child.child_by_field_name("arguments") {
                     self.collect_calls(args, caller_id);
@@ -739,7 +758,8 @@ impl<'src> FileVisitor<'src> {
                     if call.kind() == "call_expression" {
                         if let Some(callee) = self.callee_name(call) {
                             // Record as a regular deferred call; the goroutine is conceptually async
-                            self.deferred_calls.push((caller_id.clone(), callee));
+                            let line = call.start_position().row as u32 + 1;
+                            self.deferred_calls.push((caller_id.clone(), callee, line));
                         }
                     }
                 }
@@ -760,25 +780,21 @@ impl<'src> FileVisitor<'src> {
         }
     }
 
-    fn record_call(&mut self, caller_id: NodeId, callee_name: String) {
+    fn record_call(&mut self, caller_id: NodeId, callee_name: String, line: u32) {
         if callee_name.is_empty() {
             return;
         }
         if let Some(callee_id) = self.fn_index.get(&callee_name).cloned() {
-            let edge = Edge {
-                src: caller_id,
-                dst: callee_id,
-                kind: EdgeKind::Calls,
-            };
+            let edge = Edge::call(caller_id, callee_id, line);
             if !self.edges.contains(&edge) {
                 self.edges.push(edge);
             }
         } else if !self
             .deferred_calls
             .iter()
-            .any(|(c, n)| c == &caller_id && n == &callee_name)
+            .any(|(c, n, _)| c == &caller_id && n == &callee_name)
         {
-            self.deferred_calls.push((caller_id, callee_name));
+            self.deferred_calls.push((caller_id, callee_name, line));
         }
     }
 }
@@ -837,7 +853,7 @@ mod tests {
     ) -> (
         Vec<gitcortex_core::graph::Node>,
         Vec<gitcortex_core::graph::Edge>,
-        Vec<(gitcortex_core::graph::NodeId, String)>,
+        Vec<(gitcortex_core::graph::NodeId, String, u32)>,
         Vec<(gitcortex_core::graph::NodeId, String)>,
         Vec<(gitcortex_core::graph::NodeId, String)>,
         Vec<(gitcortex_core::graph::NodeId, String)>,

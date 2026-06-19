@@ -2,6 +2,41 @@
 
 All notable changes to GitCortex are documented here.
 
+## [0.5.0] - 2026-06-18
+
+### Added
+- **7 new MCP tools** (15 → 22): `graph_stats` (per-kind node/edge counts),
+  `ast_search` (structural filter by kind/async/visibility/complexity/annotation),
+  `type_hierarchy` (supertypes + subtypes), `find_importers`, `find_type_usages`,
+  `module_dependencies`, and `get_call_sites` (caller + exact call line).
+- **Semantic search** — local embeddings (AllMiniLM-L6-v2 via fastembed),
+  merged into `search_code` with graceful text-only fallback.
+- **Richer graph data:** cyclomatic complexity (all 5 languages),
+  decorator/annotation metadata (queryable even for external decorators),
+  exact call-site lines, and **edge confidence** (extracted vs inferred).
+- **Configurable response token budget** (`GCX_RESPONSE_BUDGET`, default 2000) —
+  every list tool truncates to fit, so a high-fan-out symbol never out-costs grep.
+- No-seed `start_tour` now emits a component-level **architecture summary**
+  (files grouped by directory, key symbols with `file:line`, cross-component deps).
+
+### Changed
+- **Search rewrite:** CamelCase/snake_case tokenisation, token-overlap scoring,
+  Levenshtein typo tolerance, revised ranking ladder (exact > prefix > semantic
+  > substring).
+- Rust files now get a file-level module node (consistent with the other 4
+  languages) so imports attach to a real node.
+- Schema version 6 → 11 (auto-wipes + re-indexes on first run).
+- **Honest benchmark methodology:** median-of-N with rate-limit retries,
+  throttling, and errored-session exclusion. Reported result is a net
+  **+7.7 % token saving** (geomean 1.06×), with `search_code` at 1.30× and ~half
+  the turns of grep — replacing earlier single-run numbers that were too noisy.
+
+### Fixed
+- Rust `Imports` edges were silently dropped (placeholder source id → dangling
+  edge); they now attach to the file module node and persist.
+- Search handled neither space-separated multi-token queries nor typos.
+- Semantic search hits were resolved by name instead of id, dropping every hit.
+
 ## [0.3.0] - 2026-05-27
 
 ### Added

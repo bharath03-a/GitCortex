@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::{
     error::GitCortexError,
-    schema::{CodeSmell, DesignPattern, EdgeKind, NodeKind, SolidHint, Visibility},
+    schema::{CodeSmell, DesignPattern, EdgeConfidence, EdgeKind, NodeKind, SolidHint, Visibility},
 };
 
 // ── Identifiers ──────────────────────────────────────────────────────────────
@@ -111,6 +111,12 @@ pub struct NodeMetadata {
     /// Captured generic constraints, e.g. `["T: Send", "T: 'static"]` or
     /// `["T extends Base", "K extends keyof T"]`.
     pub generic_bounds: Vec<String>,
+    /// Decorator / annotation names applied to this symbol, e.g.
+    /// `["dataclass"]`, `["Override"]`, `["derive", "Serialize"]`. Captured
+    /// regardless of whether the decorator is defined in-repo, so framework
+    /// decorators (`@app.route`, `@Test`) remain queryable even though their
+    /// `Annotated` edge target is external and dropped.
+    pub annotations: Vec<String>,
     /// Pass-2 LLD annotations. Empty until pass 2 runs.
     pub lld: LldLabels,
     /// Raw source-text capture — signature, body, doc-comment, byte range.
@@ -140,6 +146,46 @@ pub struct Edge {
     pub src: NodeId,
     pub dst: NodeId,
     pub kind: EdgeKind,
+    /// Source line of the relationship's origin, when meaningful. Set for
+    /// `Calls` edges (the line of the call expression) so call sites can be
+    /// pinpointed; `None` for structural edges (Contains, Implements, …).
+    #[serde(default)]
+    pub line: Option<u32>,
+    /// How confident the indexer is this edge is real (see [`EdgeConfidence`]).
+    #[serde(default)]
+    pub confidence: EdgeConfidence,
+}
+
+impl Edge {
+    /// Construct an edge with no associated source line (structural edges).
+    /// Defaults to `Extracted` confidence.
+    pub fn new(src: NodeId, dst: NodeId, kind: EdgeKind) -> Self {
+        Self {
+            src,
+            dst,
+            kind,
+            line: None,
+            confidence: EdgeConfidence::Extracted,
+        }
+    }
+
+    /// Construct a `Calls` edge carrying the call-expression line.
+    pub fn call(src: NodeId, dst: NodeId, line: u32) -> Self {
+        Self {
+            src,
+            dst,
+            kind: EdgeKind::Calls,
+            line: Some(line),
+            confidence: EdgeConfidence::Extracted,
+        }
+    }
+
+    /// Set the edge's confidence (builder-style), e.g. mark a cross-file
+    /// name-resolved edge as `Inferred`.
+    pub fn with_confidence(mut self, confidence: EdgeConfidence) -> Self {
+        self.confidence = confidence;
+        self
+    }
 }
 
 // ── Graph diff ────────────────────────────────────────────────────────────────
@@ -161,7 +207,8 @@ pub struct GraphDiff {
     /// Cross-file calls that couldn't be resolved against the diff-local node
     /// set (because the callee lives in an unchanged file). The store resolves
     /// these after inserting the new nodes, using its full existing data.
-    pub deferred_calls: Vec<(NodeId, String)>,
+    /// Tuple: `(caller_id, callee_name, call_line)`.
+    pub deferred_calls: Vec<(NodeId, String, u32)>,
     /// Same for parameter/return-type Uses edges.
     pub deferred_uses: Vec<(NodeId, String)>,
     /// Same for struct→trait Implements edges.

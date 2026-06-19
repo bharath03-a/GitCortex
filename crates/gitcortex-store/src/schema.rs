@@ -48,6 +48,8 @@ pub fn ensure_branch(conn: &mut Connection, branch: &str) -> Result<()> {
             def_doc        STRING, \
             def_start_byte INT64,  \
             def_end_byte   INT64,  \
+            complexity     INT64,  \
+            annotations    STRING, \
             PRIMARY KEY(id)\
         )"
     ))
@@ -56,10 +58,25 @@ pub fn ensure_branch(conn: &mut Connection, branch: &str) -> Result<()> {
     conn.query(&format!(
         "CREATE REL TABLE IF NOT EXISTS {et} (\
             FROM {nt} TO {nt},\
-            kind STRING\
+            kind STRING,\
+            line INT64,\
+            confidence STRING\
         )"
     ))
     .map_err(|e| GitCortexError::Store(format!("create edge table: {e}")))?;
+
+    // Secondary indexes on columns hit by every deferred-resolution WHERE clause.
+    // Best-effort: KuzuDB auto-indexes PKs; secondary index support depends on
+    // the runtime version. Warn and continue rather than fail init.
+    for (idx, col) in [
+        (format!("{nt}_name_idx"), "name"),
+        (format!("{nt}_qname_idx"), "qualified_name"),
+        (format!("{nt}_file_idx"), "file"),
+    ] {
+        if let Err(e) = conn.query(&format!("CREATE INDEX IF NOT EXISTS {idx} ON {nt}({col})")) {
+            tracing::debug!("secondary index {idx} skipped: {e}");
+        }
+    }
 
     Ok(())
 }

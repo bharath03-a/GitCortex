@@ -7,7 +7,7 @@ use std::{
 use gitcortex_core::{
     error::{GitCortexError, Result},
     graph::{Edge, GraphDiff, Node, NodeId, NodeMetadata, Span},
-    schema::{EdgeKind, NodeKind, Visibility},
+    schema::{EdgeConfidence, EdgeKind, NodeKind, Visibility},
 };
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use rayon::prelude::*;
@@ -19,13 +19,13 @@ use crate::{
 
 type FileIndexResult = Result<(
     GraphDiff,
-    Vec<(NodeId, String)>, // deferred_calls
-    Vec<(NodeId, String)>, // deferred_uses
-    Vec<(NodeId, String)>, // deferred_implements
-    Vec<(NodeId, String)>, // deferred_imports
-    Vec<(NodeId, String)>, // deferred_inherits
-    Vec<(NodeId, String)>, // deferred_throws
-    Vec<(NodeId, String)>, // deferred_annotated
+    Vec<(NodeId, String, u32)>, // deferred_calls
+    Vec<(NodeId, String)>,      // deferred_uses
+    Vec<(NodeId, String)>,      // deferred_implements
+    Vec<(NodeId, String)>,      // deferred_imports
+    Vec<(NodeId, String)>,      // deferred_inherits
+    Vec<(NodeId, String)>,      // deferred_throws
+    Vec<(NodeId, String)>,      // deferred_annotated
 )>;
 
 // ── IncrementalIndexer ────────────────────────────────────────────────────────
@@ -95,7 +95,7 @@ impl IncrementalIndexer {
 
         // Merge diffs and collect all deferred (cross-file) references.
         let mut merged = GraphDiff::default();
-        let mut all_calls: Vec<(NodeId, String)> = Vec::new();
+        let mut all_calls: Vec<(NodeId, String, u32)> = Vec::new();
         let mut all_uses: Vec<(NodeId, String)> = Vec::new();
         let mut all_implements: Vec<(NodeId, String)> = Vec::new();
         let mut all_imports: Vec<(NodeId, String)> = Vec::new();
@@ -150,11 +150,10 @@ impl IncrementalIndexer {
             .map(|e| (e.src.as_str(), e.dst.as_str(), e.kind.to_string()))
             .collect();
 
-        merged.deferred_calls = resolve_deferred(
+        merged.deferred_calls = resolve_calls(
             &name_to_ids,
             &id_to_file,
             &all_calls,
-            EdgeKind::Calls,
             &mut merged.added_edges,
             &mut seen_edges,
         );
@@ -213,6 +212,31 @@ impl IncrementalIndexer {
             merged.added_edges.len()
         ));
 
+        // Mirror annotation NAMES onto each decorated node's metadata. The
+        // `Annotated` edge above only survives when the decorator is defined
+        // in-repo; most framework decorators (`@app.route`, `@Test`) are
+        // external and dropped. Storing the names as metadata keeps them
+        // queryable regardless.
+        {
+            let mut ann_by_id: HashMap<String, Vec<String>> = HashMap::new();
+            for (node_id, name) in &all_annotated {
+                ann_by_id
+                    .entry(node_id.as_str())
+                    .or_default()
+                    .push(name.clone());
+            }
+            for node in &mut merged.added_nodes {
+                if let Some(names) = ann_by_id.get(&node.id.as_str()) {
+                    let mut seen: HashSet<String> = HashSet::new();
+                    node.metadata.annotations = names
+                        .iter()
+                        .filter(|n| seen.insert((*n).clone()))
+                        .cloned()
+                        .collect();
+                }
+            }
+        }
+
         for deleted in to_delete {
             merged.removed_files.push(deleted.path().to_owned());
         }
@@ -240,7 +264,7 @@ impl IncrementalIndexer {
         let empty = || {
             (
                 GraphDiff::default(),
-                Vec::<(NodeId, String)>::new(),
+                Vec::<(NodeId, String, u32)>::new(),
                 Vec::<(NodeId, String)>::new(),
                 Vec::<(NodeId, String)>::new(),
                 Vec::<(NodeId, String)>::new(),
@@ -376,15 +400,75 @@ fn resolve_deferred(
             matched_any = true;
             let key = (src_id.as_str(), dst_id.as_str(), kind.to_string());
             if seen.insert(key) {
-                edges.push(Edge {
-                    src: src_id.clone(),
-                    dst: dst_id.clone(),
-                    kind: kind.clone(),
-                });
+                // Cross-file name resolution — lower confidence than a direct
+                // same-file edge.
+                edges.push(
+                    Edge::new(src_id.clone(), dst_id.clone(), kind.clone())
+                        .with_confidence(EdgeConfidence::Inferred),
+                );
             }
         }
         if !matched_any {
             unresolved.push((src_id.clone(), target_name.clone()));
+        }
+    }
+    unresolved
+}
+
+/// Like [`resolve_deferred`] but for `Calls` edges, carrying each call's source
+/// line onto the resulting edge. Unresolved calls are returned as
+/// `(caller_id, callee_name, line)` so the store can resolve them later and
+/// still record the line.
+fn resolve_calls(
+    name_to_ids: &HashMap<&str, Vec<&NodeId>>,
+    id_to_file: &HashMap<&NodeId, &Path>,
+    deferred: &[(NodeId, String, u32)],
+    edges: &mut Vec<Edge>,
+    seen: &mut HashSet<(String, String, String)>,
+) -> Vec<(NodeId, String, u32)> {
+    let mut unresolved = Vec::new();
+    for (src_id, target_name, line) in deferred {
+        let src_exts = id_to_file
+            .get(src_id)
+            .and_then(|p| language_extensions_for_path(p));
+
+        let Some(dst_ids) = name_to_ids.get(target_name.as_str()) else {
+            unresolved.push((src_id.clone(), target_name.clone(), *line));
+            continue;
+        };
+
+        let candidates: Vec<&NodeId> = dst_ids
+            .iter()
+            .copied()
+            .filter(|dst_id| match (src_exts, id_to_file.get(*dst_id)) {
+                (Some(exts), Some(dst_path)) => language_extensions_for_path(dst_path)
+                    .map(|dst_exts| dst_exts.first() == exts.first())
+                    .unwrap_or(true),
+                _ => true,
+            })
+            .collect();
+
+        if candidates.len() > MAX_RESOLVE_FANOUT {
+            continue;
+        }
+
+        let mut matched_any = false;
+        for dst_id in candidates {
+            matched_any = true;
+            let key = (
+                src_id.as_str(),
+                dst_id.as_str(),
+                EdgeKind::Calls.to_string(),
+            );
+            if seen.insert(key) {
+                edges.push(
+                    Edge::call(src_id.clone(), dst_id.clone(), *line)
+                        .with_confidence(EdgeConfidence::Inferred),
+                );
+            }
+        }
+        if !matched_any {
+            unresolved.push((src_id.clone(), target_name.clone(), *line));
         }
     }
     unresolved
@@ -469,6 +553,8 @@ fn build_structural_nodes(diff: &GraphDiff) -> (Vec<Node>, Vec<Edge>) {
                     src: file_id.clone(),
                     dst: node.id.clone(),
                     kind: EdgeKind::Contains,
+                    line: None,
+                    confidence: EdgeConfidence::Extracted,
                 });
             }
         }
@@ -514,6 +600,8 @@ fn build_structural_nodes(diff: &GraphDiff) -> (Vec<Node>, Vec<Edge>) {
                     src: dir_id.clone(),
                     dst: file_id.clone(),
                     kind: EdgeKind::Contains,
+                    line: None,
+                    confidence: EdgeConfidence::Extracted,
                 });
             }
         }
@@ -529,6 +617,8 @@ fn build_structural_nodes(diff: &GraphDiff) -> (Vec<Node>, Vec<Edge>) {
                     src: parent_id.clone(),
                     dst: child_id,
                     kind: EdgeKind::Contains,
+                    line: None,
+                    confidence: EdgeConfidence::Extracted,
                 });
             }
         }

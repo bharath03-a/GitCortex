@@ -43,8 +43,9 @@ fn node_csv_line(n: &Node) -> String {
     let m = &n.metadata;
     let d = &m.definition;
     // Order must match `schema::ensure_branch` node-table columns.
+    let complexity: i64 = m.lld.complexity.map(|c| c as i64).unwrap_or(-1);
     format!(
-        "{id},{kind},{name},{qname},{file},{sl},{el},{loc},{vis},{ia},{iu},{ist},{iab},{ifi},{ip},{ig},{ic},{gb},{ds},{db},{dd},{dsb},{deb}",
+        "{id},{kind},{name},{qname},{file},{sl},{el},{loc},{vis},{ia},{iu},{ist},{iab},{ifi},{ip},{ig},{ic},{gb},{ds},{db},{dd},{dsb},{deb},{cx},{ann}",
         id = csv_quote(&n.id.as_str()),
         kind = csv_quote(&n.kind.to_string()),
         name = csv_quote(&n.name),
@@ -68,6 +69,8 @@ fn node_csv_line(n: &Node) -> String {
         dd = csv_quote(d.doc_comment.as_deref().unwrap_or("")),
         dsb = d.start_byte,
         deb = d.end_byte,
+        cx = complexity,
+        ann = csv_quote(&m.annotations.join("|")),
     )
 }
 
@@ -125,8 +128,17 @@ pub(super) fn bulk_load(
             if !seen_edges.insert((s.clone(), d.clone(), k.clone())) {
                 continue;
             }
-            writeln!(w, "{},{},{}", csv_quote(&s), csv_quote(&d), csv_quote(&k))
-                .map_err(|e| GitCortexError::Store(format!("write edges.csv: {e}")))?;
+            let line = e.line.map(|l| l as i64).unwrap_or(-1);
+            writeln!(
+                w,
+                "{},{},{},{},{}",
+                csv_quote(&s),
+                csv_quote(&d),
+                csv_quote(&k),
+                line,
+                csv_quote(&e.confidence.to_string())
+            )
+            .map_err(|e| GitCortexError::Store(format!("write edges.csv: {e}")))?;
             edge_count += 1;
         }
         w.flush()

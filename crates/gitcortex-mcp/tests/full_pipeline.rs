@@ -11,6 +11,56 @@ use std::sync::Mutex;
 
 static KUZU_LOCK: Mutex<()> = Mutex::new(());
 
+/// Commit multiple fixture files in a single git commit.
+fn commit_files(dir: &Path, fixtures: &[&str]) {
+    for name in fixtures {
+        let src = Path::new(FIXTURES).join(name);
+        std::fs::copy(&src, dir.join(name)).expect("copy fixture");
+    }
+    let names: Vec<&str> = fixtures.to_vec();
+    let mut add_args = vec!["add"];
+    add_args.extend_from_slice(&names);
+    let status = Command::new("git")
+        .args(&add_args)
+        .current_dir(dir)
+        .status()
+        .expect("git add failed");
+    assert!(status.success(), "git add failed");
+    let status = Command::new("git")
+        .args(["commit", "-m", "add fixtures"])
+        .current_dir(dir)
+        .status()
+        .expect("git commit failed");
+    assert!(status.success(), "git commit failed");
+}
+
+/// Run the full pipeline against multiple fixture files committed together.
+fn run_pipeline_multi(
+    fixtures: &[&str],
+) -> (
+    Vec<gitcortex_core::graph::Node>,
+    Vec<gitcortex_core::graph::Edge>,
+    KuzuGraphStore,
+) {
+    let _lock = KUZU_LOCK.lock().expect("lock");
+    let tmp = tempfile::tempdir().expect("tempdir");
+    init_repo(tmp.path());
+    commit_files(tmp.path(), fixtures);
+
+    let indexer = IncrementalIndexer::new(tmp.path()).expect("indexer");
+    let (diff, head_sha) = indexer.run(None).expect("indexer.run");
+
+    let mut store = KuzuGraphStore::open(tmp.path()).expect("store");
+    store.apply_diff("main", &diff).expect("apply_diff");
+    store
+        .set_last_indexed_sha("main", &head_sha)
+        .expect("set sha");
+
+    let nodes = store.list_all_nodes("main").expect("list_all_nodes");
+    let edges = store.list_all_edges("main").expect("list_all_edges");
+    (nodes, edges, store)
+}
+
 use gitcortex_core::store::GraphStore;
 use gitcortex_indexer::IncrementalIndexer;
 use gitcortex_store::kuzu::KuzuGraphStore;
@@ -397,5 +447,547 @@ fn python_comprehensive_dataclass_is_struct() {
         user.unwrap().kind,
         NodeKind::Struct,
         "@dataclass User should be Struct kind"
+    );
+}
+
+// ── Cross-file deferred edge tests ────────────────────────────────────────────
+// These tests verify that deferred edge resolution works across file boundaries:
+// callers in one file resolve to callees defined in a separate file.
+
+#[test]
+fn cross_file_calls_edge_resolved() {
+    let (nodes, _edges, store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
+
+    // Both files' nodes should be indexed.
+    assert!(
+        nodes.iter().any(|n| n.name == "compute_value"),
+        "expected 'compute_value' node from xfile_callee.rs"
+    );
+    assert!(
+        nodes.iter().any(|n| n.name == "run"),
+        "expected 'run' node from xfile_caller.rs"
+    );
+
+    // Deferred call from `run` in xfile_caller.rs → `compute_value` in xfile_callee.rs
+    // should have been resolved as a Calls edge.
+    let callers = store
+        .find_callers("main", "compute_value")
+        .expect("find_callers");
+    assert!(
+        callers.iter().any(|n| n.name == "run"),
+        "expected 'run' as a caller of 'compute_value' across files; got: {:?}",
+        callers.iter().map(|n| &n.name).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn cross_file_calls_edge_multiple_callers() {
+    let (_nodes, _, store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
+
+    // Both `run` and `run_with_branch` call `compute_value`.
+    let callers = store
+        .find_callers("main", "compute_value")
+        .expect("find_callers");
+    let caller_names: Vec<&str> = callers.iter().map(|n| n.name.as_str()).collect();
+    assert!(
+        caller_names.contains(&"run"),
+        "expected 'run' in callers; got {caller_names:?}"
+    );
+    assert!(
+        caller_names.contains(&"run_with_branch"),
+        "expected 'run_with_branch' in callers; got {caller_names:?}"
+    );
+}
+
+#[test]
+fn cross_file_implements_edge_resolved() {
+    let (nodes, edges, _store) = run_pipeline_multi(&["xfile_trait.rs", "xfile_impl.rs"]);
+
+    assert!(
+        nodes.iter().any(|n| n.name == "Processor"),
+        "expected 'Processor' trait from xfile_trait.rs"
+    );
+    assert!(
+        nodes.iter().any(|n| n.name == "Worker"),
+        "expected 'Worker' struct from xfile_impl.rs"
+    );
+
+    // Worker implements Processor — deferred Implements edge should be present.
+    let impl_edges: Vec<_> = edges
+        .iter()
+        .filter(|e| e.kind == EdgeKind::Implements)
+        .collect();
+    assert!(
+        !impl_edges.is_empty(),
+        "expected at least one Implements edge (Worker → Processor)"
+    );
+}
+
+#[test]
+fn module_dependencies_resolves_cross_file() {
+    // xfile_caller imports compute_value (defined in xfile_callee.rs) →
+    // module xfile_caller depends on module xfile_callee.
+    let (_, _, store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
+    let deps = store
+        .module_dependencies("main", "xfile_caller")
+        .expect("module_dependencies");
+    let names: Vec<&str> = deps.iter().map(|n| n.name.as_str()).collect();
+    assert!(
+        names.contains(&"xfile_callee"),
+        "xfile_caller should depend on xfile_callee, got: {names:?}"
+    );
+    // A module never lists itself as a dependency.
+    assert!(!names.contains(&"xfile_caller"), "self-dependency leaked");
+}
+
+#[test]
+fn module_dependencies_unknown_module_is_empty() {
+    let (_, _, store) = run_pipeline_multi(&["sample.rs"]);
+    let deps = store
+        .module_dependencies("main", "no_such_module")
+        .expect("module_dependencies");
+    assert!(deps.is_empty());
+}
+
+#[test]
+fn find_type_usages_finds_signature_references() {
+    // python_comprehensive: create_user(...) -> User; find_users(repository: Repository) -> List[User]
+    // User is used as a return type by multiple functions → Uses edges point to it.
+    let (_, _, store) = run_pipeline_multi(&["python_comprehensive.py"]);
+    let users = store
+        .find_type_usages("main", "User")
+        .expect("find_type_usages");
+    let names: Vec<&str> = users.iter().map(|n| n.name.as_str()).collect();
+    assert!(
+        !users.is_empty(),
+        "User is referenced in several signatures; expected non-empty usages"
+    );
+    assert!(
+        names.contains(&"create_user") || names.contains(&"find_users"),
+        "expected create_user or find_users among User's users, got: {names:?}"
+    );
+}
+
+#[test]
+fn find_type_usages_unknown_type_is_empty() {
+    let (_, _, store) = run_pipeline_multi(&["sample.rs"]);
+    let users = store
+        .find_type_usages("main", "NoSuchTypeXyz")
+        .expect("find_type_usages");
+    assert!(users.is_empty());
+}
+
+#[test]
+fn tour_no_seed_produces_component_summary() {
+    // A no-seed tour must emit a component-grouped architecture summary, and
+    // the markdown must lead with the Architecture/Components section.
+    let (_, _, store) = run_pipeline_multi(&[
+        "xfile_callee.rs",
+        "xfile_caller.rs",
+        "xfile_trait.rs",
+        "xfile_impl.rs",
+    ]);
+    let tour = gitcortex_mcp::mcp::tour::generate(&store, "main", None, Some(12)).expect("tour");
+    assert!(
+        !tour.components.is_empty(),
+        "no-seed tour should produce components"
+    );
+    let md = gitcortex_mcp::mcp::tour::render_markdown(&tour);
+    assert!(
+        md.contains("# Architecture") && md.contains("## Components"),
+        "markdown should lead with architecture summary:\n{md}"
+    );
+}
+
+#[test]
+fn tour_seeded_has_no_components() {
+    let (_, _, store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
+    let tour =
+        gitcortex_mcp::mcp::tour::generate(&store, "main", Some("run"), Some(12)).expect("tour");
+    assert!(
+        tour.components.is_empty(),
+        "seeded tour should not compute components"
+    );
+}
+
+#[test]
+fn edge_confidence_inferred_cross_file_extracted_structural() {
+    use gitcortex_core::schema::EdgeConfidence;
+    // Cross-file run()/run_with_branch() -> compute_value() resolve by name
+    // across files => Inferred. Structural Contains edges are always direct
+    // => Extracted.
+    let (_, edges, _store) =
+        run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs", "sample.rs"]);
+    let calls: Vec<_> = edges.iter().filter(|e| e.kind == EdgeKind::Calls).collect();
+    assert!(
+        calls
+            .iter()
+            .any(|e| e.confidence == EdgeConfidence::Inferred),
+        "expected at least one Inferred (cross-file) calls edge"
+    );
+    let contains: Vec<_> = edges
+        .iter()
+        .filter(|e| e.kind == EdgeKind::Contains)
+        .collect();
+    assert!(!contains.is_empty(), "expected Contains edges");
+    assert!(
+        contains
+            .iter()
+            .all(|e| e.confidence == EdgeConfidence::Extracted),
+        "structural Contains edges must all be Extracted"
+    );
+}
+
+#[test]
+fn get_call_sites_records_caller_and_line() {
+    // xfile_caller.rs: run() and run_with_branch() both call compute_value().
+    // Each call site must report the caller and a concrete line number.
+    let (_, _, store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
+    let sites = store
+        .find_call_sites("main", "compute_value")
+        .expect("find_call_sites");
+    let callers: Vec<&str> = sites.iter().map(|s| s.caller.name.as_str()).collect();
+    assert!(
+        callers.contains(&"run") && callers.contains(&"run_with_branch"),
+        "expected run and run_with_branch as callers, got: {callers:?}"
+    );
+    // Every call site must carry a concrete line number.
+    for s in &sites {
+        assert!(
+            s.line.is_some(),
+            "call site from {} missing a line number",
+            s.caller.name
+        );
+    }
+}
+
+#[test]
+fn get_call_sites_unknown_function_is_empty() {
+    let (_, _, store) = run_pipeline_multi(&["sample.rs"]);
+    let sites = store
+        .find_call_sites("main", "no_such_fn")
+        .expect("find_call_sites");
+    assert!(sites.is_empty());
+}
+
+#[test]
+fn find_importers_resolves_cross_file_rust_import() {
+    // xfile_caller.rs: `use crate::xfile_callee::compute_value;`
+    // The importer's file-level module node must be found for compute_value.
+    let (_, _, store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
+    let importers = store
+        .find_importers("main", "compute_value")
+        .expect("find_importers");
+    assert!(
+        !importers.is_empty(),
+        "compute_value should have at least one importer (xfile_caller module)"
+    );
+    // Importer is the caller file's module node.
+    assert!(
+        importers
+            .iter()
+            .any(|n| n.file.to_string_lossy().contains("xfile_caller")),
+        "expected an importer in xfile_caller.rs, got: {:?}",
+        importers
+            .iter()
+            .map(|n| n.file.display().to_string())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn find_importers_unknown_symbol_is_empty() {
+    let (_, _, store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
+    let importers = store
+        .find_importers("main", "NoSuchSymbolXyz")
+        .expect("find_importers");
+    assert!(importers.is_empty());
+}
+
+#[test]
+fn rust_file_gets_module_node() {
+    // The file-level module node (added for import attachment) must exist.
+    let (nodes, _) = run_pipeline("sample.rs");
+    assert!(
+        nodes
+            .iter()
+            .any(|n| n.kind == NodeKind::Module && n.name == "sample"),
+        "expected a file-level module node named 'sample'"
+    );
+}
+
+#[test]
+fn type_hierarchy_subtypes_from_trait() {
+    // xfile_trait.rs: trait Processor; xfile_impl.rs: impl Processor for Worker.
+    // Querying the trait should list Worker as a subtype.
+    let (_, _, store) = run_pipeline_multi(&["xfile_trait.rs", "xfile_impl.rs"]);
+    let h = store
+        .type_hierarchy("main", "Processor")
+        .expect("type_hierarchy");
+    let sub_names: Vec<&str> = h.subtypes.iter().map(|n| n.name.as_str()).collect();
+    assert!(
+        sub_names.contains(&"Worker"),
+        "Processor subtypes should include Worker, got: {sub_names:?}"
+    );
+}
+
+#[test]
+fn type_hierarchy_supertypes_from_impl() {
+    // From the concrete type's side: Worker implements Processor (supertype).
+    let (_, _, store) = run_pipeline_multi(&["xfile_trait.rs", "xfile_impl.rs"]);
+    let h = store
+        .type_hierarchy("main", "Worker")
+        .expect("type_hierarchy");
+    let super_names: Vec<&str> = h.supertypes.iter().map(|n| n.name.as_str()).collect();
+    assert!(
+        super_names.contains(&"Processor"),
+        "Worker supertypes should include Processor, got: {super_names:?}"
+    );
+}
+
+#[test]
+fn type_hierarchy_unknown_type_is_empty() {
+    let (_, _, store) = run_pipeline_multi(&["sample.rs"]);
+    let h = store
+        .type_hierarchy("main", "NoSuchTypeXyz")
+        .expect("type_hierarchy");
+    assert!(h.supertypes.is_empty() && h.subtypes.is_empty());
+}
+
+#[test]
+fn annotations_captured_as_metadata_for_external_decorators() {
+    // @dataclass is external (stdlib) — its Annotated edge is dropped, but the
+    // name must still be captured on the decorated node's metadata.
+    let (nodes, _) = run_pipeline("python_comprehensive.py");
+    let user = nodes
+        .iter()
+        .find(|n| n.name == "User")
+        .expect("User class node");
+    assert!(
+        user.metadata.annotations.iter().any(|a| a == "dataclass"),
+        "User should carry the dataclass annotation, got: {:?}",
+        user.metadata.annotations
+    );
+}
+
+#[test]
+fn ast_search_by_annotation_finds_decorated() {
+    use gitcortex_core::store::AttributeFilter;
+    let (_, _, store) = run_pipeline_multi(&["python_comprehensive.py"]);
+    let hits = store
+        .search_by_attributes(
+            "main",
+            &AttributeFilter {
+                annotation: Some("staticmethod".into()),
+                ..Default::default()
+            },
+            50,
+        )
+        .expect("search_by_attributes");
+    let names: Vec<&str> = hits.iter().map(|n| n.name.as_str()).collect();
+    assert!(
+        names.contains(&"from_dict"),
+        "@staticmethod search should find from_dict, got: {names:?}"
+    );
+    // Every hit must actually carry the annotation.
+    for n in &hits {
+        assert!(
+            n.metadata
+                .annotations
+                .iter()
+                .any(|a| a.contains("staticmethod")),
+            "{} lacks staticmethod annotation",
+            n.name
+        );
+    }
+}
+
+#[test]
+fn ast_search_async_methods_only() {
+    use gitcortex_core::store::AttributeFilter;
+    let (_, _, store) = run_pipeline_multi(&["python_comprehensive.py"]);
+    let filter = AttributeFilter {
+        kind: Some(NodeKind::Method),
+        is_async: Some(true),
+        ..Default::default()
+    };
+    let hits = store
+        .search_by_attributes("main", &filter, 50)
+        .expect("search_by_attributes");
+    let names: Vec<&str> = hits.iter().map(|n| n.name.as_str()).collect();
+    // AsyncService.fetch_user / save_user are async methods.
+    assert!(
+        names.contains(&"fetch_user"),
+        "expected async method fetch_user, got: {names:?}"
+    );
+    // Every result must actually be an async method.
+    for n in &hits {
+        assert_eq!(n.kind, NodeKind::Method);
+        assert!(n.metadata.is_async, "{} not async", n.name);
+    }
+}
+
+#[test]
+fn ast_search_kind_filter_excludes_others() {
+    use gitcortex_core::store::AttributeFilter;
+    let (_, _, store) = run_pipeline_multi(&["sample.rs"]);
+    let filter = AttributeFilter {
+        kind: Some(NodeKind::Trait),
+        ..Default::default()
+    };
+    let hits = store
+        .search_by_attributes("main", &filter, 50)
+        .expect("search_by_attributes");
+    assert!(!hits.is_empty(), "expected at least the Greeter trait");
+    for n in &hits {
+        assert_eq!(n.kind, NodeKind::Trait, "{} is not a trait", n.name);
+    }
+}
+
+#[test]
+fn ast_search_complexity_lower_bound() {
+    use gitcortex_core::store::AttributeFilter;
+    // run_with_branch has complexity 2; a min of 2 must include it, min of 3 must not.
+    let (_, _, store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
+
+    let at_least_2 = store
+        .search_by_attributes(
+            "main",
+            &AttributeFilter {
+                min_complexity: Some(2),
+                ..Default::default()
+            },
+            50,
+        )
+        .expect("search");
+    assert!(
+        at_least_2.iter().any(|n| n.name == "run_with_branch"),
+        "complexity≥2 should include run_with_branch"
+    );
+
+    let at_least_3 = store
+        .search_by_attributes(
+            "main",
+            &AttributeFilter {
+                min_complexity: Some(3),
+                ..Default::default()
+            },
+            50,
+        )
+        .expect("search");
+    assert!(
+        !at_least_3.iter().any(|n| n.name == "run_with_branch"),
+        "complexity≥3 should exclude run_with_branch (complexity 2)"
+    );
+}
+
+#[test]
+fn graph_stats_totals_match_kind_sums() {
+    let (nodes, edges, store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
+    let stats = store.graph_stats("main").expect("graph_stats");
+
+    // Totals must equal the raw node/edge counts.
+    assert_eq!(stats.total_nodes as usize, nodes.len());
+    assert_eq!(stats.total_edges as usize, edges.len());
+
+    // Per-kind tallies must sum to the totals.
+    let node_sum: u64 = stats.nodes_by_kind.iter().map(|(_, c)| c).sum();
+    let edge_sum: u64 = stats.edges_by_kind.iter().map(|(_, c)| c).sum();
+    assert_eq!(node_sum, stats.total_nodes);
+    assert_eq!(edge_sum, stats.total_edges);
+
+    // Known fixtures: function nodes and at least one calls edge exist.
+    assert!(
+        stats
+            .nodes_by_kind
+            .iter()
+            .any(|(k, c)| k == "function" && *c >= 2),
+        "expected ≥2 function nodes, got: {:?}",
+        stats.nodes_by_kind
+    );
+    assert!(
+        stats
+            .edges_by_kind
+            .iter()
+            .any(|(k, c)| k == "calls" && *c >= 1),
+        "expected ≥1 calls edge, got: {:?}",
+        stats.edges_by_kind
+    );
+}
+
+#[test]
+fn graph_stats_kind_counts_sorted_descending() {
+    let (_, _, store) = run_pipeline_multi(&["sample.py", "python_comprehensive.py"]);
+    let stats = store.graph_stats("main").expect("graph_stats");
+    // Output must be sorted by count descending for deterministic display.
+    for w in stats.nodes_by_kind.windows(2) {
+        assert!(
+            w[0].1 >= w[1].1,
+            "nodes_by_kind not sorted desc: {:?}",
+            stats.nodes_by_kind
+        );
+    }
+}
+
+#[test]
+fn find_unused_symbols_returns_uncalled_nodes() {
+    // compute_value is CALLED by run() and run_with_branch(), so it should NOT
+    // appear as unused. DataStore is defined but never called or used as a type.
+    let (_, _, store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
+    let unused = store
+        .find_unused_symbols("main", None)
+        .expect("find_unused_symbols");
+    let unused_names: Vec<&str> = unused.iter().map(|n| n.name.as_str()).collect();
+
+    assert!(
+        !unused_names.contains(&"compute_value"),
+        "compute_value is called by run() — must not appear in unused: {unused_names:?}"
+    );
+    assert!(
+        unused_names.contains(&"DataStore"),
+        "DataStore has no callers or uses — must appear in unused: {unused_names:?}"
+    );
+}
+
+#[test]
+fn find_unused_symbols_kind_filter() {
+    // With kind=function, only functions/methods should be returned.
+    let (_, _, store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
+    let unused = store
+        .find_unused_symbols("main", Some(NodeKind::Function))
+        .expect("find_unused_symbols kind=function");
+    for node in &unused {
+        assert!(
+            matches!(node.kind, NodeKind::Function | NodeKind::Method),
+            "kind filter returned non-function: {node:?}"
+        );
+    }
+}
+
+#[test]
+fn cyclomatic_complexity_simple_function() {
+    let (nodes, _) = run_pipeline("sample.rs");
+    // make_greeting calls h.greet() — linear function, complexity should be 1.
+    let f = nodes.iter().find(|n| n.name == "make_greeting");
+    assert!(f.is_some(), "expected 'make_greeting'");
+    let complexity = f.unwrap().metadata.lld.complexity;
+    assert_eq!(
+        complexity,
+        Some(1),
+        "linear function should have complexity 1, got {complexity:?}"
+    );
+}
+
+#[test]
+fn cyclomatic_complexity_branching_function() {
+    let (nodes, _, _store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
+    // run_with_branch has one `if` → complexity 2.
+    let f = nodes.iter().find(|n| n.name == "run_with_branch");
+    assert!(f.is_some(), "expected 'run_with_branch'");
+    let complexity = f.unwrap().metadata.lld.complexity;
+    assert_eq!(
+        complexity,
+        Some(2),
+        "function with one `if` should have complexity 2, got {complexity:?}"
     );
 }

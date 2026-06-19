@@ -9,6 +9,7 @@ rust-version.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+fastembed.workspace = true
 gitcortex-core.workspace = true
 gitcortex-store.workspace = true
 rmcp.workspace = true
