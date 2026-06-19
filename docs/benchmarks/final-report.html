@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>GitCortex Benchmark — stable run 2026-06-16</title>
+<title>GitCortex Benchmark — stable run 2026-06-18</title>
 <style>
 :root{--bg:#f9f7f3;--fg:#2a2622;--mut:#6b6359;--accent:#c96442;--line:#e7e1d8}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);
@@ -30,7 +30,7 @@ a{color:var(--accent)}
 </style></head>
 <body>
 <article>
-  <div class="meta"><span class="tag">Benchmark</span><span>2026-06-16</span></div>
+  <div class="meta"><span class="tag">Benchmark</span><span>2026-06-18</span></div>
   <h1>Does a code knowledge graph help AI work more efficiently?</h1>
   <p class="lede">Measured Claude token usage on real developer questions, once
   with ordinary file search, once with the GitCortex graph (compact MCP). This is
@@ -58,7 +58,7 @@ a{color:var(--accent)}
   <p class="note">Java (gson) is the consistent drag — the parser is shallowest
   there. Large/idiomatic repos benefit most; tiny repos favour grep.</p>
 
-  <h2>What shipped this cycle</h2>
+  <h2>What shipped in v0.5.0</h2>
   <ul class="notes"><li><strong>7 new MCP tools</strong> (15 → 22): graph_stats, ast_search, type_hierarchy, find_importers, find_type_usages, module_dependencies, get_call_sites.</li>
 <li><strong>Configurable response token budget</strong> (<code>GCX_RESPONSE_BUDGET</code>, default 2000): every list tool truncates to fit, so a high-fan-out symbol can never out-cost grep.</li>
 <li><strong>Edge confidence</strong> (extracted vs inferred): cross-file name-resolved edges are flagged lower-confidence — a precision signal.</li>

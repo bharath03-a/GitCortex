@@ -42,6 +42,9 @@ REPO_LANG = {
     "gson": "Java",
 }
 
+# Release this report documents.
+VERSION = "0.5.0"
+
 # Previous published run — preserved behind a dated toggle.
 PREV_DATE = "2026-06-06"
 PREV_FILE = "final-report-2026-06-06.html"
@@ -190,7 +193,7 @@ def render(data: dict) -> str:
   <p class="note">Java (gson) is the consistent drag — the parser is shallowest
   there. Large/idiomatic repos benefit most; tiny repos favour grep.</p>
 
-  <h2>What shipped this cycle</h2>
+  <h2>What shipped in v{VERSION}</h2>
   <ul class="notes">{notes}</ul>
 
   <details class="prev">
