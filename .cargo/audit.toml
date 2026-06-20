@@ -1,0 +1,10 @@
+# cargo-audit configuration.
+#
+# Unmaintained (not vulnerable) transitive crates pulled in by the
+# semantic-search stack (fastembed → ort / hf-hub). No upgrade path exists and
+# neither is exploitable, so the warnings are ignored to keep the audit green.
+[advisories]
+ignore = [
+    "RUSTSEC-2024-0436", # paste — unmaintained (via ort/ML deps)
+    "RUSTSEC-2025-0119", # number_prefix — unmaintained (via hf-hub)
+]

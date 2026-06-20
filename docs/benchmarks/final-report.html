@@ -1,11 +1,24 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>GitCortex Benchmark — stable run 2026-06-18</title>
+<title>GitCortex Benchmark — stable run 2026-06-19</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%23f9f7f3'/><line x1='18' y1='18' x2='46' y2='32' stroke='%23c96442' stroke-width='3' stroke-linecap='round'/><line x1='18' y1='18' x2='32' y2='50' stroke='%23c96442' stroke-width='3' stroke-linecap='round'/><circle cx='18' cy='18' r='7' fill='%23c96442'/><circle cx='46' cy='32' r='5.5' fill='%23e0a07f'/><circle cx='32' cy='50' r='5.5' fill='%23e0a07f'/></svg>">
 <style>
-:root{--bg:#f9f7f3;--fg:#2a2622;--mut:#6b6359;--accent:#c96442;--line:#e7e1d8}
+:root{--bg:#f9f7f3;--fg:#2a2622;--mut:#6b6359;--subtle:#8a8178;--accent:#c96442;--line:#e7e1d8}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);
-font-family:Inter,-apple-system,system-ui,sans-serif;line-height:1.6}
+font-family:Inter,-apple-system,system-ui,sans-serif;line-height:1.6;
+-webkit-font-smoothing:antialiased}
+.nav{position:sticky;top:0;z-index:20;background:rgba(249,247,243,.92);
+backdrop-filter:blur(12px) saturate(140%);border-bottom:1px solid var(--line)}
+.nav-inner{max-width:760px;margin:0 auto;padding:14px 24px;display:flex;
+align-items:center;justify-content:space-between}
+.nav-brand{display:flex;align-items:center;gap:9px;font-size:16px;font-weight:700;
+color:var(--fg);text-decoration:none;letter-spacing:-.02em}
+.nav-right{font-size:13px}.nav-right a{color:var(--subtle);text-decoration:none}
+.nav-right a:hover{color:var(--fg)}
 article{max-width:760px;margin:0 auto;padding:48px 24px 96px}
 .meta{display:flex;gap:12px;align-items:center;color:var(--mut);font-size:14px;margin-bottom:16px}
 .tag{background:var(--accent);color:#fff;padding:2px 10px;border-radius:99px;font-weight:600}
@@ -29,8 +42,14 @@ ul.notes{padding-left:20px}ul.notes li{margin:7px 0}
 a{color:var(--accent)}
 </style></head>
 <body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="nav-brand" href="https://github.com/bharath03-a/GitCortex"><svg width="22" height="22" viewBox="0 0 26 26" fill="none"><path d="M7 7L19 13M7 7L13 19M19 13L13 19" stroke="#c96442" stroke-width="1.6" stroke-linecap="round"/><circle cx="7" cy="7" r="3.2" fill="#c96442"/><circle cx="19" cy="13" r="2.6" fill="#e0a07f"/><circle cx="13" cy="19" r="2.6" fill="#e0a07f"/></svg> GitCortex</a>
+    <div class="nav-right"><a href="https://github.com/bharath03-a/GitCortex">GitHub ↗</a></div>
+  </div>
+</nav>
 <article>
-  <div class="meta"><span class="tag">Benchmark</span><span>2026-06-18</span></div>
+  <div class="meta"><span class="tag">Benchmark</span><span>v0.5.0 · 2026-06-19</span></div>
   <h1>Does a code knowledge graph help AI work more efficiently?</h1>
   <p class="lede">Measured Claude token usage on real developer questions, once
   with ordinary file search, once with the GitCortex graph (compact MCP). This is
