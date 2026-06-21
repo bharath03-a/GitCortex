@@ -38,7 +38,7 @@ const MIN_TOKEN_LEN: usize = 3;
 /// "validate_token"  → ["validate", "token"]
 /// "parseJSONResponse" → ["parse", "j", "s", "o", "n", "response"]  (intentional — acronyms split per char)
 /// "HTTPClient"      → ["h", "t", "t", "p", "client"]
-fn tokenize(s: &str) -> Vec<String> {
+pub(crate) fn tokenize(s: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut current = String::new();
     let chars: Vec<char> = s.chars().collect();

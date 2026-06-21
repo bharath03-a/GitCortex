@@ -2,6 +2,29 @@
 
 All notable changes to GitCortex are documented here.
 
+## [0.5.1] - 2026-06-21
+
+### Fixed
+- **fastembed cache leak (P0):** model weights (`.fastembed_cache/`, ~23 MB) were
+  written into the developer's repo root on every `gcx serve`. Cache now lives at
+  `$XDG_DATA_HOME/gitcortex/models` — fully machine-local, invisible to developers.
+  Added `.fastembed_cache/` to `.gitignore` and `.gitcortex/ignore` as a backstop.
+- **Semantic index version check:** format version was silently ignored on load, so
+  changing the node text representation had no effect. Version mismatches now force
+  a clean rebuild. Format version bumped to 2.
+
+### Changed
+- **Richer semantic embeddings:** `node_text` now appends identifier-tokenised words
+  (CamelCase/snake_case split into lowercase tokens) alongside the qualified name and
+  signature. NL queries like "validate token" now match `validate_token` without
+  relying on the model to unsplit glued identifiers.
+- **Scaled semantic scoring:** semantic hits are scored by actual cosine similarity
+  mapped to `[40‥70]` instead of a fixed 45. A cosine-0.95 hit ranks near a prefix
+  match; a cosine-0.51 hit ranks below token matches — proportional confidence.
+- **Dedup by node ID:** semantic hits were previously deduplicated by symbol name,
+  silently dropping same-named symbols from different modules. Dedup is now by
+  qualified name, so all variants surface.
+
 ## [0.5.0] - 2026-06-18
 
 ### Added

@@ -65,6 +65,18 @@ fn home_dir() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from("."))
 }
 
+/// Shared model cache directory: `$XDG_DATA_HOME/gitcortex/models`
+///
+/// Shared across all repos — the embedding model is identical everywhere.
+/// fastembed-rs writes the downloaded model here instead of `.fastembed_cache`
+/// in the repo root.
+pub fn models_dir() -> PathBuf {
+    let base = std::env::var("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| home_dir().join(".local/share"));
+    base.join("gitcortex").join("models")
+}
+
 /// Path to the single KuzuDB file for a repo (all branches, namespaced by table prefix).
 pub fn db_path(repo_id: &str) -> PathBuf {
     data_dir(repo_id).join("graph.kuzu")

@@ -135,6 +135,31 @@ fn head_sha(repo_root: &Path) -> Result<String> {
     Ok(String::from_utf8(output.stdout)?.trim().to_owned())
 }
 
+const DEFAULT_GITCORTEX_IGNORE: &str = "\
+target/\n\
+build/\n\
+dist/\n\
+vendor/\n\
+**/*.generated.rs\n\
+**/*.pb.rs\n\
+.fastembed_cache/\n\
+";
+
+/// Write `.gitcortex/ignore` if it does not already exist.
+///
+/// The default rules exclude common generated/build artefacts and the
+/// fastembed model-weight cache directory that would otherwise appear in
+/// the repo root if `cache_dir` were not set explicitly.
+pub fn write_gitcortex_ignore(repo_root: &Path) -> Result<()> {
+    let dir = repo_root.join(".gitcortex");
+    fs::create_dir_all(&dir)?;
+    let path = dir.join("ignore");
+    if !path.exists() {
+        fs::write(path, DEFAULT_GITCORTEX_IGNORE).context("write .gitcortex/ignore")?;
+    }
+    Ok(())
+}
+
 pub fn write_agent_guide(repo_root: &Path) -> Result<()> {
     let dir = repo_root.join(".gitcortex");
     fs::create_dir_all(&dir)?;

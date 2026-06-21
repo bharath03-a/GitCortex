@@ -4,3 +4,4 @@ dist/
 vendor/
 **/*.generated.rs
 **/*.pb.rs
+.fastembed_cache/

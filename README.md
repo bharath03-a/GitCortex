@@ -278,7 +278,7 @@ GitCortex initialised  (820ms)
   Graph:     2 141 nodes | 5 328 edges
   Hooks:     4 git hooks installed
   Editors:   Codex, Cursor, Claude Code (auto-detected)
-  Universal: .gitcortex/AGENT_GUIDE.md
+  Universal: .gitcortex/AGENT_GUIDE.md, .gitcortex/ignore
 ```
 
 | Editor      | Files written                                                                                       |
@@ -622,13 +622,16 @@ backend = "local"       # local only in v0.1; remote backend planned
 
 ### `.gitcortex/ignore`
 
-`.gitignore`-syntax patterns for files to exclude from indexing.
+`.gitignore`-syntax patterns for files to exclude from indexing. Created automatically by `gcx init` if it doesn't already exist. Commit it to share exclusions with your team.
 
 ```gitignore
 target/
 build/
+dist/
+vendor/
 **/*.generated.rs
 **/*.pb.rs
+.fastembed_cache/
 ```
 
 ---
@@ -692,13 +695,17 @@ Every node carries: `loc`, `visibility` (Pub / PubCrate / Private), `is_async`, 
 
 ## Data storage
 
-The graph database is stored locally and never committed:
+The graph database and semantic index are stored locally and never committed:
 
 ```
 ~/.local/share/gitcortex/{repo_id}/
-    graph.kuzu       # KuzuDB database (all branches, namespaced by table prefix)
-    main.sha         # last indexed SHA for branch "main"
-    feat__auth.sha   # last indexed SHA for branch "feat/auth"
+    graph.kuzu            # KuzuDB database (all branches, namespaced by table prefix)
+    main.sha              # last indexed SHA for branch "main"
+    feat__auth.sha        # last indexed SHA for branch "feat/auth"
+    embeddings_main.bin   # semantic vector index for branch "main"
+
+~/.local/share/gitcortex/models/
+    # fastembed model weights (~23 MB, downloaded once, shared across all repos)
 ```
 
 ---
@@ -758,9 +765,9 @@ GitCortex builds a **syntactic** graph from tree-sitter ASTs. That's deliberate 
 **Roadmap**
 
 - Pass-2 LLD annotation (SOLID hints, design patterns, code smells, cyclomatic complexity) — schema is already in place.
-- Optional semantic search over `DefinitionText` (signatures + docstrings are already captured).
 - Remote `GraphStore` backend for team-shared graphs (the trait boundary exists today).
 - Deeper Java/Go modeling (fields, annotations, structural interface satisfaction).
+- Code-specific embedding model swap (current: AllMiniLM-L6-v2; identifier tokenisation captures most of the gain cheaply in the meantime).
 
 See [open issues](https://github.com/bharath03-a/GitCortex/issues) for the live list.
 
