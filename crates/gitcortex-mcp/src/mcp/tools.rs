@@ -1503,7 +1503,7 @@ impl GitCortexServer {
 
         // ── Semantic search (best-effort, non-blocking) ───────────────────────
         // try_lock: never block an MCP call waiting for the background indexer.
-        let sem_hits = if let Ok(sem) = self.semantic.try_lock() {
+        let sem_hits: Option<Vec<(String, f32)>> = if let Ok(sem) = self.semantic.try_lock() {
             if let SemanticState::Ready { embedder, index } = &*sem {
                 embedder.embed_one(&p.query).ok().map(|qvec| {
                     let limit = p.limit.unwrap_or(10).min(200);
@@ -1516,29 +1516,42 @@ impl GitCortexServer {
             None
         };
 
-        // ── Merge: resolve semantic IDs to full nodes, deduplicate ────────────
+        // ── Merge: resolve semantic IDs to full nodes, deduplicate by node ID ─
+        // Dedup by node ID (not name) so same-named symbols in different modules
+        // are both surfaced. Score scales cosine [0.50‥1.0] → [40‥70] so a
+        // strong semantic hit ranks near prefix (+60) while weak ones stay below
+        // token matches (+30).
         let mut all_hits = text_hits;
-        let text_names: std::collections::HashSet<String> =
-            all_hits.iter().map(|h| h.name.clone()).collect();
+        let text_ids: std::collections::HashSet<String> = {
+            // text hits don't carry node IDs; dedup by qualified_name as proxy
+            all_hits.iter().map(|h| h.qualified_name.clone()).collect()
+        };
 
-        if let Some(sem_ids) = sem_hits {
-            if !sem_ids.is_empty() {
+        if let Some(scored_ids) = sem_hits {
+            if !scored_ids.is_empty() {
+                let ids: Vec<String> = scored_ids.iter().map(|(id, _)| id.clone()).collect();
+                let sim_map: std::collections::HashMap<String, f32> =
+                    scored_ids.into_iter().collect();
                 let store = match self.store.lock() {
                     Ok(g) => g,
                     Err(_) => {
                         return CallToolResult::error(vec![Content::text("store mutex poisoned")])
                     }
                 };
-                if let Ok(nodes) = store.get_nodes_by_ids(&branch, &sem_ids) {
+                if let Ok(nodes) = store.get_nodes_by_ids(&branch, &ids) {
                     for n in nodes {
-                        if !text_names.contains(&n.name) {
+                        if !text_ids.contains(&n.qualified_name) {
+                            // Map cosine similarity [0.50, 1.0] → score [40, 70]
+                            let node_id_str = n.id.as_str();
+                            let sim = sim_map.get(&node_id_str).copied().unwrap_or(0.5);
+                            let score = (40.0 + (sim - 0.5) * 60.0) as i32;
                             all_hits.push(super::search::SearchHit {
                                 name: n.name,
                                 qualified_name: n.qualified_name,
                                 kind: n.kind.to_string(),
                                 file: n.file.display().to_string(),
                                 start_line: n.span.start_line,
-                                score: 45, // semantic match: between prefix (60) and substring (30)
+                                score,
                             });
                         }
                     }

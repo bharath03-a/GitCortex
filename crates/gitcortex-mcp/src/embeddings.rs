@@ -1,7 +1,8 @@
 //! Semantic search via local embeddings (AllMiniLM-L6-v2, 384 dims).
 //!
-//! Model is downloaded from HuggingFace on first use (~23 MB, cached in
-//! `$XDG_CACHE_HOME/huggingface/hub`). All subsequent starts load from cache.
+//! Model is downloaded from HuggingFace on first use (~23 MB), cached in
+//! `$XDG_DATA_HOME/gitcortex/models` (never inside a repo). All subsequent
+//! starts load from cache.
 //!
 //! Vector index is persisted per-branch at:
 //!   `~/.local/share/gitcortex/{repo_id}/embeddings_{branch}.bin`
@@ -18,13 +19,15 @@ use std::path::{Path, PathBuf};
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use gitcortex_core::graph::Node;
 
+use crate::mcp::search::tokenize;
+
 /// Minimum cosine similarity to surface as a semantic hit.
 const SIMILARITY_THRESHOLD: f32 = 0.50;
 const DIM: usize = 384;
 
 // Binary format: magic + version + dim + count + entries
 const MAGIC: &[u8; 4] = b"GCXV";
-const FORMAT_VERSION: u32 = 1;
+const FORMAT_VERSION: u32 = 2;
 
 // ── Vector index ──────────────────────────────────────────────────────────────
 
@@ -82,9 +85,9 @@ impl SemanticIndex {
         }
     }
 
-    /// Return up to `k` node IDs with cosine similarity ≥ SIMILARITY_THRESHOLD.
+    /// Return up to `k` `(node_id, similarity)` pairs with cosine similarity ≥ SIMILARITY_THRESHOLD.
     /// Query vector need not be pre-normalised — normalised internally.
-    pub fn top_k(&self, query_vec: &[f32], k: usize) -> Vec<String> {
+    pub fn top_k(&self, query_vec: &[f32], k: usize) -> Vec<(String, f32)> {
         let q = unit_normalise(query_vec.to_vec());
         let mut scores: Vec<(&String, f32)> = self
             .vectors
@@ -96,7 +99,7 @@ impl SemanticIndex {
         scores
             .into_iter()
             .take(k)
-            .map(|(id, _)| id.clone())
+            .map(|(id, s)| (id.clone(), s))
             .collect()
     }
 }
@@ -109,10 +112,17 @@ pub struct Embedder {
 
 impl Embedder {
     /// Download (first run) or load (cached) AllMiniLM-L6-v2.
-    pub fn new() -> anyhow::Result<Self> {
+    ///
+    /// `cache_dir` is where fastembed stores the downloaded model weights.
+    /// Pass `branch::models_dir()` so the cache lands in
+    /// `$XDG_DATA_HOME/gitcortex/models`, never inside a repo.
+    pub fn new(cache_dir: &Path) -> anyhow::Result<Self> {
+        std::fs::create_dir_all(cache_dir)?;
         tracing::info!("initialising semantic embedder (AllMiniLM-L6-v2) …");
         let model = TextEmbedding::try_new(
-            InitOptions::new(EmbeddingModel::AllMiniLML6V2).with_show_download_progress(false),
+            InitOptions::new(EmbeddingModel::AllMiniLML6V2)
+                .with_show_download_progress(false)
+                .with_cache_dir(cache_dir.to_path_buf()),
         )?;
         tracing::info!("semantic embedder ready");
         Ok(Self { model })
@@ -133,18 +143,40 @@ impl Embedder {
 // ── Text representation for a node ────────────────────────────────────────────
 
 /// Build the text string that gets embedded for a node.
-/// Format: `"{kind} {qualified_name} {signature} {doc_comment}"`
+///
+/// Appends tokenized identifier words (CamelCase/snake_case → space-separated
+/// lowercase) so NL queries like "validate token" match `validate_token`
+/// without relying on the model to unsplit glued identifiers.
 pub fn node_text(n: &Node) -> String {
     let kind = n.kind.to_string();
     let sig = &n.metadata.definition.signature;
     let doc = n.metadata.definition.doc_comment.as_deref().unwrap_or("");
-    if sig.is_empty() && doc.is_empty() {
-        format!("{kind} {}", n.qualified_name)
-    } else if doc.is_empty() {
-        format!("{kind} {} {sig}", n.qualified_name)
+
+    // Tokenize the simple name and the last segment of the qualified path.
+    let name_words = tokenize(&n.name).join(" ");
+    let qname_last = n
+        .qualified_name
+        .rsplit("::")
+        .next()
+        .unwrap_or(&n.qualified_name);
+    let qname_words = if qname_last != n.name {
+        tokenize(qname_last).join(" ")
     } else {
-        format!("{kind} {} {sig} {doc}", n.qualified_name)
+        String::new()
+    };
+
+    let mut parts = vec![kind.as_str(), n.qualified_name.as_str()];
+    if !sig.is_empty() {
+        parts.push(sig.as_str());
     }
+    if !doc.is_empty() {
+        parts.push(doc);
+    }
+    parts.push(name_words.as_str());
+    if !qname_words.is_empty() {
+        parts.push(qname_words.as_str());
+    }
+    parts.join(" ")
 }
 
 // ── Math helpers ──────────────────────────────────────────────────────────────
@@ -192,7 +224,10 @@ fn load_bin(path: &Path) -> Option<HashMap<String, Vec<f32>>> {
     }
     p += 4;
 
-    let _ver = read_u32!();
+    let ver = read_u32!();
+    if ver != FORMAT_VERSION {
+        return None;
+    }
     let dim = read_u32!() as usize;
     let count = read_u32!() as usize;
 

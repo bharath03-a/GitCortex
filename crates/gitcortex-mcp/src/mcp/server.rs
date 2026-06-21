@@ -48,7 +48,7 @@ fn run_background_indexer(
     repo_id: &str,
 ) -> anyhow::Result<()> {
     // 1. Initialise the embedding model (downloads on first run).
-    let embedder = match Embedder::new() {
+    let embedder = match Embedder::new(&branch::models_dir()) {
         Ok(e) => e,
         Err(e) => {
             tracing::warn!("semantic search disabled: {e}");
