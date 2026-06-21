@@ -10,7 +10,9 @@ mod universal;
 use detect::{detect_editors, parse_editor_flag};
 use editors::{install_for_editor, EditorKind};
 use helpers::repo_root;
-use universal::{initial_index, install_hooks, write_agent_guide, write_ci_workflow};
+use universal::{
+    initial_index, install_hooks, write_agent_guide, write_ci_workflow, write_gitcortex_ignore,
+};
 
 pub fn run(ci: bool, editor: Option<&str>) -> Result<()> {
     let repo_root = repo_root()?;
@@ -23,6 +25,7 @@ pub fn run(ci: bool, editor: Option<&str>) -> Result<()> {
 
     let hooks = install_hooks(&repo_root)?;
     let (nodes, edges) = initial_index(&repo_root)?;
+    write_gitcortex_ignore(&repo_root)?;
     write_agent_guide(&repo_root)?;
 
     for ed in &editors {
@@ -41,7 +44,7 @@ pub fn run(ci: bool, editor: Option<&str>) -> Result<()> {
     println!("  Graph:     {nodes} nodes | {edges} edges");
     println!("  Hooks:     {hooks} git hooks installed");
     println!("  Editors:   {}", editor_names.join(", "));
-    println!("  Universal: .gitcortex/AGENT_GUIDE.md");
+    println!("  Universal: .gitcortex/AGENT_GUIDE.md, .gitcortex/ignore");
     if ci {
         println!("  CI:        .github/workflows/gcx-blast-radius.yml");
     }

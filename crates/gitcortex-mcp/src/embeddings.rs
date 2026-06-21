@@ -273,3 +273,142 @@ fn save_bin(path: &Path, vectors: &HashMap<String, Vec<f32>>) -> std::io::Result
     std::fs::rename(&tmp, path)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gitcortex_core::graph::{NodeId, NodeMetadata, Span};
+    use gitcortex_core::schema::NodeKind;
+    use std::path::PathBuf;
+
+    fn make_node(name: &str, qualified_name: &str, sig: &str, doc: &str) -> Node {
+        let mut meta = NodeMetadata::default();
+        meta.definition.signature = sig.to_owned();
+        meta.definition.doc_comment = if doc.is_empty() {
+            None
+        } else {
+            Some(doc.to_owned())
+        };
+        Node {
+            id: NodeId::default(),
+            kind: NodeKind::Function,
+            name: name.to_owned(),
+            qualified_name: qualified_name.to_owned(),
+            file: PathBuf::from("src/lib.rs"),
+            span: Span {
+                start_line: 1,
+                end_line: 5,
+            },
+            metadata: meta,
+        }
+    }
+
+    #[test]
+    fn node_text_contains_tokenized_words() {
+        let n = make_node(
+            "validate_token",
+            "auth::validate_token",
+            "fn validate_token(t: &str) -> bool",
+            "",
+        );
+        let text = node_text(&n);
+        assert!(
+            text.contains("validate token"),
+            "expected 'validate token' in: {text}"
+        );
+        assert!(
+            text.contains("auth::validate_token"),
+            "expected qualified name in: {text}"
+        );
+    }
+
+    #[test]
+    fn node_text_qualified_segment_tokenized_when_differs_from_name() {
+        let n = make_node("new", "http::HttpClient::new", "", "");
+        let text = node_text(&n);
+        assert!(text.contains("new"), "expected 'new' in: {text}");
+    }
+
+    #[test]
+    fn node_text_includes_doc_and_sig() {
+        let n = make_node(
+            "parse_json",
+            "util::parse_json",
+            "fn parse_json(s: &str) -> Value",
+            "Parse a JSON string.",
+        );
+        let text = node_text(&n);
+        assert!(text.contains("Parse a JSON string."));
+        assert!(text.contains("fn parse_json"));
+        assert!(text.contains("parse json"));
+    }
+
+    #[test]
+    fn load_bin_rejects_stale_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.bin");
+        let mut buf = Vec::new();
+        buf.extend_from_slice(b"GCXV");
+        buf.extend_from_slice(&1u32.to_le_bytes()); // old version
+        buf.extend_from_slice(&384u32.to_le_bytes());
+        buf.extend_from_slice(&0u32.to_le_bytes());
+        std::fs::write(&path, &buf).unwrap();
+        assert!(load_bin(&path).is_none(), "v1 file should be rejected");
+    }
+
+    #[test]
+    fn save_and_load_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("idx.bin");
+        let mut vecs: HashMap<String, Vec<f32>> = HashMap::new();
+        vecs.insert("node-1".to_owned(), vec![1.0; 384]);
+        vecs.insert("node-2".to_owned(), vec![0.5; 384]);
+        save_bin(&path, &vecs).unwrap();
+        let loaded = load_bin(&path).expect("should load v2 file");
+        assert_eq!(loaded.len(), 2);
+        assert!(loaded.contains_key("node-1"));
+    }
+
+    #[test]
+    fn top_k_returns_scores_in_range() {
+        let mut index = SemanticIndex {
+            vectors: HashMap::new(),
+            path: PathBuf::from("/tmp/unused"),
+        };
+        let v: Vec<f32> = {
+            let mut raw = vec![0.0f32; 384];
+            raw[0] = 1.0;
+            raw
+        };
+        index.insert("a".to_owned(), v.clone());
+        index.insert("b".to_owned(), v.clone());
+        let results = index.top_k(&v, 10);
+        assert_eq!(results.len(), 2);
+        for (_, score) in &results {
+            assert!(
+                *score >= SIMILARITY_THRESHOLD,
+                "score {score} below threshold"
+            );
+            assert!(*score <= 1.001, "score {score} above 1.0");
+        }
+        assert!(results[0].1 >= results[1].1);
+    }
+
+    #[test]
+    fn top_k_respects_k_limit() {
+        let mut index = SemanticIndex {
+            vectors: HashMap::new(),
+            path: PathBuf::from("/tmp/unused"),
+        };
+        let v: Vec<f32> = {
+            let mut raw = vec![0.0f32; 384];
+            raw[0] = 1.0;
+            raw
+        };
+        for i in 0..20u32 {
+            index.insert(format!("node-{i}"), v.clone());
+        }
+        let results = index.top_k(&v, 5);
+        assert_eq!(results.len(), 5);
+    }
+}
