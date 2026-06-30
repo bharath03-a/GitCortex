@@ -67,6 +67,7 @@ impl LanguageParser for GoParser {
             deferred_inherits: visitor.deferred_inherits,
             deferred_throws: Vec::new(),
             deferred_annotated: Vec::new(),
+            deferred_doc_refs: Vec::new(),
         })
     }
 }

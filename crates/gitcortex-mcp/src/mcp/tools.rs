@@ -406,6 +406,7 @@ fn parse_node_kind(s: &str) -> Option<NodeKind> {
         "macro" => NodeKind::Macro,
         "annotation" => NodeKind::Annotation,
         "enum_member" => NodeKind::EnumMember,
+        "section" => NodeKind::Section,
         _ => return None,
     })
 }

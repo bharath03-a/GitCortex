@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 /// Bumped whenever the on-disk graph schema changes.
 /// Stores compare this against the persisted version and re-index on mismatch.
-pub const SCHEMA_VERSION: u32 = 11;
+pub const SCHEMA_VERSION: u32 = 12;
 
 /// Every named, referenceable syntactic entity becomes a node of one of these kinds.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -28,6 +28,9 @@ pub enum NodeKind {
     Annotation,
     /// Member of an enum (`Color::Red`, `Direction.NORTH`).
     EnumMember,
+    /// A Markdown heading section (`## Installation`). File-level prose lives
+    /// directly on the synthesized `File` node; this kind only covers headings.
+    Section,
 }
 
 impl std::fmt::Display for NodeKind {
@@ -48,6 +51,7 @@ impl std::fmt::Display for NodeKind {
             NodeKind::Macro => "macro",
             NodeKind::Annotation => "annotation",
             NodeKind::EnumMember => "enum_member",
+            NodeKind::Section => "section",
         };
         f.write_str(s)
     }
@@ -76,6 +80,10 @@ pub enum EdgeKind {
     Annotated,
     /// Java `throws ExceptionType` — method→exception class.
     Throws,
+    /// A Markdown section (or file-level prose) mentions a code symbol, via
+    /// an inline code-span or link text matching a known identifier.
+    /// Source can be cross-language by design (docs reference any language).
+    References,
 }
 
 impl std::fmt::Display for EdgeKind {
@@ -89,6 +97,7 @@ impl std::fmt::Display for EdgeKind {
             EdgeKind::Imports => "imports",
             EdgeKind::Annotated => "annotated",
             EdgeKind::Throws => "throws",
+            EdgeKind::References => "references",
         };
         f.write_str(s)
     }

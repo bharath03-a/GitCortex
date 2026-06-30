@@ -991,3 +991,98 @@ fn cyclomatic_complexity_branching_function() {
         "function with one `if` should have complexity 2, got {complexity:?}"
     );
 }
+
+#[test]
+fn markdown_fixture_indexes_section_nodes() {
+    let (nodes, edges) = run_pipeline("sample.md");
+    let sections: Vec<_> = nodes
+        .iter()
+        .filter(|n| n.kind == NodeKind::Section)
+        .collect();
+    assert_eq!(sections.len(), 2, "expected Title + Usage sections");
+    let names: Vec<_> = sections.iter().map(|n| n.name.as_str()).collect();
+    assert!(names.contains(&"Sample Docs"));
+    assert!(names.contains(&"Usage"));
+    assert!(
+        edges.iter().any(|e| e.kind == EdgeKind::Contains
+            && nodes
+                .iter()
+                .any(|n| n.id == e.src && n.name == "Sample Docs")
+            && nodes.iter().any(|n| n.id == e.dst && n.name == "Usage")),
+        "expected Sample Docs --Contains--> Usage"
+    );
+}
+
+#[test]
+fn markdown_doc_ref_resolves_cross_file_on_full_index() {
+    // sample.rs and sample.md committed together: the doc-ref to
+    // `make_greeting` resolves entirely within the indexer's diff-local pass
+    // (both files are in the same diff), exercising the bulk/full-index path.
+    let (nodes, edges, _store) = run_pipeline_multi(&["sample.rs", "sample.md"]);
+    let make_greeting = nodes
+        .iter()
+        .find(|n| n.name == "make_greeting")
+        .expect("expected make_greeting node");
+    let usage_section = nodes
+        .iter()
+        .find(|n| n.kind == NodeKind::Section && n.name == "Usage")
+        .expect("expected Usage section node");
+    assert!(
+        edges.iter().any(|e| e.kind == EdgeKind::References
+            && e.src == usage_section.id
+            && e.dst == make_greeting.id),
+        "expected References edge from Usage section to make_greeting"
+    );
+}
+
+#[test]
+fn markdown_doc_ref_resolves_cross_file_incrementally() {
+    // sample.rs indexed first (full index), sample.md added in a second,
+    // incremental commit. The doc-ref to make_greeting can't resolve
+    // diff-locally (make_greeting isn't in the second diff) — this exercises
+    // the store-side resolve_deferred_batch path for `deferred_doc_refs`.
+    let _lock = KUZU_LOCK.lock().expect("lock");
+    let tmp = tempfile::tempdir().expect("tempdir");
+    init_repo(tmp.path());
+    commit_file(
+        tmp.path(),
+        Path::new(FIXTURES).join("sample.rs").as_path(),
+        "sample.rs",
+    );
+
+    let indexer = IncrementalIndexer::new(tmp.path()).expect("indexer");
+    let (diff1, sha1) = indexer.run(None).expect("first index");
+    let mut store = KuzuGraphStore::open(tmp.path()).expect("store");
+    store.apply_diff("main", &diff1).expect("apply diff1");
+    store.set_last_indexed_sha("main", &sha1).expect("set sha1");
+
+    commit_file(
+        tmp.path(),
+        Path::new(FIXTURES).join("sample.md").as_path(),
+        "sample.md",
+    );
+    let (diff2, sha2) = indexer.run(Some(&sha1)).expect("second index");
+    assert!(
+        !diff2.deferred_doc_refs.is_empty(),
+        "doc-ref to make_greeting should be unresolved diff-locally"
+    );
+    store.apply_diff("main", &diff2).expect("apply diff2");
+    store.set_last_indexed_sha("main", &sha2).expect("set sha2");
+
+    let nodes = store.list_all_nodes("main").expect("list_all_nodes");
+    let edges = store.list_all_edges("main").expect("list_all_edges");
+    let make_greeting = nodes
+        .iter()
+        .find(|n| n.name == "make_greeting")
+        .expect("expected make_greeting node");
+    let usage_section = nodes
+        .iter()
+        .find(|n| n.kind == NodeKind::Section && n.name == "Usage")
+        .expect("expected Usage section node");
+    assert!(
+        edges.iter().any(|e| e.kind == EdgeKind::References
+            && e.src == usage_section.id
+            && e.dst == make_greeting.id),
+        "expected store-resolved References edge from Usage section to make_greeting"
+    );
+}

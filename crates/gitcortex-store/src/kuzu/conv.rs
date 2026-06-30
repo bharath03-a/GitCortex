@@ -21,6 +21,7 @@ pub(super) fn kind_from_str(s: &str) -> NodeKind {
         "macro" => NodeKind::Macro,
         "annotation" => NodeKind::Annotation,
         "enum_member" => NodeKind::EnumMember,
+        "section" => NodeKind::Section,
         _ => NodeKind::Function,
     }
 }
@@ -34,6 +35,7 @@ pub(super) fn edge_kind_from_str(s: &str) -> EdgeKind {
         "imports" => EdgeKind::Imports,
         "annotated" => EdgeKind::Annotated,
         "throws" => EdgeKind::Throws,
+        "references" => EdgeKind::References,
         _ => EdgeKind::Contains,
     }
 }

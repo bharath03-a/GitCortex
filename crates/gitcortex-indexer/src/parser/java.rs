@@ -66,6 +66,7 @@ impl LanguageParser for JavaParser {
             deferred_inherits: visitor.deferred_inherits,
             deferred_throws: visitor.deferred_throws,
             deferred_annotated: visitor.deferred_annotated,
+            deferred_doc_refs: Vec::new(),
         })
     }
 }
