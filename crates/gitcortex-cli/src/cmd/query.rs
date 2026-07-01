@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use gitcortex_core::{schema::NodeKind, store::GraphStore};
-use gitcortex_mcp::mcp::{search, tour, wiki};
+use gitcortex_mcp::mcp::{centrality, clustering, search, tour, wiki};
 use gitcortex_store::kuzu::KuzuGraphStore;
 
 use crate::style::{
@@ -248,6 +248,85 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
         } => {
             let t = tour::generate(&store, &branch, seed.as_deref(), Some(limit))?;
             print!("{}", tour::render_markdown(&t));
+        }
+        QueryCmd::FindGodNodes {
+            min_in_degree,
+            limit,
+            branch,
+        } => {
+            let nodes =
+                centrality::find_god_nodes(&store, &branch, Some(min_in_degree), Some(limit))?;
+            if nodes.is_empty() {
+                println!(
+                    "{}",
+                    paint(
+                        hint_style(),
+                        &format!(
+                            "no symbols with ≥{min_in_degree} inbound calls on branch '{branch}'"
+                        )
+                    )
+                );
+            } else {
+                println!(
+                    "  {} {}",
+                    paint(header_style(), "Hub symbols:"),
+                    paint(hint_style(), &format!("({})", nodes.len()))
+                );
+                for n in &nodes {
+                    println!(
+                        "    {} {} {}  {}",
+                        paint(kind_style_from_str(&n.kind), &n.kind),
+                        paint(name_style(), &n.name),
+                        paint(hint_style(), &format!("({} callers)", n.in_degree)),
+                        paint(path_style(), &format!("{}:{}", n.file, n.start_line)),
+                    );
+                }
+            }
+        }
+        QueryCmd::FindClusters {
+            min_cluster_size,
+            limit,
+            branch,
+        } => {
+            let clusters =
+                clustering::find_clusters(&store, &branch, Some(min_cluster_size), Some(limit))?;
+            if clusters.is_empty() {
+                println!(
+                    "{}",
+                    paint(
+                        hint_style(),
+                        &format!(
+                            "no clusters of ≥{min_cluster_size} members found on branch '{branch}'"
+                        )
+                    )
+                );
+            } else {
+                println!(
+                    "  {} {}",
+                    paint(header_style(), "Clusters:"),
+                    paint(hint_style(), &format!("({})", clusters.len()))
+                );
+                for c in &clusters {
+                    println!(
+                        "\n  {} {} {}",
+                        paint(header_style(), &c.label),
+                        paint(hint_style(), &format!("({} members)", c.size)),
+                        if c.size > c.members.len() {
+                            paint(hint_style(), &format!("[showing {}]", c.members.len()))
+                        } else {
+                            String::new()
+                        }
+                    );
+                    for m in &c.members {
+                        println!(
+                            "    {} {}  {}",
+                            paint(kind_style_from_str(&m.kind), &m.kind),
+                            paint(name_style(), &m.name),
+                            paint(path_style(), &format!("{}:{}", m.file, m.start_line)),
+                        );
+                    }
+                }
+            }
         }
     }
     Ok(())

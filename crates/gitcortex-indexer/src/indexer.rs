@@ -26,6 +26,7 @@ type FileIndexResult = Result<(
     Vec<(NodeId, String)>,      // deferred_inherits
     Vec<(NodeId, String)>,      // deferred_throws
     Vec<(NodeId, String)>,      // deferred_annotated
+    Vec<(NodeId, String)>,      // deferred_doc_refs
 )>;
 
 // ── IncrementalIndexer ────────────────────────────────────────────────────────
@@ -102,8 +103,10 @@ impl IncrementalIndexer {
         let mut all_inherits: Vec<(NodeId, String)> = Vec::new();
         let mut all_throws: Vec<(NodeId, String)> = Vec::new();
         let mut all_annotated: Vec<(NodeId, String)> = Vec::new();
+        let mut all_doc_refs: Vec<(NodeId, String)> = Vec::new();
         for result in per_file {
-            let (diff, calls, uses, implements, imports, inherits, throws, annotated) = result?;
+            let (diff, calls, uses, implements, imports, inherits, throws, annotated, doc_refs) =
+                result?;
             merged.merge(diff);
             all_calls.extend(calls);
             all_uses.extend(uses);
@@ -112,6 +115,7 @@ impl IncrementalIndexer {
             all_inherits.extend(inherits);
             all_throws.extend(throws);
             all_annotated.extend(annotated);
+            all_doc_refs.extend(doc_refs);
         }
         mark!(format!(
             "merge done: {} nodes, {} direct edges, {} deferred calls",
@@ -207,6 +211,18 @@ impl IncrementalIndexer {
             &mut merged.added_edges,
             &mut seen_edges,
         );
+        // Doc references are inherently cross-language (a Markdown file has
+        // no `language_extensions_for_path` match, so `resolve_deferred`'s
+        // language-scope filter is naturally a no-op here — no fan-out cap
+        // bypass needed, the existing MAX_RESOLVE_FANOUT guard still applies).
+        merged.deferred_doc_refs = resolve_deferred(
+            &name_to_ids,
+            &id_to_file,
+            &all_doc_refs,
+            EdgeKind::References,
+            &mut merged.added_edges,
+            &mut seen_edges,
+        );
         mark!(format!(
             "resolve_deferred done: {} total edges",
             merged.added_edges.len()
@@ -255,7 +271,7 @@ impl IncrementalIndexer {
 
     fn supported_extensions(&self) -> Vec<&'static str> {
         vec![
-            "rs", "py", "ts", "tsx", "js", "jsx", "mjs", "cjs", "go", "java",
+            "rs", "py", "ts", "tsx", "js", "jsx", "mjs", "cjs", "go", "java", "md", "markdown",
         ]
     }
 
@@ -265,6 +281,7 @@ impl IncrementalIndexer {
             (
                 GraphDiff::default(),
                 Vec::<(NodeId, String, u32)>::new(),
+                Vec::<(NodeId, String)>::new(),
                 Vec::<(NodeId, String)>::new(),
                 Vec::<(NodeId, String)>::new(),
                 Vec::<(NodeId, String)>::new(),
@@ -302,6 +319,7 @@ impl IncrementalIndexer {
             deferred_inherits,
             deferred_throws,
             deferred_annotated,
+            deferred_doc_refs,
         } = parser.parse(repo_relative_path, &source)?;
 
         let mut diff = GraphDiff::default();
@@ -326,6 +344,7 @@ impl IncrementalIndexer {
             deferred_inherits,
             deferred_throws,
             deferred_annotated,
+            deferred_doc_refs,
         ))
     }
 

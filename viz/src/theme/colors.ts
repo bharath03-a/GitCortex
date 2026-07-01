@@ -14,6 +14,7 @@ export const KIND_COLOR: Record<string, string> = {
   property: "#b4befe",
   annotation: "#eba0ac",
   enummember: "#a6d189",
+  section: "#f5c2e7",
 };
 
 export const EDGE_COLOR: Record<string, string> = {
@@ -25,6 +26,7 @@ export const EDGE_COLOR: Record<string, string> = {
   contains: "#45475a",
   throws: "#f38ba8",
   annotated: "#eba0ac",
+  references: "#f5c2e7",
 };
 
 export const EDGE_WIDTH: Record<string, number> = {
@@ -36,6 +38,7 @@ export const EDGE_WIDTH: Record<string, number> = {
   contains: 0.4,
   throws: 1.2,
   annotated: 0.8,
+  references: 0.8,
 };
 
 export const KIND_LABEL: Record<string, string> = {
@@ -54,6 +57,7 @@ export const KIND_LABEL: Record<string, string> = {
   property: "Property",
   annotation: "Annotation",
   enummember: "Enum Member",
+  section: "Section",
 };
 
 export function dimColor(hex: string, amount = 0.7): string {

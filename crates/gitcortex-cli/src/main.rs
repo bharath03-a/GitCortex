@@ -196,6 +196,24 @@ pub enum QueryCmd {
         #[arg(long, default_value = "main")]
         branch: String,
     },
+    /// Find high-centrality hub symbols with many inbound calls.
+    FindGodNodes {
+        #[arg(long, default_value_t = 10)]
+        min_in_degree: u32,
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+        #[arg(long, default_value = "main")]
+        branch: String,
+    },
+    /// Detect code communities via label-propagation clustering.
+    FindClusters {
+        #[arg(long, default_value_t = 3)]
+        min_cluster_size: usize,
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+        #[arg(long, default_value = "main")]
+        branch: String,
+    },
 }
 
 fn main() {

@@ -37,6 +37,7 @@ fn kind_color(k: &NodeKind) -> Option<Color> {
         NodeKind::EnumMember => AnsiColor::BrightGreen,
         // Structural nodes are dim — they're scaffolding, not the answer.
         NodeKind::File | NodeKind::Folder => AnsiColor::BrightBlack,
+        NodeKind::Section => AnsiColor::BrightYellow,
     }))
 }
 
@@ -62,6 +63,7 @@ pub fn kind_style_from_str(k: &str) -> Style {
         "annotation" => AnsiColor::Red,
         "enum_member" => AnsiColor::BrightGreen,
         "file" | "folder" => AnsiColor::BrightBlack,
+        "section" => AnsiColor::BrightYellow,
         _ => return Style::new(),
     };
     Style::new().fg_color(Some(Color::Ansi(ansi)))

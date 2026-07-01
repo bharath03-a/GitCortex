@@ -9,6 +9,7 @@ mod complexity;
 mod deftext;
 pub mod go;
 pub mod java;
+pub mod markdown;
 pub mod python;
 pub mod rust;
 pub mod typescript;
@@ -35,6 +36,9 @@ pub struct ParseResult {
     pub deferred_annotated: Vec<(NodeId, String)>,
     /// Unresolved use-declaration imports: (src_node_id, imported_leaf_name).
     pub deferred_imports: Vec<(NodeId, String)>,
+    /// Unresolved Markdown doc→code symbol references: (section_or_file_id, symbol_name).
+    /// Intentionally cross-language — see `EdgeKind::References`.
+    pub deferred_doc_refs: Vec<(NodeId, String)>,
 }
 
 /// Contract every language parser must satisfy.
@@ -65,6 +69,7 @@ pub fn parser_for_path(path: &Path) -> Option<Box<dyn LanguageParser>> {
         "jsx" => Some(Box::new(typescript::JavaScriptParser::new())),
         "go" => Some(Box::new(go::GoParser::new())),
         "java" => Some(Box::new(java::JavaParser::new())),
+        "md" | "markdown" => Some(Box::new(markdown::MarkdownParser::new())),
         _ => None,
     }
 }

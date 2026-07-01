@@ -21,3 +21,4 @@ tree-sitter-typescript.workspace = true
 tree-sitter-javascript.workspace = true
 tree-sitter-go.workspace         = true
 tree-sitter-java.workspace       = true
+pulldown-cmark.workspace         = true

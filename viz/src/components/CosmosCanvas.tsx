@@ -117,6 +117,12 @@ export function CosmosCanvas({
 
   return (
     <CosmographProvider>
+      {/* Screen-reader description — the WebGL canvas is not keyboard-navigable.
+          Use the search palette (press /) to find symbols by name. */}
+      <p className="sr-only">
+        Interactive force-directed graph visualization. The canvas is not navigable by keyboard.
+        Press / to open the search palette and find symbols by name.
+      </p>
       <Cosmograph
         ref={ref}
         points={points}

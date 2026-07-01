@@ -1,6 +1,6 @@
 {
   "name": "@gitcortex/gcx-linux-arm64",
-  "version": "0.4.0",
+  "version": "0.6.0",
   "description": "gcx binary for Linux aarch64",
   "repository": {
     "type": "git",

@@ -1,4 +1,4 @@
-import { useState, type RefObject } from "react";
+import { useEffect, useState, type RefObject } from "react";
 import { Focus, Maximize2, Pause, Play, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
 import type { CosmographRef } from "@cosmograph/react";
 
@@ -9,6 +9,31 @@ interface Props {
 export function CanvasControls({ cosmoRef }: Props) {
   const [playing, setPlaying] = useState(true);
   const c = () => cosmoRef.current;
+
+  // F = fit graph, Space = pause/resume — matches KeyboardHelp.tsx documentation.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const isInput =
+        e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+      if (isInput) return;
+      if (e.key === "f" || e.key === "F") {
+        e.preventDefault();
+        cosmoRef.current?.fitView(400);
+      } else if (e.key === " ") {
+        e.preventDefault();
+        const inst = cosmoRef.current;
+        if (!inst) return;
+        if (playing) {
+          inst.pause();
+        } else {
+          inst.unpause();
+        }
+        setPlaying((p) => !p);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [playing, cosmoRef]);
 
   const togglePlay = () => {
     const inst = c();
@@ -80,6 +105,7 @@ function Btn({
   return (
     <button
       title={title}
+      aria-label={title}
       onClick={onClick}
       className="rounded-md p-1.5 text-(--color-text-muted) hover:bg-(--color-elevated-hi) hover:text-(--color-text-primary)"
     >

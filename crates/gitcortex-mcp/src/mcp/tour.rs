@@ -18,6 +18,8 @@ use gitcortex_core::{
 };
 use serde::Serialize;
 
+use super::centrality::in_degree_by_calls;
+
 /// One step in a generated tour.
 #[derive(Debug, Clone, Serialize)]
 pub struct TourStep {
@@ -76,11 +78,10 @@ pub fn generate<S: GraphStore + ?Sized>(
     let nodes = store.list_all_nodes(branch)?;
     let edges = store.list_all_edges(branch)?;
 
-    let mut in_degree: HashMap<String, u32> = HashMap::new();
+    let in_degree = in_degree_by_calls(&edges);
     let mut callees_of: HashMap<String, Vec<String>> = HashMap::new();
     for e in &edges {
         if matches!(e.kind, EdgeKind::Calls) {
-            *in_degree.entry(e.dst.as_str()).or_insert(0) += 1;
             callees_of
                 .entry(e.src.as_str())
                 .or_default()

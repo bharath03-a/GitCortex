@@ -461,6 +461,7 @@ fn parse_node_kind(s: &str) -> Option<NodeKind> {
         "macro" => NodeKind::Macro,
         "annotation" => NodeKind::Annotation,
         "enum_member" => NodeKind::EnumMember,
+        "section" => NodeKind::Section,
         _ => return None,
     })
 }
@@ -551,8 +552,8 @@ fn build_html(store: &KuzuGraphStore, branch: &str) -> Result<String> {
         .collect();
 
     let payload = json!({ "nodes": nodes_json, "edges": edges_json });
-    let payload_str = serde_json::to_string(&payload)?;
-    let branch_esc = branch.replace('"', "&quot;");
+    let payload_str = escape_script_payload(&serde_json::to_string(&payload)?);
+    let branch_esc = svg_escape(branch);
     let total_nodes = nodes.len();
     let total_edges = edges.len();
 
@@ -682,6 +683,15 @@ fn svg_escape(s: &str) -> String {
         .replace('\'', "&#39;")
 }
 
+/// Escape `</` inside a JSON string about to be embedded in a `<script>`
+/// block. `serde_json::to_string` does not escape this sequence, so a node
+/// name/file path containing the literal substring `</script>` (sourced
+/// from a cloned, potentially untrusted repo) would close the tag early and
+/// inject arbitrary HTML/JS into the exported file.
+fn escape_script_payload(s: &str) -> String {
+    s.replace("</", "<\\/")
+}
+
 // ─── GraphML (Gephi / yEd / Cytoscape) ────────────────────────────────────────
 fn build_graphml(store: &KuzuGraphStore, branch: &str) -> Result<String> {
     let nodes = store.list_all_nodes(branch)?;
@@ -796,6 +806,7 @@ fn kind_dot_color(k: &NodeKind) -> &'static str {
         NodeKind::Property => "#cba6f7",
         NodeKind::Annotation => "#eba0ac",
         NodeKind::EnumMember => "#a6d189",
+        NodeKind::Section => "#f5c2e7",
     }
 }
 
@@ -807,4 +818,46 @@ fn repo_root() -> Result<PathBuf> {
     Ok(PathBuf::from(
         String::from_utf8(out.stdout)?.trim().to_owned(),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn escape_script_payload_breaks_closing_tag() {
+        let malicious = r#"{"name":"</script><script>alert(1)</script>"}"#;
+        let escaped = escape_script_payload(malicious);
+        assert!(
+            !escaped.contains("</script>"),
+            "escaped payload still contains an unescaped closing script tag: {escaped}"
+        );
+        assert!(escaped.contains("<\\/script>"));
+    }
+
+    #[test]
+    fn escape_script_payload_is_noop_without_slash_sequence() {
+        let benign = r#"{"name":"validate_token"}"#;
+        assert_eq!(escape_script_payload(benign), benign);
+    }
+
+    #[test]
+    fn svg_escape_covers_html_entities() {
+        let s = svg_escape(r#"<script>&"'</script>"#);
+        assert_eq!(s, "&lt;script&gt;&amp;&quot;&#39;&lt;/script&gt;");
+    }
+
+    #[test]
+    fn cypher_str_escapes_quotes_and_backslashes() {
+        // Regression test locking in already-correct Cypher injection defenses.
+        let malicious = "O'Brien'; DROP TABLE--\\";
+        let escaped = cypher_str(malicious);
+        assert_eq!(escaped, "O\\'Brien\\'; DROP TABLE--\\\\");
+    }
+
+    #[test]
+    fn cypher_id_strips_non_alphanumeric() {
+        let id = cypher_id("abc-123'; DROP TABLE--");
+        assert!(id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
+    }
 }

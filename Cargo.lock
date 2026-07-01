@@ -110,9 +110,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.102"
+version = "1.0.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
+checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
 name = "arbitrary"
@@ -1160,7 +1160,7 @@ dependencies = [
 
 [[package]]
 name = "gitcortex"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "anstyle",
  "anyhow",
@@ -1180,7 +1180,7 @@ dependencies = [
 
 [[package]]
 name = "gitcortex-core"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "petgraph",
  "serde",
@@ -1190,11 +1190,12 @@ dependencies = [
 
 [[package]]
 name = "gitcortex-indexer"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "git2",
  "gitcortex-core",
  "ignore",
+ "pulldown-cmark",
  "rayon",
  "tree-sitter",
  "tree-sitter-go",
@@ -1207,7 +1208,7 @@ dependencies = [
 
 [[package]]
 name = "gitcortex-mcp"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "fastembed",
@@ -1225,7 +1226,7 @@ dependencies = [
 
 [[package]]
 name = "gitcortex-store"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "dashmap",
  "gitcortex-core",
@@ -1236,7 +1237,7 @@ dependencies = [
 
 [[package]]
 name = "gitcortex-viz"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -2451,6 +2452,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulldown-cmark"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e9f068eba8e7071c5f9511831b44f32c740d5adf574e990f946ddb53db2f314e"
+dependencies = [
+ "bitflags",
+ "memchr",
+ "unicase",
+]
+
+[[package]]
 name = "pxfm"
 version = "0.1.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3584,6 +3596,12 @@ name = "typenum"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
+
+[[package]]
+name = "unicase"
+version = "2.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dbc4bc3a9f746d862c45cb89d705aa10f187bb96c76001afab07a0d35ce60142"
 
 [[package]]
 name = "unicode-ident"
