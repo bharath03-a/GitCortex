@@ -9,7 +9,7 @@
   --color-border-strong: #3a3a4e;
   --color-text-primary: #e6e6f0;
   --color-text-muted: #8a8aa3;
-  --color-text-dim: #5a5a72;
+  --color-text-dim: #7e7e99;
   --color-accent: #a78bfa;
   --color-accent-deep: #7c3aed;
   --color-accent-soft: rgba(167, 139, 250, 0.12);
@@ -45,6 +45,26 @@ body,
 button {
   font-family: inherit;
   cursor: pointer;
+}
+
+/* Visible focus ring for keyboard navigation — applies to all interactive
+   elements when navigated via keyboard, not on mouse click. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Screen-reader-only utility (no Tailwind dependency needed here). */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
 }
 
 ::-webkit-scrollbar {
