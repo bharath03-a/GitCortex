@@ -1,6 +1,6 @@
 {
   "name": "@gitcortex/gcx-darwin-x64",
-  "version": "0.4.0",
+  "version": "0.6.0",
   "description": "gcx binary for macOS x86_64 (Intel)",
   "repository": {
     "type": "git",

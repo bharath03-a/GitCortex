@@ -156,6 +156,16 @@ Adding a language is a self-contained task — implement one `LanguageParser` in
 
 ## Installation
 
+**pip / pipx / uv (Python — no Rust required, recommended):**
+
+```bash
+pip install gitcortex
+# or (isolated install, preferred for CLI tools)
+pipx install gitcortex
+# or
+uv tool install gitcortex
+```
+
 **Direct binary download (no package manager required):**
 
 ```bash
@@ -197,16 +207,6 @@ pnpm add -g gitcortex
 yarn global add gitcortex
 ```
 
-**pip / pipx / uv (Python — no Rust required):**
-
-```bash
-pip install gitcortex
-# or (isolated, recommended for CLI tools)
-pipx install gitcortex
-# or
-uv tool install gitcortex
-```
-
 **macOS / Linux — curl installer:**
 
 ```bash
@@ -216,9 +216,16 @@ curl --proto '=https' --tlsv1.2 -LsSf \
 
 > Pre-built binaries for macOS (arm64/x86_64) and Linux (x86_64/aarch64) are published automatically
 > on every release via GitHub Releases.
->
-> _Windows is not currently supported — the embedded graph store (KuzuDB 0.11.3, upstream archived)
-> does not link cleanly on MSVC. We'll restore Windows support after migrating the store layer._
+
+### Windows (via WSL2)
+
+Native Windows is not currently supported — the embedded graph store (KuzuDB 0.11.3, upstream
+archived Oct 2025) does not link cleanly under MSVC (LNK1169/LNK2038 symbol conflicts). Restoring
+native Windows requires replacing the store layer; tracked as a future effort.
+
+**WSL2 is the supported Windows path today.** Install [WSL2 with Ubuntu](https://learn.microsoft.com/en-us/windows/wsl/install),
+then use the Linux x86_64 binary or `pip install gitcortex` / `npm install -g gitcortex` inside WSL2 —
+everything works identically to native Linux.
 
 **Cargo (from crates.io):**
 
@@ -329,6 +336,8 @@ gcx query symbol-context apply_diff           # 360° view (def + callers + call
 gcx query wiki apply_diff                     # markdown wiki page for a symbol
 gcx query tour --limit 12                     # centrality-ranked global tour
 gcx query tour --seed main                    # BFS-walk outward from a seed
+gcx query find-god-nodes --min-in-degree 5   # high-fan-in hub symbols
+gcx query find-clusters --min-cluster-size 3 # code communities via label propagation
 ```
 
 ### `gcx viz`
@@ -481,7 +490,7 @@ Example output:
 ```
 gcx doctor
 
-  [ok] gcx v0.4.0 on PATH (/usr/local/bin/gcx)
+  [ok] gcx v0.6.0 on PATH (/usr/local/bin/gcx)
   [ok] git repository detected
   [ok] post-commit hook installed
   [ok] post-merge hook installed
@@ -507,8 +516,8 @@ gcx update
 ```
 gcx update
 
-  current version:  0.4.0
-  latest version:   0.4.0
+  current version:  0.6.0
+  latest version:   0.6.0
   you are up to date.
 
   To update (cargo):
@@ -575,6 +584,8 @@ Claude Code and the other editors use the full MCP surface unless you manually s
 | `find_type_usages`      | Functions/methods that use a type as a parameter or return type                                                                                                            |
 | `module_dependencies`   | In-repo modules a module depends on (via imports)                                                                                                                          |
 | `get_call_sites`        | Every call site of a function — caller plus the exact call line                                                                                                            |
+| `find_god_nodes`        | High-fan-in hub symbols ranked by inbound `Calls` in-degree; `min_in_degree` configurable                                                                                 |
+| `find_clusters`         | Code communities via label-propagation clustering over `Contains`+`Calls` edges; deterministic, no LLM calls                                                               |
 
 All tools accept an optional `branch` parameter. Defaults to the branch active when `gcx serve` was started (auto-detected from `git symbolic-ref HEAD`).
 
@@ -603,22 +614,6 @@ Compact MCP mode intentionally hides the individual tools and keeps only `gcx`; 
 ---
 
 ## Configuration
-
-### `.gitcortex/config.toml`
-
-Committed to the repo and shared with your team.
-
-```toml
-[index]
-languages = ["rust", "typescript", "python", "go"]
-max_file_size_kb = 500
-
-[lld]
-enabled = false         # pass-2 LLD annotation (v0.2)
-
-[store]
-backend = "local"       # local only in v0.1; remote backend planned
-```
 
 ### `.gitcortex/ignore`
 
@@ -656,6 +651,7 @@ vendor/
 | `Property`   | TS/Python         | Class property, `@property`                                |
 | `Annotation` | Java              | `@interface` annotation type                               |
 | `EnumMember` | all               | Variant inside an enum                                     |
+| `Section`    | Markdown          | A Markdown heading (`## Installation`) — nested via `Contains` |
 
 ### Edge kinds
 
@@ -669,6 +665,7 @@ vendor/
 | `Imports`    | `use path::to::Thing`, `import`                          |
 | `Throws`     | Java `throws` clause → exception type                    |
 | `Annotated`  | Node decorated by `#[attr]`, `@decorator`, `@annotation` |
+| `References` | Markdown section mentions a code symbol via `` `name` `` or link text |
 
 ### Python indexing detail
 
