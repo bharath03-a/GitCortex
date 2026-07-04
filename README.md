@@ -14,6 +14,8 @@
 [![PyPI](https://img.shields.io/pypi/v/gitcortex.svg)](https://pypi.org/project/gitcortex/)
 [![CI](https://github.com/bharath03-a/GitCortex/actions/workflows/ci.yml/badge.svg)](https://github.com/bharath03-a/GitCortex/actions/workflows/ci.yml)
 
+**[→ Product page](https://bharath03-a.github.io/GitCortex/)**
+
 GitCortex (`gcx`) indexes your codebase incrementally on every commit using tree-sitter AST parsing, persists the graph in an embedded KuzuDB database, and exposes it to AI coding assistants via an MCP server — in Codex, Claude Code, Cursor, Windsurf, GitHub Copilot, and Google Antigravity.
 
 ```bash

@@ -212,12 +212,34 @@ fn propagate_labels(
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
+    use gitcortex_core::graph::{Edge, NodeId, NodeMetadata, Span};
+    use gitcortex_core::schema::{EdgeKind, NodeKind};
+
     use super::*;
+
+    fn make_node(name: &str) -> Node {
+        Node {
+            id: NodeId::new(),
+            kind: NodeKind::Function,
+            name: name.to_owned(),
+            qualified_name: name.to_owned(),
+            file: PathBuf::from("src/lib.rs"),
+            span: Span {
+                start_line: 1,
+                end_line: 5,
+            },
+            metadata: NodeMetadata::default(),
+        }
+    }
+
+    // ── adjacency ────────────────────────────────────────────────────────────
 
     #[test]
     fn build_undirected_adjacency_includes_both_directions() {
-        let src = gitcortex_core::graph::NodeId::new();
-        let dst = gitcortex_core::graph::NodeId::new();
+        let src = NodeId::new();
+        let dst = NodeId::new();
         let edges = vec![Edge::new(src.clone(), dst.clone(), EdgeKind::Calls)];
         let adj = build_undirected_adjacency(&edges);
         assert!(adj.get(&src.as_str()).unwrap().contains(&dst.as_str()));
@@ -226,10 +248,138 @@ mod tests {
 
     #[test]
     fn build_undirected_adjacency_excludes_uses_edges() {
-        let src = gitcortex_core::graph::NodeId::new();
-        let dst = gitcortex_core::graph::NodeId::new();
+        let src = NodeId::new();
+        let dst = NodeId::new();
         let edges = vec![Edge::new(src.clone(), dst, EdgeKind::Uses)];
         let adj = build_undirected_adjacency(&edges);
         assert!(!adj.contains_key(&src.as_str()));
+    }
+
+    #[test]
+    fn build_undirected_adjacency_includes_contains_edges() {
+        let parent = NodeId::new();
+        let child = NodeId::new();
+        let edges = vec![Edge::new(parent.clone(), child.clone(), EdgeKind::Contains)];
+        let adj = build_undirected_adjacency(&edges);
+        assert!(adj.get(&parent.as_str()).unwrap().contains(&child.as_str()));
+        assert!(adj.get(&child.as_str()).unwrap().contains(&parent.as_str()));
+    }
+
+    // ── label propagation ────────────────────────────────────────────────────
+
+    #[test]
+    fn propagate_labels_empty_nodes_returns_empty() {
+        let labels = propagate_labels(&[], &HashMap::new());
+        assert!(labels.is_empty());
+    }
+
+    #[test]
+    fn propagate_labels_isolated_node_keeps_own_id() {
+        let node = make_node("lone_fn");
+        let id = node.id.as_str();
+        let labels = propagate_labels(&[node], &HashMap::new());
+        // Isolated node has no neighbours → never updated → stays as its own id.
+        assert_eq!(labels.get(&id), Some(&id));
+    }
+
+    #[test]
+    fn propagate_labels_two_connected_nodes_converge() {
+        let a = make_node("alpha");
+        let b = make_node("beta");
+        let a_id = a.id.as_str();
+        let b_id = b.id.as_str();
+
+        let mut adj = HashMap::new();
+        adj.insert(a_id.clone(), vec![b_id.clone()]);
+        adj.insert(b_id.clone(), vec![a_id.clone()]);
+
+        let labels = propagate_labels(&[a, b], &adj);
+        // Both must end up with the same label after convergence.
+        assert_eq!(
+            labels[&a_id], labels[&b_id],
+            "connected pair must converge to same label"
+        );
+    }
+
+    #[test]
+    fn propagate_labels_three_node_chain_converges() {
+        // A — B — C: all three should converge to the same community.
+        let a = make_node("aaa");
+        let b = make_node("bbb");
+        let c = make_node("ccc");
+        let a_id = a.id.as_str();
+        let b_id = b.id.as_str();
+        let c_id = c.id.as_str();
+
+        let mut adj = HashMap::new();
+        adj.insert(a_id.clone(), vec![b_id.clone()]);
+        adj.insert(b_id.clone(), vec![a_id.clone(), c_id.clone()]);
+        adj.insert(c_id.clone(), vec![b_id.clone()]);
+
+        let labels = propagate_labels(&[a, b, c], &adj);
+        assert_eq!(labels[&a_id], labels[&b_id]);
+        assert_eq!(labels[&b_id], labels[&c_id]);
+    }
+
+    #[test]
+    fn propagate_labels_deterministic_same_input_same_output() {
+        // Core guarantee: identical state → byte-identical output.
+        // Build a 6-node graph with two triangles that share one edge.
+        let nodes: Vec<Node> = ["p", "q", "r", "x", "y", "z"]
+            .iter()
+            .map(|n| make_node(n))
+            .collect();
+        let ids: Vec<String> = nodes.iter().map(|n| n.id.as_str()).collect();
+
+        let mut adj: HashMap<String, Vec<String>> = HashMap::new();
+        // Triangle 1: p-q-r
+        for (a, b) in [(&ids[0], &ids[1]), (&ids[1], &ids[2]), (&ids[2], &ids[0])] {
+            adj.entry(a.clone()).or_default().push(b.clone());
+            adj.entry(b.clone()).or_default().push(a.clone());
+        }
+        // Triangle 2: x-y-z
+        for (a, b) in [(&ids[3], &ids[4]), (&ids[4], &ids[5]), (&ids[5], &ids[3])] {
+            adj.entry(a.clone()).or_default().push(b.clone());
+            adj.entry(b.clone()).or_default().push(a.clone());
+        }
+
+        let run1 = propagate_labels(&nodes, &adj);
+        let run2 = propagate_labels(&nodes, &adj);
+        assert_eq!(run1, run2, "label propagation must be deterministic");
+    }
+
+    #[test]
+    fn propagate_labels_two_triangles_form_distinct_clusters() {
+        // p-q-r and x-y-z: disjoint → different final labels.
+        let nodes: Vec<Node> = ["p", "q", "r", "x", "y", "z"]
+            .iter()
+            .map(|n| make_node(n))
+            .collect();
+        let ids: Vec<String> = nodes.iter().map(|n| n.id.as_str()).collect();
+
+        let mut adj: HashMap<String, Vec<String>> = HashMap::new();
+        for (a, b) in [(&ids[0], &ids[1]), (&ids[1], &ids[2]), (&ids[2], &ids[0])] {
+            adj.entry(a.clone()).or_default().push(b.clone());
+            adj.entry(b.clone()).or_default().push(a.clone());
+        }
+        for (a, b) in [(&ids[3], &ids[4]), (&ids[4], &ids[5]), (&ids[5], &ids[3])] {
+            adj.entry(a.clone()).or_default().push(b.clone());
+            adj.entry(b.clone()).or_default().push(a.clone());
+        }
+
+        let labels = propagate_labels(&nodes, &adj);
+
+        let group1_label = &labels[&ids[0]];
+        let group2_label = &labels[&ids[3]];
+        // All within each triangle share a label.
+        assert_eq!(&labels[&ids[1]], group1_label);
+        assert_eq!(&labels[&ids[2]], group1_label);
+        assert_eq!(&labels[&ids[4]], group2_label);
+        assert_eq!(&labels[&ids[5]], group2_label);
+        // The two groups have different labels.
+        assert_ne!(
+            group1_label, group2_label,
+            "disjoint triangles must form distinct clusters"
+        );
     }
 }

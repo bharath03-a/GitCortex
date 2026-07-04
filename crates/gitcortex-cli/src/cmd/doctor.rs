@@ -91,12 +91,26 @@ pub fn run() -> Result<()> {
         }
     }
 
-    // 6. Assistant/editor registrations
+    // 6. WSL detection (Linux only — silently skipped everywhere else)
+    check_wsl();
+
+    // 7. Assistant/editor registrations
     check_editor_mcp(&repo_root, &mut all_ok);
 
     eprintln!();
     print_summary(all_ok);
     Ok(())
+}
+
+fn check_wsl() {
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(version) = std::fs::read_to_string("/proc/version") {
+            if version.to_ascii_lowercase().contains("microsoft") {
+                info("running inside WSL2 — native Windows not supported; WSL2 is the recommended path");
+            }
+        }
+    }
 }
 
 fn check_hook(repo_root: &Path, hook: &str, all_ok: &mut bool) {
