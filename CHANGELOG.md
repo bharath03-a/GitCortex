@@ -27,6 +27,11 @@ All notable changes to GitCortex are documented here.
   have role=tablist/tab/tabpanel/aria-selected; depth selector has
   role=radiogroup/radio/aria-checked. `CosmosCanvas` has an `sr-only`
   description pointing screen-reader users to the search palette.
+- **Hub-node overlay in `gcx viz`.** Press `G` (or click the Hubs button in
+  the header) to highlight high-fan-in symbols in cyan. Powered by a new
+  `/api/god_nodes` endpoint that computes `Calls` in-degree server-side.
+  Pairs with the `find_god_nodes` MCP tool — both expose the same centrality
+  analysis, one for AI assistants, one for visual exploration.
 - **pip-first install path.** README reordered — pip/pipx/uv now leads the
   Installation section ahead of binary downloads. Infrastructure unchanged.
 - **Windows (via WSL2) documentation.** README now clearly states that native
