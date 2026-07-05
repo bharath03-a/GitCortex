@@ -1387,10 +1387,11 @@ impl GitCortexServer {
 
     /// Return a neighbourhood subgraph around a seed symbol.
     #[tool(
-        description = "Return the subgraph centred on a seed symbol — nodes and edges reachable \
-        within `depth` hops (default 1; raise for wider context). Direction='out' downstream, \
-        'in' upstream, 'both' (default). Capped at `limit` nodes (default 30) with a `truncated` \
-        flag — prefer find_callers/find_callees for a targeted answer over a wide neighbourhood dump."
+        description = "Return the subgraph centred on a seed symbol. The response always contains \
+        a human-readable `summary` field — read it first to answer connectivity questions in one \
+        turn without iterating the raw nodes/edges arrays. Seed matching is case-insensitive. \
+        Direction='out' downstream, 'in' upstream, 'both' (default). depth default 1. \
+        Prefer find_callers/find_callees for a targeted single-direction answer."
     )]
     fn get_subgraph(&self, Parameters(p): Parameters<GetSubgraphParams>) -> CallToolResult {
         let branch = p
@@ -1405,8 +1406,32 @@ impl GitCortexServer {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
         };
-        match store.get_subgraph(&branch, &p.seed_name, depth, &direction) {
+        // Primary lookup: exact match. Fallback: case-insensitive via
+        // lookup_symbol so "Main" finds "main" on JS/Python repos where entry
+        // points are lowercase or module-scoped.
+        let sg_result = store
+            .get_subgraph(&branch, &p.seed_name, depth, &direction)
+            .and_then(|sg| {
+                if sg.nodes.is_empty() {
+                    // Case-insensitive retry: find the real name then re-query.
+                    if let Ok(alts) = store.lookup_symbol(&branch, &p.seed_name, true) {
+                        if let Some(matched) = alts
+                            .into_iter()
+                            .find(|n| n.name.eq_ignore_ascii_case(&p.seed_name))
+                        {
+                            return store.get_subgraph(&branch, &matched.name, depth, &direction);
+                        }
+                    }
+                }
+                Ok(sg)
+            });
+        match sg_result {
             Ok(sg) => {
+                // Build the prose summary BEFORE capping the node set so it
+                // reflects the full neighbourhood, not the truncated view.
+                let summary =
+                    super::subgraph::build_prose_summary(&p.seed_name, &sg.nodes, &sg.edges, depth);
+
                 // Cap the node set, then keep only edges whose endpoints both
                 // survive — a full neighbourhood dump on a hub symbol otherwise
                 // costs more tokens than reading the file it describes.
@@ -1450,6 +1475,7 @@ impl GitCortexServer {
                 let (edges, e_trunc) = self.budget_items(edges);
                 CallToolResult::structured(json!({
                     "seed": p.seed_name,
+                    "summary": summary,
                     "depth": depth,
                     "direction": direction,
                     "node_count": sg.nodes.len(),
@@ -1492,10 +1518,11 @@ impl GitCortexServer {
 
     /// Search the graph by name + qualified-name with deterministic ranking.
     #[tool(
-        description = "Search the code graph by name or description. Combines token/fuzzy text \
-        matching (CamelCase-aware, typo-tolerant) with semantic vector similarity so you can \
-        search without knowing the exact symbol name. Ranks exact > prefix > semantic > \
-        substring; functions/structs boosted. Default limit=10."
+        description = "Search the code graph by name or description. The response includes a \
+        `file_groups` field that clusters hits by file with symbol counts — read it first to \
+        identify which files own the concept before drilling into individual hits. Combines \
+        token/fuzzy text matching (CamelCase-aware, typo-tolerant) with semantic vector similarity. \
+        Ranks exact > prefix > semantic > substring; functions/structs boosted. Default limit=10."
     )]
     fn search_code(&self, Parameters(p): Parameters<SearchCodeParams>) -> CallToolResult {
         let branch = p
@@ -1588,6 +1615,7 @@ impl GitCortexServer {
         });
         all_hits.truncate(limit);
 
+        let file_groups = super::search::group_by_file(&all_hits);
         CallToolResult::structured(json!({
             "query": p.query,
             "branch": branch,
@@ -1596,6 +1624,7 @@ impl GitCortexServer {
                 self.semantic.try_lock().as_deref(),
                 Ok(SemanticState::Ready { .. })
             ),
+            "file_groups": file_groups,
             "hits": all_hits,
         }))
     }

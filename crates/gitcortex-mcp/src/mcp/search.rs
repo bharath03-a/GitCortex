@@ -28,6 +28,58 @@ pub struct SearchHit {
     pub score: i32,
 }
 
+/// Hits grouped by file — lets a model see "parse is in parser.rs (8 symbols)"
+/// at a glance without iterating the full flat hit list.
+#[derive(Debug, Clone, Serialize)]
+pub struct FileGroup {
+    pub file: String,
+    pub symbol_count: usize,
+    /// Up to 3 highest-scoring symbol names in this file.
+    pub top_symbols: Vec<String>,
+}
+
+/// Group search hits by file. Groups are sorted by `symbol_count` descending
+/// (most hits first), ties broken alphabetically by file path.
+///
+/// Input must already be sorted by score descending so `top_symbols` picks the
+/// highest-scoring symbols per file without extra sorting.
+pub fn group_by_file(hits: &[SearchHit]) -> Vec<FileGroup> {
+    // Preserve insertion order (first-seen = highest-scored) per file.
+    let mut order: Vec<String> = Vec::new();
+    let mut map: std::collections::HashMap<String, (usize, Vec<String>)> =
+        std::collections::HashMap::new();
+
+    for h in hits {
+        let e = map.entry(h.file.clone()).or_insert_with(|| {
+            order.push(h.file.clone());
+            (0, Vec::new())
+        });
+        e.0 += 1;
+        if e.1.len() < 3 {
+            e.1.push(h.name.clone());
+        }
+    }
+
+    let mut groups: Vec<FileGroup> = order
+        .into_iter()
+        .map(|file| {
+            let (count, top) = map.remove(&file).unwrap();
+            FileGroup {
+                file,
+                symbol_count: count,
+                top_symbols: top,
+            }
+        })
+        .collect();
+
+    groups.sort_by(|a, b| {
+        b.symbol_count
+            .cmp(&a.symbol_count)
+            .then_with(|| a.file.cmp(&b.file))
+    });
+    groups
+}
+
 const DEFAULT_LIMIT: usize = 10;
 const MAX_LIMIT: usize = 200;
 const MIN_TOKEN_LEN: usize = 3;
@@ -279,5 +331,68 @@ mod tests {
     fn edit_distance_length_short_circuit() {
         // length difference > 3 → MAX
         assert_eq!(edit_distance("a", "abcde"), usize::MAX);
+    }
+
+    // ── group_by_file ─────────────────────────────────────────────────────────
+
+    fn hit(name: &str, file: &str, score: i32) -> SearchHit {
+        SearchHit {
+            name: name.to_owned(),
+            qualified_name: name.to_owned(),
+            kind: "Function".to_owned(),
+            file: file.to_owned(),
+            start_line: 1,
+            score,
+        }
+    }
+
+    #[test]
+    fn group_by_file_empty_returns_empty() {
+        assert!(group_by_file(&[]).is_empty());
+    }
+
+    #[test]
+    fn group_by_file_single_file() {
+        let hits = vec![hit("parse_args", "src/parser.rs", 100)];
+        let groups = group_by_file(&hits);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].file, "src/parser.rs");
+        assert_eq!(groups[0].symbol_count, 1);
+        assert_eq!(groups[0].top_symbols, vec!["parse_args"]);
+    }
+
+    #[test]
+    fn group_by_file_sorted_by_count_desc() {
+        let hits = vec![
+            hit("a", "src/big.rs", 80),
+            hit("b", "src/big.rs", 70),
+            hit("c", "src/big.rs", 60),
+            hit("x", "src/small.rs", 50),
+        ];
+        let groups = group_by_file(&hits);
+        assert_eq!(groups[0].file, "src/big.rs");
+        assert_eq!(groups[0].symbol_count, 3);
+        assert_eq!(groups[1].file, "src/small.rs");
+        assert_eq!(groups[1].symbol_count, 1);
+    }
+
+    #[test]
+    fn group_by_file_top_symbols_capped_at_three() {
+        let hits: Vec<SearchHit> = (0..8)
+            .map(|i| hit(&format!("fn{i}"), "src/big.rs", 100 - i))
+            .collect();
+        let groups = group_by_file(&hits);
+        assert_eq!(groups[0].symbol_count, 8);
+        assert_eq!(groups[0].top_symbols.len(), 3);
+        // First three are highest-scored (fn0, fn1, fn2).
+        assert_eq!(groups[0].top_symbols[0], "fn0");
+    }
+
+    #[test]
+    fn group_by_file_alphabetical_tie_break() {
+        let hits = vec![hit("a", "src/z.rs", 50), hit("b", "src/a.rs", 50)];
+        let groups = group_by_file(&hits);
+        // Both have count=1; alphabetical tie-break: a.rs before z.rs.
+        assert_eq!(groups[0].file, "src/a.rs");
     }
 }
