@@ -77,10 +77,8 @@ pub fn find_clusters<S: GraphStore + ?Sized>(
     // Group node ids by final label.
     let mut groups: HashMap<String, Vec<&Node>> = HashMap::new();
     for n in &nodes {
-        let label = labels
-            .get(n.id.as_str().as_str())
-            .cloned()
-            .unwrap_or_else(|| n.id.as_str());
+        let id = n.id.as_str();
+        let label = labels.get(&id).cloned().unwrap_or(id);
         groups.entry(label).or_default().push(n);
     }
 
@@ -92,6 +90,8 @@ pub fn find_clusters<S: GraphStore + ?Sized>(
             members.sort_by(|a, b| a.qualified_name.cmp(&b.qualified_name));
 
             // Representative: highest in-degree, ties broken by qualified_name.
+            // members.len() >= min_cluster_size (>= 2) from the filter above,
+            // so max_by on a non-empty iterator always returns Some.
             let representative = members
                 .iter()
                 .max_by(|a, b| {
@@ -101,7 +101,7 @@ pub fn find_clusters<S: GraphStore + ?Sized>(
                         .cmp(&deg_b)
                         .then_with(|| b.qualified_name.cmp(&a.qualified_name))
                 })
-                .expect("non-empty group");
+                .unwrap_or_else(|| &members[0]);
 
             Cluster {
                 label: representative.qualified_name.clone(),

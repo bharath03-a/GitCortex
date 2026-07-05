@@ -356,13 +356,22 @@ fn print_section(label: &str, nodes: &[gitcortex_core::graph::Node]) {
 
 fn parse_node_kind(s: &str) -> Option<NodeKind> {
     match s {
-        "function" => Some(NodeKind::Function),
-        "method" => Some(NodeKind::Method),
+        "file" => Some(NodeKind::File),
+        "folder" => Some(NodeKind::Folder),
+        "module" => Some(NodeKind::Module),
         "struct" => Some(NodeKind::Struct),
+        "enum" => Some(NodeKind::Enum),
+        "enum_member" | "enum-member" => Some(NodeKind::EnumMember),
         "trait" => Some(NodeKind::Trait),
         "interface" => Some(NodeKind::Interface),
-        "enum" => Some(NodeKind::Enum),
+        "type_alias" | "type-alias" => Some(NodeKind::TypeAlias),
+        "function" => Some(NodeKind::Function),
+        "method" => Some(NodeKind::Method),
+        "property" => Some(NodeKind::Property),
         "constant" => Some(NodeKind::Constant),
+        "macro" => Some(NodeKind::Macro),
+        "annotation" => Some(NodeKind::Annotation),
+        "section" => Some(NodeKind::Section),
         _ => None,
     }
 }

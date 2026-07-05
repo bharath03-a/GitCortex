@@ -34,11 +34,11 @@ pub fn build_prose_summary(seed_name: &str, nodes: &[Node], edges: &[Edge], dept
     }
 
     // Find the seed node (case-insensitive so "Main" matches "main").
+    // nodes.is_empty() is guarded above, so nodes[0] is safe.
     let seed = nodes
         .iter()
         .find(|n| n.name.eq_ignore_ascii_case(seed_name))
-        .or_else(|| nodes.first())
-        .expect("non-empty nodes");
+        .unwrap_or(&nodes[0]);
 
     let seed_id = seed.id.as_str();
 

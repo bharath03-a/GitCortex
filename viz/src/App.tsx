@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { GraphData, RawNode } from "./api";
 import { fetchBranches, fetchGraphData, fetchGodNodes, fetchUnused } from "./api";
 import { Header } from "./components/Header";
@@ -31,6 +31,11 @@ export default function App() {
   const [diffHead, setDiffHead] = useState<string | null>(null);
   const [unusedIds, setUnusedIds] = useState<Set<string> | null>(null);
   const [godNodeIds, setGodNodeIds] = useState<Set<string> | null>(null);
+  // Track whether a fetch has already been dispatched for the current overlay
+  // toggle session — prevents an infinite re-fetch loop when the server returns
+  // zero results (empty Set still has size=0, which would re-trigger the effect).
+  const unusedFetchedRef = useRef(false);
+  const godNodesFetchedRef = useRef(false);
   const diffOverlay = useBranchDiff(activeBranch, diffHead);
 
   useEffect(() => {
@@ -88,10 +93,12 @@ export default function App() {
           break;
         case "u":
         case "U":
+          unusedFetchedRef.current = false;
           setUnusedIds((cur) => (cur ? null : new Set()));
           break;
         case "g":
         case "G":
+          godNodesFetchedRef.current = false;
           setGodNodeIds((cur) => (cur ? null : new Set()));
           break;
       }
@@ -100,18 +107,21 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [searchOpen, helpOpen]);
 
-  // Fetch unused symbols when toggle flips on
+  // Fetch unused symbols when toggle flips on (guard ref prevents re-fetch loop
+  // when server returns zero results — empty Set still has size=0).
   useEffect(() => {
-    if (unusedIds !== null && unusedIds.size === 0) {
+    if (unusedIds !== null && unusedIds.size === 0 && !unusedFetchedRef.current) {
+      unusedFetchedRef.current = true;
       fetchUnused()
         .then((r) => setUnusedIds(new Set(r.nodes.map((n) => n.id))))
         .catch(() => setUnusedIds(null));
     }
   }, [unusedIds]);
 
-  // Fetch god nodes when toggle flips on
+  // Fetch god nodes when toggle flips on (same guard pattern as above).
   useEffect(() => {
-    if (godNodeIds !== null && godNodeIds.size === 0) {
+    if (godNodeIds !== null && godNodeIds.size === 0 && !godNodesFetchedRef.current) {
+      godNodesFetchedRef.current = true;
       fetchGodNodes()
         .then((r) => setGodNodeIds(new Set(r.nodes.map((n) => n.id))))
         .catch(() => setGodNodeIds(null));
@@ -155,9 +165,15 @@ export default function App() {
         diffHead={diffHead}
         onSetDiffHead={setDiffHead}
         unusedActive={unusedIds !== null}
-        onToggleUnused={() => setUnusedIds((cur) => (cur ? null : new Set()))}
+        onToggleUnused={() => {
+          unusedFetchedRef.current = false;
+          setUnusedIds((cur) => (cur ? null : new Set()));
+        }}
         godNodesActive={godNodeIds !== null}
-        onToggleGodNodes={() => setGodNodeIds((cur) => (cur ? null : new Set()))}
+        onToggleGodNodes={() => {
+          godNodesFetchedRef.current = false;
+          setGodNodeIds((cur) => (cur ? null : new Set()));
+        }}
       />
       <main className="flex flex-1 overflow-hidden">
         {railOpen && (

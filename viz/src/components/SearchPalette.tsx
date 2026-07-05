@@ -92,11 +92,10 @@ export function SearchPalette({ data, onClose, onSelect }: Props) {
         >
           {results.length === 0 && (
             <li
-              role="option"
-              aria-selected={false}
+              role="presentation"
               className="px-4 py-6 text-center text-[12px] text-(--color-text-dim)"
             >
-              No matches
+              <span aria-live="polite">No matches</span>
             </li>
           )}
           {results.map((n, i) => (

@@ -11,8 +11,8 @@ use axum::{
     Router,
 };
 use gitcortex_core::{
-    graph::Node,
-    schema::{EdgeKind, NodeKind},
+    graph::{in_degree_by_calls, Node},
+    schema::NodeKind,
     store::GraphStore,
 };
 use gitcortex_store::kuzu::KuzuGraphStore;
@@ -438,13 +438,7 @@ async fn god_nodes_handler(
         with_locked_store(&s, |store| {
             let nodes = store.list_all_nodes(&branch)?;
             let edges = store.list_all_edges(&branch)?;
-            let mut in_degree: std::collections::HashMap<String, u32> =
-                std::collections::HashMap::new();
-            for e in &edges {
-                if matches!(e.kind, EdgeKind::Calls) {
-                    *in_degree.entry(e.dst.as_str()).or_insert(0) += 1;
-                }
-            }
+            let in_degree = in_degree_by_calls(&edges);
             let mut god_nodes: Vec<(&Node, u32)> = nodes
                 .iter()
                 .filter_map(|n| {
@@ -702,8 +696,9 @@ fn build_svg(store: &KuzuGraphStore, branch: &str) -> Result<String> {
 
     let mut pos: HashMap<String, (f64, f64)> = HashMap::new();
     let mut svg = String::new();
+    let branch_esc = svg_escape(branch);
     svg.push_str(&format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1200 1200\" font-family=\"monospace\" font-size=\"9\">\n  <rect width=\"1200\" height=\"1200\" fill=\"#1e1e2e\"/>\n  <text x=\"20\" y=\"24\" fill=\"#cdd6f4\">GitCortex · branch {branch} · {n} nodes · {e} edges</text>\n",
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1200 1200\" font-family=\"monospace\" font-size=\"9\">\n  <rect width=\"1200\" height=\"1200\" fill=\"#1e1e2e\"/>\n  <text x=\"20\" y=\"24\" fill=\"#cdd6f4\">GitCortex · branch {branch_esc} · {n} nodes · {e} edges</text>\n",
         n = nodes.len(),
         e = edges.len()
     ));

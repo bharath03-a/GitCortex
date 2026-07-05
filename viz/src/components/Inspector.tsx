@@ -142,7 +142,12 @@ export function Inspector({ node, data, onClose, onSelect, depth, onDepthChange 
         </TabBtn>
       </div>
 
-      <div id="inspector-panel" role="tabpanel" className="flex-1 overflow-y-auto p-3">
+      <div
+        id="inspector-panel"
+        role="tabpanel"
+        aria-labelledby={tab === "local" ? "tab-local" : "tab-deep"}
+        className="flex-1 overflow-y-auto p-3"
+      >
         {tab === "local" && (
           <>
             <NodeList title="Callers" nodes={callers} onSelect={onSelect} />
@@ -161,7 +166,7 @@ function DeepCallersPanel({ node, onSelect }: { node: RawNode; onSelect: (n: Raw
   const [result, setResult] = useState<DeepCallersResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [depth] = useState(3);
+  const depth = 3;
 
   useEffect(() => {
     setLoading(true);

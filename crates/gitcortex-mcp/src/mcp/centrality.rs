@@ -6,23 +6,12 @@
 //! No clustering here — see `clustering.rs` for label-propagation community
 //! detection, which is a separate, coarser-grained signal.
 
-use std::collections::HashMap;
-
-use gitcortex_core::{error::Result, graph::Edge, schema::EdgeKind, store::GraphStore};
+use gitcortex_core::{error::Result, store::GraphStore};
 use serde::Serialize;
 
-/// Count inbound `Calls` edges per node id. Mirrors the algorithm `tour.rs`
-/// has used since v0.3 — extracted here so both callers stay in lock-step
-/// instead of drifting via duplicated logic.
-pub fn in_degree_by_calls(edges: &[Edge]) -> HashMap<String, u32> {
-    let mut in_degree: HashMap<String, u32> = HashMap::new();
-    for e in edges {
-        if matches!(e.kind, EdgeKind::Calls) {
-            *in_degree.entry(e.dst.as_str()).or_insert(0) += 1;
-        }
-    }
-    in_degree
-}
+// Re-export so clustering.rs and tour.rs can import from here without
+// knowing about the core crate's module layout.
+pub use gitcortex_core::graph::in_degree_by_calls;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct GodNode {
