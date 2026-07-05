@@ -10,7 +10,11 @@ use axum::{
     routing::get,
     Router,
 };
-use gitcortex_core::{graph::Node, schema::NodeKind, store::GraphStore};
+use gitcortex_core::{
+    graph::Node,
+    schema::{EdgeKind, NodeKind},
+    store::GraphStore,
+};
 use gitcortex_store::kuzu::KuzuGraphStore;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -116,6 +120,7 @@ async fn serve(state: Arc<AppState>, port: u16) -> Result<()> {
         .route("/api/branches", get(branches_handler))
         .route("/api/branch-diff", get(branch_diff_handler))
         .route("/api/unused", get(unused_handler))
+        .route("/api/god_nodes", get(god_nodes_handler))
         .layer(middleware::from_fn(move |req, next| {
             let allowed = allowed_hosts.clone();
             host_header_guard(req, next, allowed)
@@ -409,6 +414,77 @@ async fn unused_handler(
     Json(json!({
         "count": nodes.len(),
         "nodes": nodes.iter().map(node_json).collect::<Vec<_>>(),
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+struct GodNodesQuery {
+    /// Minimum inbound call-edges for a node to be considered a hub. Default 5.
+    #[serde(default)]
+    min_in_degree: Option<u32>,
+    #[serde(default)]
+    branch: Option<String>,
+}
+
+#[tracing::instrument(skip(state), fields(min_in_degree = ?q.min_in_degree))]
+async fn god_nodes_handler(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<GodNodesQuery>,
+) -> Json<Value> {
+    let branch = q.branch.unwrap_or_else(|| state.branch.clone());
+    let min_in_degree = q.min_in_degree.unwrap_or(5);
+    let s = state.clone();
+    let result = run_blocking("god_nodes_handler", move || {
+        with_locked_store(&s, |store| {
+            let nodes = store.list_all_nodes(&branch)?;
+            let edges = store.list_all_edges(&branch)?;
+            let mut in_degree: std::collections::HashMap<String, u32> =
+                std::collections::HashMap::new();
+            for e in &edges {
+                if matches!(e.kind, EdgeKind::Calls) {
+                    *in_degree.entry(e.dst.as_str()).or_insert(0) += 1;
+                }
+            }
+            let mut god_nodes: Vec<(&Node, u32)> = nodes
+                .iter()
+                .filter_map(|n| {
+                    let id = n.id.as_str();
+                    let deg = *in_degree.get(&id).unwrap_or(&0);
+                    if deg >= min_in_degree {
+                        Some((n, deg))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            god_nodes.sort_by(|a, b| {
+                b.1.cmp(&a.1)
+                    .then(a.0.qualified_name.cmp(&b.0.qualified_name))
+            });
+            let limit = 50usize;
+            let result: Vec<Value> = god_nodes
+                .iter()
+                .take(limit)
+                .map(|(n, deg)| {
+                    let mut v = node_json(n);
+                    v["in_degree"] = (*deg).into();
+                    v
+                })
+                .collect();
+            Ok(result)
+        })
+    })
+    .await;
+
+    let nodes = match result {
+        Ok(v) => v,
+        Err(j) => return j,
+    };
+
+    Json(json!({
+        "count": nodes.len(),
+        "nodes": nodes,
+        "min_in_degree": min_in_degree,
     }))
 }
 

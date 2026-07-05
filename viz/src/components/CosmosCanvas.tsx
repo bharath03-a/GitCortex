@@ -8,6 +8,7 @@ import type { DiffOverlay } from "../hooks/useBranchDiff";
 
 const DIFF_ADDED = "#10b981";
 const DIFF_REMOVED = "#ef4444";
+const GOD_NODE_COLOR = "#22d3ee"; // cyan-400 — hub nodes overlay
 
 interface PointRow extends Record<string, unknown> {
   id: string;
@@ -34,6 +35,7 @@ interface Props {
   depth: number;
   diffOverlay: DiffOverlay | null;
   unusedIds: Set<string> | null;
+  godNodeIds: Set<string> | null;
 }
 
 export function CosmosCanvas({
@@ -45,6 +47,7 @@ export function CosmosCanvas({
   depth,
   diffOverlay,
   unusedIds,
+  godNodeIds,
 }: Props) {
   const ref = useRef<CosmographRef>(null);
 
@@ -137,6 +140,10 @@ export function CosmosCanvas({
           if (diffOverlay && node) {
             if (diffOverlay.addedIds.has(node.id)) return DIFF_ADDED;
             if (diffOverlay.removedIds.has(node.id)) return DIFF_REMOVED;
+          }
+          if (godNodeIds && node) {
+            if (godNodeIds.has(node.id)) return GOD_NODE_COLOR;
+            return dimColor(KIND_COLOR[kind] ?? "#89b4fa", 0.82);
           }
           if (unusedIds && node) {
             if (unusedIds.has(node.id)) return "#f59e0b";

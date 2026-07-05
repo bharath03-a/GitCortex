@@ -14,6 +14,7 @@ const SHORTCUTS: { keys: string[]; desc: string }[] = [
   { keys: ["2"], desc: "Density: Public API" },
   { keys: ["3"], desc: "Density: Full graph" },
   { keys: ["U"], desc: "Toggle dead-code (unused) overlay" },
+  { keys: ["G"], desc: "Toggle hub-node (high fan-in) overlay" },
   { keys: ["F"], desc: "Fit graph to view" },
   { keys: ["Space"], desc: "Pause / resume layout" },
   { keys: ["Esc"], desc: "Close modal / clear selection" },

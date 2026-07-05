@@ -1,4 +1,4 @@
-import { CircleSlash, Keyboard, Network, Search } from "lucide-react";
+import { CircleSlash, Keyboard, Network, Search, Zap } from "lucide-react";
 import { DENSITY_LABEL, type DensityMode } from "../graph/density";
 import { BranchPicker } from "./BranchPicker";
 
@@ -14,6 +14,8 @@ interface Props {
   onSetDiffHead: (b: string | null) => void;
   unusedActive: boolean;
   onToggleUnused: () => void;
+  godNodesActive: boolean;
+  onToggleGodNodes: () => void;
 }
 
 const DENSITY_OPTIONS: DensityMode[] = ["focused", "public", "full"];
@@ -30,6 +32,8 @@ export function Header({
   onSetDiffHead,
   unusedActive,
   onToggleUnused,
+  godNodesActive,
+  onToggleGodNodes,
 }: Props) {
   return (
     <header className="flex h-12 items-center justify-between border-b border-(--color-border-subtle) bg-(--color-void-deep) px-4">
@@ -53,6 +57,18 @@ export function Header({
         >
           <CircleSlash className="size-3.5" />
           <span>Unused</span>
+        </button>
+        <button
+          onClick={onToggleGodNodes}
+          title="Toggle hub-node overlay — high fan-in symbols (G)"
+          className={`flex items-center gap-1.5 rounded-md border border-(--color-border-subtle) px-2.5 py-1.5 text-[11px] transition-colors ${
+            godNodesActive
+              ? "bg-cyan-500/15 text-cyan-400"
+              : "bg-(--color-elevated) text-(--color-text-muted) hover:text-(--color-text-primary)"
+          }`}
+        >
+          <Zap className="size-3.5" />
+          <span>Hubs</span>
         </button>
         <div className="flex items-center gap-1 rounded-md border border-(--color-border-subtle) bg-(--color-elevated) p-0.5">
           {DENSITY_OPTIONS.map((m, i) => {

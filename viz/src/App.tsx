@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { GraphData, RawNode } from "./api";
-import { fetchBranches, fetchGraphData, fetchUnused } from "./api";
+import { fetchBranches, fetchGraphData, fetchGodNodes, fetchUnused } from "./api";
 import { Header } from "./components/Header";
 import { FilterRail, type Flag, type Visibility } from "./components/FilterRail";
 import { CosmosCanvas } from "./components/CosmosCanvas";
@@ -30,6 +30,7 @@ export default function App() {
   const [lastSha, setLastSha] = useState<string | null>(null);
   const [diffHead, setDiffHead] = useState<string | null>(null);
   const [unusedIds, setUnusedIds] = useState<Set<string> | null>(null);
+  const [godNodeIds, setGodNodeIds] = useState<Set<string> | null>(null);
   const diffOverlay = useBranchDiff(activeBranch, diffHead);
 
   useEffect(() => {
@@ -89,6 +90,10 @@ export default function App() {
         case "U":
           setUnusedIds((cur) => (cur ? null : new Set()));
           break;
+        case "g":
+        case "G":
+          setGodNodeIds((cur) => (cur ? null : new Set()));
+          break;
       }
     };
     window.addEventListener("keydown", onKey);
@@ -103,6 +108,15 @@ export default function App() {
         .catch(() => setUnusedIds(null));
     }
   }, [unusedIds]);
+
+  // Fetch god nodes when toggle flips on
+  useEffect(() => {
+    if (godNodeIds !== null && godNodeIds.size === 0) {
+      fetchGodNodes()
+        .then((r) => setGodNodeIds(new Set(r.nodes.map((n) => n.id))))
+        .catch(() => setGodNodeIds(null));
+    }
+  }, [godNodeIds]);
 
   const data = useMemo(() => {
     if (!rawData) return null;
@@ -142,6 +156,8 @@ export default function App() {
         onSetDiffHead={setDiffHead}
         unusedActive={unusedIds !== null}
         onToggleUnused={() => setUnusedIds((cur) => (cur ? null : new Set()))}
+        godNodesActive={godNodeIds !== null}
+        onToggleGodNodes={() => setGodNodeIds((cur) => (cur ? null : new Set()))}
       />
       <main className="flex flex-1 overflow-hidden">
         {railOpen && (
@@ -183,6 +199,7 @@ export default function App() {
               depth={depth}
               diffOverlay={diffOverlay}
               unusedIds={unusedIds}
+              godNodeIds={godNodeIds}
             />
           )}
           {data && !error && data.nodes.length === 0 && (
@@ -221,6 +238,20 @@ export default function App() {
               <span className="text-(--color-warn)">{unusedIds.size} unused symbols</span>
               <button
                 onClick={() => setUnusedIds(null)}
+                className="ml-1 text-(--color-text-dim) hover:text-(--color-text-primary)"
+              >
+                clear
+              </button>
+            </div>
+          )}
+          {godNodeIds && godNodeIds.size > 0 && !diffOverlay && (
+            <div
+              className={`animate-fade-in absolute z-10 flex items-center gap-2 rounded-lg border border-(--color-border-subtle) bg-(--color-elevated)/90 px-3 py-1.5 font-mono text-[11px] backdrop-blur-sm ${unusedIds && unusedIds.size > 0 ? "top-12 right-3" : "top-3 right-3"}`}
+            >
+              <span className="size-2 rounded-full bg-cyan-400" />
+              <span className="text-cyan-400">{godNodeIds.size} hub nodes</span>
+              <button
+                onClick={() => setGodNodeIds(null)}
                 className="ml-1 text-(--color-text-dim) hover:text-(--color-text-primary)"
               >
                 clear
