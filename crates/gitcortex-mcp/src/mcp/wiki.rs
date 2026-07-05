@@ -4,26 +4,26 @@
 //! Output shape (markdown):
 //!
 //! ```text
-//! # <name> (<kind>)
+//! # NAME (KIND)
 //!
-//! **Defined in** `<file>:<start>-<end>` · visibility=<vis> · async=<bool> ...
+//! **Defined in** `file:start-end` · visibility=pub · async=false ...
 //!
 //! ## Signature
-//! ```<lang>
-//! <signature>
-//! ```
+//! ~~~rust
+//! fn example() { ... }
+//! ~~~
 //!
 //! ## Doc
-//! <doc_comment>
+//! doc comment text
 //!
 //! ## Callers (N)
-//! - <name> (<kind>) — <file>:<line>
+//! - name (kind) — file:line
 //!
 //! ## Calls (N)
-//! - …
+//! - ...
 //!
 //! ## Used by (N)
-//! - …
+//! - ...
 //! ```
 
 use std::fmt::Write;

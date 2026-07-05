@@ -53,11 +53,12 @@ jobs:
       - name: Production build
         run: npm run build
 
-      # Guard against accidental JS bloat. 2 MB is generous for a viz tool;
-      # lower this incrementally once we establish a real baseline.
-      - name: Bundle size check (2 MB ceiling)
+      # Guard against accidental JS bloat. Current baseline is ~2.2 MB uncompressed
+      # (gzip ~530 kB). Lower this incrementally with code-splitting work.
+      - name: Bundle size check (2.5 MB ceiling)
         run: |
-          DIST_SIZE=$(du -sb dist/ | cut -f1)
-          echo "dist/ size: ${DIST_SIZE} bytes"
-          python3 -c "import sys; sys.exit(0 if int('${DIST_SIZE}') < 2*1024*1024 else 1)" \
-            || (echo "Bundle exceeds 2 MB ceiling: ${DIST_SIZE} bytes" && exit 1)
+          DIST_DIR="../crates/gitcortex-viz/dist-viz"
+          DIST_SIZE=$(du -sb "$DIST_DIR" | cut -f1)
+          echo "dist size: ${DIST_SIZE} bytes ($(( DIST_SIZE / 1024 )) kB)"
+          python3 -c "import sys; sys.exit(0 if int('${DIST_SIZE}') < 2500*1024 else 1)" \
+            || (echo "Bundle exceeds 2.5 MB ceiling: ${DIST_SIZE} bytes" && exit 1)

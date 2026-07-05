@@ -1,0 +1,11 @@
+# typos configuration — suppress abbreviation false positives that appear in
+# the KuzuDB schema column shorthand (ist=is_static, inh=inherits, etc.) and
+# in "ANDed" (standard boolean operator spelling).
+
+[default.extend-words]
+# is_static column abbreviation used throughout kuzu schema / bulk insert
+ist = "ist"
+# inherits abbreviation in typescript.rs parser
+inh = "inh"
+# "ANDed" — valid boolean operator past-tense form
+Ded = "Ded"

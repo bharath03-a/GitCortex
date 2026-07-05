@@ -203,10 +203,10 @@ jobs:
           npm install --no-audit --no-fund
           npm run build
 
-      - name: Install cargo-llvm-cov
+      - name: Install cargo-llvm-cov and nextest
         uses: taiki-e/install-action@v2
         with:
-          tool: cargo-llvm-cov
+          tool: cargo-llvm-cov,nextest
 
       - name: Run tests with coverage
         run: cargo llvm-cov nextest --workspace --lcov --output-path lcov.info
@@ -221,13 +221,9 @@ jobs:
 
       # Hard floor: fail if line coverage drops below 60%.
       # Raise this incrementally as test suite grows toward the 80% target.
+      # Uses cargo-llvm-cov's own --fail-under-lines flag to avoid re-running tests.
       - name: Coverage threshold (60%)
-        run: |
-          cargo llvm-cov nextest --workspace --summary-only 2>&1 | tee cov_summary.txt
-          LINE_COV=$(grep -oP 'Lines.*?(\d+\.\d+)%' cov_summary.txt | grep -oP '\d+\.\d+' | tail -1)
-          echo "Line coverage: ${LINE_COV}%"
-          python3 -c "import sys; cov=float('${LINE_COV}'); sys.exit(0 if cov>=60 else 1)" \
-            || (echo "Coverage ${LINE_COV}% is below the 60% floor" && exit 1)
+        run: cargo llvm-cov report --fail-under-lines 60
 
   # ── Tier 5: binary smoke test (release build sanity) ────────────────────────
 
