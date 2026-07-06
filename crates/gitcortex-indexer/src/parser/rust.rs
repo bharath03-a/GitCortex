@@ -72,6 +72,7 @@ impl LanguageParser for RustParser {
             deferred_inherits: Vec::new(),
             deferred_throws: Vec::new(),
             deferred_annotated: visitor.deferred_annotated,
+            deferred_doc_refs: Vec::new(),
         })
     }
 }

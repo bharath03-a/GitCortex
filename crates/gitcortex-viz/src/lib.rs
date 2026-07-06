@@ -10,7 +10,11 @@ use axum::{
     routing::get,
     Router,
 };
-use gitcortex_core::{graph::Node, schema::NodeKind, store::GraphStore};
+use gitcortex_core::{
+    graph::{in_degree_by_calls, Node},
+    schema::NodeKind,
+    store::GraphStore,
+};
 use gitcortex_store::kuzu::KuzuGraphStore;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -116,6 +120,7 @@ async fn serve(state: Arc<AppState>, port: u16) -> Result<()> {
         .route("/api/branches", get(branches_handler))
         .route("/api/branch-diff", get(branch_diff_handler))
         .route("/api/unused", get(unused_handler))
+        .route("/api/god_nodes", get(god_nodes_handler))
         .layer(middleware::from_fn(move |req, next| {
             let allowed = allowed_hosts.clone();
             host_header_guard(req, next, allowed)
@@ -413,6 +418,71 @@ async fn unused_handler(
 }
 
 #[derive(Debug, Deserialize)]
+struct GodNodesQuery {
+    /// Minimum inbound call-edges for a node to be considered a hub. Default 5.
+    #[serde(default)]
+    min_in_degree: Option<u32>,
+    #[serde(default)]
+    branch: Option<String>,
+}
+
+#[tracing::instrument(skip(state), fields(min_in_degree = ?q.min_in_degree))]
+async fn god_nodes_handler(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<GodNodesQuery>,
+) -> Json<Value> {
+    let branch = q.branch.unwrap_or_else(|| state.branch.clone());
+    let min_in_degree = q.min_in_degree.unwrap_or(5);
+    let s = state.clone();
+    let result = run_blocking("god_nodes_handler", move || {
+        with_locked_store(&s, |store| {
+            let nodes = store.list_all_nodes(&branch)?;
+            let edges = store.list_all_edges(&branch)?;
+            let in_degree = in_degree_by_calls(&edges);
+            let mut god_nodes: Vec<(&Node, u32)> = nodes
+                .iter()
+                .filter_map(|n| {
+                    let id = n.id.as_str();
+                    let deg = *in_degree.get(&id).unwrap_or(&0);
+                    if deg >= min_in_degree {
+                        Some((n, deg))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            god_nodes.sort_by(|a, b| {
+                b.1.cmp(&a.1)
+                    .then(a.0.qualified_name.cmp(&b.0.qualified_name))
+            });
+            let limit = 50usize;
+            let result: Vec<Value> = god_nodes
+                .iter()
+                .take(limit)
+                .map(|(n, deg)| {
+                    let mut v = node_json(n);
+                    v["in_degree"] = (*deg).into();
+                    v
+                })
+                .collect();
+            Ok(result)
+        })
+    })
+    .await;
+
+    let nodes = match result {
+        Ok(v) => v,
+        Err(j) => return j,
+    };
+
+    Json(json!({
+        "count": nodes.len(),
+        "nodes": nodes,
+        "min_in_degree": min_in_degree,
+    }))
+}
+
+#[derive(Debug, Deserialize)]
 struct BranchDiffQuery {
     base: String,
     head: String,
@@ -461,6 +531,7 @@ fn parse_node_kind(s: &str) -> Option<NodeKind> {
         "macro" => NodeKind::Macro,
         "annotation" => NodeKind::Annotation,
         "enum_member" => NodeKind::EnumMember,
+        "section" => NodeKind::Section,
         _ => return None,
     })
 }
@@ -551,8 +622,8 @@ fn build_html(store: &KuzuGraphStore, branch: &str) -> Result<String> {
         .collect();
 
     let payload = json!({ "nodes": nodes_json, "edges": edges_json });
-    let payload_str = serde_json::to_string(&payload)?;
-    let branch_esc = branch.replace('"', "&quot;");
+    let payload_str = escape_script_payload(&serde_json::to_string(&payload)?);
+    let branch_esc = svg_escape(branch);
     let total_nodes = nodes.len();
     let total_edges = edges.len();
 
@@ -625,8 +696,9 @@ fn build_svg(store: &KuzuGraphStore, branch: &str) -> Result<String> {
 
     let mut pos: HashMap<String, (f64, f64)> = HashMap::new();
     let mut svg = String::new();
+    let branch_esc = svg_escape(branch);
     svg.push_str(&format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1200 1200\" font-family=\"monospace\" font-size=\"9\">\n  <rect width=\"1200\" height=\"1200\" fill=\"#1e1e2e\"/>\n  <text x=\"20\" y=\"24\" fill=\"#cdd6f4\">GitCortex · branch {branch} · {n} nodes · {e} edges</text>\n",
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1200 1200\" font-family=\"monospace\" font-size=\"9\">\n  <rect width=\"1200\" height=\"1200\" fill=\"#1e1e2e\"/>\n  <text x=\"20\" y=\"24\" fill=\"#cdd6f4\">GitCortex · branch {branch_esc} · {n} nodes · {e} edges</text>\n",
         n = nodes.len(),
         e = edges.len()
     ));
@@ -680,6 +752,15 @@ fn svg_escape(s: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&#39;")
+}
+
+/// Escape `</` inside a JSON string about to be embedded in a `<script>`
+/// block. `serde_json::to_string` does not escape this sequence, so a node
+/// name/file path containing the literal substring `</script>` (sourced
+/// from a cloned, potentially untrusted repo) would close the tag early and
+/// inject arbitrary HTML/JS into the exported file.
+fn escape_script_payload(s: &str) -> String {
+    s.replace("</", "<\\/")
 }
 
 // ─── GraphML (Gephi / yEd / Cytoscape) ────────────────────────────────────────
@@ -796,6 +877,7 @@ fn kind_dot_color(k: &NodeKind) -> &'static str {
         NodeKind::Property => "#cba6f7",
         NodeKind::Annotation => "#eba0ac",
         NodeKind::EnumMember => "#a6d189",
+        NodeKind::Section => "#f5c2e7",
     }
 }
 
@@ -807,4 +889,46 @@ fn repo_root() -> Result<PathBuf> {
     Ok(PathBuf::from(
         String::from_utf8(out.stdout)?.trim().to_owned(),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn escape_script_payload_breaks_closing_tag() {
+        let malicious = r#"{"name":"</script><script>alert(1)</script>"}"#;
+        let escaped = escape_script_payload(malicious);
+        assert!(
+            !escaped.contains("</script>"),
+            "escaped payload still contains an unescaped closing script tag: {escaped}"
+        );
+        assert!(escaped.contains("<\\/script>"));
+    }
+
+    #[test]
+    fn escape_script_payload_is_noop_without_slash_sequence() {
+        let benign = r#"{"name":"validate_token"}"#;
+        assert_eq!(escape_script_payload(benign), benign);
+    }
+
+    #[test]
+    fn svg_escape_covers_html_entities() {
+        let s = svg_escape(r#"<script>&"'</script>"#);
+        assert_eq!(s, "&lt;script&gt;&amp;&quot;&#39;&lt;/script&gt;");
+    }
+
+    #[test]
+    fn cypher_str_escapes_quotes_and_backslashes() {
+        // Regression test locking in already-correct Cypher injection defenses.
+        let malicious = "O'Brien'; DROP TABLE--\\";
+        let escaped = cypher_str(malicious);
+        assert_eq!(escaped, "O\\'Brien\\'; DROP TABLE--\\\\");
+    }
+
+    #[test]
+    fn cypher_id_strips_non_alphanumeric() {
+        let id = cypher_id("abc-123'; DROP TABLE--");
+        assert!(id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
+    }
 }

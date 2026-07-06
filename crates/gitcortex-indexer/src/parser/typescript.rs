@@ -109,6 +109,7 @@ fn parse_source(
         deferred_throws: Vec::new(),
         deferred_annotated: visitor.deferred_annotated,
         deferred_imports: visitor.deferred_imports,
+        deferred_doc_refs: Vec::new(),
     })
 }
 

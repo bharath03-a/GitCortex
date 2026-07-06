@@ -2,6 +2,60 @@
 
 All notable changes to GitCortex are documented here.
 
+## [0.6.0] - 2026-06-30
+
+### Added
+- **Structural Markdown ingestion (no LLM).** `.md`/`.markdown` files are now
+  indexed: headings become `Section` nodes (nested via `Contains` edges), and
+  inline code-spans/link text matching identifier shape produce `References`
+  edges from the section to the referenced code symbol. Cross-language by
+  design — a README can reference any language's symbols. SCHEMA_VERSION
+  bumped to 12 (triggers a one-time full re-index).
+- **`find_god_nodes` MCP tool + `gcx query find-god-nodes` CLI.** Surfaces
+  high-fan-in hub symbols ranked by inbound `Calls` in-degree, deterministic
+  across re-runs. Refactors the existing `tour.rs` centrality into a shared
+  `centrality.rs` helper.
+- **`find_clusters` MCP tool + `gcx query find-clusters` CLI.** Synchronous
+  label-propagation community detection over `Contains`+`Calls` undirected
+  adjacency. Deterministic (fixed visiting order by qualified_name, lowest-
+  qualified_name tie-break). Members per cluster capped at 25; `size` stays
+  honest. Zero new dependencies, no LLM calls.
+- **Viz accessibility.** `F`/`Space` keyboard shortcuts now wired (were
+  documented but not implemented). Icon-only canvas-control buttons have
+  `aria-label`. `SearchPalette` uses a proper ARIA combobox pattern
+  (role=combobox, role=listbox, role=option, aria-selected). `Inspector` tabs
+  have role=tablist/tab/tabpanel/aria-selected; depth selector has
+  role=radiogroup/radio/aria-checked. `CosmosCanvas` has an `sr-only`
+  description pointing screen-reader users to the search palette.
+- **Hub-node overlay in `gcx viz`.** Press `G` (or click the Hubs button in
+  the header) to highlight high-fan-in symbols in cyan. Powered by a new
+  `/api/god_nodes` endpoint that computes `Calls` in-degree server-side.
+  Pairs with the `find_god_nodes` MCP tool — both expose the same centrality
+  analysis, one for AI assistants, one for visual exploration.
+- **pip-first install path.** README reordered — pip/pipx/uv now leads the
+  Installation section ahead of binary downloads. Infrastructure unchanged.
+- **Windows (via WSL2) documentation.** README now clearly states that native
+  Windows is blocked (KuzuDB MSVC linker bug, upstream archived), and that
+  WSL2 + the Linux binary is the supported Windows path today.
+
+### Changed
+- `NodeKind::Section` and `EdgeKind::References` added to the graph schema.
+  `section` color in the viz: Catppuccin pink (`#f5c2e7`).
+- `--color-text-dim` in the viz dark theme corrected from `#5a5a72` (~3:1 WCAG
+  AA fail) to `#7e7e99` (~5.1:1, passes WCAG AA).
+- Dead `.gitcortex/config.toml` documentation removed from README — the file
+  was documented but never parsed anywhere in the codebase.
+
+### Fixed
+- **HTML viz export XSS.** `gcx viz --format html` embedded graph JSON into a
+  `<script>` block without escaping `</` sequences. A node name or file path
+  from an untrusted cloned repo containing `</script>` would break out and
+  inject HTML/JS into the exported file when opened in a browser. Fixed with a
+  one-line `</` → `<\/` escape. Regression tests added for this and the
+  Cypher/DOT/SVG/GraphML export paths (all already correctly escaped).
+- `branch_esc` in `build_html` upgraded from ad-hoc `"` escaping to a full
+  HTML-safe escape via the existing `svg_escape` helper (defense-in-depth).
+
 ## [0.5.1] - 2026-06-21
 
 ### Fixed

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -219,6 +220,9 @@ pub struct GraphDiff {
     pub deferred_throws: Vec<(NodeId, String)>,
     /// Same for decorator/annotation references.
     pub deferred_annotated: Vec<(NodeId, String)>,
+    /// Markdown section/file → referenced code symbol name. Intentionally
+    /// unscoped by language — a doc can reference a symbol in any language.
+    pub deferred_doc_refs: Vec<(NodeId, String)>,
 }
 
 impl GraphDiff {
@@ -234,6 +238,7 @@ impl GraphDiff {
             && self.deferred_inherits.is_empty()
             && self.deferred_throws.is_empty()
             && self.deferred_annotated.is_empty()
+            && self.deferred_doc_refs.is_empty()
     }
 
     /// Merge another diff into this one. Used when multiple files change
@@ -251,7 +256,23 @@ impl GraphDiff {
         self.deferred_inherits.extend(other.deferred_inherits);
         self.deferred_throws.extend(other.deferred_throws);
         self.deferred_annotated.extend(other.deferred_annotated);
+        self.deferred_doc_refs.extend(other.deferred_doc_refs);
     }
+}
+
+// ── Graph algorithms (pure, no I/O) ──────────────────────────────────────────
+
+/// Count inbound `Calls` edges per destination node id.
+/// Shared by `gitcortex-mcp` (centrality/clustering/tour) and `gitcortex-viz`
+/// so both surfaces always use the same algorithm and cannot drift.
+pub fn in_degree_by_calls(edges: &[Edge]) -> HashMap<String, u32> {
+    let mut in_degree: HashMap<String, u32> = HashMap::new();
+    for e in edges {
+        if matches!(e.kind, EdgeKind::Calls) {
+            *in_degree.entry(e.dst.as_str()).or_insert(0) += 1;
+        }
+    }
+    in_degree
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────

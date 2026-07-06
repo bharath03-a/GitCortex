@@ -10,7 +10,6 @@ keywords = ["code-graph", "ast", "knowledge-graph", "graph", "static-analysis"]
 categories = ["development-tools"]
 
 [dependencies]
-petgraph.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 uuid.workspace = true

@@ -43,7 +43,7 @@ pub struct GcxDispatchParams {
     /// find_unused_symbols, get_subgraph, search_code, start_tour, wiki_symbol,
     /// trace_path, list_definitions, symbol_context, list_symbols_in_range, graph_stats,
     /// ast_search, type_hierarchy, find_importers, find_type_usages, module_dependencies,
-    /// get_call_sites.
+    /// get_call_sites, find_god_nodes, find_clusters.
     pub action: String,
     /// Parameters for the chosen action as a JSON object (same fields as the
     /// individual tool: name, function_name, seed_name, query, file, branch,
@@ -229,6 +229,24 @@ pub struct GraphStatsParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct FindGodNodesParams {
+    /// Minimum inbound `Calls` edges to count as a hub (default 10).
+    pub min_in_degree: Option<u32>,
+    /// Max results (default 20, capped at 100).
+    pub limit: Option<usize>,
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct FindClustersParams {
+    /// Minimum members for a group to be reported as a cluster (default 3).
+    pub min_cluster_size: Option<usize>,
+    /// Max clusters returned (default 20, capped at 100).
+    pub limit: Option<usize>,
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct AstSearchParams {
     /// NodeKind filter: "function", "method", "struct", "trait", "interface",
     /// "enum", "constant", "type_alias", "module", etc. Omit for any kind.
@@ -359,6 +377,8 @@ impl GitCortexServer {
                 "wiki_symbol",
                 "search_code",
                 "start_tour",
+                "find_god_nodes",
+                "find_clusters",
             ] {
                 router.disable_route(name);
             }
@@ -406,6 +426,7 @@ fn parse_node_kind(s: &str) -> Option<NodeKind> {
         "macro" => NodeKind::Macro,
         "annotation" => NodeKind::Annotation,
         "enum_member" => NodeKind::EnumMember,
+        "section" => NodeKind::Section,
         _ => return None,
     })
 }
@@ -1366,10 +1387,11 @@ impl GitCortexServer {
 
     /// Return a neighbourhood subgraph around a seed symbol.
     #[tool(
-        description = "Return the subgraph centred on a seed symbol — nodes and edges reachable \
-        within `depth` hops (default 1; raise for wider context). Direction='out' downstream, \
-        'in' upstream, 'both' (default). Capped at `limit` nodes (default 30) with a `truncated` \
-        flag — prefer find_callers/find_callees for a targeted answer over a wide neighbourhood dump."
+        description = "Return the subgraph centred on a seed symbol. The response always contains \
+        a human-readable `summary` field — read it first to answer connectivity questions in one \
+        turn without iterating the raw nodes/edges arrays. Seed matching is case-insensitive. \
+        Direction='out' downstream, 'in' upstream, 'both' (default). depth default 1. \
+        Prefer find_callers/find_callees for a targeted single-direction answer."
     )]
     fn get_subgraph(&self, Parameters(p): Parameters<GetSubgraphParams>) -> CallToolResult {
         let branch = p
@@ -1384,8 +1406,32 @@ impl GitCortexServer {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
         };
-        match store.get_subgraph(&branch, &p.seed_name, depth, &direction) {
+        // Primary lookup: exact match. Fallback: case-insensitive via
+        // lookup_symbol so "Main" finds "main" on JS/Python repos where entry
+        // points are lowercase or module-scoped.
+        let sg_result = store
+            .get_subgraph(&branch, &p.seed_name, depth, &direction)
+            .and_then(|sg| {
+                if sg.nodes.is_empty() {
+                    // Case-insensitive retry: find the real name then re-query.
+                    if let Ok(alts) = store.lookup_symbol(&branch, &p.seed_name, true) {
+                        if let Some(matched) = alts
+                            .into_iter()
+                            .find(|n| n.name.eq_ignore_ascii_case(&p.seed_name))
+                        {
+                            return store.get_subgraph(&branch, &matched.name, depth, &direction);
+                        }
+                    }
+                }
+                Ok(sg)
+            });
+        match sg_result {
             Ok(sg) => {
+                // Build the prose summary BEFORE capping the node set so it
+                // reflects the full neighbourhood, not the truncated view.
+                let summary =
+                    super::subgraph::build_prose_summary(&p.seed_name, &sg.nodes, &sg.edges, depth);
+
                 // Cap the node set, then keep only edges whose endpoints both
                 // survive — a full neighbourhood dump on a hub symbol otherwise
                 // costs more tokens than reading the file it describes.
@@ -1429,6 +1475,7 @@ impl GitCortexServer {
                 let (edges, e_trunc) = self.budget_items(edges);
                 CallToolResult::structured(json!({
                     "seed": p.seed_name,
+                    "summary": summary,
                     "depth": depth,
                     "direction": direction,
                     "node_count": sg.nodes.len(),
@@ -1471,10 +1518,11 @@ impl GitCortexServer {
 
     /// Search the graph by name + qualified-name with deterministic ranking.
     #[tool(
-        description = "Search the code graph by name or description. Combines token/fuzzy text \
-        matching (CamelCase-aware, typo-tolerant) with semantic vector similarity so you can \
-        search without knowing the exact symbol name. Ranks exact > prefix > semantic > \
-        substring; functions/structs boosted. Default limit=10."
+        description = "Search the code graph by name or description. The response includes a \
+        `file_groups` field that clusters hits by file with symbol counts — read it first to \
+        identify which files own the concept before drilling into individual hits. Combines \
+        token/fuzzy text matching (CamelCase-aware, typo-tolerant) with semantic vector similarity. \
+        Ranks exact > prefix > semantic > substring; functions/structs boosted. Default limit=10."
     )]
     fn search_code(&self, Parameters(p): Parameters<SearchCodeParams>) -> CallToolResult {
         let branch = p
@@ -1567,6 +1615,7 @@ impl GitCortexServer {
         });
         all_hits.truncate(limit);
 
+        let file_groups = super::search::group_by_file(&all_hits);
         CallToolResult::structured(json!({
             "query": p.query,
             "branch": branch,
@@ -1575,6 +1624,7 @@ impl GitCortexServer {
                 self.semantic.try_lock().as_deref(),
                 Ok(SemanticState::Ready { .. })
             ),
+            "file_groups": file_groups,
             "hits": all_hits,
         }))
     }
@@ -1611,6 +1661,72 @@ impl GitCortexServer {
         }
     }
 
+    /// Find high-fan-in "hub" symbols — functions or methods many callers depend on.
+    #[tool(
+        description = "Find high-centrality hub symbols (god nodes) — functions/methods with many \
+        inbound Calls edges. Ranked by in-degree descending. Deterministic across re-runs. \
+        min_in_degree default 10, limit default 20."
+    )]
+    fn find_god_nodes(&self, Parameters(p): Parameters<FindGodNodesParams>) -> CallToolResult {
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        match super::centrality::find_god_nodes(&*store, &branch, p.min_in_degree, p.limit) {
+            Ok(nodes) => {
+                let items: Vec<serde_json::Value> = nodes.iter().map(|n| json!(n)).collect();
+                let (items, truncated) = self.budget_items(items);
+                CallToolResult::structured(json!({
+                    "branch": branch,
+                    "count": nodes.len(),
+                    "truncated": truncated,
+                    "nodes": items,
+                }))
+            }
+            Err(e) => {
+                CallToolResult::error(vec![Content::text(format!("find_god_nodes failed: {e}"))])
+            }
+        }
+    }
+
+    /// Detect code communities via label propagation clustering.
+    #[tool(
+        description = "Detect code communities via label-propagation clustering over Contains + \
+        Calls edges. Returns clusters of related symbols, ranked by size. Deterministic across \
+        re-runs on the same indexed graph. min_cluster_size default 3, limit default 20."
+    )]
+    fn find_clusters(&self, Parameters(p): Parameters<FindClustersParams>) -> CallToolResult {
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        match super::clustering::find_clusters(&*store, &branch, p.min_cluster_size, p.limit) {
+            Ok(clusters) => {
+                let items: Vec<serde_json::Value> = clusters.iter().map(|c| json!(c)).collect();
+                let (items, truncated) = self.budget_items(items);
+                CallToolResult::structured(json!({
+                    "branch": branch,
+                    "count": clusters.len(),
+                    "truncated": truncated,
+                    "clusters": items,
+                }))
+            }
+            Err(e) => {
+                CallToolResult::error(vec![Content::text(format!("find_clusters failed: {e}"))])
+            }
+        }
+    }
+
     /// Single-entry dispatch — one schema instead of fifteen.
     ///
     /// Prefer this tool to keep per-turn schema overhead low. All individual
@@ -1620,9 +1736,9 @@ impl GitCortexServer {
         get_subgraph | search_code | start_tour | wiki_symbol | trace_path | \
         list_definitions | symbol_context | list_symbols_in_range | graph_stats | ast_search | \
         type_hierarchy | find_importers | find_type_usages | module_dependencies | \
-        get_call_sites | branch_diff_graph. \
+        get_call_sites | branch_diff_graph | find_god_nodes | find_clusters. \
         params: JSON object with the same fields as the individual tool (name/function_name/\
-        seed_name/query/file/branch/depth/limit/direction as applicable). \
+        seed_name/query/file/branch/depth/limit/direction/min_in_degree/min_cluster_size as applicable). \
         Returns identical output to the individual tool.")]
     fn gcx(&self, Parameters(p): Parameters<GcxDispatchParams>) -> CallToolResult {
         let branch_val = p
@@ -1833,12 +1949,38 @@ impl GitCortexServer {
                     branch: branch_val,
                 }))
             }
+            "find_god_nodes" => self.find_god_nodes(Parameters(FindGodNodesParams {
+                min_in_degree: p
+                    .params
+                    .get("min_in_degree")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as u32),
+                limit: p
+                    .params
+                    .get("limit")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize),
+                branch: branch_val,
+            })),
+            "find_clusters" => self.find_clusters(Parameters(FindClustersParams {
+                min_cluster_size: p
+                    .params
+                    .get("min_cluster_size")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize),
+                limit: p
+                    .params
+                    .get("limit")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize),
+                branch: branch_val,
+            })),
             other => CallToolResult::error(vec![Content::text(format!(
                 "gcx dispatch: unknown action '{other}'. Valid: lookup_symbol, find_callers, \
                 find_callees, find_unused_symbols, get_subgraph, search_code, start_tour, \
                 wiki_symbol, trace_path, list_definitions, symbol_context, list_symbols_in_range, \
                 graph_stats, ast_search, type_hierarchy, find_importers, find_type_usages, \
-                module_dependencies, get_call_sites"
+                module_dependencies, get_call_sites, find_god_nodes, find_clusters"
             ))]),
         }
     }

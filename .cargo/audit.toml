@@ -7,4 +7,5 @@
 ignore = [
     "RUSTSEC-2024-0436", # paste — unmaintained (via ort/ML deps)
     "RUSTSEC-2025-0119", # number_prefix — unmaintained (via hf-hub)
+    "RUSTSEC-2026-0202", # cxx 1.0.138 let_cxx_string! unsound — transitive via kuzu; GitCortex does not use let_cxx_string! directly; track for kuzu upstream fix
 ]

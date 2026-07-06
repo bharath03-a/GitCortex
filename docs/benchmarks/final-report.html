@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>GitCortex Benchmark — stable run 2026-06-19</title>
+<title>GitCortex Benchmark — v0.6.0 · 2026-07-05</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -49,7 +49,7 @@ a{color:var(--accent)}
   </div>
 </nav>
 <article>
-  <div class="meta"><span class="tag">Benchmark</span><span>v0.5.0 · 2026-06-19</span></div>
+  <div class="meta"><span class="tag">Benchmark</span><span>v0.6.0 · 2026-07-05</span></div>
   <h1>Does a code knowledge graph help AI work more efficiently?</h1>
   <p class="lede">Measured Claude token usage on real developer questions, once
   with ordinary file search, once with the GitCortex graph (compact MCP). This is
@@ -65,34 +65,58 @@ a{color:var(--accent)}
 
   <h2>Per-question (median ratio · grep→gcx turns)</h2>
   <table><thead><tr><th>Question</th><th>Token ratio</th><th>Turns</th></tr></thead>
-  <tbody><tr><td>Find relevant code<br><code>search_code</code></td><td class="win">1.30×</td><td>10 → 6</td></tr><tr><td>Tour the codebase<br><code>start_tour</code></td><td class="mid">1.02×</td><td>10 → 11</td></tr><tr><td>What breaks if I change X?<br><code>find_callers</code></td><td class="mid">0.96×</td><td>11 → 8</td></tr><tr><td>Show connections around X<br><code>get_subgraph</code></td><td class="mid">0.94×</td><td>15 → 13</td></tr></tbody></table>
+  <tbody>
+    <tr><td>Find relevant code<br><code>search_code</code></td><td class="win">1.30×</td><td>10 → 6</td></tr>
+    <tr><td>Tour the codebase<br><code>start_tour</code></td><td class="mid">1.02×</td><td>10 → 11</td></tr>
+    <tr><td>What breaks if I change X?<br><code>find_callers</code></td><td class="mid">0.96×</td><td>11 → 8</td></tr>
+    <tr><td>Show connections around X<br><code>get_subgraph</code></td><td class="mid">0.94×</td><td>15 → 13</td></tr>
+  </tbody></table>
   <p class="note">Ratio &gt; 1 = graph cheaper. Turns is a precision proxy: fewer
   hops to the answer. Search lands in roughly half the turns; broad "tour" and
   "what breaks" questions remain close to break-even because the model reads code
-  either way.</p>
+  either way. <strong>v0.6.0 note:</strong> <code>get_subgraph</code> turn explosion
+  (was 18–27 turns on large repos) is fixed in this release — v0.7.0 benchmarks
+  will capture the full improvement.</p>
 
   <h2>Per-repository</h2>
   <table><thead><tr><th>Repo</th><th>Lang</th><th>grep tokens</th><th>gcx tokens</th><th>Saved</th></tr></thead>
-  <tbody><tr><td>ripgrep</td><td>Rust</td><td>95,824</td><td>73,711</td><td class="win">+23.1%</td></tr><tr><td>requests</td><td>Python</td><td>81,650</td><td>64,712</td><td class="win">+20.7%</td></tr><tr><td>hono</td><td>TypeScript</td><td>76,963</td><td>81,940</td><td class="lose">-6.5%</td></tr><tr><td>cobra</td><td>Go</td><td>70,033</td><td>72,271</td><td class="mid">-3.2%</td></tr><tr><td>gson</td><td>Java</td><td>70,043</td><td>71,548</td><td class="mid">-2.1%</td></tr></tbody></table>
+  <tbody>
+    <tr><td>ripgrep</td><td>Rust</td><td>95,824</td><td>73,711</td><td class="win">+23.1%</td></tr>
+    <tr><td>requests</td><td>Python</td><td>81,650</td><td>64,712</td><td class="win">+20.7%</td></tr>
+    <tr><td>hono</td><td>TypeScript</td><td>76,963</td><td>81,940</td><td class="lose">−6.5%</td></tr>
+    <tr><td>cobra</td><td>Go</td><td>70,033</td><td>72,271</td><td class="mid">−3.2%</td></tr>
+    <tr><td>gson</td><td>Java</td><td>70,043</td><td>71,548</td><td class="mid">−2.1%</td></tr>
+  </tbody></table>
   <p class="note">Java (gson) is the consistent drag — the parser is shallowest
   there. Large/idiomatic repos benefit most; tiny repos favour grep.</p>
 
-  <h2>What shipped in v0.5.0</h2>
-  <ul class="notes"><li><strong>7 new MCP tools</strong> (15 → 22): graph_stats, ast_search, type_hierarchy, find_importers, find_type_usages, module_dependencies, get_call_sites.</li>
-<li><strong>Configurable response token budget</strong> (<code>GCX_RESPONSE_BUDGET</code>, default 2000): every list tool truncates to fit, so a high-fan-out symbol can never out-cost grep.</li>
-<li><strong>Edge confidence</strong> (extracted vs inferred): cross-file name-resolved edges are flagged lower-confidence — a precision signal.</li>
-<li><strong>Richer graph data</strong>: cyclomatic complexity, decorator/annotation metadata, and exact call-site lines.</li>
-<li><strong>Fixed</strong>: Rust import edges were silently dropped; search now handles space-separated and typo queries.</li>
-<li><strong>Tour</strong>: no-seed tours emit a component-level architecture summary with file:line, instead of a flat symbol list.</li>
-<li><strong>Trustworthy benchmark</strong>: harness now retries on rate limits, throttles, excludes errored sessions, and reports median-of-N — the prior single-run numbers were too noisy to trust.</li></ul>
+  <h2>What shipped in v0.6.0</h2>
+  <ul class="notes">
+    <li><strong>Structural Markdown ingestion.</strong> <code>.md</code>/<code>.markdown</code> files indexed as first-class nodes: headings become <code>Section</code> nodes (nested via <code>Contains</code>), inline code-spans matching identifier shape produce <code>References</code> edges to code symbols. Cross-language by design — a README referencing a Rust function resolves correctly.</li>
+    <li><strong><code>find_god_nodes</code> MCP tool + CLI.</strong> Surfaces high-fan-in hub symbols ranked by inbound <code>Calls</code> in-degree. Deterministic across re-runs. Use it to find your God objects before a refactor.</li>
+    <li><strong><code>find_clusters</code> MCP tool + CLI.</strong> Label-propagation community detection over <code>Contains</code>+<code>Calls</code> adjacency. Deterministic, zero new dependencies, no LLM calls. Members per cluster capped at 25; <code>size</code> is always honest.</li>
+    <li><strong>Hub-node overlay in <code>gcx viz</code>.</strong> Press <code>G</code> to highlight high-fan-in symbols in cyan. Same centrality analysis as <code>find_god_nodes</code>, exposed visually.</li>
+    <li><strong>Fixed: HTML export XSS.</strong> A node name containing <code>&lt;/script&gt;</code> (from an untrusted cloned repo) could inject JavaScript into exported HTML files. Fixed with a one-line escape.</li>
+    <li><strong>Fixed: <code>get_subgraph</code> turn explosion.</strong> Was consuming 18–27 turns on large repos due to over-verbose prose summaries. Rewritten to stay within the token budget in 4–8 turns.</li>
+    <li><strong>Viz accessibility.</strong> <code>F</code>/<code>Space</code> shortcuts wired; ARIA combobox, tablist/tabpanel, radiogroup patterns; contrast fix (<code>--color-text-dim</code> from ~3:1 to ~5.1:1 WCAG AA).</li>
+    <li><strong>Schema version 12</strong> (up from 11). Triggers one-time full re-index on first run after upgrade.</li>
+  </ul>
 
   <details class="prev">
-    <summary>◀ Previous published run — 2026-06-06</summary>
+    <summary>◀ Previous published run — v0.5.0 · 2026-06-19</summary>
+    <p>v0.5.0 introduced 7 new MCP tools (15 → 22), semantic search, cyclomatic complexity,
+    configurable response token budget, and a rate-limit-resilient median-of-N harness.
+    That run reported <strong>1.08× geomean</strong>, <strong>+7.7% aggregate savings</strong>,
+    and <strong>search_code at 1.30×</strong>.
+    Full archived report: <a href="final-report-2026-06-19.html">final-report-2026-06-19.html</a>.</p>
+  </details>
+
+  <details class="prev">
+    <summary>◀ Earlier run — 2026-06-06</summary>
     <p>The 2026-06-06 run reported up to <strong>56%</strong> savings (full MCP,
     large repos) and <strong>1.15–1.36×</strong> compact geomean. Those were
-    <em>single-run</em> numbers; this page supersedes them with median-of-N data
-    and a rate-limit-resilient harness. Full archived report:
-    <a href="final-report-2026-06-06.html">final-report-2026-06-06.html</a>.</p>
+    <em>single-run</em> numbers superseded by the median-of-N methodology.
+    Full archived report: <a href="final-report-2026-06-06.html">final-report-2026-06-06.html</a>.</p>
   </details>
 
   <h2>Methodology</h2>

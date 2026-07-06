@@ -20,7 +20,6 @@ kuzu-backend = ["dep:kuzu"]
 memory = []
 
 [dependencies]
-dashmap.workspace = true
 gitcortex-core.workspace = true
 kuzu = { workspace = true, optional = true }
 tracing.workspace = true

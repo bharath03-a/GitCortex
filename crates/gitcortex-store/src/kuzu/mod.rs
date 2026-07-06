@@ -553,6 +553,19 @@ impl GraphStore for KuzuGraphStore {
             "annotated",
             "tgt.kind = 'annotation' OR tgt.kind = 'macro' OR tgt.kind = 'function'",
         )?;
+        // No kind_filter: a doc reference can point at any code symbol kind.
+        // No language scoping happens here either — `caller_file` maps to a
+        // `.md` path, which `lang_scope_clause` doesn't recognise, so the
+        // scope clause it builds is empty (cross-language by design).
+        resolve_deferred_batch(
+            &conn,
+            &nt,
+            &et,
+            &diff.deferred_doc_refs,
+            &caller_file,
+            "references",
+            "",
+        )?;
 
         conn.query("COMMIT")
             .map_err(|e| GitCortexError::Store(format!("commit edges: {e}")))?;

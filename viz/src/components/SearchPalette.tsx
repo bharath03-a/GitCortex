@@ -66,9 +66,14 @@ export function SearchPalette({ data, onClose, onSelect }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 border-b border-(--color-border-subtle) px-3 py-2.5">
-          <Search className="size-4 text-(--color-text-muted)" />
+          <Search className="size-4 text-(--color-text-muted)" aria-hidden="true" />
           <input
             ref={inputRef}
+            role="combobox"
+            aria-autocomplete="list"
+            aria-controls="search-results-listbox"
+            aria-expanded={results.length > 0}
+            aria-activedescendant={results[cursor] ? `search-opt-${results[cursor].id}` : undefined}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKey}
@@ -79,15 +84,24 @@ export function SearchPalette({ data, onClose, onSelect }: Props) {
             esc
           </kbd>
         </div>
-        <ul className="max-h-[50vh] overflow-y-auto py-1">
+        <ul
+          id="search-results-listbox"
+          role="listbox"
+          aria-label="Search results"
+          className="max-h-[50vh] overflow-y-auto py-1"
+        >
           {results.length === 0 && (
-            <li className="px-4 py-6 text-center text-[12px] text-(--color-text-dim)">
-              No matches
+            <li
+              role="presentation"
+              className="px-4 py-6 text-center text-[12px] text-(--color-text-dim)"
+            >
+              <span aria-live="polite">No matches</span>
             </li>
           )}
           {results.map((n, i) => (
-            <li key={n.id}>
+            <li key={n.id} id={`search-opt-${n.id}`} role="option" aria-selected={i === cursor}>
               <button
+                tabIndex={-1}
                 onMouseEnter={() => setCursor(i)}
                 onClick={() => {
                   onSelect(n);

@@ -86,3 +86,18 @@ export async function fetchBranchDiff(base: string, head: string): Promise<Branc
   if (!r.ok) throw new Error(`/api/branch-diff returned ${r.status}`);
   return r.json();
 }
+
+export interface GodNodesResult {
+  count: number;
+  nodes: (RawNode & { in_degree: number })[];
+  min_in_degree: number;
+}
+
+export async function fetchGodNodes(minInDegree?: number): Promise<GodNodesResult> {
+  const params = new URLSearchParams();
+  if (minInDegree !== undefined) params.set("min_in_degree", String(minInDegree));
+  const url = `/api/god_nodes${params.toString() ? "?" + params.toString() : ""}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`/api/god_nodes returned ${r.status}`);
+  return r.json();
+}

@@ -93,35 +93,61 @@ export function Inspector({ node, data, onClose, onSelect, depth, onDepthChange 
           {node.is_unsafe && <Badge tone="warn">unsafe</Badge>}
         </div>
         <div className="mt-3 flex items-center gap-2">
-          <span className="text-[10px] tracking-widest text-(--color-text-dim) uppercase">
+          <span
+            id="neighborhood-label"
+            className="text-[10px] tracking-widest text-(--color-text-dim) uppercase"
+          >
             neighborhood
           </span>
-          {[1, 2, 3].map((d) => (
-            <button
-              key={d}
-              onClick={() => onDepthChange(d)}
-              className={`rounded px-1.5 py-0.5 font-mono text-[10px] transition-colors ${
-                depth === d
-                  ? "bg-(--color-accent-soft) text-(--color-accent)"
-                  : "text-(--color-text-muted) hover:text-(--color-text-primary)"
-              }`}
-            >
-              {d}-hop
-            </button>
-          ))}
+          <div role="radiogroup" aria-labelledby="neighborhood-label" className="flex gap-2">
+            {[1, 2, 3].map((d) => (
+              <button
+                key={d}
+                role="radio"
+                aria-checked={depth === d}
+                onClick={() => onDepthChange(d)}
+                className={`rounded px-1.5 py-0.5 font-mono text-[10px] transition-colors ${
+                  depth === d
+                    ? "bg-(--color-accent-soft) text-(--color-accent)"
+                    : "text-(--color-text-muted) hover:text-(--color-text-primary)"
+                }`}
+              >
+                {d}-hop
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      <div className="flex border-b border-(--color-border-subtle) px-2">
-        <TabBtn active={tab === "local"} onClick={() => setTab("local")}>
+      <div
+        role="tablist"
+        aria-label="Inspector tabs"
+        className="flex border-b border-(--color-border-subtle) px-2"
+      >
+        <TabBtn
+          id="tab-local"
+          panelId="inspector-panel"
+          active={tab === "local"}
+          onClick={() => setTab("local")}
+        >
           Local
         </TabBtn>
-        <TabBtn active={tab === "deep"} onClick={() => setTab("deep")}>
+        <TabBtn
+          id="tab-deep"
+          panelId="inspector-panel"
+          active={tab === "deep"}
+          onClick={() => setTab("deep")}
+        >
           Deep Callers
         </TabBtn>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3">
+      <div
+        id="inspector-panel"
+        role="tabpanel"
+        aria-labelledby={tab === "local" ? "tab-local" : "tab-deep"}
+        className="flex-1 overflow-y-auto p-3"
+      >
         {tab === "local" && (
           <>
             <NodeList title="Callers" nodes={callers} onSelect={onSelect} />
@@ -140,7 +166,7 @@ function DeepCallersPanel({ node, onSelect }: { node: RawNode; onSelect: (n: Raw
   const [result, setResult] = useState<DeepCallersResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [depth] = useState(3);
+  const depth = 3;
 
   useEffect(() => {
     setLoading(true);
@@ -190,13 +216,21 @@ function TabBtn({
   children,
   active,
   onClick,
+  id,
+  panelId,
 }: {
   children: React.ReactNode;
   active: boolean;
   onClick: () => void;
+  id: string;
+  panelId: string;
 }) {
   return (
     <button
+      role="tab"
+      id={id}
+      aria-selected={active}
+      aria-controls={panelId}
       onClick={onClick}
       className={`px-3 py-2 text-[12px] transition-colors ${
         active

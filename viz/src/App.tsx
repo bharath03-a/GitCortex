@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { GraphData, RawNode } from "./api";
-import { fetchBranches, fetchGraphData, fetchUnused } from "./api";
+import { fetchBranches, fetchGraphData, fetchGodNodes, fetchUnused } from "./api";
 import { Header } from "./components/Header";
 import { FilterRail, type Flag, type Visibility } from "./components/FilterRail";
 import { CosmosCanvas } from "./components/CosmosCanvas";
@@ -30,6 +30,12 @@ export default function App() {
   const [lastSha, setLastSha] = useState<string | null>(null);
   const [diffHead, setDiffHead] = useState<string | null>(null);
   const [unusedIds, setUnusedIds] = useState<Set<string> | null>(null);
+  const [godNodeIds, setGodNodeIds] = useState<Set<string> | null>(null);
+  // Track whether a fetch has already been dispatched for the current overlay
+  // toggle session — prevents an infinite re-fetch loop when the server returns
+  // zero results (empty Set still has size=0, which would re-trigger the effect).
+  const unusedFetchedRef = useRef(false);
+  const godNodesFetchedRef = useRef(false);
   const diffOverlay = useBranchDiff(activeBranch, diffHead);
 
   useEffect(() => {
@@ -87,7 +93,13 @@ export default function App() {
           break;
         case "u":
         case "U":
+          unusedFetchedRef.current = false;
           setUnusedIds((cur) => (cur ? null : new Set()));
+          break;
+        case "g":
+        case "G":
+          godNodesFetchedRef.current = false;
+          setGodNodeIds((cur) => (cur ? null : new Set()));
           break;
       }
     };
@@ -95,14 +107,26 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [searchOpen, helpOpen]);
 
-  // Fetch unused symbols when toggle flips on
+  // Fetch unused symbols when toggle flips on (guard ref prevents re-fetch loop
+  // when server returns zero results — empty Set still has size=0).
   useEffect(() => {
-    if (unusedIds !== null && unusedIds.size === 0) {
+    if (unusedIds !== null && unusedIds.size === 0 && !unusedFetchedRef.current) {
+      unusedFetchedRef.current = true;
       fetchUnused()
         .then((r) => setUnusedIds(new Set(r.nodes.map((n) => n.id))))
         .catch(() => setUnusedIds(null));
     }
   }, [unusedIds]);
+
+  // Fetch god nodes when toggle flips on (same guard pattern as above).
+  useEffect(() => {
+    if (godNodeIds !== null && godNodeIds.size === 0 && !godNodesFetchedRef.current) {
+      godNodesFetchedRef.current = true;
+      fetchGodNodes()
+        .then((r) => setGodNodeIds(new Set(r.nodes.map((n) => n.id))))
+        .catch(() => setGodNodeIds(null));
+    }
+  }, [godNodeIds]);
 
   const data = useMemo(() => {
     if (!rawData) return null;
@@ -141,7 +165,15 @@ export default function App() {
         diffHead={diffHead}
         onSetDiffHead={setDiffHead}
         unusedActive={unusedIds !== null}
-        onToggleUnused={() => setUnusedIds((cur) => (cur ? null : new Set()))}
+        onToggleUnused={() => {
+          unusedFetchedRef.current = false;
+          setUnusedIds((cur) => (cur ? null : new Set()));
+        }}
+        godNodesActive={godNodeIds !== null}
+        onToggleGodNodes={() => {
+          godNodesFetchedRef.current = false;
+          setGodNodeIds((cur) => (cur ? null : new Set()));
+        }}
       />
       <main className="flex flex-1 overflow-hidden">
         {railOpen && (
@@ -183,6 +215,7 @@ export default function App() {
               depth={depth}
               diffOverlay={diffOverlay}
               unusedIds={unusedIds}
+              godNodeIds={godNodeIds}
             />
           )}
           {data && !error && data.nodes.length === 0 && (
@@ -221,6 +254,20 @@ export default function App() {
               <span className="text-(--color-warn)">{unusedIds.size} unused symbols</span>
               <button
                 onClick={() => setUnusedIds(null)}
+                className="ml-1 text-(--color-text-dim) hover:text-(--color-text-primary)"
+              >
+                clear
+              </button>
+            </div>
+          )}
+          {godNodeIds && godNodeIds.size > 0 && !diffOverlay && (
+            <div
+              className={`animate-fade-in absolute z-10 flex items-center gap-2 rounded-lg border border-(--color-border-subtle) bg-(--color-elevated)/90 px-3 py-1.5 font-mono text-[11px] backdrop-blur-sm ${unusedIds && unusedIds.size > 0 ? "top-12 right-3" : "top-3 right-3"}`}
+            >
+              <span className="size-2 rounded-full bg-cyan-400" />
+              <span className="text-cyan-400">{godNodeIds.size} hub nodes</span>
+              <button
+                onClick={() => setGodNodeIds(null)}
                 className="ml-1 text-(--color-text-dim) hover:text-(--color-text-primary)"
               >
                 clear

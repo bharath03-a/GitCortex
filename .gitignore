@@ -23,6 +23,8 @@ target
 # GitCortex machine-local data (never commit graph databases or state)
 *.kz
 .gitcortex.db
+# Generated codebase map — regenerated on every hook fire, branch-specific
+.gitcortex/context.md
 # fastembed model cache (should go to $XDG_DATA_HOME/gitcortex/models, not here)
 .fastembed_cache/
 .claude/settings.local.json
