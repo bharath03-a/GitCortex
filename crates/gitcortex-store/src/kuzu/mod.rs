@@ -1252,12 +1252,27 @@ impl GraphStore for KuzuGraphStore {
 
         let seed_esc = esc(seed_name);
         let conn = self.conn()?;
+        // Prefer code nodes over Section nodes: a class named "Gson" should be
+        // the seed, not the README heading with the same name. Try code nodes
+        // first; fall back to any match (including Section) only if nothing
+        // else exists with that name.
         let mut seed_result = conn
             .query(&format!(
-                "MATCH (n:{nt}) WHERE n.name = '{seed_esc}' RETURN {NODE_COLS} LIMIT 1"
+                "MATCH (n:{nt}) WHERE n.name = '{seed_esc}' AND n.kind <> 'section' \
+                 RETURN {NODE_COLS} LIMIT 1"
             ))
             .map_err(|e| GitCortexError::Store(e.to_string()))?;
-        let seed_nodes = rows_to_nodes(&mut seed_result)?;
+        let mut seed_nodes = rows_to_nodes(&mut seed_result)?;
+        if seed_nodes.is_empty() {
+            // Fallback: accept any kind (covers seeds that are legitimately sections).
+            let conn2 = self.conn()?;
+            let mut fallback = conn2
+                .query(&format!(
+                    "MATCH (n:{nt}) WHERE n.name = '{seed_esc}' RETURN {NODE_COLS} LIMIT 1"
+                ))
+                .map_err(|e| GitCortexError::Store(e.to_string()))?;
+            seed_nodes = rows_to_nodes(&mut fallback)?;
+        }
         if seed_nodes.is_empty() {
             return Ok(SubGraph {
                 nodes: Vec::new(),

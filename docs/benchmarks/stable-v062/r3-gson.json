@@ -1,0 +1,125 @@
+{
+  "repo": "gson",
+  "url": "//github.com/google/gson",
+  "branch": "main",
+  "model": "claude-haiku-4-5-20251001",
+  "measured": "real_claude_usage",
+  "compact": 1,
+  "symbols": {
+    "type": "Command",
+    "fn": "execute",
+    "other": "run",
+    "concept": "auth"
+  },
+  "nodes": 0,
+  "edges": 0,
+  "totals": {
+    "baseline_tokens": 95297,
+    "gcx_tokens": 113152,
+    "saved_tokens": -17855,
+    "saved_pct": -18.74,
+    "baseline_cost_usd": 0.50433,
+    "gcx_cost_usd": 1.32103,
+    "geomean_ratio": 0.54,
+    "valid_questions": 4,
+    "errored_questions": []
+  },
+  "questions": [
+    {
+      "q": "search_concept",
+      "question": "Where in this codebase is 'auth' handled? List the relevant files and symbols.",
+      "baseline": {
+        "input": 36576,
+        "output": 518,
+        "total": 37094,
+        "cache_read": 288160,
+        "cost": 0.10444,
+        "turns": 3,
+        "error": false
+      },
+      "gcx": {
+        "input": 33631,
+        "output": 1451,
+        "total": 35082,
+        "cache_read": 158770,
+        "cost": 0.28658,
+        "turns": 2,
+        "error": false
+      },
+      "token_ratio": 1.06,
+      "tokens_saved": 2012
+    },
+    {
+      "q": "tour_onboarding",
+      "question": "Give me a concise tour of this codebase: what are the main components and how do they fit together?",
+      "baseline": {
+        "input": 1349,
+        "output": 532,
+        "total": 1881,
+        "cache_read": 37214,
+        "cost": 0.21168,
+        "turns": 1,
+        "error": false
+      },
+      "gcx": {
+        "input": 24336,
+        "output": 1285,
+        "total": 25621,
+        "cache_read": 41032,
+        "cost": 0.24927,
+        "turns": 2,
+        "error": false
+      },
+      "token_ratio": 0.07,
+      "tokens_saved": -23740
+    },
+    {
+      "q": "refactor_impact",
+      "question": "If I change 'execute', what breaks? List the direct callers and any important indirect callers.",
+      "baseline": {
+        "input": 28133,
+        "output": 1586,
+        "total": 29719,
+        "cache_read": 396784,
+        "cost": 0.10378,
+        "turns": 11,
+        "error": false
+      },
+      "gcx": {
+        "input": 24914,
+        "output": 910,
+        "total": 25824,
+        "cache_read": 73127,
+        "cost": 0.43327,
+        "turns": 3,
+        "error": false
+      },
+      "token_ratio": 1.15,
+      "tokens_saved": 3895
+    },
+    {
+      "q": "subgraph_around",
+      "question": "Show everything directly connected to 'Command' \u2014 what calls it, what it calls, what it uses.",
+      "baseline": {
+        "input": 25281,
+        "output": 1322,
+        "total": 26603,
+        "cache_read": 273245,
+        "cost": 0.08443,
+        "turns": 9,
+        "error": false
+      },
+      "gcx": {
+        "input": 25331,
+        "output": 1294,
+        "total": 26625,
+        "cache_read": 205612,
+        "cost": 0.35191,
+        "turns": 7,
+        "error": false
+      },
+      "token_ratio": 1.0,
+      "tokens_saved": -22
+    }
+  ]
+}

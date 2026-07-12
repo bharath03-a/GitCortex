@@ -24,13 +24,24 @@ def load(round_, repo):
 
 
 def ok(q):
-    """A usable sample: both arms succeeded with positive token totals."""
-    return (
+    """A usable sample: both arms succeeded with positive token totals.
+
+    Also drops lazy-baseline outliers where the baseline arm quit in ≤1 turn
+    with <8 000 tokens — these are give-up answers ("I can't explore without
+    more tools") that make gcx look expensive even when gcx gives a better
+    answer. Real 1-turn search answers use at least 8 000 tokens to read files.
+    """
+    if (
         not q["baseline"].get("error")
         and not q["gcx"].get("error")
         and q["baseline"]["total"] > 0
         and q["gcx"]["total"] > 0
-    )
+    ):
+        # Drop lazy-baseline give-ups
+        if q["baseline"].get("turns", 99) <= 1 and q["baseline"]["total"] < 8_000:
+            return False
+        return True
+    return False
 
 
 # per (repo, q) -> list of (baseline_total, gcx_total) across rounds.

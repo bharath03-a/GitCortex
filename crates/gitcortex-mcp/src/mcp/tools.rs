@@ -483,6 +483,7 @@ impl GitCortexServer {
             Ok(nodes) => {
                 let items: Vec<_> = nodes
                     .iter()
+                    .filter(|n| !matches!(n.kind, NodeKind::Section))
                     .map(|n| {
                         json!({
                             "id": n.id.as_str(),
@@ -555,11 +556,27 @@ impl GitCortexServer {
                         11..=30 => "HIGH",
                         _ => "CRITICAL",
                     };
-                    CallToolResult::structured(json!({
-                        "summary": format!("{total} caller(s) — risk {risk}{}",
+                    let summary = if total == 0 {
+                        format!(
+                            "No callers found for '{}' in branch '{}'. \
+                             This is a DEFINITIVE result — the function exists in the graph \
+                             but nothing in this codebase calls it. \
+                             Do NOT try alternative symbol names or keep searching. \
+                             Answer the user directly: this function has zero callers.",
+                            p.function_name, branch
+                        )
+                    } else {
+                        format!(
+                            "{total} caller(s) — risk {risk}{}",
                             if total > items.len() {
                                 format!(", showing top {}", items.len())
-                            } else { String::new() }),
+                            } else {
+                                String::new()
+                            }
+                        )
+                    };
+                    CallToolResult::structured(json!({
+                        "summary": summary,
                         "function": p.function_name,
                         "depth": 1,
                         "risk_level": risk,
@@ -1388,9 +1405,11 @@ impl GitCortexServer {
     /// Return a neighbourhood subgraph around a seed symbol.
     #[tool(
         description = "Return the subgraph centred on a seed symbol. The response always contains \
-        a human-readable `summary` field — read it first to answer connectivity questions in one \
-        turn without iterating the raw nodes/edges arrays. Seed matching is case-insensitive. \
-        Direction='out' downstream, 'in' upstream, 'both' (default). depth default 1. \
+        a human-readable `summary` field — read it FIRST and answer the user directly from it \
+        without iterating the raw nodes/edges arrays. ONE call is sufficient for connectivity \
+        questions — do NOT follow up with additional symbol lookups or callers queries. \
+        Seed matching is case-insensitive. Direction='out' downstream, 'in' upstream, \
+        'both' (default). depth default 1. \
         Prefer find_callers/find_callees for a targeted single-direction answer."
     )]
     fn get_subgraph(&self, Parameters(p): Parameters<GetSubgraphParams>) -> CallToolResult {
@@ -1406,40 +1425,85 @@ impl GitCortexServer {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
         };
-        // Primary lookup: exact match. Fallback: case-insensitive via
-        // lookup_symbol so "Main" finds "main" on JS/Python repos where entry
-        // points are lowercase or module-scoped.
-        let sg_result = store
-            .get_subgraph(&branch, &p.seed_name, depth, &direction)
-            .and_then(|sg| {
-                if sg.nodes.is_empty() {
-                    // Case-insensitive retry: find the real name then re-query.
-                    if let Ok(alts) = store.lookup_symbol(&branch, &p.seed_name, true) {
-                        if let Some(matched) = alts
-                            .into_iter()
-                            .find(|n| n.name.eq_ignore_ascii_case(&p.seed_name))
-                        {
-                            return store.get_subgraph(&branch, &matched.name, depth, &direction);
-                        }
-                    }
-                }
-                Ok(sg)
-            });
+        // Resolve seed: prefer code nodes over Section nodes so a symbol like
+        // "Gson" finds the Java class rather than a README heading with the
+        // same name. Section nodes are doc fragments — they don't belong in
+        // code-navigation traversals and their large neighbour sets cause
+        // massive response bloat on repos with detailed READMEs.
+        let resolved_seed = store
+            .lookup_symbol(&branch, &p.seed_name, true)
+            .ok()
+            .and_then(|alts| {
+                alts.into_iter()
+                    .find(|n| {
+                        n.name.eq_ignore_ascii_case(&p.seed_name)
+                            && !matches!(n.kind, NodeKind::Section)
+                    })
+                    .map(|n| n.name)
+            })
+            .unwrap_or_else(|| p.seed_name.clone());
+
+        let sg_result = store.get_subgraph(&branch, &resolved_seed, depth, &direction);
         match sg_result {
             Ok(sg) => {
-                // Build the prose summary BEFORE capping the node set so it
-                // reflects the full neighbourhood, not the truncated view.
-                let summary =
-                    super::subgraph::build_prose_summary(&p.seed_name, &sg.nodes, &sg.edges, depth);
+                // Strip Section nodes — doc headings pollute code-navigation
+                // results and dramatically bloat responses on repos with large
+                // README files (e.g. a class named "Gson" also matches the
+                // README section, dragging in 2 000+ extra nodes).
+                let section_ids: std::collections::HashSet<String> = sg
+                    .nodes
+                    .iter()
+                    .filter(|n| matches!(n.kind, NodeKind::Section))
+                    .map(|n| n.id.as_str())
+                    .collect();
+                let code_nodes: Vec<_> = sg
+                    .nodes
+                    .into_iter()
+                    .filter(|n| !matches!(n.kind, NodeKind::Section))
+                    .collect();
+                let code_edges: Vec<_> = sg
+                    .edges
+                    .into_iter()
+                    .filter(|e| {
+                        !section_ids.contains(&e.src.as_str())
+                            && !section_ids.contains(&e.dst.as_str())
+                    })
+                    .collect();
+
+                // If no code nodes found, the seed doesn't exist (or is only a
+                // doc section). Return a definitive stop-searching message.
+                if code_nodes.is_empty() {
+                    return CallToolResult::structured(json!({
+                        "seed": p.seed_name,
+                        "summary": format!(
+                            "'{}' was not found in the code graph for branch '{}'. \
+                             Symbol names are case-sensitive (Go uses 'main' not 'Main'). \
+                             Use search_code or lookup_symbol to find the exact name. \
+                             Do NOT repeat this query — no code node exists with this name.",
+                            p.seed_name, branch
+                        ),
+                        "node_count": 0,
+                        "edge_count": 0,
+                        "nodes": [],
+                        "edges": [],
+                    }));
+                }
+
+                // Build prose summary from code-only nodes/edges — the count
+                // in the summary now matches what the model will actually see.
+                let summary = super::subgraph::build_prose_summary(
+                    &p.seed_name,
+                    &code_nodes,
+                    &code_edges,
+                    depth,
+                );
 
                 // Cap the node set, then keep only edges whose endpoints both
                 // survive — a full neighbourhood dump on a hub symbol otherwise
                 // costs more tokens than reading the file it describes.
-                let kept: Vec<_> = sg.nodes.iter().take(max_nodes).collect();
+                let kept: Vec<_> = code_nodes.iter().take(max_nodes).collect();
                 let kept_ids: std::collections::HashSet<String> =
                     kept.iter().map(|n| n.id.as_str()).collect();
-                // id → name, so edges read as names (the model can't use UUIDs;
-                // emitting them twice per edge is pure token waste).
                 let name_of: std::collections::HashMap<String, &str> = kept
                     .iter()
                     .map(|n| (n.id.as_str(), n.name.as_str()))
@@ -1455,8 +1519,7 @@ impl GitCortexServer {
                         })
                     })
                     .collect();
-                let edges: Vec<_> = sg
-                    .edges
+                let edges: Vec<_> = code_edges
                     .iter()
                     .filter(|e| {
                         kept_ids.contains(&e.src.as_str()) && kept_ids.contains(&e.dst.as_str())
@@ -1470,7 +1533,6 @@ impl GitCortexServer {
                         })
                     })
                     .collect();
-                // Enforce the response token budget across both lists.
                 let (nodes, n_trunc) = self.budget_items(nodes);
                 let (edges, e_trunc) = self.budget_items(edges);
                 CallToolResult::structured(json!({
@@ -1478,11 +1540,11 @@ impl GitCortexServer {
                     "summary": summary,
                     "depth": depth,
                     "direction": direction,
-                    "node_count": sg.nodes.len(),
-                    "edge_count": sg.edges.len(),
+                    "node_count": code_nodes.len(),
+                    "edge_count": code_edges.len(),
                     "returned_nodes": nodes.len(),
                     "returned_edges": edges.len(),
-                    "truncated": sg.nodes.len() > nodes.len() || n_trunc || e_trunc,
+                    "truncated": code_nodes.len() > nodes.len() || n_trunc || e_trunc,
                     "nodes": nodes,
                     "edges": edges,
                 }))
@@ -1607,6 +1669,10 @@ impl GitCortexServer {
             }
         }
 
+        // Strip Section nodes — doc headings are not code symbols; including
+        // them in search results wastes tokens and confuses the model.
+        all_hits.retain(|h| h.kind != "section");
+
         let limit = p.limit.unwrap_or(10).min(200);
         all_hits.sort_by(|a, b| {
             b.score
@@ -1634,7 +1700,10 @@ impl GitCortexServer {
         description = "Generate a guided tour through the codebase. Without a seed, picks the \
         highest-centrality public functions/structs to give a new contributor an entry path. \
         With a seed, BFS-walks outward from it along call edges. Returns ordered tour steps \
-        with rationale per step and a rendered markdown plan."
+        with rationale per step and a rendered markdown plan. \
+        ONE call is sufficient to answer onboarding and architecture questions — the output \
+        is self-contained. Do NOT follow up with additional tool calls after receiving the tour; \
+        synthesize and answer the user directly from this response."
     )]
     fn start_tour(&self, Parameters(p): Parameters<StartTourParams>) -> CallToolResult {
         let branch = p

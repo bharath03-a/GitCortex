@@ -28,6 +28,23 @@ We follow **SemVer 0.x**:
   changes, when CLI/MCP surface gains/removes commands or tools, or when
   parser semantics change in a user-visible way.
 
+**Version discipline (pre-traction rule):**
+
+Until GitCortex has measurable organic traction — real GitHub issues from
+strangers, meaningful download counts, or a production user — **do not bump
+the minor version**. Ship everything as patch releases (`0.6.1`, `0.6.2`, …).
+
+Rationale: rapidly incrementing `0.X.0` with no users signals fake momentum.
+It also makes the project look further along than it is to potential
+contributors, which sets wrong expectations.
+
+Minor bump (`0.7.0`) is allowed only when at least one of:
+- 50+ GitHub stars from external contributors
+- A production user filing a real issue or PR
+- A measurable week-over-week download trend from public registries
+
+`1.0.0` = public launch or first confirmed production deployment.
+
 When you change `SCHEMA_VERSION`, existing users will have their local graph
 wiped and re-indexed automatically on the next git hook. Call this out in the
 release notes.

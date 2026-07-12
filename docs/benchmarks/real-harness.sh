@@ -64,14 +64,19 @@ EOF
 MCP_EMPTY='{"mcpServers":{}}'
 
 # Pick real, central symbols from the graph to fill the question templates.
+# Tour format changed in v0.6: output is now markdown sections, not a numbered list.
+# We extract symbol names from "key:" lines, skipping test-file entries so the
+# selected symbols are real production code with non-trivial call graphs.
 pick_symbols() {
   "$GCX" query tour --branch "$BRANCH" --limit 30 2>/dev/null \
-    | sed -nE 's/^[0-9]+\. `([^`]+)`.*/\1/p' \
+    | sed -nE 's/.*`([A-Za-z_][A-Za-z0-9_]+) — ([^`]*)`/\1 \2/p' \
+    | grep -v '_test\.' \
+    | awk '{print $1}' \
     | awk '!seen[$0]++' | head -10
 }
-SYMBOLS=($(pick_symbols))
-SYM_TYPE="${SYMBOLS[0]:-Main}"
-SYM_FN="${SYMBOLS[1]:-${SYMBOLS[0]:-init}}"
+IFS=$'\n' read -r -d '' -a SYMBOLS <<< "$(pick_symbols)" || true
+SYM_TYPE="${SYMBOLS[0]:-Command}"
+SYM_FN="${SYMBOLS[1]:-${SYMBOLS[0]:-execute}}"
 SYM_OTHER="${SYMBOLS[2]:-${SYMBOLS[1]:-${SYMBOLS[0]:-run}}}"
 PICK_TERM="parse"
 grep -qrI --include='*.rs' --include='*.go' --include='*.py' --include='*.ts' --include='*.java' \
@@ -213,7 +218,14 @@ out = {
   },
   "questions": qs,
 }
-json.dump(out, open(sys.argv[1],"w"), indent=2)
+# Only write checkpoint if at least one question succeeded; otherwise the
+# zero-token file would block retries on the next loop invocation.
+if len(valid) > 0:
+    json.dump(out, open(sys.argv[1],"w"), indent=2)
+else:
+    import os
+    # Write to a .err sidecar so the error is visible but checkpoint stays absent.
+    json.dump(out, open(sys.argv[1] + ".err","w"), indent=2)
 print(f"$REPO_NAME [{'$MODEL'}]  baseline={tb} gcx={tg} saved={tb-tg} "
       f"({out['totals']['saved_pct']}%)  geomean={geo}x  cost \${cb}->\${cg}")
 PY

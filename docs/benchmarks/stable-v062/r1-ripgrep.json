@@ -1,0 +1,125 @@
+{
+  "repo": "ripgrep",
+  "url": "//github.com/BurntSushi/ripgrep",
+  "branch": "master",
+  "model": "claude-haiku-4-5-20251001",
+  "measured": "real_claude_usage",
+  "compact": 1,
+  "symbols": {
+    "type": "sink",
+    "fn": "map",
+    "other": "line_number",
+    "concept": "parse"
+  },
+  "nodes": 3678,
+  "edges": 16495,
+  "totals": {
+    "baseline_tokens": 94300,
+    "gcx_tokens": 103609,
+    "saved_tokens": -9309,
+    "saved_pct": -9.87,
+    "baseline_cost_usd": 0.41477,
+    "gcx_cost_usd": 1.07693,
+    "geomean_ratio": 0.96,
+    "valid_questions": 4,
+    "errored_questions": []
+  },
+  "questions": [
+    {
+      "q": "search_concept",
+      "question": "Where in this codebase is 'parse' handled? List the relevant files and symbols.",
+      "baseline": {
+        "input": 27516,
+        "output": 1819,
+        "total": 29335,
+        "cache_read": 244299,
+        "cost": 0.0885,
+        "turns": 8,
+        "error": false
+      },
+      "gcx": {
+        "input": 27536,
+        "output": 2719,
+        "total": 30255,
+        "cache_read": 379359,
+        "cost": 0.37343,
+        "turns": 13,
+        "error": false
+      },
+      "token_ratio": 0.97,
+      "tokens_saved": -920
+    },
+    {
+      "q": "tour_onboarding",
+      "question": "Give me a concise tour of this codebase: what are the main components and how do they fit together?",
+      "baseline": {
+        "input": 1700,
+        "output": 705,
+        "total": 2405,
+        "cache_read": 37290,
+        "cost": 0.15221,
+        "turns": 1,
+        "error": false
+      },
+      "gcx": {
+        "input": 34416,
+        "output": 2972,
+        "total": 37388,
+        "cache_read": 339726,
+        "cost": 0.11758,
+        "turns": 16,
+        "error": false
+      },
+      "token_ratio": 0.06,
+      "tokens_saved": -34983
+    },
+    {
+      "q": "refactor_impact",
+      "question": "If I change 'map', what breaks? List the direct callers and any important indirect callers.",
+      "baseline": {
+        "input": 24883,
+        "output": 1683,
+        "total": 26566,
+        "cache_read": 123925,
+        "cost": 0.07054,
+        "turns": 9,
+        "error": false
+      },
+      "gcx": {
+        "input": 1464,
+        "output": 504,
+        "total": 1968,
+        "cache_read": 45609,
+        "cost": 0.4887,
+        "turns": 1,
+        "error": false
+      },
+      "token_ratio": 13.5,
+      "tokens_saved": 24598
+    },
+    {
+      "q": "subgraph_around",
+      "question": "Show everything directly connected to 'sink' \u2014 what calls it, what it calls, what it uses.",
+      "baseline": {
+        "input": 33706,
+        "output": 2288,
+        "total": 35994,
+        "cache_read": 247255,
+        "cost": 0.10352,
+        "turns": 13,
+        "error": false
+      },
+      "gcx": {
+        "input": 31156,
+        "output": 2842,
+        "total": 33998,
+        "cache_read": 207601,
+        "cost": 0.09722,
+        "turns": 13,
+        "error": false
+      },
+      "token_ratio": 1.06,
+      "tokens_saved": 1996
+    }
+  ]
+}
