@@ -213,6 +213,13 @@ pub struct FindClustersParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct FindCyclesParams {
+    /// Max import cycles to return (default 20, capped at 100).
+    pub limit: Option<usize>,
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct AstSearchParams {
     /// NodeKind filter: "function", "method", "struct", "trait", "interface",
     /// "enum", "constant", "type_alias", "module", etc. Omit for any kind.

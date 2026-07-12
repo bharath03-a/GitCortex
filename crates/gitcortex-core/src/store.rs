@@ -3,7 +3,7 @@ use std::path::Path;
 use crate::{
     error::Result,
     graph::{Edge, GraphDiff, Node},
-    schema::{NodeKind, Visibility},
+    schema::{EdgeKind, NodeKind, Visibility},
 };
 
 /// Structural predicate set for `search_by_attributes`. All fields are
@@ -188,6 +188,17 @@ pub trait GraphStore: Send + Sync {
 
     /// Return all edges in `branch`'s graph.
     fn list_all_edges(&self, branch: &str) -> Result<Vec<Edge>>;
+
+    /// Return edges of a specific `kind` in `branch`'s graph.
+    /// The default filters `list_all_edges` in-memory; backends should override
+    /// with a `WHERE`-clause push-down for large graphs.
+    fn list_edges_by_kind(&self, branch: &str, kind: EdgeKind) -> Result<Vec<Edge>> {
+        Ok(self
+            .list_all_edges(branch)?
+            .into_iter()
+            .filter(|e| e.kind == kind)
+            .collect())
+    }
 
     /// Find nodes matching a structural `filter` (kind, async, visibility,
     /// complexity range, name substring), up to `limit` results.

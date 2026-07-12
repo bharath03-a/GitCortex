@@ -145,6 +145,7 @@ impl GitCortexServer {
                 "start_tour",
                 "find_god_nodes",
                 "find_clusters",
+                "find_cycles",
             ] {
                 router.disable_route(name);
             }
@@ -1489,6 +1490,51 @@ impl GitCortexServer {
         }
     }
 
+    /// Detect import cycles via Tarjan's SCC algorithm over `Imports` edges.
+    #[tool(
+        description = "Detect circular import dependencies via Tarjan SCC on Imports edges. \
+        Returns each cycle as a list of node IDs. Useful for spotting architectural debt. \
+        Skipped when the graph has >10 000 import edges (too large). limit default 20."
+    )]
+    fn find_cycles(&self, Parameters(p): Parameters<FindCyclesParams>) -> CallToolResult {
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        use gitcortex_core::schema::EdgeKind;
+        let import_edges = match store.list_edges_by_kind(&branch, EdgeKind::Imports) {
+            Ok(e) => e,
+            Err(e) => {
+                return CallToolResult::error(vec![Content::text(format!(
+                    "find_cycles: store error: {e}"
+                ))])
+            }
+        };
+        if import_edges.len() > 10_000 {
+            return CallToolResult::structured(json!({
+                "branch": branch,
+                "skipped": true,
+                "reason": "import graph too large (>10 000 edges); run on a smaller branch",
+                "cycles": [],
+            }));
+        }
+        let limit = p.limit.unwrap_or(20).min(100);
+        let mut cycles = gitcortex_core::graph::find_import_cycles(&import_edges);
+        let total = cycles.len();
+        cycles.truncate(limit);
+        CallToolResult::structured(json!({
+            "branch": branch,
+            "total_cycles": total,
+            "truncated": total > limit,
+            "cycles": cycles,
+        }))
+    }
+
     /// Single-entry dispatch — one schema instead of fifteen.
     ///
     /// Prefer this tool to keep per-turn schema overhead low. All individual
@@ -1498,7 +1544,7 @@ impl GitCortexServer {
         get_subgraph | search_code | start_tour | wiki_symbol | trace_path | \
         list_definitions | symbol_context | list_symbols_in_range | graph_stats | ast_search | \
         type_hierarchy | find_importers | find_type_usages | module_dependencies | \
-        get_call_sites | branch_diff_graph | find_god_nodes | find_clusters. \
+        get_call_sites | branch_diff_graph | find_god_nodes | find_clusters | find_cycles. \
         params: JSON object with the same fields as the individual tool (name/function_name/\
         seed_name/query/file/branch/depth/limit/direction/min_in_degree/min_cluster_size as applicable). \
         Returns identical output to the individual tool.")]
@@ -1737,12 +1783,20 @@ impl GitCortexServer {
                     .map(|n| n as usize),
                 branch: branch_val,
             })),
+            "find_cycles" => self.find_cycles(Parameters(FindCyclesParams {
+                limit: p
+                    .params
+                    .get("limit")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize),
+                branch: branch_val,
+            })),
             other => CallToolResult::error(vec![Content::text(format!(
                 "gcx dispatch: unknown action '{other}'. Valid: lookup_symbol, find_callers, \
                 find_callees, find_unused_symbols, get_subgraph, search_code, start_tour, \
                 wiki_symbol, trace_path, list_definitions, symbol_context, list_symbols_in_range, \
                 graph_stats, ast_search, type_hierarchy, find_importers, find_type_usages, \
-                module_dependencies, get_call_sites, find_god_nodes, find_clusters"
+                module_dependencies, get_call_sites, find_god_nodes, find_clusters, find_cycles"
             ))]),
         }
     }
