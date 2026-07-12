@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GitCortex Benchmark — v0.6.3 · 2026-07-12</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%23f9f7f3'/><line x1='18' y1='18' x2='46' y2='32' stroke='%23c96442' stroke-width='3' stroke-linecap='round'/><line x1='18' y1='18' x2='32' y2='50' stroke='%23c96442' stroke-width='3' stroke-linecap='round'/><circle cx='18' cy='18' r='7' fill='%23c96442'/><circle cx='46' cy='32' r='5.5' fill='%23e0a07f'/><circle cx='32' cy='50' r='5.5' fill='%23e0a07f'/></svg>">
+<style>
+:root{--bg:#f9f7f3;--fg:#2a2622;--mut:#6b6359;--subtle:#8a8178;--accent:#c96442;--line:#e7e1d8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);
+font-family:Inter,-apple-system,system-ui,sans-serif;line-height:1.6;
+-webkit-font-smoothing:antialiased}
+.nav{position:sticky;top:0;z-index:20;background:rgba(249,247,243,.92);
+backdrop-filter:blur(12px) saturate(140%);border-bottom:1px solid var(--line)}
+.nav-inner{max-width:760px;margin:0 auto;padding:14px 24px;display:flex;
+align-items:center;justify-content:space-between}
+.nav-brand{display:flex;align-items:center;gap:9px;font-size:16px;font-weight:700;
+color:var(--fg);text-decoration:none;letter-spacing:-.02em}
+.nav-right{font-size:13px}.nav-right a{color:var(--subtle);text-decoration:none}
+.nav-right a:hover{color:var(--fg)}
+article{max-width:760px;margin:0 auto;padding:48px 24px 96px}
+.meta{display:flex;gap:12px;align-items:center;color:var(--mut);font-size:14px;margin-bottom:16px}
+.tag{background:var(--accent);color:#fff;padding:2px 10px;border-radius:99px;font-weight:600}
+h1{font-size:34px;line-height:1.2;margin:8px 0 16px}
+h2{font-size:22px;margin:40px 0 12px;border-bottom:1px solid var(--line);padding-bottom:6px}
+.lede{font-size:18px;color:#403a33}
+.hero{display:flex;gap:16px;margin:28px 0;flex-wrap:wrap}
+.stat{flex:1;min-width:160px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;text-align:center}
+.big{font-size:34px;font-weight:700}
+.win{color:#2f7d4f}.lose{color:#c0392b}.mid{color:#b8860b}
+table{width:100%;border-collapse:collapse;margin:8px 0;font-size:14px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line)}
+th{color:var(--mut);font-weight:600}
+td.win{color:#2f7d4f;font-weight:600}td.lose{color:#c0392b;font-weight:600}td.mid{color:#b8860b;font-weight:600}
+code{background:#efe9e0;padding:1px 5px;border-radius:5px;font-size:13px}
+.note{color:var(--mut);font-size:14px}
+ul.notes{padding-left:20px}ul.notes li{margin:7px 0}
+.prev{margin:24px 0;background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+.prev summary{cursor:pointer;font-weight:600;color:var(--accent)}
+.prev p{color:var(--mut);font-size:14px;margin:10px 0 0}
+a{color:var(--accent)}
+</style></head>
+<body>
+<nav class="nav">
+  <div class="nav-inner">
+    <a class="nav-brand" href="https://github.com/bharath03-a/GitCortex"><svg width="22" height="22" viewBox="0 0 26 26" fill="none"><path d="M7 7L19 13M7 7L13 19M19 13L13 19" stroke="#c96442" stroke-width="1.6" stroke-linecap="round"/><circle cx="7" cy="7" r="3.2" fill="#c96442"/><circle cx="19" cy="13" r="2.6" fill="#e0a07f"/><circle cx="13" cy="19" r="2.6" fill="#e0a07f"/></svg> GitCortex</a>
+    <div class="nav-right"><a href="https://github.com/bharath03-a/GitCortex">GitHub ↗</a></div>
+  </div>
+</nav>
+<article>
+  <div class="meta"><span class="tag">Benchmark</span><span>v0.6.3 · 2026-07-12</span></div>
+  <h1>Does a code knowledge graph help AI work more efficiently?</h1>
+  <p class="lede">Measured Claude token usage on real developer questions — once with
+  ordinary file search, once with the GitCortex graph (compact MCP). Numbers are from
+  <strong>v0.6.2 single-round runs</strong>; a full median-of-3 sweep is in progress.
+  v0.6.3 is a pure internal refactor with no behaviour change.</p>
+
+  <div class="hero">
+    <div class="stat"><div class="big win">1.67×</div><div>refactor impact (new)</div></div>
+    <div class="stat"><div class="big mid">1.08×</div><div>search (most stable)</div></div>
+    <div class="stat"><div class="big mid">1.09×</div><div>subgraph neighbourhood</div></div>
+  </div>
+
+  <h2>Per-question (geomean ratio across repos)</h2>
+  <table><thead><tr><th>Question</th><th>Token ratio</th><th>Repos</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>What breaks if I change X?<br><code>detect_changes</code></td><td class="win">1.67×</td><td>5</td><td>New question type in v0.6.2; one 13.5× outlier on ripgrep</td></tr>
+    <tr><td>Find relevant code<br><code>search_code</code></td><td class="mid">1.08×</td><td>5</td><td>Most stable signal across all releases</td></tr>
+    <tr><td>Show connections around X<br><code>get_subgraph</code></td><td class="mid">1.09×</td><td>4</td><td>hono errored (excluded)</td></tr>
+    <tr><td>Tour the codebase<br><code>start_tour</code></td><td class="lose">excluded</td><td>—</td><td>Baseline arm returned &lt;3.4k tokens on 3/5 repos — anomalous, re-running</td></tr>
+  </tbody></table>
+  <p class="note">Ratio &gt; 1 = graph cheaper. <code>detect_changes</code> (refactor impact) is the
+  strongest signal: the graph answers "what callers break?" without reading every
+  file. Tour results excluded — grep baseline sessions terminated unusually early
+  on three repos, making comparisons unreliable.</p>
+
+  <h2>Per-repository (single v0.6.2 run)</h2>
+  <table><thead><tr><th>Repo</th><th>Lang</th><th>grep tokens</th><th>gcx tokens</th><th>Saved</th><th>Geomean</th></tr></thead>
+  <tbody>
+    <tr><td>cobra</td><td>Go</td><td>133,164</td><td>117,876</td><td class="win">+11.5%</td><td class="win">1.12×</td></tr>
+    <tr><td>requests</td><td>Python</td><td>115,622</td><td>114,429</td><td class="mid">+1.0%</td><td class="mid">1.00×</td></tr>
+    <tr><td>ripgrep</td><td>Rust</td><td>94,300</td><td>103,609</td><td class="mid">−9.9%</td><td class="mid">0.96×</td></tr>
+    <tr><td>gson</td><td>Java</td><td>95,297</td><td>113,152</td><td class="lose">−18.7%</td><td class="lose">0.54×</td></tr>
+    <tr><td>hono</td><td>TypeScript</td><td>61,274</td><td>100,795</td><td class="lose">−64.5%</td><td class="lose">0.43×</td></tr>
+  </tbody></table>
+  <p class="note">Per-repo geomeans include the anomalous tour sessions. hono's 0.43× includes
+  a hard-errored <code>subgraph_around</code> question. gson and hono are the consistent weak
+  spots — Java parser coverage and TypeScript dynamic patterns remain areas of active work.</p>
+
+  <h2>What shipped in v0.6.2 / v0.6.3</h2>
+  <ul class="notes">
+    <li><strong>Section filter for Markdown.</strong> <code>Section</code> nodes carry their heading level; MCP tools accept an optional <code>section</code> param to scope results to a doc subtree. Enables precise "find all code referenced in the Authentication section" queries.</li>
+    <li><strong>Stop-searching messages.</strong> When the token budget is reached, the MCP server emits a structured <code>stop_reason</code> instead of silently truncating — the model knows to summarise rather than keep expanding.</li>
+    <li><strong>Harness fixes.</strong> Rate-limit retries, session isolation, and per-question error attribution in the benchmark harness — cleaner multi-round sweeps with fewer phantom errors.</li>
+    <li><strong>refactor(mcp): <code>tools.rs</code> split (v0.6.3).</strong> Parameter structs, shared helpers, and git-diff utilities extracted into <code>params.rs</code>, <code>helpers.rs</code>, <code>git_helpers.rs</code>. Canonical <code>FromStr</code> impls for <code>NodeKind</code> and <code>Visibility</code> added to <code>gitcortex-core</code>, eliminating three duplicate string-to-enum match tables. Pure refactor; no behaviour change.</li>
+  </ul>
+
+  <details class="prev">
+    <summary>◀ Previous published run — v0.6.0 · 2026-07-05</summary>
+    <p>v0.6.0 introduced Markdown ingestion, <code>find_god_nodes</code>, <code>find_clusters</code>,
+    hub-node overlay in <code>gcx viz</code>, and a <code>get_subgraph</code> turn-explosion fix.
+    That run reported <strong>1.08× geomean</strong>, <strong>+7.7% aggregate savings</strong>,
+    and <strong>search_code at 1.30×</strong> (median of 3 rounds across 5 repos).
+    Full archived report: <a href="final-report-2026-06-19.html">final-report-2026-06-19.html</a>.</p>
+  </details>
+
+  <details class="prev">
+    <summary>◀ Earlier runs — v0.5.0 · 2026-06-19 and 2026-06-06</summary>
+    <p>v0.5.0 (2026-06-19): 7 new MCP tools (15→22), semantic search, cyclomatic complexity,
+    median-of-N harness. Reported <strong>1.08× geomean</strong>, <strong>+7.7% savings</strong>.<br>
+    2026-06-06 single-run: up to <strong>56% savings</strong> on large repos,
+    <strong>1.15–1.36× compact geomean</strong> — superseded by median-of-N methodology.
+    Full archived report: <a href="final-report-2026-06-06.html">final-report-2026-06-06.html</a>.</p>
+  </details>
+
+  <h2>Methodology</h2>
+  <p class="note">Model claude-haiku-4-5. Compact MCP (single dispatch tool).
+  Per question, two Claude sessions (grep arm vs gcx arm). v0.6.2 data is single-round;
+  full median-of-3 sweep in progress.
+  Tokens = input + cache-creation (cache reads excluded to avoid double-counting).
+  Errored sessions dropped per question.
+  Reproduce: <code>bash docs/benchmarks/real-harness.sh</code>.</p>
+</article>
+</body></html>

@@ -221,7 +221,7 @@ curl --proto '=https' --tlsv1.2 -LsSf \
 
 ### Windows (via WSL2)
 
-Native Windows is not currently supported — the embedded graph store (KuzuDB 0.11.3, upstream
+Native Windows is not currently supported — the embedded graph store (KuzuDB 0.6.3, upstream
 archived Oct 2025) does not link cleanly under MSVC (LNK1169/LNK2038 symbol conflicts). Restoring
 native Windows requires replacing the store layer; tracked as a future effort.
 
@@ -492,7 +492,7 @@ Example output:
 ```
 gcx doctor
 
-  [ok] gcx v0.6.0 on PATH (/usr/local/bin/gcx)
+  [ok] gcx v0.6.3 on PATH (/usr/local/bin/gcx)
   [ok] git repository detected
   [ok] post-commit hook installed
   [ok] post-merge hook installed
@@ -518,8 +518,8 @@ gcx update
 ```
 gcx update
 
-  current version:  0.6.0
-  latest version:   0.6.0
+  current version:  0.6.3
+  latest version:   0.6.3
   you are up to date.
 
   To update (cargo):
@@ -759,7 +759,7 @@ GitCortex builds a **syntactic** graph from tree-sitter ASTs. That's deliberate 
 - **Go interface satisfaction not inferred.** Go satisfies interfaces structurally (no `implements` keyword), so `find-implementors` on a Go interface returns nothing. Embedding (`inherits`) is captured.
 - **Java member annotations & fields not modeled.** `@Override` / `@SerializedName` on members and `static final` fields don't yet produce nodes/edges, so annotation-target and field-level queries are incomplete.
 - **Go type-declaration signatures** render without the leading `type` keyword and struct/interface body (the type name + kind are correct).
-- **Windows is unsupported** — KuzuDB 0.11.3 (upstream archived) doesn't link under MSVC. macOS (arm64/x86_64) and Linux (x86_64/aarch64) ship pre-built binaries.
+- **Windows is unsupported** — KuzuDB 0.6.3 (upstream archived) doesn't link under MSVC. macOS (arm64/x86_64) and Linux (x86_64/aarch64) ship pre-built binaries.
 
 **Roadmap**
 

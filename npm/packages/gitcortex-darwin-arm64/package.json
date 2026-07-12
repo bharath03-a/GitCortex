@@ -1,6 +1,6 @@
 {
   "name": "@gitcortex/gcx-darwin-arm64",
-  "version": "0.6.0",
+  "version": "0.6.3",
   "description": "gcx binary for macOS arm64 (Apple Silicon)",
   "repository": {
     "type": "git",
