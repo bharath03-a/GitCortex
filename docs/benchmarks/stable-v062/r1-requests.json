@@ -1,0 +1,125 @@
+{
+  "repo": "requests",
+  "url": "//github.com/psf/requests",
+  "branch": "main",
+  "model": "claude-haiku-4-5-20251001",
+  "measured": "real_claude_usage",
+  "compact": 1,
+  "symbols": {
+    "type": "get",
+    "fn": "httpbin_secure",
+    "other": "TLSServer",
+    "concept": "auth"
+  },
+  "nodes": 1047,
+  "edges": 3204,
+  "totals": {
+    "baseline_tokens": 115622,
+    "gcx_tokens": 114429,
+    "saved_tokens": 1193,
+    "saved_pct": 1.03,
+    "baseline_cost_usd": 0.31826,
+    "gcx_cost_usd": 0.51665,
+    "geomean_ratio": 1.0,
+    "valid_questions": 4,
+    "errored_questions": []
+  },
+  "questions": [
+    {
+      "q": "search_concept",
+      "question": "Where in this codebase is 'auth' handled? List the relevant files and symbols.",
+      "baseline": {
+        "input": 24087,
+        "output": 1103,
+        "total": 25190,
+        "cache_read": 122861,
+        "cost": 0.06594,
+        "turns": 5,
+        "error": false
+      },
+      "gcx": {
+        "input": 25807,
+        "output": 1454,
+        "total": 27261,
+        "cache_read": 138805,
+        "cost": 0.27165,
+        "turns": 6,
+        "error": false
+      },
+      "token_ratio": 0.92,
+      "tokens_saved": -2071
+    },
+    {
+      "q": "tour_onboarding",
+      "question": "Give me a concise tour of this codebase: what are the main components and how do they fit together?",
+      "baseline": {
+        "input": 31036,
+        "output": 1249,
+        "total": 32285,
+        "cache_read": 127753,
+        "cost": 0.08011,
+        "turns": 7,
+        "error": false
+      },
+      "gcx": {
+        "input": 26648,
+        "output": 1815,
+        "total": 28463,
+        "cache_read": 206810,
+        "cost": 0.08299,
+        "turns": 10,
+        "error": false
+      },
+      "token_ratio": 1.13,
+      "tokens_saved": 3822
+    },
+    {
+      "q": "refactor_impact",
+      "question": "If I change 'httpbin_secure', what breaks? List the direct callers and any important indirect callers.",
+      "baseline": {
+        "input": 24060,
+        "output": 870,
+        "total": 24930,
+        "cache_read": 159555,
+        "cost": 0.06838,
+        "turns": 6,
+        "error": false
+      },
+      "gcx": {
+        "input": 25957,
+        "output": 2104,
+        "total": 28061,
+        "cache_read": 207886,
+        "cost": 0.08316,
+        "turns": 9,
+        "error": false
+      },
+      "token_ratio": 0.89,
+      "tokens_saved": -3131
+    },
+    {
+      "q": "subgraph_around",
+      "question": "Show everything directly connected to 'get' \u2014 what calls it, what it calls, what it uses.",
+      "baseline": {
+        "input": 29983,
+        "output": 3234,
+        "total": 33217,
+        "cache_read": 277663,
+        "cost": 0.10383,
+        "turns": 16,
+        "error": false
+      },
+      "gcx": {
+        "input": 28498,
+        "output": 2146,
+        "total": 30644,
+        "cache_read": 111571,
+        "cost": 0.07885,
+        "turns": 9,
+        "error": false
+      },
+      "token_ratio": 1.08,
+      "tokens_saved": 2573
+    }
+  ]
+}

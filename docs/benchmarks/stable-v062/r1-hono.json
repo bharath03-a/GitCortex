@@ -1,0 +1,127 @@
+{
+  "repo": "hono",
+  "url": "//github.com/honojs/hono",
+  "branch": "main",
+  "model": "claude-haiku-4-5-20251001",
+  "measured": "real_claude_usage",
+  "compact": 1,
+  "symbols": {
+    "type": "encodeBase64",
+    "fn": "jsx",
+    "other": "text",
+    "concept": "auth"
+  },
+  "nodes": 2226,
+  "edges": 7131,
+  "totals": {
+    "baseline_tokens": 61274,
+    "gcx_tokens": 100795,
+    "saved_tokens": -39521,
+    "saved_pct": -64.5,
+    "baseline_cost_usd": 0.44701,
+    "gcx_cost_usd": 0.42336,
+    "geomean_ratio": 0.43,
+    "valid_questions": 3,
+    "errored_questions": [
+      "subgraph_around"
+    ]
+  },
+  "questions": [
+    {
+      "q": "search_concept",
+      "question": "Where in this codebase is 'auth' handled? List the relevant files and symbols.",
+      "baseline": {
+        "input": 31957,
+        "output": 1365,
+        "total": 33322,
+        "cache_read": 129137,
+        "cost": 0.08362,
+        "turns": 8,
+        "error": false
+      },
+      "gcx": {
+        "input": 26333,
+        "output": 2435,
+        "total": 28768,
+        "cache_read": 239183,
+        "cost": 0.19981,
+        "turns": 11,
+        "error": false
+      },
+      "token_ratio": 1.16,
+      "tokens_saved": 4554
+    },
+    {
+      "q": "tour_onboarding",
+      "question": "Give me a concise tour of this codebase: what are the main components and how do they fit together?",
+      "baseline": {
+        "input": 2823,
+        "output": 520,
+        "total": 3343,
+        "cache_read": 36779,
+        "cost": 0.29939,
+        "turns": 1,
+        "error": false
+      },
+      "gcx": {
+        "input": 43833,
+        "output": 2567,
+        "total": 46400,
+        "cache_read": 609850,
+        "cost": 0.16137,
+        "turns": 17,
+        "error": false
+      },
+      "token_ratio": 0.07,
+      "tokens_saved": -43057
+    },
+    {
+      "q": "refactor_impact",
+      "question": "If I change 'jsx', what breaks? List the direct callers and any important indirect callers.",
+      "baseline": {
+        "input": 23742,
+        "output": 867,
+        "total": 24609,
+        "cache_read": 122125,
+        "cost": 0.064,
+        "turns": 5,
+        "error": false
+      },
+      "gcx": {
+        "input": 24418,
+        "output": 1209,
+        "total": 25627,
+        "cache_read": 73312,
+        "cost": 0.06218,
+        "turns": 4,
+        "error": false
+      },
+      "token_ratio": 0.96,
+      "tokens_saved": -1018
+    },
+    {
+      "q": "subgraph_around",
+      "question": "Show everything directly connected to 'encodeBase64' \u2014 what calls it, what it calls, what it uses.",
+      "baseline": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "cache_read": 0,
+        "cost": 0,
+        "turns": 1,
+        "error": true
+      },
+      "gcx": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "cache_read": 0,
+        "cost": 0,
+        "turns": 1,
+        "error": true
+      },
+      "token_ratio": 0,
+      "tokens_saved": 0
+    }
+  ]
+}

@@ -1,0 +1,125 @@
+{
+  "repo": "cobra",
+  "url": "//github.com/spf13/cobra",
+  "branch": "main",
+  "model": "claude-haiku-4-5-20251001",
+  "measured": "real_claude_usage",
+  "compact": 1,
+  "symbols": {
+    "type": "Command",
+    "fn": "execute",
+    "other": "run",
+    "concept": "parse"
+  },
+  "nodes": 0,
+  "edges": 0,
+  "totals": {
+    "baseline_tokens": 133164,
+    "gcx_tokens": 117876,
+    "saved_tokens": 15288,
+    "saved_pct": 11.48,
+    "baseline_cost_usd": 0.50666,
+    "gcx_cost_usd": 1.03949,
+    "geomean_ratio": 1.12,
+    "valid_questions": 4,
+    "errored_questions": []
+  },
+  "questions": [
+    {
+      "q": "search_concept",
+      "question": "Where in this codebase is 'parse' handled? List the relevant files and symbols.",
+      "baseline": {
+        "input": 41936,
+        "output": 2228,
+        "total": 44164,
+        "cache_read": 433902,
+        "cost": 0.1383,
+        "turns": 12,
+        "error": false
+      },
+      "gcx": {
+        "input": 32758,
+        "output": 962,
+        "total": 33720,
+        "cache_read": 31754,
+        "cost": 0.26996,
+        "turns": 2,
+        "error": false
+      },
+      "token_ratio": 1.31,
+      "tokens_saved": 10444
+    },
+    {
+      "q": "tour_onboarding",
+      "question": "Give me a concise tour of this codebase: what are the main components and how do they fit together?",
+      "baseline": {
+        "input": 27149,
+        "output": 2452,
+        "total": 29601,
+        "cache_read": 549516,
+        "cost": 0.12139,
+        "turns": 15,
+        "error": false
+      },
+      "gcx": {
+        "input": 27985,
+        "output": 2292,
+        "total": 30277,
+        "cache_read": 252919,
+        "cost": 0.23848,
+        "turns": 9,
+        "error": false
+      },
+      "token_ratio": 0.98,
+      "tokens_saved": -676
+    },
+    {
+      "q": "refactor_impact",
+      "question": "If I change 'execute', what breaks? List the direct callers and any important indirect callers.",
+      "baseline": {
+        "input": 26767,
+        "output": 2265,
+        "total": 29032,
+        "cache_read": 586794,
+        "cost": 0.12341,
+        "turns": 17,
+        "error": false
+      },
+      "gcx": {
+        "input": 26653,
+        "output": 2597,
+        "total": 29250,
+        "cache_read": 241318,
+        "cost": 0.47484,
+        "turns": 8,
+        "error": false
+      },
+      "token_ratio": 0.99,
+      "tokens_saved": -218
+    },
+    {
+      "q": "subgraph_around",
+      "question": "Show everything directly connected to 'Command' \u2014 what calls it, what it calls, what it uses.",
+      "baseline": {
+        "input": 27753,
+        "output": 2614,
+        "total": 30367,
+        "cache_read": 551105,
+        "cost": 0.12356,
+        "turns": 16,
+        "error": false
+      },
+      "gcx": {
+        "input": 23672,
+        "output": 957,
+        "total": 24629,
+        "cache_read": 41028,
+        "cost": 0.05621,
+        "turns": 2,
+        "error": false
+      },
+      "token_ratio": 1.23,
+      "tokens_saved": 5738
+    }
+  ]
+}
