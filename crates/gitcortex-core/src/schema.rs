@@ -57,6 +57,31 @@ impl std::fmt::Display for NodeKind {
     }
 }
 
+impl std::str::FromStr for NodeKind {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "folder" => Ok(NodeKind::Folder),
+            "file" => Ok(NodeKind::File),
+            "module" => Ok(NodeKind::Module),
+            "struct" => Ok(NodeKind::Struct),
+            "enum" => Ok(NodeKind::Enum),
+            "trait" => Ok(NodeKind::Trait),
+            "interface" => Ok(NodeKind::Interface),
+            "type_alias" => Ok(NodeKind::TypeAlias),
+            "function" => Ok(NodeKind::Function),
+            "method" => Ok(NodeKind::Method),
+            "property" => Ok(NodeKind::Property),
+            "constant" => Ok(NodeKind::Constant),
+            "macro" => Ok(NodeKind::Macro),
+            "annotation" => Ok(NodeKind::Annotation),
+            "enum_member" | "enum-member" => Ok(NodeKind::EnumMember),
+            "section" => Ok(NodeKind::Section),
+            _ => Err(()),
+        }
+    }
+}
+
 /// Directed relationship between two nodes.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -152,6 +177,18 @@ impl std::fmt::Display for Visibility {
             Visibility::Pub => f.write_str("pub"),
             Visibility::PubCrate => f.write_str("pub_crate"),
             Visibility::Private => f.write_str("private"),
+        }
+    }
+}
+
+impl std::str::FromStr for Visibility {
+    type Err = ();
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "pub" => Ok(Visibility::Pub),
+            "pub_crate" => Ok(Visibility::PubCrate),
+            "private" => Ok(Visibility::Private),
+            _ => Err(()),
         }
     }
 }

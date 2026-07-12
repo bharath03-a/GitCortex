@@ -5,25 +5,7 @@
 use gitcortex_core::schema::{EdgeKind, NodeKind, Visibility};
 
 pub(super) fn kind_from_str(s: &str) -> NodeKind {
-    match s {
-        "folder" => NodeKind::Folder,
-        "file" => NodeKind::File,
-        "module" => NodeKind::Module,
-        "struct" => NodeKind::Struct,
-        "enum" => NodeKind::Enum,
-        "trait" => NodeKind::Trait,
-        "interface" => NodeKind::Interface,
-        "type_alias" => NodeKind::TypeAlias,
-        "function" => NodeKind::Function,
-        "method" => NodeKind::Method,
-        "property" => NodeKind::Property,
-        "constant" => NodeKind::Constant,
-        "macro" => NodeKind::Macro,
-        "annotation" => NodeKind::Annotation,
-        "enum_member" => NodeKind::EnumMember,
-        "section" => NodeKind::Section,
-        _ => NodeKind::Function,
-    }
+    s.parse().unwrap_or(NodeKind::Function)
 }
 
 pub(super) fn edge_kind_from_str(s: &str) -> EdgeKind {
@@ -49,11 +31,7 @@ pub(super) fn vis_str(v: &Visibility) -> String {
 }
 
 pub(super) fn vis_from_str(s: &str) -> Visibility {
-    match s {
-        "pub" => Visibility::Pub,
-        "pub_crate" => Visibility::PubCrate,
-        _ => Visibility::Private,
-    }
+    s.parse().unwrap_or(Visibility::Private)
 }
 
 /// Return the list of file extensions (with leading dot) that belong to the

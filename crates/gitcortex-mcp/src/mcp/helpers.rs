@@ -25,35 +25,12 @@ pub(crate) fn sig_line(n: &gitcortex_core::graph::Node) -> String {
 
 /// Parse a NodeKind from its snake_case string form (matches `NodeKind::Display`).
 pub(crate) fn parse_node_kind(s: &str) -> Option<NodeKind> {
-    Some(match s {
-        "folder" => NodeKind::Folder,
-        "file" => NodeKind::File,
-        "module" => NodeKind::Module,
-        "struct" => NodeKind::Struct,
-        "enum" => NodeKind::Enum,
-        "trait" => NodeKind::Trait,
-        "interface" => NodeKind::Interface,
-        "type_alias" => NodeKind::TypeAlias,
-        "function" => NodeKind::Function,
-        "method" => NodeKind::Method,
-        "property" => NodeKind::Property,
-        "constant" => NodeKind::Constant,
-        "macro" => NodeKind::Macro,
-        "annotation" => NodeKind::Annotation,
-        "enum_member" | "enum-member" => NodeKind::EnumMember,
-        "section" => NodeKind::Section,
-        _ => return None,
-    })
+    s.parse().ok()
 }
 
 /// Parse a Visibility from its snake_case string form.
 pub(crate) fn parse_visibility(s: &str) -> Option<Visibility> {
-    Some(match s {
-        "pub" => Visibility::Pub,
-        "pub_crate" => Visibility::PubCrate,
-        "private" => Visibility::Private,
-        _ => return None,
-    })
+    s.parse().ok()
 }
 
 pub(crate) fn detect_current_branch(repo_root: &Path) -> Option<String> {
