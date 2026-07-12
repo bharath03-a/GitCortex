@@ -275,6 +275,91 @@ pub fn in_degree_by_calls(edges: &[Edge]) -> HashMap<String, u32> {
     in_degree
 }
 
+/// Find import cycles via Tarjan's SCC over `EdgeKind::Imports` edges.
+/// Returns one `Vec<String>` (node IDs) per cycle; cycles of size 1 (self-loops)
+/// are excluded.
+pub fn find_import_cycles(edges: &[Edge]) -> Vec<Vec<String>> {
+    let mut adj: HashMap<String, Vec<String>> = HashMap::new();
+    for e in edges {
+        if matches!(e.kind, EdgeKind::Imports) {
+            adj.entry(e.src.as_str()).or_default().push(e.dst.as_str());
+        }
+    }
+
+    let nodes: Vec<String> = adj.keys().cloned().collect();
+    let mut index_counter = 0usize;
+    let mut stack: Vec<String> = Vec::new();
+    let mut on_stack: HashMap<String, bool> = HashMap::new();
+    let mut index: HashMap<String, usize> = HashMap::new();
+    let mut lowlink: HashMap<String, usize> = HashMap::new();
+    let mut result: Vec<Vec<String>> = Vec::new();
+
+    #[allow(clippy::too_many_arguments)]
+    fn strongconnect(
+        v: &str,
+        adj: &HashMap<String, Vec<String>>,
+        counter: &mut usize,
+        stack: &mut Vec<String>,
+        on_stack: &mut HashMap<String, bool>,
+        index: &mut HashMap<String, usize>,
+        lowlink: &mut HashMap<String, usize>,
+        result: &mut Vec<Vec<String>>,
+    ) {
+        index.insert(v.to_owned(), *counter);
+        lowlink.insert(v.to_owned(), *counter);
+        *counter += 1;
+        stack.push(v.to_owned());
+        on_stack.insert(v.to_owned(), true);
+
+        if let Some(neighbours) = adj.get(v) {
+            for w in neighbours.clone() {
+                if !index.contains_key(w.as_str()) {
+                    strongconnect(&w, adj, counter, stack, on_stack, index, lowlink, result);
+                    let ll_w = lowlink[w.as_str()];
+                    let ll_v = lowlink[v];
+                    lowlink.insert(v.to_owned(), ll_v.min(ll_w));
+                } else if *on_stack.get(w.as_str()).unwrap_or(&false) {
+                    let idx_w = index[w.as_str()];
+                    let ll_v = lowlink[v];
+                    lowlink.insert(v.to_owned(), ll_v.min(idx_w));
+                }
+            }
+        }
+
+        if lowlink[v] == index[v] {
+            let mut scc: Vec<String> = Vec::new();
+            loop {
+                let w = stack.pop().unwrap();
+                on_stack.insert(w.clone(), false);
+                scc.push(w.clone());
+                if w == v {
+                    break;
+                }
+            }
+            if scc.len() > 1 {
+                result.push(scc);
+            }
+        }
+    }
+
+    for v in &nodes {
+        if !index.contains_key(v.as_str()) {
+            strongconnect(
+                v,
+                &adj,
+                &mut index_counter,
+                &mut stack,
+                &mut on_stack,
+                &mut index,
+                &mut lowlink,
+                &mut result,
+            );
+        }
+    }
+
+    result
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -314,5 +399,53 @@ mod tests {
     #[test]
     fn graph_diff_is_empty_on_default() {
         assert!(GraphDiff::default().is_empty());
+    }
+
+    fn import_edge(src: &NodeId, dst: &NodeId) -> Edge {
+        Edge::new(src.clone(), dst.clone(), EdgeKind::Imports)
+    }
+
+    #[test]
+    fn cycles_empty_when_imports_are_acyclic() {
+        let (a, b, c) = (NodeId::new(), NodeId::new(), NodeId::new());
+        // a → b → c, no back edge.
+        let edges = vec![import_edge(&a, &b), import_edge(&b, &c)];
+        assert!(find_import_cycles(&edges).is_empty());
+    }
+
+    #[test]
+    fn cycles_detects_two_node_cycle() {
+        let (a, b) = (NodeId::new(), NodeId::new());
+        let edges = vec![import_edge(&a, &b), import_edge(&b, &a)];
+        let cycles = find_import_cycles(&edges);
+        assert_eq!(cycles.len(), 1);
+        let members: std::collections::HashSet<&String> = cycles[0].iter().collect();
+        assert_eq!(members.len(), 2);
+        assert!(members.contains(&a.as_str()));
+        assert!(members.contains(&b.as_str()));
+    }
+
+    #[test]
+    fn cycles_ignores_non_import_edges() {
+        let (a, b) = (NodeId::new(), NodeId::new());
+        // A calls-cycle must not register as an import cycle.
+        let edges = vec![
+            Edge::new(a.clone(), b.clone(), EdgeKind::Calls),
+            Edge::new(b.clone(), a.clone(), EdgeKind::Calls),
+        ];
+        assert!(find_import_cycles(&edges).is_empty());
+    }
+
+    #[test]
+    fn cycles_detects_three_node_cycle() {
+        let (a, b, c) = (NodeId::new(), NodeId::new(), NodeId::new());
+        let edges = vec![
+            import_edge(&a, &b),
+            import_edge(&b, &c),
+            import_edge(&c, &a),
+        ];
+        let cycles = find_import_cycles(&edges);
+        assert_eq!(cycles.len(), 1);
+        assert_eq!(cycles[0].len(), 3);
     }
 }
