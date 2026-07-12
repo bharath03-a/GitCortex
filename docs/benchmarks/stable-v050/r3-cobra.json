@@ -1,0 +1,125 @@
+{
+  "repo": "cobra",
+  "url": "https://github.com/spf13/cobra",
+  "branch": "main",
+  "model": "claude-haiku-4-5-20251001",
+  "measured": "real_claude_usage",
+  "compact": 1,
+  "symbols": {
+    "type": "Main",
+    "fn": "init",
+    "other": "run",
+    "concept": "parse"
+  },
+  "nodes": 731,
+  "edges": 2448,
+  "totals": {
+    "baseline_tokens": 72243,
+    "gcx_tokens": 68960,
+    "saved_tokens": 3283,
+    "saved_pct": 4.54,
+    "baseline_cost_usd": 0.20762,
+    "gcx_cost_usd": 0.18312,
+    "geomean_ratio": 1.04,
+    "valid_questions": 4,
+    "errored_questions": []
+  },
+  "questions": [
+    {
+      "q": "search_concept",
+      "question": "Where in this codebase is 'parse' handled? List the relevant files and symbols.",
+      "baseline": {
+        "input": 17592,
+        "output": 3320,
+        "total": 20912,
+        "cache_read": 427377,
+        "cost": 0.08127,
+        "turns": 28,
+        "error": false
+      },
+      "gcx": {
+        "input": 13749,
+        "output": 1941,
+        "total": 15690,
+        "cache_read": 159818,
+        "cost": 0.04285,
+        "turns": 11,
+        "error": false
+      },
+      "token_ratio": 1.33,
+      "tokens_saved": 5222
+    },
+    {
+      "q": "tour_onboarding",
+      "question": "Give me a concise tour of this codebase: what are the main components and how do they fit together?",
+      "baseline": {
+        "input": 13119,
+        "output": 1236,
+        "total": 14355,
+        "cache_read": 65022,
+        "cost": 0.02907,
+        "turns": 7,
+        "error": false
+      },
+      "gcx": {
+        "input": 18568,
+        "output": 2005,
+        "total": 20573,
+        "cache_read": 132398,
+        "cost": 0.04646,
+        "turns": 15,
+        "error": false
+      },
+      "token_ratio": 0.7,
+      "tokens_saved": -6218
+    },
+    {
+      "q": "refactor_impact",
+      "question": "If I change 'init', what breaks? List the direct callers and any important indirect callers.",
+      "baseline": {
+        "input": 13309,
+        "output": 1728,
+        "total": 15037,
+        "cache_read": 151031,
+        "cost": 0.04036,
+        "turns": 12,
+        "error": false
+      },
+      "gcx": {
+        "input": 13200,
+        "output": 1715,
+        "total": 14915,
+        "cache_read": 105799,
+        "cost": 0.03564,
+        "turns": 8,
+        "error": false
+      },
+      "token_ratio": 1.01,
+      "tokens_saved": 122
+    },
+    {
+      "q": "subgraph_around",
+      "question": "Show everything directly connected to 'Main' \u2014 what calls it, what it calls, what it uses.",
+      "baseline": {
+        "input": 19800,
+        "output": 2139,
+        "total": 21939,
+        "cache_read": 215098,
+        "cost": 0.05692,
+        "turns": 19,
+        "error": false
+      },
+      "gcx": {
+        "input": 15216,
+        "output": 2566,
+        "total": 17782,
+        "cache_read": 263534,
+        "cost": 0.05817,
+        "turns": 21,
+        "error": false
+      },
+      "token_ratio": 1.23,
+      "tokens_saved": 4157
+    }
+  ]
+}

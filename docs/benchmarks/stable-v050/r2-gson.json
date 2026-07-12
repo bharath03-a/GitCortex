@@ -1,0 +1,125 @@
+{
+  "repo": "gson",
+  "url": "https://github.com/google/gson",
+  "branch": "main",
+  "model": "claude-haiku-4-5-20251001",
+  "measured": "real_claude_usage",
+  "compact": 1,
+  "symbols": {
+    "type": "Main",
+    "fn": "init",
+    "other": "run",
+    "concept": "auth"
+  },
+  "nodes": 4008,
+  "edges": 20054,
+  "totals": {
+    "baseline_tokens": 63991,
+    "gcx_tokens": 62468,
+    "saved_tokens": 1523,
+    "saved_pct": 2.38,
+    "baseline_cost_usd": 0.12902,
+    "gcx_cost_usd": 0.24173,
+    "geomean_ratio": 0.99,
+    "valid_questions": 4,
+    "errored_questions": []
+  },
+  "questions": [
+    {
+      "q": "search_concept",
+      "question": "Where in this codebase is 'auth' handled? List the relevant files and symbols.",
+      "baseline": {
+        "input": 11884,
+        "output": 799,
+        "total": 12683,
+        "cache_read": 16847,
+        "cost": 0.02053,
+        "turns": 3,
+        "error": false
+      },
+      "gcx": {
+        "input": 9987,
+        "output": 797,
+        "total": 10784,
+        "cache_read": 30549,
+        "cost": 0.01952,
+        "turns": 3,
+        "error": false
+      },
+      "token_ratio": 1.18,
+      "tokens_saved": 1899
+    },
+    {
+      "q": "tour_onboarding",
+      "question": "Give me a concise tour of this codebase: what are the main components and how do they fit together?",
+      "baseline": {
+        "input": 13421,
+        "output": 1197,
+        "total": 14618,
+        "cache_read": 57666,
+        "cost": 0.02852,
+        "turns": 7,
+        "error": false
+      },
+      "gcx": {
+        "input": 18251,
+        "output": 1812,
+        "total": 20063,
+        "cache_read": 130217,
+        "cost": 0.15166,
+        "turns": 10,
+        "error": false
+      },
+      "token_ratio": 0.73,
+      "tokens_saved": -5445
+    },
+    {
+      "q": "refactor_impact",
+      "question": "If I change 'init', what breaks? List the direct callers and any important indirect callers.",
+      "baseline": {
+        "input": 9591,
+        "output": 930,
+        "total": 10521,
+        "cache_read": 56476,
+        "cost": 0.02227,
+        "turns": 7,
+        "error": false
+      },
+      "gcx": {
+        "input": 11781,
+        "output": 1472,
+        "total": 13253,
+        "cache_read": 103550,
+        "cost": 0.03242,
+        "turns": 8,
+        "error": false
+      },
+      "token_ratio": 0.79,
+      "tokens_saved": -2732
+    },
+    {
+      "q": "subgraph_around",
+      "question": "Show everything directly connected to 'Main' \u2014 what calls it, what it calls, what it uses.",
+      "baseline": {
+        "input": 23208,
+        "output": 2961,
+        "total": 26169,
+        "cache_read": 139018,
+        "cost": 0.0577,
+        "turns": 21,
+        "error": false
+      },
+      "gcx": {
+        "input": 16832,
+        "output": 1536,
+        "total": 18368,
+        "cache_read": 94203,
+        "cost": 0.03813,
+        "turns": 8,
+        "error": false
+      },
+      "token_ratio": 1.42,
+      "tokens_saved": 7801
+    }
+  ]
+}

@@ -1,0 +1,127 @@
+{
+  "repo": "cobra",
+  "url": "//github.com/spf13/cobra",
+  "branch": "main",
+  "model": "claude-haiku-4-5-20251001",
+  "measured": "real_claude_usage",
+  "compact": 1,
+  "symbols": {
+    "type": "Main",
+    "fn": "init",
+    "other": "run",
+    "concept": "parse"
+  },
+  "nodes": 884,
+  "edges": 2713,
+  "totals": {
+    "baseline_tokens": 85887,
+    "gcx_tokens": 108582,
+    "saved_tokens": -22695,
+    "saved_pct": -26.42,
+    "baseline_cost_usd": 0.25156,
+    "gcx_cost_usd": 0.846,
+    "geomean_ratio": 0.79,
+    "valid_questions": 3,
+    "errored_questions": [
+      "subgraph_around"
+    ]
+  },
+  "questions": [
+    {
+      "q": "search_concept",
+      "question": "Where in this codebase is 'parse' handled? List the relevant files and symbols.",
+      "baseline": {
+        "input": 27112,
+        "output": 2507,
+        "total": 29619,
+        "cache_read": 275624,
+        "cost": 0.09425,
+        "turns": 10,
+        "error": false
+      },
+      "gcx": {
+        "input": 28925,
+        "output": 2426,
+        "total": 31351,
+        "cache_read": 449987,
+        "cost": 0.54634,
+        "turns": 24,
+        "error": false
+      },
+      "token_ratio": 0.94,
+      "tokens_saved": -1732
+    },
+    {
+      "q": "tour_onboarding",
+      "question": "Give me a concise tour of this codebase: what are the main components and how do they fit together?",
+      "baseline": {
+        "input": 28493,
+        "output": 1359,
+        "total": 29852,
+        "cache_read": 240450,
+        "cost": 0.08777,
+        "turns": 7,
+        "error": false
+      },
+      "gcx": {
+        "input": 37130,
+        "output": 3704,
+        "total": 40834,
+        "cache_read": 699299,
+        "cost": 0.16254,
+        "turns": 31,
+        "error": false
+      },
+      "token_ratio": 0.73,
+      "tokens_saved": -10982
+    },
+    {
+      "q": "refactor_impact",
+      "question": "If I change 'init', what breaks? List the direct callers and any important indirect callers.",
+      "baseline": {
+        "input": 24957,
+        "output": 1459,
+        "total": 26416,
+        "cache_read": 123630,
+        "cost": 0.06954,
+        "turns": 13,
+        "error": false
+      },
+      "gcx": {
+        "input": 31572,
+        "output": 4825,
+        "total": 36397,
+        "cache_read": 499804,
+        "cost": 0.13712,
+        "turns": 26,
+        "error": false
+      },
+      "token_ratio": 0.73,
+      "tokens_saved": -9981
+    },
+    {
+      "q": "subgraph_around",
+      "question": "Show everything directly connected to 'Main' \u2014 what calls it, what it calls, what it uses.",
+      "baseline": {
+        "input": 24889,
+        "output": 1417,
+        "total": 26306,
+        "cache_read": 123569,
+        "cost": 0.06918,
+        "turns": 13,
+        "error": false
+      },
+      "gcx": {
+        "input": 24534,
+        "output": 632,
+        "total": 25166,
+        "cache_read": 264452,
+        "cost": 0.08619,
+        "turns": 7,
+        "error": true
+      },
+      "token_ratio": 1.05,
+      "tokens_saved": 1140
+    }
+  ]
+}

@@ -1,0 +1,125 @@
+{
+  "repo": "ripgrep",
+  "url": "//github.com/BurntSushi/ripgrep",
+  "branch": "master",
+  "model": "claude-haiku-4-5-20251001",
+  "measured": "real_claude_usage",
+  "compact": 1,
+  "symbols": {
+    "type": "Main",
+    "fn": "init",
+    "other": "run",
+    "concept": "parse"
+  },
+  "nodes": 3678,
+  "edges": 16495,
+  "totals": {
+    "baseline_tokens": 128451,
+    "gcx_tokens": 98725,
+    "saved_tokens": 29726,
+    "saved_pct": 23.14,
+    "baseline_cost_usd": 0.47934,
+    "gcx_cost_usd": 1.01251,
+    "geomean_ratio": 1.78,
+    "valid_questions": 4,
+    "errored_questions": []
+  },
+  "questions": [
+    {
+      "q": "search_concept",
+      "question": "Where in this codebase is 'parse' handled? List the relevant files and symbols.",
+      "baseline": {
+        "input": 39692,
+        "output": 1720,
+        "total": 41412,
+        "cache_read": 189818,
+        "cost": 0.10691,
+        "turns": 7,
+        "error": false
+      },
+      "gcx": {
+        "input": 38824,
+        "output": 3220,
+        "total": 42044,
+        "cache_read": 301564,
+        "cost": 0.12381,
+        "turns": 13,
+        "error": false
+      },
+      "token_ratio": 0.98,
+      "tokens_saved": -632
+    },
+    {
+      "q": "tour_onboarding",
+      "question": "Give me a concise tour of this codebase: what are the main components and how do they fit together?",
+      "baseline": {
+        "input": 25065,
+        "output": 1163,
+        "total": 26228,
+        "cache_read": 49193,
+        "cost": 0.18035,
+        "turns": 2,
+        "error": false
+      },
+      "gcx": {
+        "input": 24670,
+        "output": 1571,
+        "total": 26241,
+        "cache_read": 40755,
+        "cost": 0.19912,
+        "turns": 2,
+        "error": false
+      },
+      "token_ratio": 1.0,
+      "tokens_saved": -13
+    },
+    {
+      "q": "refactor_impact",
+      "question": "If I change 'init', what breaks? List the direct callers and any important indirect callers.",
+      "baseline": {
+        "input": 24558,
+        "output": 1479,
+        "total": 26037,
+        "cache_read": 196998,
+        "cost": 0.07616,
+        "turns": 7,
+        "error": false
+      },
+      "gcx": {
+        "input": 25719,
+        "output": 1490,
+        "total": 27209,
+        "cache_read": 204931,
+        "cost": 0.18281,
+        "turns": 10,
+        "error": false
+      },
+      "token_ratio": 0.96,
+      "tokens_saved": -1172
+    },
+    {
+      "q": "subgraph_around",
+      "question": "Show everything directly connected to 'Main' \u2014 what calls it, what it calls, what it uses.",
+      "baseline": {
+        "input": 32247,
+        "output": 2527,
+        "total": 34774,
+        "cache_read": 388915,
+        "cost": 0.11592,
+        "turns": 17,
+        "error": false
+      },
+      "gcx": {
+        "input": 3119,
+        "output": 112,
+        "total": 3231,
+        "cache_read": 31803,
+        "cost": 0.50677,
+        "turns": 1,
+        "error": false
+      },
+      "token_ratio": 10.76,
+      "tokens_saved": 31543
+    }
+  ]
+}
