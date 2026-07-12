@@ -40,7 +40,7 @@ pub(crate) fn parse_node_kind(s: &str) -> Option<NodeKind> {
         "constant" => NodeKind::Constant,
         "macro" => NodeKind::Macro,
         "annotation" => NodeKind::Annotation,
-        "enum_member" => NodeKind::EnumMember,
+        "enum_member" | "enum-member" => NodeKind::EnumMember,
         "section" => NodeKind::Section,
         _ => return None,
     })

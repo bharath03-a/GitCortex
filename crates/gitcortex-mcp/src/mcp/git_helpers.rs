@@ -52,7 +52,10 @@ pub(crate) fn parse_hunk_header(line: &str) -> Option<(u32, u32)> {
     if let Some(comma) = range.find(',') {
         let start: u32 = range[..comma].parse().ok()?;
         let count: u32 = range[comma + 1..].parse().ok()?;
-        Some((start, start + count.saturating_sub(1)))
+        if count == 0 {
+            return None; // deletion-only hunk — no new lines to attribute
+        }
+        Some((start, start + count - 1))
     } else {
         let start: u32 = range.parse().ok()?;
         Some((start, start))
