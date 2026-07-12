@@ -1,5 +1,8 @@
 pub mod centrality;
 pub mod clustering;
+pub mod git_helpers;
+pub mod helpers;
+pub mod params;
 pub mod search;
 pub mod server;
 pub mod subgraph;
