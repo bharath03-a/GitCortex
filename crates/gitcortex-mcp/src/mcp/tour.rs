@@ -32,6 +32,9 @@ pub struct TourStep {
     /// Why this step appears here — e.g. "high in-degree (12 callers)" or
     /// "entry point: public function" or "called by previous step".
     pub reason: String,
+    /// Community group label (no-seed tours only). `None` for seeded tours.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub community: Option<String>,
 }
 
 /// A component (directory/module) in the architecture summary.
@@ -61,9 +64,9 @@ pub struct Tour {
 const DEFAULT_TOUR_LEN: usize = 12;
 /// Hard cap to keep tour outputs bounded.
 const MAX_TOUR_LEN: usize = 50;
-/// No-seed tours lead with the component map; the global central-symbol list is
-/// kept short so the result is a compact, self-contained overview.
-const NO_SEED_STEP_CAP: usize = 5;
+/// No-seed tours include community-grouped steps. Larger cap so each community
+/// can have meaningful representation; render_markdown groups them visually.
+const NO_SEED_STEP_CAP: usize = 20;
 
 /// Generate a tour for `branch`. If `seed` is `Some`, the tour is rooted at
 /// that symbol and walks outward via `Calls` and `Contains` edges. If `None`,
@@ -105,13 +108,45 @@ pub fn generate<S: GraphStore + ?Sized>(
             seeded_tour(&by_id, &callees_of, &in_degree, name, limit),
             Vec::new(),
         ),
-        None => (
-            // No-seed: the component map is the answer. Keep only a short
-            // "most central overall" list (top 5) so the payload stays small —
-            // per-component key symbols already cover the important ones.
-            global_tour(&by_id, &in_degree, limit.min(NO_SEED_STEP_CAP)),
-            architecture_summary(&by_id, &in_degree, &dep_edges, limit),
-        ),
+        None => {
+            // Build cluster labels so no-seed steps can be grouped by community.
+            let all_nodes: Vec<_> = by_id.values().cloned().collect();
+            let raw_labels = super::clustering::node_cluster_labels(&all_nodes, &edges);
+            // Map each label (node-id) to the highest-centrality node name in
+            // that community — gives a human-readable group heading.
+            let mut label_to_rep: HashMap<String, (String, u32)> = HashMap::new();
+            for (id, label) in &raw_labels {
+                let deg = in_degree.get(id.as_str()).copied().unwrap_or(0);
+                let entry = label_to_rep.entry(label.clone()).or_insert_with(|| {
+                    let name = by_id.get(id).map(|n| n.name.clone()).unwrap_or_default();
+                    (name, 0)
+                });
+                if deg > entry.1 {
+                    if let Some(n) = by_id.get(id) {
+                        *entry = (n.name.clone(), deg);
+                    }
+                }
+            }
+            let id_to_community: HashMap<String, String> = raw_labels
+                .into_iter()
+                .map(|(id, label)| {
+                    let human = label_to_rep
+                        .get(&label)
+                        .map(|(name, _)| name.clone())
+                        .unwrap_or(label);
+                    (id, human)
+                })
+                .collect();
+            (
+                global_tour(
+                    &by_id,
+                    &in_degree,
+                    limit.min(NO_SEED_STEP_CAP),
+                    Some(&id_to_community),
+                ),
+                architecture_summary(&by_id, &in_degree, &dep_edges, limit),
+            )
+        }
     };
 
     Ok(Tour {
@@ -208,10 +243,14 @@ fn architecture_summary(
 }
 
 /// Pick highest-centrality public functions/methods across the repo.
+/// When `community_labels` is provided, each step is annotated with its
+/// cluster community; steps are still ordered by centrality globally but
+/// `render_markdown` will group them by community heading.
 fn global_tour(
     by_id: &HashMap<String, Node>,
     in_degree: &HashMap<String, u32>,
     limit: usize,
+    community_labels: Option<&HashMap<String, String>>,
 ) -> Vec<TourStep> {
     let mut scored: Vec<(&Node, u32)> = by_id
         .values()
@@ -252,6 +291,9 @@ fn global_tour(
             } else {
                 format!("central — {deg} inbound calls")
             },
+            community: community_labels
+                .and_then(|m| m.get(&n.id.as_str()))
+                .cloned(),
         })
         .collect()
 }
@@ -301,6 +343,7 @@ fn seeded_tour(
             file: n.file.display().to_string(),
             start_line: n.span.start_line,
             reason,
+            community: None,
         });
         if let Some(next) = callees_of.get(&id) {
             for callee_id in next {
@@ -325,6 +368,60 @@ pub fn render_markdown(tour: &Tour) -> String {
     // not dump a long step list, keeping the result token-cheap.
     if tour.seed.is_none() && !tour.components.is_empty() {
         let _ = writeln!(out, "# Architecture (branch={})", tour.branch);
+
+        // Community-grouped steps (when cluster data is available and meaningful).
+        let has_communities = tour.steps.iter().any(|s| s.community.is_some());
+        let distinct_communities: std::collections::HashSet<&str> = tour
+            .steps
+            .iter()
+            .filter_map(|s| s.community.as_deref())
+            .collect();
+        if has_communities && distinct_communities.len() > 1 {
+            let _ = writeln!(
+                out,
+                "\n## Code communities ({} groups, {} symbols)\n",
+                distinct_communities.len(),
+                tour.steps.len()
+            );
+            // Stable group order: sort by descending size, then label.
+            let mut groups: Vec<(String, Vec<&TourStep>)> = {
+                let mut map: std::collections::HashMap<&str, Vec<&TourStep>> =
+                    std::collections::HashMap::new();
+                for s in &tour.steps {
+                    if let Some(c) = s.community.as_deref() {
+                        map.entry(c).or_default().push(s);
+                    }
+                }
+                let mut v: Vec<_> = map.into_iter().map(|(k, v)| (k.to_owned(), v)).collect();
+                v.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then_with(|| a.0.cmp(&b.0)));
+                v
+            };
+            let mut global_order = 1u32;
+            for (label, members) in &mut groups {
+                let _ = writeln!(out, "### Community: `{label}` ({} symbols)", members.len());
+                members.sort_by_key(|s| s.order);
+                for s in members.iter() {
+                    let _ = writeln!(
+                        out,
+                        "{}. `{}` ({})  — `{}:{}`  _{}_",
+                        global_order, s.name, s.kind, s.file, s.start_line, s.reason
+                    );
+                    global_order += 1;
+                }
+            }
+        } else {
+            // Fallback: flat central list when ≤1 community or no labels.
+            if !tour.steps.is_empty() {
+                let names = tour
+                    .steps
+                    .iter()
+                    .map(|s| format!("`{}`", s.name))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let _ = writeln!(out, "\n## Most central overall\n{names}");
+            }
+        }
+
         let _ = writeln!(
             out,
             "\n## Components ({} shown, ranked by centrality)\n",
@@ -344,15 +441,6 @@ pub fn render_markdown(tour: &Tour) -> String {
             if !c.depends_on.is_empty() {
                 let _ = writeln!(out, "- depends on: {}", c.depends_on.join(", "));
             }
-        }
-        if !tour.steps.is_empty() {
-            let names = tour
-                .steps
-                .iter()
-                .map(|s| format!("`{}`", s.name))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let _ = writeln!(out, "\n## Most central overall\n{names}");
         }
         return out;
     }

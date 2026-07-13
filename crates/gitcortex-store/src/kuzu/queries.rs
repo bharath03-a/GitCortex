@@ -14,6 +14,10 @@ use super::{
     values::{bool_val, i64_val, str_val},
 };
 
+/// Number of columns emitted by `NODE_COLS`. Extra columns appended after this
+/// index (e.g. `e.confidence`) can be read as `row[NODE_COL_COUNT]`.
+pub(super) const NODE_COL_COUNT: usize = 25;
+
 /// Fixed column projection used in all node-returning queries.
 /// Order must match `row_to_node()`.
 pub(super) const NODE_COLS: &str = "n.id, n.kind, n.name, n.qualified_name, n.file, \

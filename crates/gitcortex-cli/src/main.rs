@@ -40,9 +40,11 @@ enum Commands {
     },
     /// Start the MCP server (stdio transport by default).
     Serve {
-        /// Expose only the single dispatch tool (`gcx`) to reduce MCP schema overhead.
+        /// Expose all individual tools in addition to the `gcx` dispatch tool.
+        /// By default only the compact single-tool schema is exposed to minimise
+        /// per-turn token overhead (~200 tokens vs ~14 000 in full mode).
         #[arg(long)]
-        compact: bool,
+        full: bool,
     },
     /// One-shot query commands — useful for manual testing.
     #[command(subcommand)]
@@ -228,7 +230,7 @@ fn main() {
     let result = match cli.command {
         Commands::Init { ci, editor } => cmd::init::run(ci, editor.as_deref()),
         Commands::Hook { branch_switch } => cmd::hook::run(branch_switch),
-        Commands::Serve { compact } => cmd::serve::run(compact),
+        Commands::Serve { full } => cmd::serve::run(!full),
         Commands::Query(q) => cmd::query::run(q),
         Commands::Viz {
             branch,

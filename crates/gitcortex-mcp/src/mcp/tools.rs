@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use gitcortex_core::{
     schema::NodeKind,
@@ -57,6 +58,9 @@ pub struct GitCortexServer {
     /// `Arc<Mutex<…>>` so the background task and all clone'd handler instances
     /// share the same index.
     pub semantic: Arc<Mutex<SemanticState>>,
+    /// Cached staleness warning: (computed_at, warning_text). Refreshed at most
+    /// once every 5 seconds so every MCP dispatch doesn't pay two subprocess forks.
+    staleness_cache: Arc<Mutex<Option<(Instant, String)>>>,
 }
 
 /// Default per-tool response token budget when `GCX_RESPONSE_BUDGET` is unset.
@@ -84,6 +88,7 @@ impl GitCortexServer {
             compact,
             response_budget,
             semantic: Arc::new(Mutex::new(SemanticState::Pending)),
+            staleness_cache: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -121,6 +126,87 @@ impl GitCortexServer {
             self.semantic.clone(),
             self.store.clone(),
             self.default_branch.clone(),
+        )
+    }
+
+    /// Returns a staleness warning string if the index is behind HEAD or the
+    /// working tree has uncommitted edits. Empty string when index is fresh.
+    /// Result is cached for 5 seconds so repeated MCP calls don't each spawn
+    /// two git subprocesses.
+    fn staleness_warning(&self, branch: &str) -> String {
+        const CACHE_TTL_SECS: u64 = 5;
+
+        if let Ok(cache) = self.staleness_cache.lock() {
+            if let Some((computed_at, ref warn)) = *cache {
+                if computed_at.elapsed().as_secs() < CACHE_TTL_SECS {
+                    return warn.clone();
+                }
+            }
+        }
+
+        let warn = self.compute_staleness_warning(branch);
+
+        if let Ok(mut cache) = self.staleness_cache.lock() {
+            *cache = Some((Instant::now(), warn.clone()));
+        }
+        warn
+    }
+
+    fn compute_staleness_warning(&self, branch: &str) -> String {
+        let indexed = {
+            let store = match self.store.lock() {
+                Ok(g) => g,
+                Err(_) => return String::new(),
+            };
+            store.last_indexed_sha(branch).unwrap_or_else(|e| {
+                tracing::warn!("staleness check: could not read last_indexed_sha: {e}");
+                None
+            })
+        };
+
+        let head_sha = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(&self.repo_root)
+            .output()
+            .ok()
+            .and_then(|o| {
+                if o.status.success() {
+                    String::from_utf8(o.stdout)
+                        .ok()
+                        .map(|s| s.trim().to_owned())
+                } else {
+                    None
+                }
+            });
+
+        let dirty = std::process::Command::new("git")
+            .args(["status", "--porcelain"])
+            .current_dir(&self.repo_root)
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|s| s.lines().count())
+            .unwrap_or(0);
+
+        let behind = match (&indexed, &head_sha) {
+            (Some(idx), Some(head)) => idx != head,
+            (None, _) => true,
+            _ => false,
+        };
+
+        if !behind && dirty == 0 {
+            return String::new();
+        }
+        let mut parts: Vec<String> = Vec::new();
+        if behind {
+            parts.push("index is behind HEAD".into());
+        }
+        if dirty > 0 {
+            parts.push(format!("{dirty} uncommitted file(s) not yet indexed"));
+        }
+        format!(
+            "⚠ Stale index: {} — run `gcx hook` to update.",
+            parts.join("; ")
         )
     }
 
@@ -222,13 +308,20 @@ impl GitCortexServer {
         const MAX_CALLERS: usize = 25;
         const MAX_PER_HOP: usize = 15;
         if depth == 1 {
-            match store.find_callers(&branch, &p.function_name) {
-                Ok(nodes) => {
-                    let total = nodes.len();
-                    let items: Vec<_> = nodes
+            match store.find_callers_with_confidence(&branch, &p.function_name) {
+                Ok(pairs) => {
+                    let total = pairs.len();
+                    let n_direct = pairs
+                        .iter()
+                        .filter(|(_, c)| {
+                            matches!(c, gitcortex_core::schema::EdgeConfidence::Extracted)
+                        })
+                        .count();
+                    let n_inferred = total - n_direct;
+                    let items: Vec<_> = pairs
                         .iter()
                         .take(MAX_CALLERS)
-                        .map(|n| {
+                        .map(|(n, c)| {
                             json!({
                                 "hop": 1,
                                 "kind": n.kind.to_string(),
@@ -236,10 +329,8 @@ impl GitCortexServer {
                                 "qualified_name": n.qualified_name,
                                 "file": n.file.display().to_string(),
                                 "start_line": n.span.start_line,
-                                // Signature lets the model judge impact without
-                                // opening the caller's file — the biggest token
-                                // sink on refactor-impact questions.
                                 "signature": sig_line(n),
+                                "confidence": c.to_string(),
                             })
                         })
                         .collect();
@@ -249,6 +340,11 @@ impl GitCortexServer {
                         3..=10 => "MEDIUM",
                         11..=30 => "HIGH",
                         _ => "CRITICAL",
+                    };
+                    let conf_note = if total > 0 {
+                        format!(" ({n_direct} direct, {n_inferred} inferred)")
+                    } else {
+                        String::new()
                     };
                     let summary = if total == 0 {
                         format!(
@@ -261,7 +357,7 @@ impl GitCortexServer {
                         )
                     } else {
                         format!(
-                            "{total} caller(s) — risk {risk}{}",
+                            "{total} caller(s){conf_note} — risk {risk}{}",
                             if total > items.len() {
                                 format!(", showing top {}", items.len())
                             } else {
@@ -551,7 +647,14 @@ impl GitCortexServer {
                     .collect();
 
                 // Resolve removed node IDs to full node objects from the from_branch.
-                let from_nodes = store.list_all_nodes(&p.from_branch).unwrap_or_default();
+                let from_nodes = match store.list_all_nodes(&p.from_branch) {
+                    Ok(n) => n,
+                    Err(e) => {
+                        return CallToolResult::error(vec![Content::text(format!(
+                            "failed to list nodes on from_branch: {e}"
+                        ))])
+                    }
+                };
                 let from_map: std::collections::HashMap<_, _> =
                     from_nodes.iter().map(|n| (n.id.clone(), n)).collect();
                 let removed: Vec<_> = diff
@@ -1524,7 +1627,14 @@ impl GitCortexServer {
             }));
         }
         let limit = p.limit.unwrap_or(20).min(100);
-        let mut cycles = gitcortex_core::graph::find_import_cycles(&import_edges);
+        let mut cycles = match gitcortex_core::graph::find_import_cycles(&import_edges) {
+            Ok(c) => c,
+            Err(e) => {
+                return CallToolResult::error(vec![Content::text(format!(
+                    "cycle detection failed: {e}"
+                ))])
+            }
+        };
         let total = cycles.len();
         cycles.truncate(limit);
         CallToolResult::structured(json!({
@@ -1555,6 +1665,11 @@ impl GitCortexServer {
             .and_then(|v| v.as_str())
             .map(|s| s.to_owned());
 
+        let branch_for_stale = branch_val
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
+
         // Helper: extract a string field from params.
         macro_rules! str_field {
             ($key:expr) => {
@@ -1570,7 +1685,7 @@ impl GitCortexServer {
             };
         }
 
-        match p.action.as_str() {
+        let result = match p.action.as_str() {
             "lookup_symbol" => self.lookup_symbol(Parameters(LookupSymbolParams {
                 name: str_field!("name"),
                 fuzzy: p.params.get("fuzzy").and_then(|v| v.as_bool()),
@@ -1791,14 +1906,27 @@ impl GitCortexServer {
                     .map(|n| n as usize),
                 branch: branch_val,
             })),
-            other => CallToolResult::error(vec![Content::text(format!(
-                "gcx dispatch: unknown action '{other}'. Valid: lookup_symbol, find_callers, \
+            other => {
+                return CallToolResult::error(vec![Content::text(format!(
+                    "gcx dispatch: unknown action '{other}'. Valid: lookup_symbol, find_callers, \
                 find_callees, find_unused_symbols, get_subgraph, search_code, start_tour, \
                 wiki_symbol, trace_path, list_definitions, symbol_context, list_symbols_in_range, \
                 graph_stats, ast_search, type_hierarchy, find_importers, find_type_usages, \
                 module_dependencies, get_call_sites, find_god_nodes, find_clusters, find_cycles"
-            ))]),
+                ))])
+            }
+        };
+        self.with_stale_warning(&branch_for_stale, result)
+    }
+
+    /// Wrap a `CallToolResult` with an optional staleness warning prepended as
+    /// a text block. Used by `gcx` dispatch after computing the inner result.
+    fn with_stale_warning(&self, branch: &str, mut result: CallToolResult) -> CallToolResult {
+        let warn = self.staleness_warning(branch);
+        if !warn.is_empty() {
+            result.content.insert(0, Content::text(warn));
         }
+        result
     }
 }
 

@@ -170,6 +170,46 @@ pub fn write_agent_guide(repo_root: &Path) -> Result<()> {
     Ok(())
 }
 
+const CLAUDE_STEERING_SNIPPET: &str = r#"
+## GitCortex MCP Tools (prefer over grep for code navigation)
+
+This repo is indexed by GitCortex. Use the `gcx` dispatch tool for all code
+navigation instead of grep/file-read when the answer requires cross-file
+relationships. The index is authoritative for call graphs, type hierarchies,
+and blast radius — grep misses them entirely.
+
+Quick reference:
+- `gcx(action="find_callers", params={function_name:"X"})` — who calls X
+- `gcx(action="get_subgraph", params={seed_name:"X", depth:2})` — X's neighbourhood
+- `gcx(action="lookup_symbol", params={name:"X"})` — find X in the graph
+- `gcx(action="find_cycles")` — circular import detection
+- `gcx(action="start_tour")` — community-grouped codebase overview
+- `gcx(action="search_code", params={query:"..."})` — semantic search
+
+Run `gcx hook` if the index seems stale (uncommitted edits are not auto-indexed).
+"#;
+
+/// Write a short GitCortex steering snippet into `.claude/CLAUDE.md` so AI
+/// agents prefer graph tools over grep. Appends to existing file; skips if
+/// the snippet is already present.
+pub fn write_claude_steering(repo_root: &Path) -> Result<()> {
+    let dir = repo_root.join(".claude");
+    fs::create_dir_all(&dir)?;
+    let path = dir.join("CLAUDE.md");
+    let existing = if path.exists() {
+        fs::read_to_string(&path)?
+    } else {
+        String::new()
+    };
+    if existing.contains("GitCortex MCP Tools") {
+        return Ok(());
+    }
+    let mut content = existing;
+    content.push_str(CLAUDE_STEERING_SNIPPET);
+    fs::write(path, content).context("write .claude/CLAUDE.md")?;
+    Ok(())
+}
+
 pub fn write_ci_workflow(repo_root: &Path) -> Result<()> {
     const GH_WORKFLOW: &str = r#"name: GitCortex Blast Radius
 

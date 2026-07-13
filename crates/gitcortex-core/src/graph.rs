@@ -278,7 +278,7 @@ pub fn in_degree_by_calls(edges: &[Edge]) -> HashMap<String, u32> {
 /// Find import cycles via Tarjan's SCC over `EdgeKind::Imports` edges.
 /// Returns one `Vec<String>` (node IDs) per cycle; cycles of size 1 (self-loops)
 /// are excluded.
-pub fn find_import_cycles(edges: &[Edge]) -> Vec<Vec<String>> {
+pub fn find_import_cycles(edges: &[Edge]) -> Result<Vec<Vec<String>>, GitCortexError> {
     let mut adj: HashMap<String, Vec<String>> = HashMap::new();
     for e in edges {
         if matches!(e.kind, EdgeKind::Imports) {
@@ -304,7 +304,7 @@ pub fn find_import_cycles(edges: &[Edge]) -> Vec<Vec<String>> {
         index: &mut HashMap<String, usize>,
         lowlink: &mut HashMap<String, usize>,
         result: &mut Vec<Vec<String>>,
-    ) {
+    ) -> Result<(), GitCortexError> {
         index.insert(v.to_owned(), *counter);
         lowlink.insert(v.to_owned(), *counter);
         *counter += 1;
@@ -312,9 +312,9 @@ pub fn find_import_cycles(edges: &[Edge]) -> Vec<Vec<String>> {
         on_stack.insert(v.to_owned(), true);
 
         if let Some(neighbours) = adj.get(v) {
-            for w in neighbours.clone() {
+            for w in neighbours.iter() {
                 if !index.contains_key(w.as_str()) {
-                    strongconnect(&w, adj, counter, stack, on_stack, index, lowlink, result);
+                    strongconnect(w, adj, counter, stack, on_stack, index, lowlink, result)?;
                     let ll_w = lowlink[w.as_str()];
                     let ll_v = lowlink[v];
                     lowlink.insert(v.to_owned(), ll_v.min(ll_w));
@@ -329,7 +329,9 @@ pub fn find_import_cycles(edges: &[Edge]) -> Vec<Vec<String>> {
         if lowlink[v] == index[v] {
             let mut scc: Vec<String> = Vec::new();
             loop {
-                let w = stack.pop().unwrap();
+                let w = stack.pop().ok_or_else(|| {
+                    GitCortexError::Store("SCC stack underflow: Tarjan invariant violated".into())
+                })?;
                 on_stack.insert(w.clone(), false);
                 scc.push(w.clone());
                 if w == v {
@@ -340,6 +342,7 @@ pub fn find_import_cycles(edges: &[Edge]) -> Vec<Vec<String>> {
                 result.push(scc);
             }
         }
+        Ok(())
     }
 
     for v in &nodes {
@@ -353,11 +356,11 @@ pub fn find_import_cycles(edges: &[Edge]) -> Vec<Vec<String>> {
                 &mut index,
                 &mut lowlink,
                 &mut result,
-            );
+            )?;
         }
     }
 
-    result
+    Ok(result)
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -410,14 +413,14 @@ mod tests {
         let (a, b, c) = (NodeId::new(), NodeId::new(), NodeId::new());
         // a → b → c, no back edge.
         let edges = vec![import_edge(&a, &b), import_edge(&b, &c)];
-        assert!(find_import_cycles(&edges).is_empty());
+        assert!(find_import_cycles(&edges).unwrap().is_empty());
     }
 
     #[test]
     fn cycles_detects_two_node_cycle() {
         let (a, b) = (NodeId::new(), NodeId::new());
         let edges = vec![import_edge(&a, &b), import_edge(&b, &a)];
-        let cycles = find_import_cycles(&edges);
+        let cycles = find_import_cycles(&edges).unwrap();
         assert_eq!(cycles.len(), 1);
         let members: std::collections::HashSet<&String> = cycles[0].iter().collect();
         assert_eq!(members.len(), 2);
@@ -433,7 +436,7 @@ mod tests {
             Edge::new(a.clone(), b.clone(), EdgeKind::Calls),
             Edge::new(b.clone(), a.clone(), EdgeKind::Calls),
         ];
-        assert!(find_import_cycles(&edges).is_empty());
+        assert!(find_import_cycles(&edges).unwrap().is_empty());
     }
 
     #[test]
@@ -444,7 +447,7 @@ mod tests {
             import_edge(&b, &c),
             import_edge(&c, &a),
         ];
-        let cycles = find_import_cycles(&edges);
+        let cycles = find_import_cycles(&edges).unwrap();
         assert_eq!(cycles.len(), 1);
         assert_eq!(cycles[0].len(), 3);
     }

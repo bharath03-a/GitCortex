@@ -24,7 +24,7 @@ mod values;
 
 use conv::{edge_kind_from_str, lang_scope_clause, vis_str};
 use escape::{esc, esc_multiline};
-use queries::{collect_ids, rows_to_nodes, NODE_COLS, SYMBOL_RANK};
+use queries::{collect_ids, row_to_node, rows_to_nodes, NODE_COLS, NODE_COL_COUNT, SYMBOL_RANK};
 use values::{i64_val, str_val};
 
 // Batch sizes for `UNWIND`-based inserts. Nodes carry a (≤16 KB) def_body, so
@@ -612,6 +612,46 @@ impl GraphStore for KuzuGraphStore {
             .map_err(|e| GitCortexError::Store(e.to_string()))?;
 
         rows_to_nodes(&mut result)
+    }
+
+    fn find_callers_with_confidence(
+        &self,
+        branch: &str,
+        function_name: &str,
+    ) -> Result<Vec<(Node, EdgeConfidence)>> {
+        self.ensure_branch(branch)?;
+        let nt = db_schema::node_table(branch);
+        let et = db_schema::edge_table(branch);
+        let name_esc = esc(function_name);
+        let conn = self.conn()?;
+
+        let result = conn
+            .query(&format!(
+                "MATCH (n:{nt})-[e:{et} {{kind: 'calls'}}]->(callee:{nt}) \
+                 WHERE callee.name = '{name_esc}' \
+                 RETURN {NODE_COLS}, e.confidence"
+            ))
+            .map_err(|e| GitCortexError::Store(e.to_string()))?;
+
+        let mut out = Vec::new();
+        for row in result {
+            if row.len() <= NODE_COL_COUNT {
+                tracing::debug!(
+                    "skipping short row ({} cols) in find_callers_with_confidence",
+                    row.len()
+                );
+                continue;
+            }
+            let conf_str = str_val(&row[NODE_COL_COUNT]).unwrap_or_default();
+            let confidence = EdgeConfidence::from_label(&conf_str);
+            match row_to_node(row) {
+                Ok(node) => out.push((node, confidence)),
+                Err(e) => {
+                    tracing::debug!("skipping malformed row in find_callers_with_confidence: {e}")
+                }
+            }
+        }
+        Ok(out)
     }
 
     fn find_callers_deep(

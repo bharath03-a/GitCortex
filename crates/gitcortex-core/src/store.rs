@@ -3,7 +3,7 @@ use std::path::Path;
 use crate::{
     error::Result,
     graph::{Edge, GraphDiff, Node},
-    schema::{EdgeKind, NodeKind, Visibility},
+    schema::{EdgeConfidence, EdgeKind, NodeKind, Visibility},
 };
 
 /// Structural predicate set for `search_by_attributes`. All fields are
@@ -165,6 +165,21 @@ pub trait GraphStore: Send + Sync {
     /// Find all call-site nodes whose outgoing `Calls` edge points to a node
     /// named `function_name` on `branch` (single hop).
     fn find_callers(&self, branch: &str, function_name: &str) -> Result<Vec<Node>>;
+
+    /// Like `find_callers` but also returns each caller's edge confidence.
+    /// The default conservatively marks all callers as `Inferred`; backends
+    /// should override with a query that reads `e.confidence` from the edge.
+    fn find_callers_with_confidence(
+        &self,
+        branch: &str,
+        function_name: &str,
+    ) -> Result<Vec<(Node, EdgeConfidence)>> {
+        Ok(self
+            .find_callers(branch, function_name)?
+            .into_iter()
+            .map(|n| (n, EdgeConfidence::Inferred))
+            .collect())
+    }
 
     /// Multi-hop BFS: find callers up to `depth` hops away.
     /// Returns callers grouped by hop distance (1..=depth).

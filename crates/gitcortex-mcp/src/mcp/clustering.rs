@@ -126,6 +126,14 @@ pub fn find_clusters<S: GraphStore + ?Sized>(
     Ok(clusters)
 }
 
+/// Returns a `node_id → cluster_label` map using label propagation on
+/// `Contains`+`Calls` edges. The cluster label is the representative node id
+/// (stable UUID). Used by `tour.rs` to group steps by community.
+pub(super) fn node_cluster_labels(nodes: &[Node], edges: &[Edge]) -> HashMap<String, String> {
+    let adjacency = build_undirected_adjacency(edges);
+    propagate_labels(nodes, &adjacency)
+}
+
 fn build_undirected_adjacency(edges: &[Edge]) -> HashMap<String, Vec<String>> {
     let mut adjacency: HashMap<String, Vec<String>> = HashMap::new();
     for e in edges {

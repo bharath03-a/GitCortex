@@ -11,7 +11,8 @@ use detect::{detect_editors, parse_editor_flag};
 use editors::{install_for_editor, EditorKind};
 use helpers::repo_root;
 use universal::{
-    initial_index, install_hooks, write_agent_guide, write_ci_workflow, write_gitcortex_ignore,
+    initial_index, install_hooks, write_agent_guide, write_ci_workflow, write_claude_steering,
+    write_gitcortex_ignore,
 };
 
 pub fn run(ci: bool, editor: Option<&str>) -> Result<()> {
@@ -27,6 +28,7 @@ pub fn run(ci: bool, editor: Option<&str>) -> Result<()> {
     let (nodes, edges) = initial_index(&repo_root)?;
     write_gitcortex_ignore(&repo_root)?;
     write_agent_guide(&repo_root)?;
+    write_claude_steering(&repo_root)?;
 
     for ed in &editors {
         install_for_editor(ed, &repo_root)?;

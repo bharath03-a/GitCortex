@@ -92,6 +92,26 @@ pub fn build_prose_summary(seed_name: &str, nodes: &[Node], edges: &[Edge], dept
     implements.sort();
     implements.dedup();
 
+    let calls_edges: Vec<&Edge> = edges
+        .iter()
+        .filter(|e| matches!(e.kind, EdgeKind::Calls))
+        .collect();
+    let direct = calls_edges
+        .iter()
+        .filter(|e| {
+            matches!(
+                e.confidence,
+                gitcortex_core::schema::EdgeConfidence::Extracted
+            )
+        })
+        .count();
+    let inferred = calls_edges.len() - direct;
+    let conf_note = if calls_edges.is_empty() {
+        String::new()
+    } else {
+        format!(", {direct} direct + {inferred} inferred calls")
+    };
+
     let file_line = format!("{}:{}", seed.file.display(), seed.span.start_line);
 
     let mut lines = vec![format!("`{}` ({}) — {}", seed.name, seed.kind, file_line)];
@@ -107,10 +127,10 @@ pub fn build_prose_summary(seed_name: &str, nodes: &[Node], edges: &[Edge], dept
     }
 
     lines.push(format!(
-        "  • subgraph: {} nodes, {} edges (depth {})",
+        "  • subgraph: {} nodes, {} edges (depth {depth}{})",
         nodes.len(),
         edges.len(),
-        depth
+        conf_note
     ));
 
     lines.join("\n")
