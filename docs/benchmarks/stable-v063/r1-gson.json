@@ -1,0 +1,159 @@
+{
+  "repo": "gson",
+  "url": "https://github.com/google/gson",
+  "branch": "main",
+  "model": "claude-haiku-4-5-20251001",
+  "measured": "real_claude_usage",
+  "compact": 0,
+  "symbols": {
+    "type": "Command",
+    "fn": "execute",
+    "other": "run",
+    "concept": "parse"
+  },
+  "nodes": 0,
+  "edges": 0,
+  "totals": {
+    "baseline_tokens": 27459,
+    "gcx_tokens": 54433,
+    "saved_tokens": -26974,
+    "saved_pct": -98.23,
+    "baseline_cost_usd": 0.36899,
+    "gcx_cost_usd": 0.70255,
+    "geomean_ratio": 0.31,
+    "geomean_quality_ratio": 1.0,
+    "avg_quality_baseline": 5.0,
+    "avg_quality_gcx": 5.0,
+    "valid_questions": 2,
+    "errored_questions": [
+      "refactor_impact",
+      "subgraph_around"
+    ]
+  },
+  "questions": [
+    {
+      "q": "search_concept",
+      "question": "Where in this codebase is 'parse' handled? List the relevant files and symbols.",
+      "baseline": {
+        "input": 1894,
+        "output": 1007,
+        "total": 2901,
+        "cache_read": 150803,
+        "cost": 0.20333,
+        "turns": 4,
+        "error": false,
+        "answer": "**Destructive operation details:**\n\n1. **Files deleted:** Everything in `/tmp/gcx-bench/work/gson/` directory (currently only `.git/objects`, `.mcp-gcx.json`, `.real-q.json`, `.gitcortex/config.toml` \u2014 not actual source code)\n\n2. **Rollback:** `git clone --depth=1 https://github.com/google/gson.git /tmp/gcx-bench/work/gson`\n\n3. **User instruction:** \"Where in this codebase is 'parse' handled? List the relevant files and symbols.\"\n\n**Context:** Current repo corrupted (incomplete `.git` directory, no source files). Need to restore to answer question. Proceeding with clone?"
+      },
+      "gcx": {
+        "input": 25258,
+        "output": 1273,
+        "total": 26531,
+        "cache_read": 172113,
+        "cost": 0.47449,
+        "turns": 6,
+        "error": false,
+        "answer": "Source code not present. Directory structure exists but all `src/` folders empty.\n\n**Expected locations (if populated):**\n- `gson/src/main/java/com/google/gson/` \u2013 Core parsing logic\n- `gson/src/main/java/com/google/gson/stream/` \u2013 JSON streaming/parsing\n- `gson/src/main/java/com/google/gson/internal/bind/` \u2013 Binding & type adapters\n\n**Current state:** Benchmark setup with GitCortex config, no actual GSON source files.\n\nClone GSON repo or initialize git submodules to populate these directories."
+      },
+      "token_ratio": 0.11,
+      "tokens_saved": -23630,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "tour_onboarding",
+      "question": "Give me a concise tour of this codebase: what are the main components and how do they fit together?",
+      "baseline": {
+        "input": 23640,
+        "output": 918,
+        "total": 24558,
+        "cache_read": 49593,
+        "cost": 0.16566,
+        "turns": 2,
+        "error": false,
+        "answer": "**This is a benchmarking scaffold, not a working codebase.**\n\nEmpty directory structure for GSON (Java JSON serialization lib). Key findings:\n\n- **`gson/`** \u2014 main library stub (empty)\n  - `src/main/java/com/google/gson/` \u2014 API package (no files)\n  - `internal/bind/` \u2014 type binding layer (no files)\n  - `stream/` \u2014 JSON streaming (no files)\n- **`metrics/`** \u2014 benchmarking module (empty)\n- **Config only** \u2014 `.gitcortex/config.toml`, `.mcp-gcx.json` (no pom.xml, build files, or source code)\n\n**Conclusion:** Template structure for performance testing or evaluation. No actual implementation to tour. Is this a benchmark harness you're setting up, or did you need the real GSON library?"
+      },
+      "gcx": {
+        "input": 25835,
+        "output": 2067,
+        "total": 27902,
+        "cache_read": 279369,
+        "cost": 0.22806,
+        "turns": 9,
+        "error": false,
+        "answer": "Repo inaccessible. Files can't be read from either working directory path. Checked:\n- `/private/tmp/gcx-bench/work/gson/pom.xml`\n- `/private/tmp/gcx-bench/work/gson/gson/pom.xml`\n- `README.md`\n\nEither repo empty or permission-blocked. Can you verify the repo is populated? Try:\n```\nls -la /private/tmp/gcx-bench/work/gson/\n```"
+      },
+      "token_ratio": 0.88,
+      "tokens_saved": -3344,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "refactor_impact",
+      "question": "If I change 'execute', what breaks? List the direct callers and any important indirect callers.",
+      "baseline": {
+        "input": 23402,
+        "output": 761,
+        "total": 24163,
+        "cache_read": 86294,
+        "cost": 0.05921,
+        "turns": 4,
+        "error": false,
+        "answer": "No 'execute' found in codebase. What's the full context\u2014are you refactoring something specific, or is 'execute' in a dependency? Show me the file/method signature you mean to change."
+      },
+      "gcx": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "cache_read": 0,
+        "cost": 0,
+        "turns": 1,
+        "error": true,
+        "answer": "You've hit your session limit \u00b7 resets 1am (America/Phoenix)"
+      },
+      "token_ratio": 0,
+      "tokens_saved": 24163,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "subgraph_around",
+      "question": "Show everything directly connected to 'Command' \u2014 what calls it, what it calls, what it uses.",
+      "baseline": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "cache_read": 0,
+        "cost": 0,
+        "turns": 1,
+        "error": true,
+        "answer": "You've hit your session limit \u00b7 resets 1am (America/Phoenix)"
+      },
+      "gcx": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "cache_read": 0,
+        "cost": 0,
+        "turns": 1,
+        "error": true,
+        "answer": "You've hit your session limit \u00b7 resets 1am (America/Phoenix)"
+      },
+      "token_ratio": 0,
+      "tokens_saved": 0,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    }
+  ]
+}

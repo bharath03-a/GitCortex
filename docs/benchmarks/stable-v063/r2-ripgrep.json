@@ -1,0 +1,156 @@
+{
+  "repo": "ripgrep",
+  "url": "https://github.com/BurntSushi/ripgrep",
+  "branch": "main",
+  "model": "claude-haiku-4-5-20251001",
+  "measured": "real_claude_usage",
+  "compact": 1,
+  "symbols": {
+    "type": "Command",
+    "fn": "execute",
+    "other": "run",
+    "concept": "parse"
+  },
+  "nodes": 0,
+  "edges": 0,
+  "totals": {
+    "baseline_tokens": 85151,
+    "gcx_tokens": 57447,
+    "saved_tokens": 27704,
+    "saved_pct": 32.54,
+    "baseline_cost_usd": 0.46268,
+    "gcx_cost_usd": 1.31334,
+    "geomean_ratio": 2.22,
+    "geomean_quality_ratio": 1.0,
+    "avg_quality_baseline": 5.0,
+    "avg_quality_gcx": 5.0,
+    "valid_questions": 4,
+    "errored_questions": []
+  },
+  "questions": [
+    {
+      "q": "search_concept",
+      "question": "Where in this codebase is 'parse' handled? List the relevant files and symbols.",
+      "baseline": {
+        "input": 27103,
+        "output": 1766,
+        "total": 28869,
+        "cache_read": 439518,
+        "cost": 0.10689,
+        "turns": 13,
+        "error": false,
+        "answer": "Repo at `/private/tmp/gcx-bench/work/ripgrep` is empty (no source files). Either:\n1. This is a shallow/incomplete clone\n2. You want info about ripgrep's parse handling in general\n3. You want me to clone the actual ripgrep repo here\n\nWhich?"
+      },
+      "gcx": {
+        "input": 1128,
+        "output": 329,
+        "total": 1457,
+        "cache_read": 77421,
+        "cost": 0.48857,
+        "turns": 2,
+        "error": false,
+        "answer": "Repo needs git checkout to expose source files. Can you run in `/private/tmp/gcx-bench/work/ripgrep/`:\n\n```bash\ngit checkout HEAD\n```\n\nThen I'll search for all parse handling in the ripgrep source."
+      },
+      "token_ratio": 19.81,
+      "tokens_saved": 27412,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "tour_onboarding",
+      "question": "Give me a concise tour of this codebase: what are the main components and how do they fit together?",
+      "baseline": {
+        "input": 1005,
+        "output": 313,
+        "total": 1318,
+        "cache_read": 37244,
+        "cost": 0.16806,
+        "turns": 1,
+        "error": false,
+        "answer": "**Ripgrep codebase tour:**\n\n**grep_cli** \u2014 Entry point. Parses args, coordinates pipeline.\n\n**grep_searcher** \u2014 Core engine. Thread-per-file parallelism distributes work across cores for concurrent file search.\n\n**grep_matcher** + **grep_regex** \u2014 Pattern matching layer. Regex/PCRE2 support, compilation, caching, line-matching. Separate crate enables library reuse.\n\n**grep_printer** \u2014 Output formatting. Colored output, context lines, JSON/CSV formats. Decoupled from search logic.\n\n**ignore** \u2014 Directory traversal respecting `.gitignore` semantics. Performance secret: prunes directories *early* before scanning, not search-then-filter.\n\n**globset** \u2014 Fast glob pattern matching for `-g/--glob` filtering.\n\n**Data flow:** CLI args \u2192 filesystem traversal (gitignore pruning) \u2192 glob filtering \u2192 pattern compile \u2192 parallel file search \u2192 formatted output.\n\n**Speed comes from:** (1) Early directory pruning via ignore files, (2) parallelization across files not lines, (3) modular crates keep dependencies clean and enable library reuse."
+      },
+      "gcx": {
+        "input": 27185,
+        "output": 1835,
+        "total": 29020,
+        "cache_read": 180734,
+        "cost": 0.25863,
+        "turns": 9,
+        "error": false,
+        "answer": "Source code missing from checkout. Can't create interactive `.tour` file, but here's ripgrep architecture:\n\n**4 Core Components:**\n\n1. **CLI Layer** (`grep_cli`) \u2014 Command parsing, orchestration. Entry point.\n\n2. **Search Engine** (`grep_searcher`) \u2014 Core work: regex matching + memory-mapped I/O. Thread-per-file parallelism for speed.\n\n3. **Pattern Matching** (`grep_matcher` + `grep_regex`) \u2014 Regex compilation & execution. Supports PCRE2.\n\n4. **I/O & Filtering** \u2014 `ignore` (respects .gitignore), `globset` (glob patterns), `grep_printer` (output formatting).\n\n**Data Flow:**\n```\nArgs \u2192 Walk filesystem (.gitignore aware)\n     \u2192 Apply glob filters\n     \u2192 Compile regex pattern\n     \u2192 Parallel search (threads)\n     \u2192 Format + print results\n```\n\n**Philosophy:** Thin CLI coordinator. Heavy lifting in reusable libraries. Early pruning via ignore files. Memory-mapped I/O. Parallelism at file level.\n\nWant me to explain a specific layer in detail, or help you with work on ripgrep?"
+      },
+      "token_ratio": 0.05,
+      "tokens_saved": -27702,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "refactor_impact",
+      "question": "If I change 'execute', what breaks? List the direct callers and any important indirect callers.",
+      "baseline": {
+        "input": 25114,
+        "output": 1562,
+        "total": 26676,
+        "cache_read": 310340,
+        "cost": 0.089,
+        "turns": 9,
+        "error": false,
+        "answer": "Need permission for git command - clarifying: are you working on a Ripgrep fork or bench project? What `execute` function (file/module) are you asking about?\n\nCaveman mode active but security/irreversible action confirmations drop caveman mode. Need context before I run git. What's the actual function signature/location?"
+      },
+      "gcx": {
+        "input": 1028,
+        "output": 167,
+        "total": 1195,
+        "cache_read": 32707,
+        "cost": 0.18814,
+        "turns": 1,
+        "error": false,
+        "answer": "Source files missing. Only `.git/` and `target/` exist in `/private/tmp/gcx-bench/work/ripgrep`.\n\nNeed to restore:\n```bash\ngit -C /private/tmp/gcx-bench/work/ripgrep checkout HEAD\n```\n\nGrant permission to run this, or point me to a ripgrep directory with `.rs` files present?"
+      },
+      "token_ratio": 22.32,
+      "tokens_saved": 25481,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "subgraph_around",
+      "question": "Show everything directly connected to 'Command' \u2014 what calls it, what it calls, what it uses.",
+      "baseline": {
+        "input": 26044,
+        "output": 2244,
+        "total": 28288,
+        "cache_read": 355030,
+        "cost": 0.09873,
+        "turns": 11,
+        "error": false,
+        "answer": "Repo appears empty\u2014no Rust files or Git history found. \n\n**Need clarity:** Are you asking me to:\n1. **Analyze Command from ripgrep source** \u2014 Fetch actual ripgrep repo and show Command symbol connections?\n2. **Search for Command in a different context** \u2014 Point me to where (file/symbol)?\n3. **Something else** \u2014 Clarify what Command refers to (struct, type, enum, etc.)?\n\nCaveman mode active. Direct answer once you specify."
+      },
+      "gcx": {
+        "input": 24588,
+        "output": 1187,
+        "total": 25775,
+        "cache_read": 105725,
+        "cost": 0.378,
+        "turns": 4,
+        "error": false,
+        "answer": "Repository source files are stripped. Need to restore them to analyze `Command`.\n\n**To fix:** Run this command in the repository directory:\n```bash\ngit checkout HEAD\n```\n\nOr clone fresh:\n```bash\ngit clone https://github.com/BurntSushi/ripgrep.git\n```\n\nOnce source files are present, I can map:\n- Command's definition (struct/enum/type)\n- Everything that calls Command\n- Everything Command calls\n- File paths + line numbers"
+      },
+      "token_ratio": 1.1,
+      "tokens_saved": 2513,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    }
+  ]
+}

@@ -1,0 +1,158 @@
+{
+  "repo": "requests",
+  "url": "https://github.com/psf/requests",
+  "branch": "main",
+  "model": "claude-haiku-4-5-20251001",
+  "measured": "real_claude_usage",
+  "compact": 1,
+  "symbols": {
+    "type": "Command",
+    "fn": "execute",
+    "other": "run",
+    "concept": "parse"
+  },
+  "nodes": 0,
+  "edges": 0,
+  "totals": {
+    "baseline_tokens": 109097,
+    "gcx_tokens": 60963,
+    "saved_tokens": 48134,
+    "saved_pct": 44.12,
+    "baseline_cost_usd": 0.37863,
+    "gcx_cost_usd": 1.19301,
+    "geomean_ratio": 1.9,
+    "geomean_quality_ratio": 1.71,
+    "avg_quality_baseline": 3.7,
+    "avg_quality_gcx": 5.0,
+    "valid_questions": 3,
+    "errored_questions": [
+      "tour_onboarding"
+    ]
+  },
+  "questions": [
+    {
+      "q": "search_concept",
+      "question": "Where in this codebase is 'parse' handled? List the relevant files and symbols.",
+      "baseline": {
+        "input": 38744,
+        "output": 1174,
+        "total": 39918,
+        "cache_read": 37585,
+        "cost": 0.16403,
+        "turns": 2,
+        "error": false,
+        "answer": "Current directory is benchmark/test suite for GitCortex, not actual codebase. Test file `.real-q.json` contains the exact question you asked\u2014looks like you're testing GitCortex's ability to answer it.\n\nNeed clarification: \n- Want me to **use GitCortex directly** to search a real codebase?\n- Testing how **Claude Code** answers this query?\n- Want **expected answer** for the test case?\n\nWhich codebase should I search for 'parse' handling?"
+      },
+      "gcx": {
+        "input": 24048,
+        "output": 1273,
+        "total": 25321,
+        "cache_read": 136427,
+        "cost": 0.06805,
+        "turns": 2,
+        "error": false,
+        "answer": "Searching codebase for 'parse' symbols and usage. Agent running in background\u2014results coming shortly."
+      },
+      "token_ratio": 1.58,
+      "tokens_saved": 14597,
+      "quality": {
+        "score_baseline": 1,
+        "score_gcx": 5,
+        "quality_ratio": 5.0
+      }
+    },
+    {
+      "q": "tour_onboarding",
+      "question": "Give me a concise tour of this codebase: what are the main components and how do they fit together?",
+      "baseline": {
+        "input": 36822,
+        "output": 793,
+        "total": 37615,
+        "cache_read": 187092,
+        "cost": 0.10473,
+        "turns": 9,
+        "error": true,
+        "answer": "API Error: Connection closed mid-response. The response above may be incomplete."
+      },
+      "gcx": {
+        "input": 1859,
+        "output": 1208,
+        "total": 3067,
+        "cache_read": 169021,
+        "cost": 0.30689,
+        "turns": 5,
+        "error": false,
+        "answer": "This isn't typical app codebase\u2014it's **benchmark repo for GitCortex** (gcx), multi-language code indexing tool.\n\n**Components:**\n\n1. **`.gitcortex/config.toml`** \u2014 GitCortex configuration\n   - Language indices: Rust, Go, Python, TypeScript, Java\n   - Max file size: 500 KB\n   - Local backend storage\n\n2. **`.mcp-gcx.json`** \u2014 MCP server config for GitCortex integration\n\n3. **`.real-q.json`** \u2014 Benchmark dataset\n   - Test questions for code search/analysis\n   - Includes: `search_concept`, `tour_onboarding`, `refactor_impact`, `subgraph_around` test types\n   - Stores results data\n\n4. **`tests/certs/`** \u2014 MTLS test certificate fixtures\n   - Valid/expired CA chains for testing\n\n**Architecture:**\nSingle-purpose repo\u2014benchmarks gcx's ability to understand multi-language codebases. No application logic, just config + test data.\n\nWhat're you building with this? Might clarify what you need from it."
+      },
+      "token_ratio": 12.26,
+      "tokens_saved": 34548,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "refactor_impact",
+      "question": "If I change 'execute', what breaks? List the direct callers and any important indirect callers.",
+      "baseline": {
+        "input": 38312,
+        "output": 1183,
+        "total": 39495,
+        "cache_read": 184396,
+        "cost": 0.10093,
+        "turns": 6,
+        "error": false,
+        "answer": "Directory contains benchmark test data, not source code. `.real-q.json` has test questions including yours.\n\nWhat's the actual target? Need:\n- Real codebase path\n- Language/framework\n- Context on what `execute` is\n\nOr are you testing a code analysis system? If so, need test data files/corpus."
+      },
+      "gcx": {
+        "input": 23804,
+        "output": 947,
+        "total": 24751,
+        "cache_read": 73016,
+        "cost": 0.2516,
+        "turns": 3,
+        "error": false,
+        "answer": "Found it. Directory `/private/tmp/gcx-bench/work/requests` is benchmark test harness, not source code. `.real-q.json` contains benchmark questions\u2014yours is literally one of them.\n\n**Actual codebase location missing.** Three options:\n\n1. **Point me to real source repo** \u2014 full path or GitHub URL\n2. **Use MCP gcx server** \u2014 it's configured in `.mcp-gcx.json` pointing to GitCortex tool\n3. **Is this a benchmark test?** \u2014 testing whether Claude can answer code search Qs\n\nWhich applies?"
+      },
+      "token_ratio": 1.6,
+      "tokens_saved": 14744,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "subgraph_around",
+      "question": "Show everything directly connected to 'Command' \u2014 what calls it, what it calls, what it uses.",
+      "baseline": {
+        "input": 27311,
+        "output": 2373,
+        "total": 29684,
+        "cache_read": 472939,
+        "cost": 0.11367,
+        "turns": 13,
+        "error": false,
+        "answer": "Need codebase to analyze. Found benchmark questions in `.real-q.json` (your \"subgraph_around\" query) but no target codebase loaded.\n\n**Setup found:**\n- GitCortex MCP server configured (`.mcp-gcx.json`)\n- Index config supports: Rust, Go, Python, TypeScript, Java\n- No codebase indexed yet\n\n**To answer \"what calls Command / what it calls / what it uses\":**\n\nProvide:\n1. Path to codebase (or repo URL)\n2. Programming language\n3. More context on \"Command\" (class? function? type?)\n\nOr if this is benchmarking the system itself, confirm the reference codebase."
+      },
+      "gcx": {
+        "input": 7503,
+        "output": 3388,
+        "total": 10891,
+        "cache_read": 330571,
+        "cost": 0.87336,
+        "turns": 9,
+        "error": false,
+        "answer": "**COMMAND DEFINITION & DIRECT CONNECTIONS**\n\n**Main Definition:** `/Users/bharathvelamala/Documents/Open Source/GitCortex/crates/gitcortex-cli/src/main.rs` (lines 22-108)\n\nTwo Command types:\n- `Commands` enum - CLI subcommands (Init, Hook, Serve, Query, Viz, BlastRadius, Export, Status, Clean, Doctor, Update)\n- `QueryCmd` - nested Query subcommands\n- `std::process::Command` - subprocess execution (git, curl)\n\n---\n\n**DIRECT CALLERS \u2192 Commands**\n\n```\nmain() function (main.rs)\n  \u2193 matches on cli.command\n  \n  Commands::Init          \u2192 cmd::init::run()\n  Commands::Hook          \u2192 cmd::hook::run()\n  Commands::Serve         \u2192 cmd::serve::run()\n  Commands::Query(q)      \u2192 cmd::query::run(q)\n  Commands::Viz           \u2192 gitcortex_viz::run()\n  Commands::BlastRadius   \u2192 cmd::blast_radius::run()\n  Commands::Export        \u2192 cmd::export::run()\n  Commands::Status        \u2192 cmd::status::run()\n  Commands::Clean         \u2192 cmd::clean::run()\n  Commands::Doctor        \u2192 cmd::doctor::run()\n  Commands::Update        \u2192 cmd::update::run()\n```\n\n---\n\n**DIRECT CALLEES \u2192 What Commands/Command use**\n\n```\nstd::process::Command usage across:\n\nserve.rs:5                \u2192 git (repo root)\nhook.rs:78,88,96          \u2192 git (repo root, branch, HEAD SHA)\nstatus.rs:82,92,100       \u2192 git (repo root, branch, HEAD SHA)\nclean.rs:27               \u2192 git (repo root)\ndoctor.rs:253,266,273,282 \u2192 git (find root, branch, HEAD SHA)\nblast_radius.rs:256       \u2192 git (repo root)\nexport.rs:368,381,389     \u2192 git (repo root, branch, HEAD SHA)\nupdate.rs:31              \u2192 curl (fetch latest release)\n\nMCP layer (gitcortex-mcp):\n  git_helpers.rs:4        \u2192 git diff\n  tools.rs:167,182        \u2192 git (HEAD SHA, working tree status)\n```\n\n---\n\n**DIRECT DEPENDENCIES**\n\nCommand uses:\n- `clap` derive macros (Parser, Subcommand) for parsing\n- `anyhow` for error handling (`.context()`)\n- `std::process::Command` for subprocess execution\n- Individual command modules: `cmd::*`\n- `gitcortex_viz` for visualization\n\n---\n\n**CODE DUPLICATION FOUND**\n\n`repo_root()` and `current_branch()` helpers duplicated across:\n- serve.rs\n- hook.rs\n- status.rs\n- clean.rs\n- doctor.rs\n- blast_radius.rs\n- export.rs\n\n**Refactoring opportunity:** Extract to shared utilities module."
+      },
+      "token_ratio": 2.73,
+      "tokens_saved": 18793,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    }
+  ]
+}

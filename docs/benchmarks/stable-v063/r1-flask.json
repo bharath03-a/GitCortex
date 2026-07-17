@@ -1,0 +1,156 @@
+{
+  "repo": "flask",
+  "url": "https://github.com/pallets/flask",
+  "branch": "main",
+  "model": "claude-haiku-4-5-20251001",
+  "measured": "real_claude_usage",
+  "compact": 0,
+  "symbols": {
+    "type": "render_template",
+    "fn": "register_blueprint",
+    "other": "common_object_test",
+    "concept": "auth"
+  },
+  "nodes": 1192,
+  "edges": 4464,
+  "totals": {
+    "baseline_tokens": 121202,
+    "gcx_tokens": 121060,
+    "saved_tokens": 142,
+    "saved_pct": 0.12,
+    "baseline_cost_usd": 0.36601,
+    "gcx_cost_usd": 0.7005,
+    "geomean_ratio": 1.0,
+    "geomean_quality_ratio": 0.92,
+    "avg_quality_baseline": 5.5,
+    "avg_quality_gcx": 5.0,
+    "valid_questions": 4,
+    "errored_questions": []
+  },
+  "questions": [
+    {
+      "q": "search_concept",
+      "question": "Where in this codebase is 'auth' handled? List the relevant files and symbols.",
+      "baseline": {
+        "input": 27586,
+        "output": 1822,
+        "total": 29408,
+        "cache_read": 279991,
+        "cost": 0.09221,
+        "turns": 10,
+        "error": false,
+        "answer": "**Auth handling locations:**\n\n| File | Symbols | Kind |\n|------|---------|------|\n| **examples/tutorial/flaskr/auth.py** | `bp` (Blueprint \"auth\") | Blueprint |\n| | `login_required()` | Decorator function (line 19) |\n| | `load_logged_in_user()` | before_app_request hook (line 32) |\n| | `register()` | Route handler `/register` (line 46) |\n| | `login()` | Route handler `/login` (line 84) |\n| | `logout()` | Route handler `/logout` (line 112) |\n| **examples/tutorial/flaskr/__init__.py** | Imports auth blueprint (line 36) | Module import |\n| **examples/tutorial/flaskr/blog.py** | Uses `login_required` decorator | Decorator usage |\n| **examples/tutorial/tests/test_auth.py** | Test suite | Tests |\n\n**Key auth functions:**\n- `login_required()` \u2014 view decorator, redirects unauthenticated users to login\n- `load_logged_in_user()` \u2014 loads user from session into `g.user` on each request\n- `register()` \u2014 POST validates username/password, hashes password, inserts to DB\n- `login()` \u2014 POST validates credentials against DB, stores user_id in session\n- `logout()` \u2014 clears session"
+      },
+      "gcx": {
+        "input": 28324,
+        "output": 2241,
+        "total": 30565,
+        "cache_read": 313916,
+        "cost": 0.47411,
+        "turns": 16,
+        "error": false,
+        "answer": "**Auth in Flask** (session-based, not full auth):\n\n**Core Files:**\n- `src/flask/sessions.py` \u2014 Session management\n- `src/flask/globals.py` \u2014 Global session object\n- `src/flask/app.py` \u2014 Configuration & session setup\n- `src/flask/ctx.py` \u2014 Request context\n\n**Key Classes:**\n| Class | File | Line |\n|-------|------|------|\n| `SessionMixin` | sessions.py | 24 |\n| `SecureCookieSession` | sessions.py | 57 |\n| `SessionInterface` | sessions.py | 100 |\n| `SecureCookieSessionInterface` | sessions.py | 284 |\n| `NullSession` | sessions.py | 83 |\n\n**Session Functions:**\n- `open_session()` \u2014 Load session from cookie (sessions.py:249)\n- `save_session()` \u2014 Persist session to cookie (sessions.py:263)\n- `get_signing_serializer()` \u2014 Create HMAC signer (sessions.py:303)\n- `get_expiration_time()` \u2014 Calculate TTL (sessions.py:223)\n- `should_set_cookie()` \u2014 Decide if cookie needs update (sessions.py:233)\n\n**Config Keys:**\n- `SECRET_KEY` \u2014 Cookie signing key\n- `SESSION_COOKIE_*` \u2014 Name, domain, path, security flags\n- `PERMANENT_SESSION_LIFETIME` \u2014 Session TTL\n- `SESSION_REFRESH_EACH_REQUEST` \u2014 Refresh on each request\n\n**Security:** Signed cookies (HMAC-SHA1 via itsdangerous), supports HttpOnly/Secure/SameSite flags. No built-in password hashing or user management."
+      },
+      "token_ratio": 0.96,
+      "tokens_saved": -1157,
+      "quality": {
+        "score_baseline": 7,
+        "score_gcx": 5,
+        "quality_ratio": 0.71
+      }
+    },
+    {
+      "q": "tour_onboarding",
+      "question": "Give me a concise tour of this codebase: what are the main components and how do they fit together?",
+      "baseline": {
+        "input": 30576,
+        "output": 2063,
+        "total": 32639,
+        "cache_read": 328000,
+        "cost": 0.10419,
+        "turns": 9,
+        "error": false,
+        "answer": "**Flask Architecture Tour**\n\nCore components:\n\n- **app.py** (65KB) \u2014 Main `Flask` class. WSGI app, routing, request/response lifecycle, context management.\n- **sansio/** \u2014 WSGI-agnostic core: app routing, blueprint logic, scaffolding. Reusable across servers.\n- **wrappers.py** \u2014 Request/Response classes wrapping Werkzeug.\n- **ctx.py** \u2014 Application & request context stacks (thread-local globals).\n- **cli.py** \u2014 Command-line interface (flask run, shell, etc).\n- **config.py** \u2014 Configuration management.\n- **blueprints.py** \u2014 Route grouping & modular apps.\n- **sessions.py** \u2014 Session storage (default: secure cookies).\n- **templating.py** \u2014 Jinja2 template integration.\n- **helpers.py** \u2014 Utilities (get_flashed_messages, send_file, etc).\n- **json/** \u2014 JSON encoder/decoder.\n- **signals.py** \u2014 Event system (app startup, request hooks, teardown).\n\n**Flow:**\n\nRequest \u2192 WSGI entry \u2192 Routing (Werkzeug) \u2192 Context setup \u2192 View function \u2192 Response \u2192 Teardown signals\n\n**Key Design:**\n\n- Wraps Werkzeug (routing, WSGI) + Jinja2 (templating)\n- Context vars (request, g, session) attached to app/request lifecycle\n- Blueprints = modular route groups\n- Extensible via signals & template filters\n\nTests in `/tests/` cover apps, routing, async, sessions, logging, etc."
+      },
+      "gcx": {
+        "input": 27742,
+        "output": 1034,
+        "total": 28776,
+        "cache_read": 75130,
+        "cost": 0.06814,
+        "turns": 3,
+        "error": false,
+        "answer": "**Core Framework** (`src/flask`, 20 files):\n- `Flask` class \u2014 main app object\n- `Blueprint` \u2014 modular app building blocks  \n- Request context (`get` in ctx.py) \u2014 thread-local request/app context\n- Template rendering, URL generation helpers\n\n**Logic Layer** (`src/flask/sansio`, 4 files):\n- WSGI-agnostic core: routing, decorators, blueprint registration\n- `Scaffold` base class \u2014 shared by Flask and Blueprint\n- Dependency injection point for examples/tests\n\n**JSON** (`src/flask/json`, 3 files):\n- Pluggable provider system\n- `jsonify()` helper\n- Custom serialization tags\n\n**Tests** (26 files):\n- Async support, CLI, config, blueprints\n- Test fixtures: cliapp, blueprintapp, tutorial examples\n\n**Examples**:\n- `tutorial/flaskr` \u2014 blog app with auth, DB, session mgmt\n- `celery/task_app` \u2014 async task queue integration\n- `javascript/js_example` \u2014 frontend API patterns\n\n**Flow**: Request \u2192 Flask/Blueprint routing \u2192 Handler \u2192 Response (templates/JSON).\n\nSansio handles logic; Flask wraps WSGI. Blueprints modularize routing. Context (`get`) isolates per-request state."
+      },
+      "token_ratio": 1.13,
+      "tokens_saved": 3863,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "refactor_impact",
+      "question": "If I change 'register_blueprint', what breaks? List the direct callers and any important indirect callers.",
+      "baseline": {
+        "input": 24224,
+        "output": 713,
+        "total": 24937,
+        "cache_read": 124928,
+        "cost": 0.06447,
+        "turns": 5,
+        "error": false,
+        "answer": "Awaiting permission to run the gcx query command."
+      },
+      "gcx": {
+        "input": 26637,
+        "output": 1088,
+        "total": 27725,
+        "cache_read": 75035,
+        "cost": 0.06619,
+        "turns": 3,
+        "error": false,
+        "answer": "**Direct callers of `register_blueprint`:**\n\n1. **`create_app()`** (production code)\n   - `examples/tutorial/flaskr/__init__.py:39`\n   - `examples/celery/src/task_app/__init__.py:25`\n   - Core app factory \u2014 changes break both tutorial and Celery example apps\n\n2. **`_async_app()`** (test helper)\n   - `tests/test_async.py:73`\n   - Sets up async test fixtures\n\n**Important indirect callers:**\n\nTests call `create_app()` indirectly (57+ test functions across):\n- `tests/test_blueprints.py` \u2014 30+ blueprint-specific tests\n- `tests/test_async.py` \u2014 async blueprint tests\n- `tests/test_user_error_handler.py` \u2014 error handling tests\n- `tests/test_testing.py` \u2014 testing utilities\n\nChanging `register_blueprint` signature/behavior breaks:\n- Both example apps' initialization\n- All blueprint registration tests\n- Any test relying on `create_app()` setup\n\n**Safe changes:**\n- Internal implementation (doesn't affect callers)\n- Rename (if you update all 104+ call sites)\n- Parameter addition (if backward-compatible with defaults)\n\n**Breaking changes:**\n- Remove method entirely\n- Change parameter order\n- Change return type if callers expect it"
+      },
+      "token_ratio": 0.9,
+      "tokens_saved": -2788,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "subgraph_around",
+      "question": "Show everything directly connected to 'render_template' \u2014 what calls it, what it calls, what it uses.",
+      "baseline": {
+        "input": 31566,
+        "output": 2652,
+        "total": 34218,
+        "cache_read": 288180,
+        "cost": 0.10514,
+        "turns": 15,
+        "error": false,
+        "answer": "## `render_template` Call Graph\n\n**Definition:**\n- `src/flask/templating.py:136` \u2014 Core function\n\n**What it calls:**\n\n```\nrender_template(template_name_or_list, **context)\n  \u251c\u2500 app_ctx._get_current_object()        [get current app context]\n  \u251c\u2500 ctx.app.jinja_env.get_or_select_template(template_name_or_list)  [load template]\n  \u2514\u2500 _render(ctx, template, context)      [render & signal]\n       \u251c\u2500 app.update_template_context(ctx, context)\n       \u251c\u2500 before_render_template.send()   [signal: blinker]\n       \u251c\u2500 template.render(context)        [Jinja2 render]\n       \u2514\u2500 template_rendered.send()        [signal: blinker]\n```\n\n**What uses it:**\n\n| Caller | File | Line | Kind |\n|--------|------|------|------|\n| 50+ call sites | tests/test_templating.py | 18, 76, 96, 115, 194... | route handlers, helpers |\n| 10+ call sites | tests/test_blueprints.py | 220, 440, 449, 473... | route handlers |\n| Examples | examples/tutorial/flaskr/{blog,auth}.py | multiple | route handlers |\n| Docs | docs/**/*.rst | 51, 109, 196... | code examples |\n| JS example | examples/javascript/js_example/views.py | 11 | route handler |\n| Type check | tests/type_check/typing_route.py | 88, 106 | route handlers |\n\n**Exported via:**\n- `src/flask/__init__.py` line 34 \u2014 re-exported as public API\n\n**Signals used:**\n- `before_render_template` (line 13 in signals.py) \u2014 sent before template renders\n- `template_rendered` (line 8 in signals.py) \u2014 sent after template renders\n\n**Dependencies:**\n- Jinja2 (`Template`, `BaseEnvironment`)\n- Flask context (`app_ctx`, `AppContext`)\n- Blinker (signal dispatch)"
+      },
+      "gcx": {
+        "input": 32251,
+        "output": 1743,
+        "total": 33994,
+        "cache_read": 188942,
+        "cost": 0.09206,
+        "turns": 8,
+        "error": false,
+        "answer": "## `render_template` Connection Map\n\n**WHAT CALLS IT** (40 call sites across tests & examples):\n- Test functions: `test_template_rendered`, `test_context_processing`, `test_escaping`, `test_before_render_template`, etc.\n- View functions: `index()`, `login()`, `register()`, `create()`, `update()` in `flaskr` blog/auth\n- Route handlers in blueprint app frontend/admin\n- Type check routing examples\n\n**WHAT IT CALLS** (lines 136\u2013148):\n```\nrender_template():\n  \u251c\u2500 app_ctx._get_current_object()  [get current Flask app context]\n  \u251c\u2500 ctx.app.jinja_env.get_or_select_template()  [load template from Jinja2 env]\n  \u2514\u2500 _render(ctx, template, context)  [render the template]\n       \u251c\u2500 app.update_template_context()  [inject context vars]\n       \u251c\u2500 before_render_template.send()  [signal: pre-render]\n       \u251c\u2500 template.render()  [Jinja2 render]\n       \u2514\u2500 template_rendered.send()  [signal: post-render]\n```\n\n**WHO IMPORTS IT** (8 modules):\n- `src/flask/__init__.py` \u2014 public Flask API export\n- `examples/tutorial/flaskr/blog.py`\n- `examples/tutorial/flaskr/auth.py`\n- `examples/celery/src/task_app/__init__.py`\n- `examples/javascript/js_example/views.py`\n- `tests/test_apps/blueprintapp/apps/admin/__init__.py`\n- `tests/test_apps/blueprintapp/apps/frontend/__init__.py`\n- `tests/type_check/typing_route.py`"
+      },
+      "token_ratio": 1.01,
+      "tokens_saved": 224,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    }
+  ]
+}

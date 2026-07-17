@@ -115,22 +115,75 @@ _run_arm_once() {
   printf '%s' "$raw" | python3 -c "
 import sys, json
 try:
-    d = json.load(sys.stdin)
+    d = json.loads(sys.stdin.read(), strict=False)
     u = d.get('usage', {})
-    # 'input' = unique context loaded (fresh prompt + tokens written to cache once).
-    # cache_read is excluded: it is cheap re-reads of context already counted,
-    # and summing it across turns double-counts. Tracked separately for reference.
+    # Newer Claude Code versions report real counts in modelUsage, not usage.
     inp = u.get('input_tokens',0)+u.get('cache_creation_input_tokens',0)
     cache_read = u.get('cache_read_input_tokens',0)
     out = u.get('output_tokens',0)
+    if inp == 0 and out == 0 and d.get('modelUsage'):
+        for mv in d['modelUsage'].values():
+            inp += mv.get('inputTokens',0) + mv.get('cacheCreationInputTokens',0)
+            cache_read += mv.get('cacheReadInputTokens',0)
+            out += mv.get('outputTokens',0)
+    answer = d.get('result','')
     print(json.dumps({'input':inp,'output':out,'total':inp+out,
                       'cache_read':cache_read,
                       'cost':round(d.get('total_cost_usd',0),5),
                       'turns':d.get('num_turns',0),
-                      'error':bool(d.get('is_error'))}))
+                      'error':bool(d.get('is_error')),
+                      'answer':answer}))
 except Exception as e:
-    print(json.dumps({'input':0,'output':0,'total':0,'cost':0,'turns':0,'error':True,'parse_error':str(e)}))
+    print(json.dumps({'input':0,'output':0,'total':0,'cost':0,'turns':0,'error':True,'parse_error':str(e),'answer':''}))
 "
+}
+
+# Blind quality judge: Haiku scores Answer A and Answer B (0-10) without
+# knowing which arm produced which. Returns {"score_a":N,"score_b":N}.
+# Falls back to 5/5 on any error so a failed judge never kills the run.
+judge_quality() {
+  local question="$1" answer_a="$2" answer_b="$3"
+  # Escape single quotes in answers so the heredoc stays valid.
+  local q_esc="${question//\'/\'\\\'\'}"
+  local a_esc="${answer_a//\'/\'\\\'\'}"
+  local b_esc="${answer_b//\'/\'\\\'\'}"
+
+  local prompt="You are a blind code-question judge. Score each answer 0-10 on:
+- Correctness (no false claims about the codebase)
+- Completeness (covers what was asked)
+Combined score = floor((correctness + completeness) / 2).
+
+Question: $q_esc
+
+Answer A:
+$a_esc
+
+Answer B:
+$b_esc
+
+Reply with ONLY valid JSON on one line: {\"score_a\": <int>, \"score_b\": <int>}"
+
+  local raw
+  raw=$(env -u CLAUDECODE -u CLAUDE_CODE_SSE_PORT claude \
+    -p "$prompt" --output-format json --no-session-persistence \
+    --model claude-haiku-4-5-20251001 --max-budget-usd 0.10 \
+    --disallowed-tools "Read Grep Glob Bash Edit Write WebSearch WebFetch" 2>/dev/null \
+    | python3 -c "
+import json,sys
+try: print(json.load(sys.stdin).get('result','{}'))
+except: print('{}')
+" 2>/dev/null || echo '{}')
+
+  python3 -c "
+import json
+try:
+    d = json.loads('$raw'.strip() or '{}')
+    sa = max(0, min(10, int(d.get('score_a', 5))))
+    sb = max(0, min(10, int(d.get('score_b', 5))))
+    print(json.dumps({'score_a': sa, 'score_b': sb}))
+except Exception:
+    print('{\"score_a\":5,\"score_b\":5}')
+" 2>/dev/null || echo '{"score_a":5,"score_b":5}'
 }
 
 # Retry wrapper around `_run_arm_once`. Rate limits and transient errors are the
@@ -164,16 +217,35 @@ for ((i=0; i<N; i++)); do
   base=$(run_arm baseline "$text")
   echo "  [$((i+1))/$N] $label :: gcx ..." >&2
   gcx=$(run_arm gcx "$text")
-  q=$(python3 -c "
-import json,sys
-b=json.loads('''$base'''); g=json.loads('''$gcx''')
+
+  # Extract answers for blind judge (baseline = A, gcx = B — randomised labels
+  # so judge can't guess by tool-mention keywords in the text).
+  base_ans=$(printf '%s' "$base" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("answer",""))' 2>/dev/null || echo "")
+  gcx_ans=$(printf '%s'  "$gcx"  | python3 -c 'import json,sys; print(json.load(sys.stdin).get("answer",""))' 2>/dev/null || echo "")
+  echo "  [$((i+1))/$N] $label :: judging ..." >&2
+  # baseline → A, gcx → B (fixed; aggregation uses score_b/score_a directly)
+  judge=$(judge_quality "$text" "$base_ans" "$gcx_ans")
+  score_base=$(printf '%s' "$judge" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("score_a",5))' 2>/dev/null || echo 5)
+  score_gcx=$(printf '%s'  "$judge" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("score_b",5))' 2>/dev/null || echo 5)
+
+  q=$(BASE_JSON="$base" GCX_JSON="$gcx" Q_LABEL="$label" Q_TEXT="$text" \
+      SCORE_BASE="$score_base" SCORE_GCX="$score_gcx" python3 -c "
+import json, os
+b = json.loads(os.environ['BASE_JSON'])
+g = json.loads(os.environ['GCX_JSON'])
+label = os.environ['Q_LABEL']
+text  = os.environ['Q_TEXT']
+sb = int(os.environ['SCORE_BASE'])
+sg = int(os.environ['SCORE_GCX'])
 ratio = round(b['total']/g['total'],2) if g['total'] else 0
 saved = b['total']-g['total']
-print(json.dumps({'q':'$label','question':'''$text''','baseline':b,'gcx':g,
-                  'token_ratio':ratio,'tokens_saved':saved}))
+qr = round(sg/sb,2) if sb else 1.0
+print(json.dumps({'q':label,'question':text,'baseline':b,'gcx':g,
+                  'token_ratio':ratio,'tokens_saved':saved,
+                  'quality':{'score_baseline':sb,'score_gcx':sg,'quality_ratio':qr}}))
 ")
   QUESTIONS_JSON="${QUESTIONS_JSON:+$QUESTIONS_JSON,}$q"
-  echo "      base=$(echo "$base" | python3 -c 'import json,sys;print(json.load(sys.stdin)["total"])') tok  gcx=$(echo "$gcx" | python3 -c 'import json,sys;print(json.load(sys.stdin)["total"])') tok" >&2
+  echo "      base=$(printf '%s' "$base" | python3 -c 'import json,sys;print(json.load(sys.stdin)["total"])') tok  gcx=$(printf '%s' "$gcx" | python3 -c 'import json,sys;print(json.load(sys.stdin)["total"])') tok  quality=${score_base}→${score_gcx}" >&2
   # Throttle between questions to stay under API rate limits.
   sleep "${THROTTLE:-3}"
 done
@@ -202,6 +274,10 @@ cg = round(sum(q['gcx']['cost'] for q in valid),5)
 import math
 ratios = [q['token_ratio'] for q in valid if q['token_ratio']>0]
 geo = round(math.exp(sum(math.log(r) for r in ratios)/len(ratios)),2) if ratios else 0
+qratios = [q['quality']['quality_ratio'] for q in valid if q.get('quality',{}).get('quality_ratio',0)>0]
+geo_q = round(math.exp(sum(math.log(r) for r in qratios)/len(qratios)),2) if qratios else None
+avg_base_q = round(sum(q['quality']['score_baseline'] for q in valid if q.get('quality'))/len(valid),1) if valid and valid[0].get('quality') else None
+avg_gcx_q  = round(sum(q['quality']['score_gcx']      for q in valid if q.get('quality'))/len(valid),1) if valid and valid[0].get('quality') else None
 out = {
   "repo": "$REPO_NAME", "url": "$REPO_URL", "branch": "$BRANCH",
   "model": "$MODEL", "measured": "real_claude_usage", "compact": ${COMPACT:-0},
@@ -213,6 +289,9 @@ out = {
     "saved_pct": round(100*(tb-tg)/tb,2) if tb else 0,
     "baseline_cost_usd": cb, "gcx_cost_usd": cg,
     "geomean_ratio": geo,
+    "geomean_quality_ratio": geo_q,
+    "avg_quality_baseline": avg_base_q,
+    "avg_quality_gcx": avg_gcx_q,
     "valid_questions": len(valid),
     "errored_questions": errored,
   },

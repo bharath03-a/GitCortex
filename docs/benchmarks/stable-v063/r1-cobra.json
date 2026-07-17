@@ -1,0 +1,156 @@
+{
+  "repo": "cobra",
+  "url": "https://github.com/spf13/cobra",
+  "branch": "main",
+  "model": "claude-haiku-4-5-20251001",
+  "measured": "real_claude_usage",
+  "compact": 1,
+  "symbols": {
+    "type": "Command",
+    "fn": "execute",
+    "other": "run",
+    "concept": "parse"
+  },
+  "nodes": 0,
+  "edges": 0,
+  "totals": {
+    "baseline_tokens": 126738,
+    "gcx_tokens": 120779,
+    "saved_tokens": 5959,
+    "saved_pct": 4.7,
+    "baseline_cost_usd": 0.44037,
+    "gcx_cost_usd": 1.33514,
+    "geomean_ratio": 1.04,
+    "geomean_quality_ratio": 1.0,
+    "avg_quality_baseline": 5.0,
+    "avg_quality_gcx": 5.0,
+    "valid_questions": 4,
+    "errored_questions": []
+  },
+  "questions": [
+    {
+      "q": "search_concept",
+      "question": "Where in this codebase is 'parse' handled? List the relevant files and symbols.",
+      "baseline": {
+        "input": 27819,
+        "output": 2407,
+        "total": 30226,
+        "cache_read": 559770,
+        "cost": 0.12353,
+        "turns": 16,
+        "error": false,
+        "answer": "**Codebase status:** Current directory contains only benchmark test data, no actual source files.\n\nThis appears to be a benchmarking suite (gcx-bench) for testing code navigation queries. Files present:\n- `.real-q.json` \u2014 test cases including questions about finding `parse`, `Command`, `execute` in a codebase\n- `.mcp-gcx.json` \u2014 configuration pointing to GitCortex tool\n\nNo actual source code exists in this directory. The benchmark tests reference a Cobra codebase, but the source code itself isn't in `/tmp/gcx-bench/work/cobra/`.\n\n**To find 'parse' handling:**\n- Need path to actual source codebase (likely Cobra CLI framework)\n- Or the codebase being benchmarked needs to be checked out into this directory\n\nDo you have the actual source code location, or should I search a different path?"
+      },
+      "gcx": {
+        "input": 24575,
+        "output": 1765,
+        "total": 26340,
+        "cache_read": 140229,
+        "cost": 0.20088,
+        "turns": 5,
+        "error": false,
+        "answer": "Directory `/private/tmp/gcx-bench/work/cobra` exists but appears empty or the files aren't accessible. Two options:\n\n1. **Verify the path** \u2014 is there another location where the cobra source code is stored?\n2. **Check both paths** \u2014 the system lists both `/private/tmp/gcx-bench/work/cobra` and `/tmp/gcx-bench/work/cobra`. Are files in one of those?\n\nIf you can confirm the correct path or give me a file from the cobra repo to read, I'll search for all parse-related code immediately."
+      },
+      "token_ratio": 1.15,
+      "tokens_saved": 3886,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "tour_onboarding",
+      "question": "Give me a concise tour of this codebase: what are the main components and how do they fit together?",
+      "baseline": {
+        "input": 25632,
+        "output": 1798,
+        "total": 27430,
+        "cache_read": 198719,
+        "cost": 0.08008,
+        "turns": 11,
+        "error": false,
+        "answer": "Repo is benchmark harness, not actual codebase.\n\nContains:\n- `.mcp-gcx.json` \u2014 GitCortex MCP server config\n- `.real-q.json` \u2014 Benchmark results: baseline vs GCX performance on code-understanding queries\n\nQueries being tested:\n1. **search_concept** \u2014 Find where 'parse' handled + relevant symbols\n2. **tour_onboarding** \u2014 Codebase overview (your question!)\n3. **refactor_impact** \u2014 What breaks if 'execute' changes\n4. **subgraph_around** \u2014 What connects to 'Command' symbol\n\nEach query runs baseline Claude + GCX variant, tracks:\n- Input/output tokens\n- Cache reads\n- Cost\n- Turns needed\n- Token savings\n\nThis measures whether GitCortex indexing reduces context needed for code navigation. Actual codebase being benchmarked isn't in this directory.\n\nWhat codebase should I analyze\u2014the Cobra CLI tool reference, or is there another project directory?"
+      },
+      "gcx": {
+        "input": 25786,
+        "output": 1428,
+        "total": 27214,
+        "cache_read": 240540,
+        "cost": 0.1668,
+        "turns": 8,
+        "error": false,
+        "answer": "Repo directory exists but is empty \u2014 no source files, no go.mod, no README. \n\nEither:\n1. Repo not cloned/initialized yet\n2. Wrong path\n\nCheck: which branch/state should this be in? Or point me to actual cobra repo location if different."
+      },
+      "token_ratio": 1.01,
+      "tokens_saved": 216,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "refactor_impact",
+      "question": "If I change 'execute', what breaks? List the direct callers and any important indirect callers.",
+      "baseline": {
+        "input": 25332,
+        "output": 1616,
+        "total": 26948,
+        "cache_read": 385964,
+        "cost": 0.09725,
+        "turns": 11,
+        "error": false,
+        "answer": "Need context: which `Execute` are you changing? No source code in working directory. Point me to:\n- File path\n- Function signature  \n- Or repo/package if analyzing external code\n\nThen I'll map direct callers and important indirect dependents."
+      },
+      "gcx": {
+        "input": 35809,
+        "output": 1687,
+        "total": 37496,
+        "cache_read": 302386,
+        "cost": 0.2393,
+        "turns": 10,
+        "error": false,
+        "answer": "Repo appears empty. Run `git status` or check if Cobra source is cloned. \n\nIf working on [Cobra CLI library](https://github.com/spf13/cobra), `Command.Execute()` is called by:\n\n**Direct callers:**\n- `main()` in user CLI apps (entry point pattern)\n- Tests in `*_test.go` files\n\n**Indirect (1-2 hops):**\n- Root command init code\n- CLI bootstrappers that compose commands\n- Test runners/harnesses\n\nChange to `Execute()` signature or behavior breaks all CLI entry points + tests.\n\nWhat's the actual context for your repo?"
+      },
+      "token_ratio": 0.72,
+      "tokens_saved": -10548,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "subgraph_around",
+      "question": "Show everything directly connected to 'Command' \u2014 what calls it, what it calls, what it uses.",
+      "baseline": {
+        "input": 40085,
+        "output": 2049,
+        "total": 42134,
+        "cache_read": 492048,
+        "cost": 0.13951,
+        "turns": 14,
+        "error": false,
+        "answer": "**Working directory is empty.** This is a benchmark harness, not the actual cobra repo. Need to know where the cobra codebase is located or if you want me to clone it.\n\nDo you want me to:\n1. **Clone the cobra repo** from GitHub (`spf13/cobra`)\n2. **Point to an existing local clone** (where is it?)\n3. **Work with a different codebase** you have in mind?\n\nOnce set up, I'll map out everything connected to 'Command' in the codebase."
+      },
+      "gcx": {
+        "input": 27500,
+        "output": 2229,
+        "total": 29729,
+        "cache_read": 277118,
+        "cost": 0.72816,
+        "turns": 9,
+        "error": false,
+        "answer": "Need bash permission to query cached results from SQLite. Approve sqlite3 read commands?"
+      },
+      "token_ratio": 1.42,
+      "tokens_saved": 12405,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    }
+  ]
+}

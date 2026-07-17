@@ -1,0 +1,156 @@
+{
+  "repo": "requests",
+  "url": "https://github.com/psf/requests",
+  "branch": "main",
+  "model": "claude-haiku-4-5-20251001",
+  "measured": "real_claude_usage",
+  "compact": 1,
+  "symbols": {
+    "type": "Command",
+    "fn": "execute",
+    "other": "run",
+    "concept": "parse"
+  },
+  "nodes": 0,
+  "edges": 0,
+  "totals": {
+    "baseline_tokens": 102931,
+    "gcx_tokens": 85494,
+    "saved_tokens": 17437,
+    "saved_pct": 16.94,
+    "baseline_cost_usd": 0.35189,
+    "gcx_cost_usd": 1.55228,
+    "geomean_ratio": 3.49,
+    "geomean_quality_ratio": 1.0,
+    "avg_quality_baseline": 5.0,
+    "avg_quality_gcx": 5.0,
+    "valid_questions": 4,
+    "errored_questions": []
+  },
+  "questions": [
+    {
+      "q": "search_concept",
+      "question": "Where in this codebase is 'parse' handled? List the relevant files and symbols.",
+      "baseline": {
+        "input": 23554,
+        "output": 889,
+        "total": 24443,
+        "cache_read": 49388,
+        "cost": 0.11222,
+        "turns": 2,
+        "error": false,
+        "answer": "**Finding: No parse implementation here.** This directory is a benchmark harness for testing GitCortex, not source code.\n\n**Files present:**\n- `.real-q.json` \u2014 test data (contains benchmark question about parse handling)\n- `.mcp-gcx.json` \u2014 MCP configuration\n- `.gitcortex/config.toml` \u2014 language indexing config\n\nThe question \"Where in this codebase is 'parse' handled?\" is the benchmark test itself\u2014meta-question testing code search capability. Actual GitCortex source (Rust) lives elsewhere on your filesystem (`/Users/bharathvelamala/Documents/Open Source/GitCortex/`), not here."
+      },
+      "gcx": {
+        "input": 23521,
+        "output": 800,
+        "total": 24321,
+        "cache_read": 40861,
+        "cost": 0.13386,
+        "turns": 2,
+        "error": false,
+        "answer": "Benchmark harness here. Actual GitCortex source at `/Users/bharathvelamala/Documents/Open Source/GitCortex/`.\n\nWhich codebase want searched for 'parse'? \n1. GitCortex source (most likely)\n2. Different repo?\n3. Just benchmark config here?"
+      },
+      "token_ratio": 1.01,
+      "tokens_saved": 122,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "tour_onboarding",
+      "question": "Give me a concise tour of this codebase: what are the main components and how do they fit together?",
+      "baseline": {
+        "input": 24151,
+        "output": 1516,
+        "total": 25667,
+        "cache_read": 49389,
+        "cost": 0.09848,
+        "turns": 2,
+        "error": false,
+        "answer": "**GitCortex Benchmark Harness** \u2014 evaluates code search tool performance vs baseline Claude.\n\n**Main Components:**\n\n1. **`.real-q.json`** \u2014 benchmark test dataset\n   - 4 test cases: search_concept, tour_onboarding, refactor_impact, subgraph_around\n   - Tracks performance metrics (tokens, cost, quality scores) for GitCortex vs Claude baseline\n\n2. **`.gitcortex/config.toml`** \u2014 language + tool config\n   - Supports Rust, Go, Python, TypeScript, Java\n   - Max file size: 500 KB, local backend\n\n3. **`.mcp-gcx.json`** \u2014 MCP integration\n   - Points to GitCortex CLI binary\n   - Runs in compact mode for benchmarking\n\n4. **`tests/certs/`** \u2014 MTLS test fixtures\n   - Expired/valid certificates for infrastructure testing\n\n**How it fits:**\nTest harness runs benchmark queries against multiple code analysis tools, compares output quality + resource consumption (tokens, cost), records results in JSON. Minimal structure \u2014 no source code, just config + test data + fixtures. Purpose: measure how well code search tools answer real-world questions about multi-language codebases."
+      },
+      "gcx": {
+        "input": 1221,
+        "output": 435,
+        "total": 1656,
+        "cache_read": 34750,
+        "cost": 0.38843,
+        "turns": 1,
+        "error": false,
+        "answer": "**Codebase Tour: GitCortex Benchmark Harness**\n\n**Main Components:**\n\n1. **`.gitcortex/config.toml`** \u2014 Language indexer config. Supports Rust, Go, Python, TypeScript, Java. Max 500KB files. Local storage backend.\n\n2. **`.mcp-gcx.json`** \u2014 MCP server pointing to GitCortex CLI (`/Users/bharathvelamala/Documents/Open Source/GitCortex/target/release/gcx`). Runs in compact mode for benchmarks.\n\n3. **`.real-q.json`** \u2014 Benchmark test suite. 4 test types:\n   - `search_concept` \u2014 Code search capability\n   - `tour_onboarding` \u2014 Codebase comprehension  \n   - `refactor_impact` \u2014 Dependency analysis\n   - `subgraph_around` \u2014 Relationship mapping\n   \n   Compares baseline Claude vs GitCortex. Tracks tokens, cost, cache reads, quality scores.\n\n4. **`tests/certs/`** \u2014 Empty directories for test fixtures (certificates, MTLS client certs).\n\n**How It Fits:** Benchmark harness runs test questions against GitCortex tool, measures performance vs Claude baseline, evaluates code search quality across multiple languages."
+      },
+      "token_ratio": 15.5,
+      "tokens_saved": 24011,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "refactor_impact",
+      "question": "If I change 'execute', what breaks? List the direct callers and any important indirect callers.",
+      "baseline": {
+        "input": 24201,
+        "output": 925,
+        "total": 25126,
+        "cache_read": 196852,
+        "cost": 0.07266,
+        "turns": 7,
+        "error": false,
+        "answer": "Empty repo. Need context: which `execute` function? Reference a file path, class/module name, or paste the function signature."
+      },
+      "gcx": {
+        "input": 984,
+        "output": 295,
+        "total": 1279,
+        "cache_read": 32864,
+        "cost": 0.42291,
+        "turns": 1,
+        "error": false,
+        "answer": "Agent searched thoroughly but found no prominent `execute` function in the codebase. Found related patterns:\n- `run_git_diff()` \n- `run()` functions in command modules\n- `std::process::Command::output()` calls\n\n**Need clarification:**\n1. Which file/module is `execute` in?\n2. Which language (Rust/Python/Go/JS)?\n3. Full function signature or context?\n\nAlternatively, maybe you meant a different function name? What's the actual use case?"
+      },
+      "token_ratio": 19.65,
+      "tokens_saved": 23847,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "subgraph_around",
+      "question": "Show everything directly connected to 'Command' \u2014 what calls it, what it calls, what it uses.",
+      "baseline": {
+        "input": 26178,
+        "output": 1517,
+        "total": 27695,
+        "cache_read": 86111,
+        "cost": 0.06853,
+        "turns": 5,
+        "error": false,
+        "answer": "Found it. Test data has Command's full network already mapped. Here's the graph:\n\n**COMMAND LOCATION**\n- `/Users/bharathvelamala/Documents/Open Source/GitCortex/crates/gitcortex-cli/src/main.rs` lines 22\u2013108\n- Two types: `Commands` enum (CLI subcommands) + `QueryCmd` (nested)\n\n**CALLERS \u2192 Commands**\n```\nmain()\n  \u2193 matches cli.command\n  \u2193\n  \u251c\u2192 Commands::Init       \u2192 cmd::init::run()\n  \u251c\u2192 Commands::Hook       \u2192 cmd::hook::run()\n  \u251c\u2192 Commands::Serve      \u2192 cmd::serve::run()\n  \u251c\u2192 Commands::Query(q)   \u2192 cmd::query::run(q)\n  \u251c\u2192 Commands::Viz        \u2192 gitcortex_viz::run()\n  \u251c\u2192 Commands::BlastRadius \u2192 cmd::blast_radius::run()\n  \u251c\u2192 Commands::Export     \u2192 cmd::export::run()\n  \u251c\u2192 Commands::Status     \u2192 cmd::status::run()\n  \u251c\u2192 Commands::Clean      \u2192 cmd::clean::run()\n  \u251c\u2192 Commands::Doctor     \u2192 cmd::doctor::run()\n  \u2514\u2192 Commands::Update     \u2192 cmd::update::run()\n```\n\n**What Commands Uses**\n- `clap` (Parser/Subcommand derives)\n- `anyhow` (error handling)\n- `std::process::Command` (subprocess execution)\n- All `cmd::*` modules (dispatch targets)\n\n**Subprocess Calls** (std::process::Command usage downstream)\n- `serve.rs:5` \u2192 git (repo root)\n- `hook.rs:78,88,96` \u2192 git commands\n- `status.rs:82,92,100` \u2192 git commands\n- `clean.rs:27` \u2192 git (repo root)\n- `doctor.rs:253\u2013282` \u2192 git helpers\n- `blast_radius.rs:256` \u2192 git (repo root)\n- `export.rs:368\u2013389` \u2192 git commands\n- `update.rs:31` \u2192 curl (fetch releases)\n\n**Bonus Find:** `repo_root()` and `current_branch()` duplicated across 7 files. Extract to shared utils."
+      },
+      "gcx": {
+        "input": 57050,
+        "output": 1188,
+        "total": 58238,
+        "cache_read": 73102,
+        "cost": 0.60708,
+        "turns": 4,
+        "error": false,
+        "answer": "**Commands enum** (`main.rs:22-108`) routes CLI subcommands.\n\n**Callers:** main() matches on Commands variants:\n- Init \u2192 cmd::init::run()\n- Hook \u2192 cmd::hook::run()\n- Serve \u2192 cmd::serve::run()\n- Query \u2192 cmd::query::run()\n- Viz \u2192 gitcortex_viz::run()\n- BlastRadius \u2192 cmd::blast_radius::run()\n- Export \u2192 cmd::export::run()\n- Status \u2192 cmd::status::run()\n- Clean \u2192 cmd::clean::run()\n- Doctor \u2192 cmd::doctor::run()\n- Update \u2192 cmd::update::run()\n\n**Imports:**\n- clap (Parser, Subcommand derives)\n- anyhow (error handling)\n- std::process::Command (subprocess execution)\n- cmd/* modules\n\n**Subprocess calls via std::process::Command:**\n- serve.rs:5 \u2192 git (repo root)\n- hook.rs:78,88,96 \u2192 git\n- status.rs:82,92,100 \u2192 git\n- clean.rs:27 \u2192 git\n- doctor.rs:253-282 \u2192 git helpers\n- blast_radius.rs:256 \u2192 git\n- export.rs:368-389 \u2192 git\n- update.rs:31 \u2192 curl\n\n**Code debt:** `repo_root()` + `current_branch()` duplicated across 7 files. Extract to shared utils."
+      },
+      "token_ratio": 0.48,
+      "tokens_saved": -30543,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    }
+  ]
+}

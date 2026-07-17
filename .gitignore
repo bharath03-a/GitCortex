@@ -43,3 +43,16 @@ crates/gitcortex-mcp/dist-viz/
 
 # Local-only dev helpers (lang-smoke.sh is tracked; this one is personal)
 scripts/agent-worktree.sh
+
+# macOS metadata
+.DS_Store
+
+# Benchmark run artifacts — kept locally, not committed
+docs/benchmarks/stable-v0*/
+docs/benchmarks/final-report-*.html
+docs/benchmarks/loop-sweep.sh
+
+# Phase 0 stable-v063 baseline — committed as release evidence
+!docs/benchmarks/stable-v063/
+!docs/benchmarks/stable-v063/*.json
+!docs/benchmarks/final-report-2026-07-17.html

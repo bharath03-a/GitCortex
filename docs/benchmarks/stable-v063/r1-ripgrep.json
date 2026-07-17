@@ -1,0 +1,156 @@
+{
+  "repo": "ripgrep",
+  "url": "https://github.com/BurntSushi/ripgrep",
+  "branch": "main",
+  "model": "claude-haiku-4-5-20251001",
+  "measured": "real_claude_usage",
+  "compact": 0,
+  "symbols": {
+    "type": "Command",
+    "fn": "execute",
+    "other": "run",
+    "concept": "parse"
+  },
+  "nodes": 0,
+  "edges": 0,
+  "totals": {
+    "baseline_tokens": 97959,
+    "gcx_tokens": 68197,
+    "saved_tokens": 29762,
+    "saved_pct": 30.38,
+    "baseline_cost_usd": 0.46125,
+    "gcx_cost_usd": 1.02004,
+    "geomean_ratio": 1.49,
+    "geomean_quality_ratio": 1.0,
+    "avg_quality_baseline": 5.0,
+    "avg_quality_gcx": 5.0,
+    "valid_questions": 4,
+    "errored_questions": []
+  },
+  "questions": [
+    {
+      "q": "search_concept",
+      "question": "Where in this codebase is 'parse' handled? List the relevant files and symbols.",
+      "baseline": {
+        "input": 39928,
+        "output": 2006,
+        "total": 41934,
+        "cache_read": 416918,
+        "cost": 0.13145,
+        "turns": 13,
+        "error": false,
+        "answer": "Source files not in current directory. This repo appears stripped (only `target/` and `HomebrewFormula/`).\n\nTypical ripgrep parse handling locations:\n\n| File | Symbol | Purpose |\n|------|--------|---------|\n| `grep/src/regex.rs` | `RegexBuilder::parse`, `Regex::new` | Pattern compilation |\n| `grep/src/matcher.rs` | `LineMatchFinder::parse` | Line matching |\n| `grep_cli/src/args.rs` | `parse_args`, `ArgMatches` | CLI argument parsing |\n| `grep_cli/src/config.rs` | `parse_config` | Config file parsing |\n| `ignore/src/gitignore.rs` | `parse_gitignore` | `.gitignore` pattern parsing |\n\nNeed source cloned to search. Check remote with `git remote -v` or point to actual ripgrep checkout?"
+      },
+      "gcx": {
+        "input": 34842,
+        "output": 1768,
+        "total": 36610,
+        "cache_read": 132425,
+        "cost": 0.41636,
+        "turns": 5,
+        "error": false,
+        "answer": "Need permission to check out repo files. **`git checkout HEAD`** will restore working files from `.git` so we can search for parse-related code.\n\nThis is safe\u2014no data loss, no destructive changes. Approve?"
+      },
+      "token_ratio": 1.15,
+      "tokens_saved": 5324,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "tour_onboarding",
+      "question": "Give me a concise tour of this codebase: what are the main components and how do they fit together?",
+      "baseline": {
+        "input": 1068,
+        "output": 413,
+        "total": 1481,
+        "cache_read": 37024,
+        "cost": 0.13957,
+        "turns": 1,
+        "error": false,
+        "answer": "**Ripgrep Architecture Overview**\n\nModular workspace of Rust crates:\n- **`grep_cli`** \u2014 CLI parsing, orchestration (entry point)\n- **`grep_searcher`** \u2014 Core search engine, parallel threads\n- **`grep_matcher` + `grep_regex`** \u2014 Pattern matching (regex + PCRE2)\n- **`grep_printer`** \u2014 Output formatting\n- **`ignore`** \u2014 Directory traversal, gitignore handling\n- **`globset`** \u2014 Glob pattern filtering\n\nData pipeline: CLI args \u2192 filesystem traversal (respecting `.gitignore`) \u2192 glob filtering \u2192 pattern compilation \u2192 parallel search \u2192 formatted output.\n\nPerformance secrets: thread-per-file parallelism, memory-mapped I/O, early directory pruning. Layered design keeps CLI thin while concentrating search logic in reusable libraries.\n\n\u2605 Insight \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nRipgrep's speed comes from three design choices: (1) the `ignore` crate prunes directories early via ignore files rather than searching everything then filtering; (2) `grep_searcher` parallelizes across files not lines, scaling to multi-core; (3) modular crates mean regex compilation + matching logic is separated from CLI concerns, enabling library reuse.\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
+      },
+      "gcx": {
+        "input": 2382,
+        "output": 1317,
+        "total": 3699,
+        "cache_read": 170718,
+        "cost": 0.17738,
+        "turns": 5,
+        "error": false,
+        "answer": "Repo appears inaccessible or empty at stated paths. What files should I look at? Ripgrep is Rust CLI for searching - typically has:\n- **Cargo.toml** (workspace manifest)\n- **crates/** (subcrates: core, searcher, printer, matcher, regex modules)\n- **src/bin/rg** (CLI entry point)\n- **tests/** (integration/unit tests)\n\nWithout access to actual files, can't give accurate tour. Try:\n1. Verify repo path exists: `ls -la /private/tmp/gcx-bench/work/ripgrep`\n2. Check git status: `git -C /private/tmp/gcx-bench/work/ripgrep log --oneline -5`\n3. Confirm Cargo.toml present\n\nOnce accessible, I'll map components properly."
+      },
+      "token_ratio": 0.4,
+      "tokens_saved": -2218,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "refactor_impact",
+      "question": "If I change 'execute', what breaks? List the direct callers and any important indirect callers.",
+      "baseline": {
+        "input": 23281,
+        "output": 649,
+        "total": 23930,
+        "cache_read": 86164,
+        "cost": 0.0584,
+        "turns": 4,
+        "error": false,
+        "answer": "No `execute` found in ripgrep. What is the exact name/file? Ripgrep is a CLI tool\u2014no method typically called `execute`. Need target file/function."
+      },
+      "gcx": {
+        "input": 24054,
+        "output": 1097,
+        "total": 25151,
+        "cache_read": 107082,
+        "cost": 0.2053,
+        "turns": 4,
+        "error": false,
+        "answer": "Repository not initialized or files missing. Check what's in the directory:\n```bash\nls -la /private/tmp/gcx-bench/work/ripgrep/\nls -la /tmp/gcx-bench/work/ripgrep/\nfind . -name \"*.rs\" -o -name \"Cargo.toml\" 2>/dev/null | head -20\n```\n\nNeed actual source files to analyze. Are the ripgrep sources present, or do we need to clone/initialize?"
+      },
+      "token_ratio": 0.95,
+      "tokens_saved": -1221,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "subgraph_around",
+      "question": "Show everything directly connected to 'Command' \u2014 what calls it, what it calls, what it uses.",
+      "baseline": {
+        "input": 28030,
+        "output": 2584,
+        "total": 30614,
+        "cache_read": 629830,
+        "cost": 0.13183,
+        "turns": 18,
+        "error": false,
+        "answer": "Repository incomplete \u2014 no source files. Need to clone ripgrep to find Command connections.\n\n**Action needed:** Approve cloning ripgrep into current directory (will delete broken `.git`).\n\nOnce approved, I'll map all connections to Command: definitions, callers, callees, and dependencies."
+      },
+      "gcx": {
+        "input": 1760,
+        "output": 977,
+        "total": 2737,
+        "cache_read": 137842,
+        "cost": 0.221,
+        "turns": 4,
+        "error": false,
+        "answer": "Ripgrep source not accessible in current environment. Path exists per git status (`/private/tmp/gcx-bench/work/ripgrep`), but files don't read. Explore agent confirmed same issue.\n\nPossible causes:\n- Files deleted or repo not fully synced\n- Permission restrictions on this path\n- Symlink points to nonexistent location\n\nOptions:\n1. Verify ripgrep is cloned: `ls -la /private/tmp/gcx-bench/work/ripgrep/`\n2. Clone fresh: `git clone https://github.com/BurntSushi/ripgrep.git`\n3. Check actual working directory: `pwd`\n\nWhich should I try?"
+      },
+      "token_ratio": 11.19,
+      "tokens_saved": 27877,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    }
+  ]
+}

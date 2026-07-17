@@ -43,7 +43,7 @@ REPO_LANG = {
 }
 
 # Release this report documents.
-VERSION = "0.5.0"
+VERSION = "0.6.3"
 
 LOGO = (
     '<svg width="22" height="22" viewBox="0 0 26 26" fill="none">'
@@ -65,28 +65,32 @@ FAVICON = (
 )
 
 # Previous published run — preserved behind a dated toggle.
-PREV_DATE = "2026-06-06"
-PREV_FILE = "final-report-2026-06-06.html"
+PREV_DATE = "2026-07-12"
+PREV_FILE = "final-report-2026-07-12.html"
 
 # What shipped this cycle (newest first).
 RELEASE_NOTES = [
-    "<strong>7 new MCP tools</strong> (15 → 22): graph_stats, ast_search, "
-    "type_hierarchy, find_importers, find_type_usages, module_dependencies, "
-    "get_call_sites.",
-    "<strong>Configurable response token budget</strong> "
-    "(<code>GCX_RESPONSE_BUDGET</code>, default 2000): every list tool truncates "
-    "to fit, so a high-fan-out symbol can never out-cost grep.",
-    "<strong>Edge confidence</strong> (extracted vs inferred): cross-file "
-    "name-resolved edges are flagged lower-confidence — a precision signal.",
-    "<strong>Richer graph data</strong>: cyclomatic complexity, decorator/"
-    "annotation metadata, and exact call-site lines.",
-    "<strong>Fixed</strong>: Rust import edges were silently dropped; search "
-    "now handles space-separated and typo queries.",
-    "<strong>Tour</strong>: no-seed tours emit a component-level architecture "
-    "summary with file:line, instead of a flat symbol list.",
-    "<strong>Trustworthy benchmark</strong>: harness now retries on rate "
-    "limits, throttles, excludes errored sessions, and reports median-of-N — "
-    "the prior single-run numbers were too noisy to trust.",
+    "<strong>Compact-by-default</strong>: MCP server now emits the compact "
+    "response format unless <code>--full</code> is passed — eliminates ~14k "
+    "tokens/turn of schema overhead that was hurting TypeScript/Go/Java scores.",
+    "<strong>Confidence-tagged callers &amp; subgraph</strong>: "
+    "<code>find_callers</code> and <code>get_subgraph</code> now annotate each "
+    "result with <em>(X direct, Y inferred)</em> so the model can weight "
+    "cross-file edges appropriately.",
+    "<strong>find_cycles</strong>: new MCP action exposes Tarjan SCC — returns "
+    "strongly-connected call cycles ranked by size, capped at 10k import edges.",
+    "<strong>Community-grouped start_tour</strong>: tour clusters symbols by "
+    "call-graph community before ranking, giving a map-of-the-codebase view "
+    "instead of a flat popularity list.",
+    "<strong>Staleness guard</strong>: every MCP response now checks "
+    "<code>last_indexed_sha</code> vs HEAD + dirty-file count; prepends a "
+    "one-line warning when the index lags so the model knows when to distrust results.",
+    "<strong>Agent steering</strong>: <code>gcx init</code> now writes a short "
+    "CLAUDE.md snippet into the target repo's <code>.claude/</code> directory, "
+    "nudging the coding agent to prefer graph tools over grep.",
+    "<strong>3-round median benchmark</strong>: stable-v063 replaces the "
+    "single-run harness — per-(repo,question) median across 3 rounds kills "
+    "run-to-run noise; geomean rises to <strong>1.74×</strong> on 5 canonical repos.",
 ]
 
 

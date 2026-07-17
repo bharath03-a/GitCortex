@@ -1,0 +1,156 @@
+{
+  "repo": "hono",
+  "url": "https://github.com/honojs/hono",
+  "branch": "main",
+  "model": "claude-haiku-4-5-20251001",
+  "measured": "real_claude_usage",
+  "compact": 1,
+  "symbols": {
+    "type": "Command",
+    "fn": "execute",
+    "other": "run",
+    "concept": "parse"
+  },
+  "nodes": 0,
+  "edges": 0,
+  "totals": {
+    "baseline_tokens": 86564,
+    "gcx_tokens": 83080,
+    "saved_tokens": 3484,
+    "saved_pct": 4.02,
+    "baseline_cost_usd": 0.42775,
+    "gcx_cost_usd": 0.92255,
+    "geomean_ratio": 1.17,
+    "geomean_quality_ratio": 1.0,
+    "avg_quality_baseline": 5.0,
+    "avg_quality_gcx": 5.0,
+    "valid_questions": 4,
+    "errored_questions": []
+  },
+  "questions": [
+    {
+      "q": "search_concept",
+      "question": "Where in this codebase is 'parse' handled? List the relevant files and symbols.",
+      "baseline": {
+        "input": 1292,
+        "output": 490,
+        "total": 1782,
+        "cache_read": 74518,
+        "cost": 0.1312,
+        "turns": 2,
+        "error": false,
+        "answer": "Repo stub only\u2014no source code present. `.mcp-gcx.json` and `.real-q.json` config only.\n\nNeed full source to search parse handlers. Options:\n\n1. **Clone Hono** from GitHub\n2. **Check alternate location** if repo exists elsewhere  \n3. **Architecture overview** of where parse typically lives in Hono (based on known structure)\n\nWhich do you prefer?"
+      },
+      "gcx": {
+        "input": 24547,
+        "output": 1184,
+        "total": 25731,
+        "cache_read": 137608,
+        "cost": 0.27467,
+        "turns": 5,
+        "error": false,
+        "answer": "Sparse checkout\u2014no source files available. Based on Hono architecture, parse handling concentrated in:\n\n| Symbol | File | Purpose |\n|--------|------|---------|\n| `parseQuery()` / `getQuery()` | `src/helper/query.ts` | URL search parameters |\n| `parseBody()` | `src/utils/body.ts` | Request body (JSON, form-data, raw) |\n| `parseCookie()` | `src/helper/cookie.ts` | HTTP cookies |\n| `parsePathParameters()` | `src/router/router.ts` | Route path params |\n| `JSONParse()` | `src/utils/json.ts` | Safe JSON parse |\n| `parseURL()` | `src/utils/url.ts` | URL normalization |\n| `HonoRequest` methods | `src/request.ts` | `.json()`, `.text()`, `.formData()` |\n| Router parsers | `src/router/{regex,trie}-router.ts` | Route pattern parsing |\n| Validators | `src/validator/` | Request validation/parsing |\n\nMain entry: body parsing happens in `src/utils/body.ts` + `src/request.ts` methods. Query/cookie parsing in dedicated helpers. Route parsing in router implementations.\n\nNeed actual source code? Fetch it with `git fetch` on sparse checkout or clone repo directly."
+      },
+      "token_ratio": 0.07,
+      "tokens_saved": -23949,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "tour_onboarding",
+      "question": "Give me a concise tour of this codebase: what are the main components and how do they fit together?",
+      "baseline": {
+        "input": 25836,
+        "output": 1809,
+        "total": 27645,
+        "cache_read": 235745,
+        "cost": 0.08423,
+        "turns": 9,
+        "error": false,
+        "answer": "Clarifying: this directory appears to be a **benchmark workspace** for testing GitCortex on the hono codebase, not the actual hono source. The `.real-q.json` contains benchmark questions, including the exact question you're asking now (\"tour_onboarding\").\n\nIs the hono codebase available elsewhere that you'd like me to analyze? Or do you want me to work with what's here in this benchmark environment?"
+      },
+      "gcx": {
+        "input": 24841,
+        "output": 1723,
+        "total": 26564,
+        "cache_read": 205595,
+        "cost": 0.19855,
+        "turns": 9,
+        "error": false,
+        "answer": "Repository appears empty or inaccessible. Can you verify:\n- File path correct?\n- Repository initialized with files?\n- Current git status (run `git status`)?\n\nOnce confirmed, I'll give you the tour."
+      },
+      "token_ratio": 1.04,
+      "tokens_saved": 1081,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "refactor_impact",
+      "question": "If I change 'execute', what breaks? List the direct callers and any important indirect callers.",
+      "baseline": {
+        "input": 25428,
+        "output": 1648,
+        "total": 27076,
+        "cache_read": 349329,
+        "cost": 0.09395,
+        "turns": 12,
+        "error": false,
+        "answer": "Directory empty \u2014 no source files. Need context on which `execute` function. Is it:\n\n1. In a different repo/path?\n2. A function you're planning to add?\n3. Reference from external library?\n\nWhich file/module contains it?"
+      },
+      "gcx": {
+        "input": 866,
+        "output": 197,
+        "total": 1063,
+        "cache_read": 33925,
+        "cost": 0.16417,
+        "turns": 1,
+        "error": false,
+        "answer": "Repo appears empty\u2014this is a benchmark directory, not actual source. Check if:\n\n1. Hono source elsewhere on disk?\n2. Different working directory has the code?\n3. Or want me to examine the `.real-q.json` benchmark file?\n\nPath to actual code, or which repo to search?"
+      },
+      "token_ratio": 25.47,
+      "tokens_saved": 26013,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "subgraph_around",
+      "question": "Show everything directly connected to 'Command' \u2014 what calls it, what it calls, what it uses.",
+      "baseline": {
+        "input": 27513,
+        "output": 2548,
+        "total": 30061,
+        "cache_read": 507209,
+        "cost": 0.11837,
+        "turns": 16,
+        "error": false,
+        "answer": "Repo appears empty. `.real-q.json` shows your question was part of benchmark comparing tools. `Command` subgraph query is listed.\n\nDirectory `/tmp/gcx-bench/work/hono` has no source files\u2014only `.git/objects`, `.mcp-gcx.json` (GitCortex config), and benchmark results.\n\nNeed clarification:\n- **Which codebase?** (URL, path, or GitHub repo?)\n- **What's `Command`?** (TypeScript interface, class, function name?)\n- Use GitCortex MCP if it's available?\n\nWithout source, can't trace connections."
+      },
+      "gcx": {
+        "input": 27690,
+        "output": 2032,
+        "total": 29722,
+        "cache_read": 279923,
+        "cost": 0.28516,
+        "turns": 10,
+        "error": false,
+        "answer": "Source files unavailable in sparse checkout. Need to fetch repo. Since I can't run git/shell commands directly, need your help to populate the repository:\n\n```bash\ncd /private/tmp/gcx-bench/work/hono\ngit init\ngit remote add origin https://github.com/honojs/hono.git\ngit fetch origin main\ngit checkout main\n```\n\nOr if you have `gcx` configured:\n```bash\ncd /private/tmp/gcx-bench/work/hono\ngcx init\n```\n\nOnce source files exist in the repo, I can map all Command connections instantly. Ready when you populate it."
+      },
+      "token_ratio": 1.01,
+      "tokens_saved": 339,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    }
+  ]
+}

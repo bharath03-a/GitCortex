@@ -1,0 +1,158 @@
+{
+  "repo": "cobra",
+  "url": "https://github.com/spf13/cobra",
+  "branch": "main",
+  "model": "claude-haiku-4-5-20251001",
+  "measured": "real_claude_usage",
+  "compact": 1,
+  "symbols": {
+    "type": "Command",
+    "fn": "execute",
+    "other": "run",
+    "concept": "parse"
+  },
+  "nodes": 0,
+  "edges": 0,
+  "totals": {
+    "baseline_tokens": 81201,
+    "gcx_tokens": 60440,
+    "saved_tokens": 20761,
+    "saved_pct": 25.57,
+    "baseline_cost_usd": 0.23389,
+    "gcx_cost_usd": 0.67635,
+    "geomean_ratio": 1.81,
+    "geomean_quality_ratio": 1.0,
+    "avg_quality_baseline": 5.0,
+    "avg_quality_gcx": 5.0,
+    "valid_questions": 3,
+    "errored_questions": [
+      "subgraph_around"
+    ]
+  },
+  "questions": [
+    {
+      "q": "search_concept",
+      "question": "Where in this codebase is 'parse' handled? List the relevant files and symbols.",
+      "baseline": {
+        "input": 26784,
+        "output": 1795,
+        "total": 28579,
+        "cache_read": 198814,
+        "cost": 0.08237,
+        "turns": 6,
+        "error": false,
+        "answer": "Benchmark harness only. No source code here\u2014just test cases in `.real-q.json`.\n\nThis directory tests code navigation tools against Cobra framework queries. Directory empty.\n\n**Need to know:** Where's actual source code?\n- Clone real Cobra? (`https://github.com/spf13/cobra`)\n- Different directory path?\n- Different project entirely?\n\nWhich do you want analyzed?"
+      },
+      "gcx": {
+        "input": 3500,
+        "output": 739,
+        "total": 4239,
+        "cache_read": 70960,
+        "cost": 0.28389,
+        "turns": 2,
+        "error": false,
+        "answer": "**Directory is benchmark harness only.** No actual Cobra source code present\u2014only test configuration and benchmark results.\n\nBenchmark test results show both agents correctly identified: **no source files exist in `/private/tmp/gcx-bench/work/cobra/`**.\n\n**To analyze 'parse' handling in Cobra, need one of:**\n\n1. **Clone actual Cobra repo:**\n   ```bash\n   git clone https://github.com/spf13/cobra.git\n   cd cobra\n   ```\n   Then I can search for parse handling.\n\n2. **Point to different directory** with actual source code already present.\n\n3. **Different project entirely**\u2014specify path/repo.\n\nWhich would you prefer?"
+      },
+      "token_ratio": 6.74,
+      "tokens_saved": 24340,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "tour_onboarding",
+      "question": "Give me a concise tour of this codebase: what are the main components and how do they fit together?",
+      "baseline": {
+        "input": 25809,
+        "output": 999,
+        "total": 26808,
+        "cache_read": 159073,
+        "cost": 0.07248,
+        "turns": 5,
+        "error": false,
+        "answer": "**Benchmark harness, not source code.**\n\nDirectory `/private/tmp/gcx-bench/work/cobra` is test rig for code navigation tools. Contains:\n\n- `.real-q.json` \u2014 Test cases (4 questions) + baseline vs. GCX performance metrics\n  - `search_concept` \u2014 Find 'parse' handling \n  - `tour_onboarding` \u2014 Codebase overview (your question)\n  - `refactor_impact` \u2014 Trace 'execute' call graph\n  - `subgraph_around` \u2014 Map 'Command' connections\n\n- `.gitcortex/config.toml` \u2014 GitCortex MCP config\n- `.mcp-gcx.json` \u2014 GCX tool config\n\n**No Cobra source code present.** Tests reference spf13/cobra framework but repo is empty.\n\nWant me to:\n1. Clone actual Cobra repo and analyze it?\n2. Point you to real codebase?\n3. Something else?"
+      },
+      "gcx": {
+        "input": 27128,
+        "output": 1983,
+        "total": 29111,
+        "cache_read": 178754,
+        "cost": 0.18463,
+        "turns": 9,
+        "error": false,
+        "answer": "Repository empty at both paths. Check git log to see if files exist upstream:\n\n```bash\ncd /private/tmp/gcx-bench/work/cobra && git log --oneline -5 && ls -la\n```\n\nWhat's the actual state? Does project exist on a branch we need to check out? Or need different path?"
+      },
+      "token_ratio": 0.92,
+      "tokens_saved": -2303,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "refactor_impact",
+      "question": "If I change 'execute', what breaks? List the direct callers and any important indirect callers.",
+      "baseline": {
+        "input": 24472,
+        "output": 1342,
+        "total": 25814,
+        "cache_read": 234391,
+        "cost": 0.07904,
+        "turns": 7,
+        "error": false,
+        "answer": "No source files found. Directory has only git config + JSON metadata. \n\nNeed clarification: Which `execute` function? Link to file/line, or describe which package/type it belongs to?"
+      },
+      "gcx": {
+        "input": 25750,
+        "output": 1340,
+        "total": 27090,
+        "cache_read": 73425,
+        "cost": 0.20783,
+        "turns": 3,
+        "error": false,
+        "answer": "Benchmark results show this directory is **empty** \u2014 just config files for testing code navigation tools. Both baseline and GCX agents confirmed no actual source code exists here.\n\nBut I found the benchmark test case you're asking about. For the **actual Cobra framework**, here's what breaks if you change `execute`:\n\n## Direct Callers of `Command.Execute()`\n\n- **User CLI entry point** \u2014 `main()` calls `rootCmd.Execute()`\n- **Testing frameworks** \u2014 Test code calls `cmd.Execute()` to run commands\n\n## Important Indirect Dependencies\n\n| Component | Impact |\n|-----------|--------|\n| `Command.Run` / `RunE` fields | User-defined handlers that execute when `Execute()` dispatches |\n| `PersistentPreRun` / `PreRun` hooks | Callbacks that run before `Execute()` proceeds |\n| `PostRun` / `PersistentPostRun` hooks | Cleanup callbacks after execution |\n| `Command.Args` validator | Validation runs during `Execute()` |\n| Child command dispatch | `Execute()` delegates to subcommands |\n| Flag parsing | `Execute()` parses flags before running |\n\n**Critical path:** User calls `Execute()` \u2192 flags parsed \u2192 `PreRun` hooks \u2192 `Run`/`RunE` callback \u2192 `PostRun` hooks \u2192 child commands if any.\n\n---\n\n**Clarify for accurate answer:** Do you have actual source code at a different path, or are you analyzing the public Cobra repo? Current directory has no code to search."
+      },
+      "token_ratio": 0.95,
+      "tokens_saved": -1276,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "subgraph_around",
+      "question": "Show everything directly connected to 'Command' \u2014 what calls it, what it calls, what it uses.",
+      "baseline": {
+        "input": 24685,
+        "output": 1376,
+        "total": 26061,
+        "cache_read": 273207,
+        "cost": 0.0835,
+        "turns": 9,
+        "error": false,
+        "answer": "Repo empty. No source files found in `/private/tmp/gcx-bench/work/cobra`.\n\nNeed clarity:\n- **What is 'Command'?** Struct? Type? Cobra CLI framework? Something else?\n- **Which repo/project?** Should I look elsewhere?\n\nProvide context or file path to analyze."
+      },
+      "gcx": {
+        "input": 0,
+        "output": 0,
+        "total": 0,
+        "cache_read": 0,
+        "cost": 0,
+        "turns": 1,
+        "error": true,
+        "answer": "You've hit your session limit \u00b7 resets 3am (America/Phoenix)"
+      },
+      "token_ratio": 0,
+      "tokens_saved": 26061,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    }
+  ]
+}
