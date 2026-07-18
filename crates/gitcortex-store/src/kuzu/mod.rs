@@ -12,7 +12,7 @@ use gitcortex_core::{
         TypeHierarchy,
     },
 };
-use kuzu::{Connection, Database, SystemConfig};
+use kuzu::{Connection, Database, SystemConfig, Value};
 
 use crate::{branch, schema as db_schema};
 
@@ -154,23 +154,67 @@ fn resolve_deferred_batch(
     }
     for (scope_clause, group) in &by_scope {
         for chunk in group.chunks(DEFERRED_CHUNK) {
-            let list = chunk
-                .iter()
-                .map(|(src, tgt)| format!("{{s:'{}',t:'{}'}}", esc(src), esc(tgt)))
-                .collect::<Vec<_>>()
-                .join(",");
             let kind_and = if kind_filter.is_empty() {
                 String::new()
             } else {
                 format!(" AND ({kind_filter})")
             };
-            conn.query(&format!(
-                "UNWIND [{list}] AS r \
-                 MATCH (src:{nt} {{id: r.s}}), (tgt:{nt}) \
-                 WHERE tgt.name = r.t{kind_and}{scope_clause} \
-                 CREATE (src)-[:{et} {{kind: '{edge_kind}', line: -1, confidence: 'inferred'}}]->(tgt)"
-            ))
-            .map_err(|e| GitCortexError::Store(format!("batch deferred {edge_kind}: {e}")))?;
+
+            // Pass 1: find which (src, tgt_name) pairs have an Imports edge
+            // backing in the DB → those become Resolved.
+            let pair_list = chunk
+                .iter()
+                .map(|(src, tgt)| format!("{{s:'{}',t:'{}'}}", esc(src), esc(tgt)))
+                .collect::<Vec<_>>()
+                .join(",");
+            let mut qr = conn
+                .query(&format!(
+                    "UNWIND [{pair_list}] AS r \
+                     MATCH (src:{nt} {{id: r.s}}), (imp:{nt})-[:{et} {{kind:'imports'}}]->(tgt:{nt}) \
+                     WHERE tgt.name = r.t AND imp.file = src.file \
+                     RETURN DISTINCT r.s AS s, r.t AS t"
+                ))
+                .map_err(|e| GitCortexError::Store(format!("find import-verified {edge_kind}: {e}")))?;
+            let mut verified: HashSet<(String, String)> = HashSet::new();
+            for row in qr.by_ref() {
+                if let (Value::String(s), Value::String(t)) = (&row[0], &row[1]) {
+                    verified.insert((s.clone(), t.clone()));
+                }
+            }
+
+            // Pass 2a: create Resolved edges for import-verified pairs.
+            let resolved_list = chunk
+                .iter()
+                .filter(|(s, t)| verified.contains(&(s.clone(), t.clone())))
+                .map(|(src, tgt)| format!("{{s:'{}',t:'{}'}}", esc(src), esc(tgt)))
+                .collect::<Vec<_>>()
+                .join(",");
+            if !resolved_list.is_empty() {
+                conn.query(&format!(
+                    "UNWIND [{resolved_list}] AS r \
+                     MATCH (src:{nt} {{id: r.s}}), (tgt:{nt}) \
+                     WHERE tgt.name = r.t{kind_and}{scope_clause} \
+                     CREATE (src)-[:{et} {{kind: '{edge_kind}', line: -1, confidence: 'resolved'}}]->(tgt)"
+                ))
+                .map_err(|e| GitCortexError::Store(format!("batch resolved {edge_kind}: {e}")))?;
+            }
+
+            // Pass 2b: create Inferred edges for the remaining pairs.
+            let inferred_list = chunk
+                .iter()
+                .filter(|(s, t)| !verified.contains(&(s.clone(), t.clone())))
+                .map(|(src, tgt)| format!("{{s:'{}',t:'{}'}}", esc(src), esc(tgt)))
+                .collect::<Vec<_>>()
+                .join(",");
+            if !inferred_list.is_empty() {
+                conn.query(&format!(
+                    "UNWIND [{inferred_list}] AS r \
+                     MATCH (src:{nt} {{id: r.s}}), (tgt:{nt}) \
+                     WHERE tgt.name = r.t{kind_and}{scope_clause} \
+                     CREATE (src)-[:{et} {{kind: '{edge_kind}', line: -1, confidence: 'inferred'}}]->(tgt)"
+                ))
+                .map_err(|e| GitCortexError::Store(format!("batch inferred {edge_kind}: {e}")))?;
+            }
         }
     }
     Ok(())
@@ -178,6 +222,11 @@ fn resolve_deferred_batch(
 
 /// Like [`resolve_deferred_batch`] but for `Calls` edges, carrying each call's
 /// source line onto the created edge. Tuples are `(caller_id, callee_name, line)`.
+///
+/// Uses a two-pass strategy per chunk: first query joins through existing
+/// `Imports` edges to find import-verified pairs (→ `Resolved`); second query
+/// handles the remainder with a plain name-match (→ `Inferred`). This avoids
+/// duplicate edges without requiring `NOT EXISTS` subquery support.
 fn resolve_calls_batch(
     conn: &Connection,
     nt: &str,
@@ -202,20 +251,64 @@ fn resolve_calls_batch(
     }
     for (scope_clause, group) in &by_scope {
         for chunk in group.chunks(DEFERRED_CHUNK) {
-            let list = chunk
+            // Pass 1: discover which (src, tgt_name) pairs are import-verified.
+            let pair_list = chunk
                 .iter()
+                .map(|(src, tgt, _)| format!("{{s:'{}',t:'{}'}}", esc(src), esc(tgt)))
+                .collect::<Vec<_>>()
+                .join(",");
+            let mut qr = conn
+                .query(&format!(
+                    "UNWIND [{pair_list}] AS r \
+                     MATCH (src:{nt} {{id: r.s}}), (imp:{nt})-[:{et} {{kind:'imports'}}]->(tgt:{nt}) \
+                     WHERE tgt.name = r.t AND imp.file = src.file \
+                     RETURN DISTINCT r.s AS s, r.t AS t"
+                ))
+                .map_err(|e| GitCortexError::Store(format!("find import-verified calls: {e}")))?;
+            let mut verified: HashSet<(String, String)> = HashSet::new();
+            for row in qr.by_ref() {
+                if let (Value::String(s), Value::String(t)) = (&row[0], &row[1]) {
+                    verified.insert((s.clone(), t.clone()));
+                }
+            }
+
+            // Pass 2a: Resolved edges for import-verified call pairs.
+            let resolved_list = chunk
+                .iter()
+                .filter(|(s, t, _)| verified.contains(&(s.clone(), t.clone())))
                 .map(|(src, tgt, line)| {
                     format!("{{s:'{}',t:'{}',ln:{}}}", esc(src), esc(tgt), line)
                 })
                 .collect::<Vec<_>>()
                 .join(",");
-            conn.query(&format!(
-                "UNWIND [{list}] AS r \
-                 MATCH (src:{nt} {{id: r.s}}), (tgt:{nt}) \
-                 WHERE tgt.name = r.t AND (tgt.kind = 'function' OR tgt.kind = 'method'){scope_clause} \
-                 CREATE (src)-[:{et} {{kind: 'calls', line: r.ln, confidence: 'inferred'}}]->(tgt)"
-            ))
-            .map_err(|e| GitCortexError::Store(format!("batch deferred calls: {e}")))?;
+            if !resolved_list.is_empty() {
+                conn.query(&format!(
+                    "UNWIND [{resolved_list}] AS r \
+                     MATCH (src:{nt} {{id: r.s}}), (tgt:{nt}) \
+                     WHERE tgt.name = r.t AND (tgt.kind = 'function' OR tgt.kind = 'method'){scope_clause} \
+                     CREATE (src)-[:{et} {{kind: 'calls', line: r.ln, confidence: 'resolved'}}]->(tgt)"
+                ))
+                .map_err(|e| GitCortexError::Store(format!("batch resolved calls: {e}")))?;
+            }
+
+            // Pass 2b: Inferred edges for the remaining call pairs.
+            let inferred_list = chunk
+                .iter()
+                .filter(|(s, t, _)| !verified.contains(&(s.clone(), t.clone())))
+                .map(|(src, tgt, line)| {
+                    format!("{{s:'{}',t:'{}',ln:{}}}", esc(src), esc(tgt), line)
+                })
+                .collect::<Vec<_>>()
+                .join(",");
+            if !inferred_list.is_empty() {
+                conn.query(&format!(
+                    "UNWIND [{inferred_list}] AS r \
+                     MATCH (src:{nt} {{id: r.s}}), (tgt:{nt}) \
+                     WHERE tgt.name = r.t AND (tgt.kind = 'function' OR tgt.kind = 'method'){scope_clause} \
+                     CREATE (src)-[:{et} {{kind: 'calls', line: r.ln, confidence: 'inferred'}}]->(tgt)"
+                ))
+                .map_err(|e| GitCortexError::Store(format!("batch inferred calls: {e}")))?;
+            }
         }
     }
     Ok(())

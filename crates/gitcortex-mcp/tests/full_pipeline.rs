@@ -611,19 +611,20 @@ fn tour_seeded_has_no_components() {
 }
 
 #[test]
-fn edge_confidence_inferred_cross_file_extracted_structural() {
+fn edge_confidence_cross_file_resolved_extracted_structural() {
     use gitcortex_core::schema::EdgeConfidence;
-    // Cross-file run()/run_with_branch() -> compute_value() resolve by name
-    // across files => Inferred. Structural Contains edges are always direct
-    // => Extracted.
+    // xfile_caller.rs has `use crate::xfile_callee::compute_value` — an
+    // explicit import — so cross-file Calls edges for compute_value() are
+    // promoted to Resolved (import-verified). Structural Contains edges are
+    // always directly observed in-file => Extracted.
     let (_, edges, _store) =
         run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs", "sample.rs"]);
     let calls: Vec<_> = edges.iter().filter(|e| e.kind == EdgeKind::Calls).collect();
     assert!(
         calls
             .iter()
-            .any(|e| e.confidence == EdgeConfidence::Inferred),
-        "expected at least one Inferred (cross-file) calls edge"
+            .any(|e| e.confidence == EdgeConfidence::Resolved),
+        "expected at least one Resolved (import-verified cross-file) calls edge"
     );
     let contains: Vec<_> = edges
         .iter()

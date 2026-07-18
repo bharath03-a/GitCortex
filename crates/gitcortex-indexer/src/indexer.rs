@@ -144,6 +144,20 @@ impl IncrementalIndexer {
             .map(|n| (&n.id, n.file.as_path()))
             .collect();
 
+        // File-level imported-names index: file_path → set of leaf names that
+        // are explicitly imported in that file. Used by `resolve_calls` and
+        // `resolve_deferred` to upgrade confidence from `Inferred` to `Resolved`
+        // when the callee/target was explicitly imported at the call site.
+        let imported_by_file: HashMap<&Path, HashSet<&str>> = {
+            let mut map: HashMap<&Path, HashSet<&str>> = HashMap::new();
+            for (mod_id, leaf_name) in &all_imports {
+                if let Some(&file) = id_to_file.get(mod_id) {
+                    map.entry(file).or_default().insert(leaf_name.as_str());
+                }
+            }
+            map
+        };
+
         // Edge dedup set, seeded from the direct edges the parsers already
         // emitted. `resolve_deferred` consults this instead of scanning the
         // `added_edges` Vec — the old `Vec::contains` made resolution O(E²)
@@ -157,6 +171,7 @@ impl IncrementalIndexer {
         merged.deferred_calls = resolve_calls(
             &name_to_ids,
             &id_to_file,
+            &imported_by_file,
             &all_calls,
             &mut merged.added_edges,
             &mut seen_edges,
@@ -164,6 +179,7 @@ impl IncrementalIndexer {
         merged.deferred_uses = resolve_deferred(
             &name_to_ids,
             &id_to_file,
+            &imported_by_file,
             &all_uses,
             EdgeKind::Uses,
             &mut merged.added_edges,
@@ -172,6 +188,7 @@ impl IncrementalIndexer {
         merged.deferred_implements = resolve_deferred(
             &name_to_ids,
             &id_to_file,
+            &imported_by_file,
             &all_implements,
             EdgeKind::Implements,
             &mut merged.added_edges,
@@ -182,6 +199,7 @@ impl IncrementalIndexer {
         let _ = resolve_deferred(
             &name_to_ids,
             &id_to_file,
+            &imported_by_file,
             &all_imports,
             EdgeKind::Imports,
             &mut merged.added_edges,
@@ -190,6 +208,7 @@ impl IncrementalIndexer {
         merged.deferred_inherits = resolve_deferred(
             &name_to_ids,
             &id_to_file,
+            &imported_by_file,
             &all_inherits,
             EdgeKind::Inherits,
             &mut merged.added_edges,
@@ -198,6 +217,7 @@ impl IncrementalIndexer {
         merged.deferred_throws = resolve_deferred(
             &name_to_ids,
             &id_to_file,
+            &imported_by_file,
             &all_throws,
             EdgeKind::Throws,
             &mut merged.added_edges,
@@ -206,6 +226,7 @@ impl IncrementalIndexer {
         merged.deferred_annotated = resolve_deferred(
             &name_to_ids,
             &id_to_file,
+            &imported_by_file,
             &all_annotated,
             EdgeKind::Annotated,
             &mut merged.added_edges,
@@ -218,6 +239,7 @@ impl IncrementalIndexer {
         merged.deferred_doc_refs = resolve_deferred(
             &name_to_ids,
             &id_to_file,
+            &imported_by_file,
             &all_doc_refs,
             EdgeKind::References,
             &mut merged.added_edges,
@@ -380,6 +402,7 @@ const MAX_RESOLVE_FANOUT: usize = 8;
 fn resolve_deferred(
     name_to_ids: &HashMap<&str, Vec<&NodeId>>,
     id_to_file: &HashMap<&NodeId, &Path>,
+    imported_by_file: &HashMap<&Path, HashSet<&str>>,
     deferred: &[(NodeId, String)],
     kind: EdgeKind,
     edges: &mut Vec<Edge>,
@@ -387,9 +410,8 @@ fn resolve_deferred(
 ) -> Vec<(NodeId, String)> {
     let mut unresolved = Vec::new();
     for (src_id, target_name) in deferred {
-        let src_exts = id_to_file
-            .get(src_id)
-            .and_then(|p| language_extensions_for_path(p));
+        let src_file = id_to_file.get(src_id).copied();
+        let src_exts = src_file.and_then(language_extensions_for_path);
 
         let Some(dst_ids) = name_to_ids.get(target_name.as_str()) else {
             unresolved.push((src_id.clone(), target_name.clone()));
@@ -414,16 +436,26 @@ fn resolve_deferred(
             continue;
         }
 
+        // Promote to Resolved when the target was explicitly imported in this file.
+        let confidence = src_file
+            .and_then(|f| imported_by_file.get(f))
+            .map(|imports| {
+                if imports.contains(target_name.as_str()) {
+                    EdgeConfidence::Resolved
+                } else {
+                    EdgeConfidence::Inferred
+                }
+            })
+            .unwrap_or(EdgeConfidence::Inferred);
+
         let mut matched_any = false;
         for dst_id in candidates {
             matched_any = true;
             let key = (src_id.as_str(), dst_id.as_str(), kind.to_string());
             if seen.insert(key) {
-                // Cross-file name resolution — lower confidence than a direct
-                // same-file edge.
                 edges.push(
                     Edge::new(src_id.clone(), dst_id.clone(), kind.clone())
-                        .with_confidence(EdgeConfidence::Inferred),
+                        .with_confidence(confidence),
                 );
             }
         }
@@ -441,15 +473,15 @@ fn resolve_deferred(
 fn resolve_calls(
     name_to_ids: &HashMap<&str, Vec<&NodeId>>,
     id_to_file: &HashMap<&NodeId, &Path>,
+    imported_by_file: &HashMap<&Path, HashSet<&str>>,
     deferred: &[(NodeId, String, u32)],
     edges: &mut Vec<Edge>,
     seen: &mut HashSet<(String, String, String)>,
 ) -> Vec<(NodeId, String, u32)> {
     let mut unresolved = Vec::new();
     for (src_id, target_name, line) in deferred {
-        let src_exts = id_to_file
-            .get(src_id)
-            .and_then(|p| language_extensions_for_path(p));
+        let src_file = id_to_file.get(src_id).copied();
+        let src_exts = src_file.and_then(language_extensions_for_path);
 
         let Some(dst_ids) = name_to_ids.get(target_name.as_str()) else {
             unresolved.push((src_id.clone(), target_name.clone(), *line));
@@ -471,6 +503,18 @@ fn resolve_calls(
             continue;
         }
 
+        // Promote to Resolved when the callee was explicitly imported in this file.
+        let confidence = src_file
+            .and_then(|f| imported_by_file.get(f))
+            .map(|imports| {
+                if imports.contains(target_name.as_str()) {
+                    EdgeConfidence::Resolved
+                } else {
+                    EdgeConfidence::Inferred
+                }
+            })
+            .unwrap_or(EdgeConfidence::Inferred);
+
         let mut matched_any = false;
         for dst_id in candidates {
             matched_any = true;
@@ -481,8 +525,7 @@ fn resolve_calls(
             );
             if seen.insert(key) {
                 edges.push(
-                    Edge::call(src_id.clone(), dst_id.clone(), *line)
-                        .with_confidence(EdgeConfidence::Inferred),
+                    Edge::call(src_id.clone(), dst_id.clone(), *line).with_confidence(confidence),
                 );
             }
         }
