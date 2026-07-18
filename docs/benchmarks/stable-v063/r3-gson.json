@@ -1,0 +1,156 @@
+{
+  "repo": "gson",
+  "url": "https://github.com/google/gson",
+  "branch": "main",
+  "model": "claude-haiku-4-5-20251001",
+  "measured": "real_claude_usage",
+  "compact": 1,
+  "symbols": {
+    "type": "Command",
+    "fn": "execute",
+    "other": "run",
+    "concept": "parse"
+  },
+  "nodes": 0,
+  "edges": 0,
+  "totals": {
+    "baseline_tokens": 130431,
+    "gcx_tokens": 85162,
+    "saved_tokens": 45269,
+    "saved_pct": 34.71,
+    "baseline_cost_usd": 0.45989,
+    "gcx_cost_usd": 2.41811,
+    "geomean_ratio": 2.19,
+    "geomean_quality_ratio": 1.0,
+    "avg_quality_baseline": 5.0,
+    "avg_quality_gcx": 5.0,
+    "valid_questions": 4,
+    "errored_questions": []
+  },
+  "questions": [
+    {
+      "q": "search_concept",
+      "question": "Where in this codebase is 'parse' handled? List the relevant files and symbols.",
+      "baseline": {
+        "input": 39530,
+        "output": 1621,
+        "total": 41151,
+        "cache_read": 344161,
+        "cost": 0.1215,
+        "turns": 10,
+        "error": false,
+        "answer": "This directory contains minimal files. The GSON source code doesn't appear to be here. Let me check if you're looking at a specific GSON version or if this is meant to be something else:\n\n**Files in current directory:**\n- `.gitcortex/config.toml` \u2014 GitCortex config\n- `.mcp-gcx.json` \u2014 MCP server configuration  \n- `.real-q.json` \u2014 Benchmark metadata\n- `gson/src/` (empty)\n- `metrics/` (directory)\n\n**Question:** Are you looking for:\n1. **Standard GSON library** (Google's JSON parser)? Source is typically in `/src/main/java/com/google/gson/`\n2. **A specific GSON parse method** in this benchmark?\n3. **ParseException or related classes** in GSON?\n\nIf you have a full GSON checkout you'd like analyzed, point me to the directory and I'll map out parse-related classes like:\n- `JsonParser` \u2014 main entry point\n- `JsonReader` \u2014 streaming parser\n- `Gson.fromJson()` \u2014 high-level API\n- `stream/JsonReader` \u2014 low-level parsing\n\nWhat's your actual target?"
+      },
+      "gcx": {
+        "input": 2014,
+        "output": 198,
+        "total": 2212,
+        "cache_read": 36532,
+        "cost": 1.45831,
+        "turns": 1,
+        "error": false,
+        "answer": "Confirmed: **benchmark harness with zero source code**. \n\nYour question (\"Where is 'parse' handled?\") is query #1 in `.real-q.json`. Directory structure is scaffolded (Maven layout) but all source dirs empty. Benchmark ran but hit session limits.\n\n**To actually analyze parse handling, need to populate:**\n- `gson/src/main/java/com/google/gson/*.java`\n\nBudget nearly exhausted. What's next?"
+      },
+      "token_ratio": 18.6,
+      "tokens_saved": 38939,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "tour_onboarding",
+      "question": "Give me a concise tour of this codebase: what are the main components and how do they fit together?",
+      "baseline": {
+        "input": 27591,
+        "output": 2583,
+        "total": 30174,
+        "cache_read": 511224,
+        "cost": 0.11911,
+        "turns": 14,
+        "error": false,
+        "answer": "No source files present \u2014 this is benchmark scaffolding, not a complete codebase.\n\n**Structure:**\n- `gson/` \u2014 Package structure for Google's GSON (Java JSON serialization library) but source files stripped\n- `metrics/` \u2014 Similar empty project structure  \n- `.real-q.json` \u2014 Benchmark test suite comparing code analysis approaches (\"baseline\" vs \"gcx\")\n- `.gitcortex/config.toml` \u2014 GitCortex indexer config (supports Rust, Go, Python, TypeScript, Java)\n- `.mcp-gcx.json` \u2014 MCP server config for GitCortex\n\n**Purpose:** This appears to be a test harness for benchmarking code comprehension tools (likely GitCortex) on questions like \"where is 'parse' handled?\" and \"show dependency graph around 'Command'\". The actual Java source code has been removed, leaving only package structure.\n\nIf you need actual source code analysis, you'd need the populated GSON repository or point this to a different project with source files."
+      },
+      "gcx": {
+        "input": 25082,
+        "output": 1709,
+        "total": 26791,
+        "cache_read": 174027,
+        "cost": 0.17541,
+        "turns": 9,
+        "error": false,
+        "answer": "Directory `/private/tmp/gcx-bench/work/gson` exists but appears empty \u2014 no pom.xml, README, or build files found. \n\nCan you verify:\n1. Is this the correct path?\n2. Has the GSON source been cloned/extracted there?\n3. What's actually in the directory?\n\nOnce I can access the files, I'll provide the architecture tour. Alternatively, if you know what's there (e.g., \"Java Maven project\", \"contains src/main/java/com/google/gson/\"), I can describe GSON's architecture from first principles."
+      },
+      "token_ratio": 1.13,
+      "tokens_saved": 3383,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "refactor_impact",
+      "question": "If I change 'execute', what breaks? List the direct callers and any important indirect callers.",
+      "baseline": {
+        "input": 28053,
+        "output": 2794,
+        "total": 30847,
+        "cache_read": 549951,
+        "cost": 0.12495,
+        "turns": 15,
+        "error": false,
+        "answer": "Source files missing from workspace. .real-q.json is benchmark test, not actual code.\n\nNeed: where's actual GSON source? Is this:\n- Local codebase I should index?\n- Remote repo (link)?\n- Hypothetical refactor analysis?\n\nGive me location & I'll find all execute callers."
+      },
+      "gcx": {
+        "input": 27058,
+        "output": 1650,
+        "total": 28708,
+        "cache_read": 277515,
+        "cost": 0.45292,
+        "turns": 9,
+        "error": false,
+        "answer": "No source code in workspace. Gson directories exist but `.java` files missing.\n\nCan't analyze without source. Need either:\n1. **Actual Gson repo cloned** from github.com/google/gson\n2. **Java files populated** into `/tmp/gcx-bench/work/gson/gson/src/main/java/`\n\nSetup appears to be benchmark infrastructure only\u2014directory structure present, files empty.\n\nWant me to:\n- Clone Gson source and analyze `execute` callers?\n- Or check if source exists in different path?"
+      },
+      "token_ratio": 1.07,
+      "tokens_saved": 2139,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "subgraph_around",
+      "question": "Show everything directly connected to 'Command' \u2014 what calls it, what it calls, what it uses.",
+      "baseline": {
+        "input": 26187,
+        "output": 2072,
+        "total": 28259,
+        "cache_read": 316717,
+        "cost": 0.09433,
+        "turns": 9,
+        "error": false,
+        "answer": "No source code in these directories\u2014only benchmark metadata. Found `.real-q.json` with test queries including this exact question.\n\n`Command` might be:\n1. A class in the actual GSON library (not present here)\n2. An abstraction from a different codebase being benchmarked\n3. A test case query name\n\n**Need clarity:** Is there actual source code to analyze, or you want me to explain what this benchmark query should return? Or should I search the real GSON repo online?"
+      },
+      "gcx": {
+        "input": 25711,
+        "output": 1740,
+        "total": 27451,
+        "cache_read": 176201,
+        "cost": 0.33147,
+        "turns": 6,
+        "error": false,
+        "answer": "```\nls -la /private/tmp/gcx-bench/work/gson/\n```\n\nActually, the Gson source code isn't populated here. This is a **benchmark/test setup** for code comprehension evaluation.\n\n**Current state:**\n- \u2717 Gson source files missing (empty directories)\n- \u2713 Benchmark infrastructure present (`.real-q.json` with test queries)\n- \u2713 GitCortex MCP configured but no indexed code\n\n**Your query** (\"Show everything directly connected to 'Command'\") is one of the benchmark test questions.\n\n**To proceed, you'd need either:**\n\n1. **Populate actual Gson source** \u2014 clone https://github.com/google/gson into the source directories\n2. **Use GitCortex MCP** \u2014 if the server is running and has indexed Gson code\n3. **Tell me the intent** \u2014 are you testing code comprehension tooling, or need actual analysis of Gson's Command class?\n\nWhat should I do?"
+      },
+      "token_ratio": 1.03,
+      "tokens_saved": 808,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    }
+  ]
+}

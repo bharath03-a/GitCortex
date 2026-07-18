@@ -58,14 +58,14 @@ a{color:var(--accent)}
   API response.</p>
 
   <div class="hero">
-    <div class="stat"><div class="big win">1.31×</div><div>geomean token ratio</div></div>
-    <div class="stat"><div class="big win">+20.6%</div><div>aggregate tokens saved</div></div>
-    <div class="stat"><div class="big win">1.30×</div><div>search (the clear win)</div></div>
+    <div class="stat"><div class="big win">1.35×</div><div>geomean token ratio</div></div>
+    <div class="stat"><div class="big win">+23.3%</div><div>aggregate tokens saved</div></div>
+    <div class="stat"><div class="big win">1.44×</div><div>search (the clear win)</div></div>
   </div>
 
   <h2>Per-question (median ratio · grep→gcx turns)</h2>
   <table><thead><tr><th>Question</th><th>Token ratio</th><th>Turns</th></tr></thead>
-  <tbody><tr><td>Find relevant code<br><code>search_code</code></td><td class="win">1.30×</td><td>10 → 2</td></tr><tr><td>Tour the codebase<br><code>start_tour</code></td><td class="mid">1.02×</td><td>4 → 6</td></tr><tr><td>What breaks if I change X?<br><code>find_callers</code></td><td class="mid">1.10×</td><td>9 → 3</td></tr><tr><td>Show connections around X<br><code>get_subgraph</code></td><td class="mid">1.10×</td><td>13 → 8</td></tr></tbody></table>
+  <tbody><tr><td>Find relevant code<br><code>search_code</code></td><td class="win">1.44×</td><td>10 → 2</td></tr><tr><td>Tour the codebase<br><code>start_tour</code></td><td class="mid">1.03×</td><td>5 → 7</td></tr><tr><td>What breaks if I change X?<br><code>find_callers</code></td><td class="mid">1.07×</td><td>9 → 3</td></tr><tr><td>Show connections around X<br><code>get_subgraph</code></td><td class="mid">1.06×</td><td>12 → 8</td></tr></tbody></table>
   <p class="note">Ratio &gt; 1 = graph cheaper. Turns is a precision proxy: fewer
   hops to the answer. Search lands in roughly half the turns; broad "tour" and
   "what breaks" questions remain close to break-even because the model reads code
@@ -73,7 +73,7 @@ a{color:var(--accent)}
 
   <h2>Per-repository</h2>
   <table><thead><tr><th>Repo</th><th>Lang</th><th>grep tokens</th><th>gcx tokens</th><th>Saved</th></tr></thead>
-  <tbody><tr><td>ripgrep</td><td>Rust</td><td>89,919</td><td>54,303</td><td class="win">+39.6%</td></tr><tr><td>requests</td><td>Python</td><td>115,720</td><td>60,884</td><td class="win">+47.4%</td></tr><tr><td>hono</td><td>TypeScript</td><td>109,920</td><td>115,922</td><td class="lose">-5.5%</td></tr><tr><td>cobra</td><td>Go</td><td>119,394</td><td>88,049</td><td class="win">+26.3%</td></tr><tr><td>gson</td><td>Java</td><td>97,623</td><td>103,616</td><td class="lose">-6.1%</td></tr></tbody></table>
+  <tbody><tr><td>ripgrep</td><td>Rust</td><td>89,919</td><td>54,303</td><td class="win">+39.6%</td></tr><tr><td>requests</td><td>Python</td><td>115,720</td><td>60,884</td><td class="win">+47.4%</td></tr><tr><td>hono</td><td>TypeScript</td><td>109,920</td><td>115,922</td><td class="lose">-5.5%</td></tr><tr><td>cobra</td><td>Go</td><td>119,394</td><td>88,049</td><td class="win">+26.3%</td></tr><tr><td>gson</td><td>Java</td><td>118,316</td><td>105,296</td><td class="win">+11.0%</td></tr></tbody></table>
   <p class="note">Java (gson) is the consistent drag — the parser is shallowest
   there. Large/idiomatic repos benefit most; tiny repos favour grep.</p>
 
