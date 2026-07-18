@@ -20,6 +20,7 @@ use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SearchHit {
+    pub id: String,
     pub name: String,
     pub qualified_name: String,
     pub kind: String,
@@ -204,6 +205,7 @@ fn kind_boost(k: &NodeKind) -> i32 {
 
 fn to_hit(n: Node, score: i32) -> SearchHit {
     SearchHit {
+        id: n.id.as_str().to_owned(),
         name: n.name,
         qualified_name: n.qualified_name,
         kind: n.kind.to_string(),
@@ -337,6 +339,7 @@ mod tests {
 
     fn hit(name: &str, file: &str, score: i32) -> SearchHit {
         SearchHit {
+            id: String::new(),
             name: name.to_owned(),
             qualified_name: name.to_owned(),
             kind: "Function".to_owned(),

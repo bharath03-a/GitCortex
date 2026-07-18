@@ -1481,54 +1481,51 @@ impl GitCortexServer {
             None
         };
 
-        // ── Merge: resolve semantic IDs to full nodes, deduplicate by node ID ─
-        // Dedup by node ID (not name) so same-named symbols in different modules
-        // are both surfaced. Score scales cosine [0.50‥1.0] → [40‥70] so a
-        // strong semantic hit ranks near prefix (+60) while weak ones stay below
-        // token matches (+30).
-        let mut all_hits = text_hits;
-        let text_ids: std::collections::HashSet<String> = {
-            // text hits don't carry node IDs; dedup by qualified_name as proxy
-            all_hits.iter().map(|h| h.qualified_name.clone()).collect()
-        };
-
-        if let Some(scored_ids) = sem_hits {
-            if !scored_ids.is_empty() {
-                let ids: Vec<String> = scored_ids.iter().map(|(id, _)| id.clone()).collect();
-                let sim_map: std::collections::HashMap<String, f32> =
-                    scored_ids.into_iter().collect();
+        // ── RRF Merge ─────────────────────────────────────────────────────────
+        // Fuse lexical + semantic via Reciprocal Rank Fusion (k=60) when semantic
+        // is available. Falls back to lexical-only when semantic unavailable.
+        let limit = p.limit.unwrap_or(10).min(200);
+        let mut all_hits: Vec<super::search::SearchHit> =
+            if let Some(scored_ids) = sem_hits.filter(|v| !v.is_empty()) {
+                let rrf_ids = super::hybrid::rrf_merge(&text_hits, &scored_ids, limit * 3);
                 let store = match self.store.lock() {
                     Ok(g) => g,
                     Err(_) => {
                         return CallToolResult::error(vec![Content::text("store mutex poisoned")])
                     }
                 };
-                if let Ok(nodes) = store.get_nodes_by_ids(&branch, &ids) {
-                    for n in nodes {
-                        if !text_ids.contains(&n.qualified_name) {
-                            // Map cosine similarity [0.50, 1.0] → score [40, 70]
-                            let node_id_str = n.id.as_str();
-                            let sim = sim_map.get(&node_id_str).copied().unwrap_or(0.5);
-                            let score = (40.0 + (sim - 0.5) * 60.0) as i32;
-                            all_hits.push(super::search::SearchHit {
-                                name: n.name,
-                                qualified_name: n.qualified_name,
-                                kind: n.kind.to_string(),
-                                file: n.file.display().to_string(),
-                                start_line: n.span.start_line,
-                                score,
-                            });
-                        }
+                match store.get_nodes_by_ids(&branch, &rrf_ids) {
+                    Ok(nodes) => {
+                        let mut by_id: std::collections::HashMap<String, _> = nodes
+                            .into_iter()
+                            .map(|n| (n.id.as_str().to_owned(), n))
+                            .collect();
+                        let base = (rrf_ids.len() as i32 + 1) * 10;
+                        rrf_ids
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(rank, id)| {
+                                by_id.remove(id).map(|n| super::search::SearchHit {
+                                    id: n.id.as_str().to_owned(),
+                                    name: n.name,
+                                    qualified_name: n.qualified_name,
+                                    kind: n.kind.to_string(),
+                                    file: n.file.display().to_string(),
+                                    start_line: n.span.start_line,
+                                    score: base - rank as i32 * 10,
+                                })
+                            })
+                            .collect()
                     }
+                    Err(_) => text_hits,
                 }
-            }
-        }
+            } else {
+                text_hits
+            };
 
-        // Strip Section nodes — doc headings are not code symbols; including
-        // them in search results wastes tokens and confuses the model.
+        // Strip Section nodes — doc headings are not code symbols.
         all_hits.retain(|h| h.kind != "section");
 
-        let limit = p.limit.unwrap_or(10).min(200);
         all_hits.sort_by(|a, b| {
             b.score
                 .cmp(&a.score)
@@ -1700,6 +1697,145 @@ impl GitCortexServer {
             "total_cycles": total,
             "truncated": total > limit,
             "cycles": cycles,
+        }))
+    }
+
+    /// Composite health report: unused symbols + import cycles + hub nodes.
+    #[tool(
+        description = "Generate a severity-ranked health report for the codebase. \
+        Combines: unused symbol count (DEAD CODE), import cycles (CIRCULAR DEPS), \
+        and hub/god nodes with high in-degree (COUPLING RISK). Returns a markdown \
+        summary with counts and top offenders. ONE call replaces three separate \
+        find_unused_symbols + find_cycles + find_god_nodes calls."
+    )]
+    fn health_report(&self, Parameters(p): Parameters<HealthReportParams>) -> CallToolResult {
+        let branch = p
+            .branch
+            .as_deref()
+            .unwrap_or(&self.default_branch)
+            .to_owned();
+
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+
+        // ── Unused symbols ────────────────────────────────────────────────────
+        let unused_count = store
+            .find_unused_symbols(&branch, None)
+            .map(|v| v.len())
+            .unwrap_or(0);
+
+        // ── Import cycles ─────────────────────────────────────────────────────
+        let (cycle_count, top_cycles) = {
+            use gitcortex_core::schema::EdgeKind;
+            match store.list_edges_by_kind(&branch, EdgeKind::Imports) {
+                Ok(edges) if edges.len() <= 10_000 => {
+                    match gitcortex_core::graph::find_import_cycles(&edges) {
+                        Ok(cycles) => {
+                            let total = cycles.len();
+                            let top: Vec<_> = cycles.into_iter().take(5).collect();
+                            (total, top)
+                        }
+                        Err(_) => (0, vec![]),
+                    }
+                }
+                _ => (0, vec![]),
+            }
+        };
+
+        // ── God nodes (coupling hubs) ─────────────────────────────────────────
+        let (god_count, top_gods) =
+            match super::centrality::find_god_nodes(&*store, &branch, Some(5), Some(10)) {
+                Ok(nodes) => {
+                    let total = nodes.len();
+                    let top: Vec<_> = nodes
+                        .iter()
+                        .take(5)
+                        .map(|n| {
+                            json!({
+                                "name": n.name,
+                                "file": n.file.clone(),
+                                "in_degree": n.in_degree,
+                            })
+                        })
+                        .collect();
+                    (total, top)
+                }
+                Err(_) => (0, vec![]),
+            };
+        drop(store);
+
+        // ── Severity ──────────────────────────────────────────────────────────
+        let severity = if cycle_count > 0 || god_count > 5 {
+            "HIGH"
+        } else if unused_count > 20 || god_count > 0 {
+            "MEDIUM"
+        } else {
+            "LOW"
+        };
+
+        // ── Markdown report ───────────────────────────────────────────────────
+        let mut md = format!("# Codebase Health Report — `{branch}`\n\n");
+        md.push_str(&format!("**Overall severity: {severity}**\n\n"));
+        md.push_str("| Check | Count | Severity |\n|-------|-------|----------|\n");
+        md.push_str(&format!(
+            "| Dead code (unused symbols) | {unused_count} | {} |\n",
+            if unused_count > 20 {
+                "⚠ MEDIUM"
+            } else {
+                "✓ LOW"
+            }
+        ));
+        md.push_str(&format!(
+            "| Circular imports | {cycle_count} | {} |\n",
+            if cycle_count > 0 {
+                "🔴 HIGH"
+            } else {
+                "✓ NONE"
+            }
+        ));
+        md.push_str(&format!(
+            "| Hub nodes (in-degree ≥ 5) | {god_count} | {} |\n\n",
+            if god_count > 5 {
+                "🔴 HIGH"
+            } else if god_count > 0 {
+                "⚠ MEDIUM"
+            } else {
+                "✓ LOW"
+            }
+        ));
+
+        if !top_cycles.is_empty() {
+            md.push_str("## Top Import Cycles\n");
+            for (i, cycle) in top_cycles.iter().take(5).enumerate() {
+                md.push_str(&format!("{}. {cycle:?}\n", i + 1));
+            }
+            md.push('\n');
+        }
+
+        if !top_gods.is_empty() {
+            md.push_str("## Top Hub Nodes\n");
+            for g in &top_gods {
+                md.push_str(&format!(
+                    "- **{}** ({} callers) — {}\n",
+                    g["name"].as_str().unwrap_or("?"),
+                    g["in_degree"],
+                    g["file"].as_str().unwrap_or("?"),
+                ));
+            }
+            md.push('\n');
+        }
+
+        CallToolResult::structured(json!({
+            "branch": branch,
+            "severity": severity,
+            "unused_count": unused_count,
+            "cycle_count": cycle_count,
+            "god_node_count": god_count,
+            "top_cycles": top_cycles,
+            "top_god_nodes": top_gods,
+            "report": md,
         }))
     }
 

@@ -220,6 +220,12 @@ pub struct FindCyclesParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct HealthReportParams {
+    /// Branch to report on (defaults to current branch if omitted).
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct AstSearchParams {
     /// NodeKind filter: "function", "method", "struct", "trait", "interface",
     /// "enum", "constant", "type_alias", "module", etc. Omit for any kind.
