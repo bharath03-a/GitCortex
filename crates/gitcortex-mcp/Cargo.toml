@@ -12,6 +12,7 @@ anyhow.workspace = true
 fastembed.workspace = true
 gitcortex-core.workspace = true
 gitcortex-store.workspace = true
+notify.workspace = true
 rmcp.workspace = true
 schemars.workspace = true
 serde.workspace = true
