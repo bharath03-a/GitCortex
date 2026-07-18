@@ -1,7 +1,13 @@
 import { useMemo } from "react";
 import { PanelLeftClose } from "lucide-react";
 import type { GraphData } from "../api";
-import { EDGE_COLOR, KIND_COLOR, KIND_LABEL } from "../theme/colors";
+import {
+  CONFIDENCE_COLOR,
+  CONFIDENCE_LABEL,
+  EDGE_COLOR,
+  KIND_COLOR,
+  KIND_LABEL,
+} from "../theme/colors";
 
 export type Visibility = "pub" | "pub_crate" | "private";
 export type Flag = "async" | "unsafe";
@@ -18,6 +24,8 @@ interface Props {
   setHiddenKinds: (s: Set<string>) => void;
   hiddenEdgeKinds: Set<string>;
   setHiddenEdgeKinds: (s: Set<string>) => void;
+  hiddenConfidence: Set<string>;
+  setHiddenConfidence: (s: Set<string>) => void;
   hiddenVisibility: Set<Visibility>;
   setHiddenVisibility: (s: Set<Visibility>) => void;
   flagFilter: Set<Flag>;
@@ -31,18 +39,21 @@ export function FilterRail({
   setHiddenKinds,
   hiddenEdgeKinds,
   setHiddenEdgeKinds,
+  hiddenConfidence,
+  setHiddenConfidence,
   hiddenVisibility,
   setHiddenVisibility,
   flagFilter,
   setFlagFilter,
   onCollapse,
 }: Props) {
-  const { kindCounts, edgeCounts, visCounts, flagCounts } = useMemo(() => {
+  const { kindCounts, edgeCounts, visCounts, flagCounts, confidenceCounts } = useMemo(() => {
     const kindCounts: Record<string, number> = {};
     const edgeCounts: Record<string, number> = {};
     const visCounts: Record<string, number> = { pub: 0, pub_crate: 0, private: 0 };
     const flagCounts: Record<string, number> = { async: 0, unsafe: 0 };
-    if (!data) return { kindCounts, edgeCounts, visCounts, flagCounts };
+    const confidenceCounts: Record<string, number> = { extracted: 0, resolved: 0, inferred: 0 };
+    if (!data) return { kindCounts, edgeCounts, visCounts, flagCounts, confidenceCounts };
     for (const n of data.nodes) {
       kindCounts[n.kind] = (kindCounts[n.kind] ?? 0) + 1;
       if (visCounts[n.visibility] != null) visCounts[n.visibility] += 1;
@@ -51,8 +62,10 @@ export function FilterRail({
     }
     for (const e of data.edges) {
       edgeCounts[e.kind] = (edgeCounts[e.kind] ?? 0) + 1;
+      const conf = e.confidence ?? "extracted";
+      confidenceCounts[conf] = (confidenceCounts[conf] ?? 0) + 1;
     }
-    return { kindCounts, edgeCounts, visCounts, flagCounts };
+    return { kindCounts, edgeCounts, visCounts, flagCounts, confidenceCounts };
   }, [data]);
 
   const toggle = <T extends string>(set: Set<T>, key: T, apply: (s: Set<T>) => void) => {
@@ -119,6 +132,20 @@ export function FilterRail({
               swatchColor={f === "async" ? "#a78bfa" : "#fab387"}
               label={`only ${f}`}
               count={flagCounts[f] ?? 0}
+            />
+          ))}
+        </FilterSection>
+
+        <FilterSection title="Edge Confidence">
+          {(["extracted", "resolved", "inferred"] as const).map((c) => (
+            <FilterRow
+              key={c}
+              checked={!hiddenConfidence.has(c)}
+              onChange={() => toggle(hiddenConfidence, c, setHiddenConfidence)}
+              swatchColor={CONFIDENCE_COLOR[c]}
+              swatchKind="bar"
+              label={CONFIDENCE_LABEL[c]}
+              count={confidenceCounts[c] ?? 0}
             />
           ))}
         </FilterSection>

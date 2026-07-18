@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 /// Bumped whenever the on-disk graph schema changes.
 /// Stores compare this against the persisted version and re-index on mismatch.
-pub const SCHEMA_VERSION: u32 = 12;
+pub const SCHEMA_VERSION: u32 = 13;
 
 /// Every named, referenceable syntactic entity becomes a node of one of these kinds.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -128,17 +128,22 @@ impl std::fmt::Display for EdgeKind {
     }
 }
 
-/// How confident the indexer is that an edge is real. Direct edges resolved
-/// within a single file are `Extracted`; cross-file edges resolved by matching
-/// an unqualified name against the symbol table are `Inferred` (a same-named
-/// symbol in another module could in principle be the true target).
+/// How confident the indexer is that an edge is real.
+///
+/// Ordered from highest to lowest confidence:
+/// - `Extracted` — same-file, directly observed
+/// - `Resolved`  — cross-file, import-verified (callee module was explicitly imported)
+/// - `Inferred`  — cross-file, name-match only (any same-named symbol could match)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum EdgeConfidence {
-    /// Directly observed in the source (same-file resolution). High confidence.
+    /// Directly observed in the source (same-file resolution). Highest confidence.
     #[default]
     Extracted,
-    /// Resolved cross-file by name match. Lower confidence.
+    /// Cross-file edge where the callee's module was explicitly imported at the call site.
+    /// Higher confidence than `Inferred` — false-positive rate is far lower.
+    Resolved,
+    /// Resolved cross-file by unqualified name match only. Lowest confidence.
     Inferred,
 }
 
@@ -146,6 +151,7 @@ impl std::fmt::Display for EdgeConfidence {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             EdgeConfidence::Extracted => "extracted",
+            EdgeConfidence::Resolved => "resolved",
             EdgeConfidence::Inferred => "inferred",
         })
     }
@@ -155,6 +161,7 @@ impl EdgeConfidence {
     /// Parse from the stored string form; unknown/empty defaults to `Extracted`.
     pub fn from_label(s: &str) -> Self {
         match s {
+            "resolved" => EdgeConfidence::Resolved,
             "inferred" => EdgeConfidence::Inferred,
             _ => EdgeConfidence::Extracted,
         }

@@ -16,6 +16,7 @@ export interface RawEdge {
   src: string;
   dst: string;
   kind: string;
+  confidence?: "extracted" | "resolved" | "inferred";
 }
 
 export interface GraphData {

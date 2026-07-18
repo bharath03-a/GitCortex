@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { Cosmograph, CosmographProvider } from "@cosmograph/react";
 import type { CosmographRef } from "@cosmograph/react";
 import type { GraphData, RawNode } from "../api";
-import { EDGE_COLOR, EDGE_WIDTH, KIND_COLOR, dimColor } from "../theme/colors";
+import { EDGE_COLOR, EDGE_WIDTH, KIND_COLOR, confidenceAlpha, dimColor } from "../theme/colors";
 import { CanvasControls } from "./CanvasControls";
 import type { DiffOverlay } from "../hooks/useBranchDiff";
 
@@ -24,12 +24,14 @@ interface LinkRow extends Record<string, unknown> {
   sourceIndex: number;
   targetIndex: number;
   kind: string;
+  confidence: string;
 }
 
 interface Props {
   data: GraphData;
   hiddenKinds: Set<string>;
   hiddenEdgeKinds: Set<string>;
+  hiddenConfidence: Set<string>;
   selected: RawNode | null;
   onSelect: (n: RawNode | null) => void;
   depth: number;
@@ -42,6 +44,7 @@ export function CosmosCanvas({
   data,
   hiddenKinds,
   hiddenEdgeKinds,
+  hiddenConfidence,
   selected,
   onSelect,
   depth,
@@ -79,6 +82,7 @@ export function CosmosCanvas({
         sourceIndex: si,
         targetIndex: ti,
         kind: e.kind,
+        confidence: e.confidence ?? "extracted",
       });
       if (!neighbors.has(e.src)) neighbors.set(e.src, new Set());
       if (!neighbors.has(e.dst)) neighbors.set(e.dst, new Set());
@@ -172,16 +176,36 @@ export function CosmosCanvas({
         linkColorByFn={(value: unknown, index?: number): string => {
           const kind = String(value);
           if (hiddenEdgeKinds.has(kind)) return "rgba(0,0,0,0)";
-          const base = EDGE_COLOR[kind] ?? "#666";
-          if (!highlightSet) return base;
           const link = index != null ? links[index] : undefined;
-          if (!link) return base;
-          const lit =
-            highlightSet.has(String(link.source)) && highlightSet.has(String(link.target));
-          return lit ? base : dimColor(base, 0.82);
+          const conf = link?.confidence as string | undefined;
+          if (hiddenConfidence.has(conf ?? "extracted")) return "rgba(0,0,0,0)";
+          const base = EDGE_COLOR[kind] ?? "#666";
+          if (highlightSet) {
+            if (!link) return base;
+            const lit =
+              highlightSet.has(String(link.source)) && highlightSet.has(String(link.target));
+            return lit ? base : dimColor(base, 0.82);
+          }
+          // No selection active: dim by confidence tier.
+          const alpha = confidenceAlpha(conf);
+          if (alpha < 1.0) {
+            const c = base.replace("#", "");
+            const r = parseInt(c.slice(0, 2), 16);
+            const g = parseInt(c.slice(2, 4), 16);
+            const b = parseInt(c.slice(4, 6), 16);
+            return `rgba(${r},${g},${b},${alpha})`;
+          }
+          return base;
         }}
         linkWidthBy="kind"
-        linkWidthByFn={(value: unknown): number => EDGE_WIDTH[String(value)] ?? 1}
+        linkWidthByFn={(value: unknown, index?: number): number => {
+          const base = EDGE_WIDTH[String(value)] ?? 1;
+          const link = index != null ? links[index] : undefined;
+          const conf = link?.confidence as string | undefined;
+          if (conf === "inferred") return base * 0.5;
+          if (conf === "resolved") return base * 0.8;
+          return base;
+        }}
         linkArrowsSizeScale={0.6}
         backgroundColor="rgba(0,0,0,0)"
         spaceSize={4096}

@@ -271,9 +271,10 @@ async fn data_handler(State(state): State<Arc<AppState>>) -> Json<Value> {
         .iter()
         .map(|e| {
             json!({
-                "src":  e.src.as_str(),
-                "dst":  e.dst.as_str(),
-                "kind": e.kind.to_string(),
+                "src":        e.src.as_str(),
+                "dst":        e.dst.as_str(),
+                "kind":       e.kind.to_string(),
+                "confidence": e.confidence.to_string(),
             })
         })
         .collect();

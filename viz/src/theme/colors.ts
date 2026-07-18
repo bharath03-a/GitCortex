@@ -60,6 +60,30 @@ export const KIND_LABEL: Record<string, string> = {
   section: "Section",
 };
 
+export const CONFIDENCE_COLOR: Record<string, string> = {
+  extracted: "#a6e3a1",
+  resolved: "#f9e2af",
+  inferred: "#6c7086",
+};
+
+export const CONFIDENCE_LABEL: Record<string, string> = {
+  extracted: "Extracted",
+  resolved: "Resolved",
+  inferred: "Inferred",
+};
+
+/** Maps edge confidence tier to an opacity multiplier (0–1). */
+export function confidenceAlpha(confidence: string | undefined): number {
+  switch (confidence) {
+    case "inferred":
+      return 0.32;
+    case "resolved":
+      return 0.72;
+    default:
+      return 1.0;
+  }
+}
+
 export function dimColor(hex: string, amount = 0.7): string {
   const c = hex.replace("#", "");
   const r = parseInt(c.slice(0, 2), 16);

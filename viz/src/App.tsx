@@ -20,6 +20,7 @@ export default function App() {
   const [hiddenEdgeKinds, setHiddenEdgeKinds] = useState<Set<string>>(
     new Set(["contains", "imports"]),
   );
+  const [hiddenConfidence, setHiddenConfidence] = useState<Set<string>>(new Set());
   const [hiddenVisibility, setHiddenVisibility] = useState<Set<Visibility>>(new Set());
   const [flagFilter, setFlagFilter] = useState<Set<Flag>>(new Set());
   const [railOpen, setRailOpen] = useState(true);
@@ -183,6 +184,8 @@ export default function App() {
             setHiddenKinds={setHiddenKinds}
             hiddenEdgeKinds={hiddenEdgeKinds}
             setHiddenEdgeKinds={setHiddenEdgeKinds}
+            hiddenConfidence={hiddenConfidence}
+            setHiddenConfidence={setHiddenConfidence}
             hiddenVisibility={hiddenVisibility}
             setHiddenVisibility={setHiddenVisibility}
             flagFilter={flagFilter}
@@ -210,6 +213,7 @@ export default function App() {
               data={data}
               hiddenKinds={hiddenKinds}
               hiddenEdgeKinds={hiddenEdgeKinds}
+              hiddenConfidence={hiddenConfidence}
               selected={selected}
               onSelect={setSelected}
               depth={depth}
