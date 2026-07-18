@@ -132,6 +132,11 @@ impl GitCortexServer {
         )
     }
 
+    /// Return the shared store arc + branch needed by the file watcher.
+    pub fn store_context(&self) -> (Arc<Mutex<KuzuGraphStore>>, String) {
+        (self.store.clone(), self.default_branch.clone())
+    }
+
     /// Returns a staleness warning string if the index is behind HEAD or the
     /// working tree has uncommitted edits. Empty string when index is fresh.
     /// Result is cached for 5 seconds so repeated MCP calls don't each spawn

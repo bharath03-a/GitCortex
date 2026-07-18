@@ -8,4 +8,5 @@ pub mod server;
 pub mod subgraph;
 pub mod tools;
 pub mod tour;
+pub(crate) mod watcher;
 pub mod wiki;

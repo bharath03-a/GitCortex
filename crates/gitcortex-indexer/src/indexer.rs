@@ -289,6 +289,176 @@ impl IncrementalIndexer {
         Ok((merged, head_sha))
     }
 
+    /// Re-index specific files that changed on disk without requiring a git commit.
+    /// Used by the file-watcher in `gcx serve` to keep the graph current for
+    /// uncommitted edits.
+    pub fn index_files_from_disk(&self, abs_paths: &[PathBuf]) -> Result<GraphDiff> {
+        if abs_paths.is_empty() {
+            return Ok(GraphDiff::default());
+        }
+
+        let rel_paths: Vec<PathBuf> = abs_paths
+            .iter()
+            .filter_map(|p| p.strip_prefix(&self.repo_root).ok().map(|r| r.to_owned()))
+            .collect();
+
+        let per_file: Vec<FileIndexResult> =
+            rel_paths.par_iter().map(|p| self.index_file(p)).collect();
+
+        let mut merged = GraphDiff::default();
+        let mut all_calls: Vec<(NodeId, String, u32)> = Vec::new();
+        let mut all_uses: Vec<(NodeId, String)> = Vec::new();
+        let mut all_implements: Vec<(NodeId, String)> = Vec::new();
+        let mut all_imports: Vec<(NodeId, String)> = Vec::new();
+        let mut all_inherits: Vec<(NodeId, String)> = Vec::new();
+        let mut all_throws: Vec<(NodeId, String)> = Vec::new();
+        let mut all_annotated: Vec<(NodeId, String)> = Vec::new();
+        let mut all_doc_refs: Vec<(NodeId, String)> = Vec::new();
+        for result in per_file {
+            let (diff, calls, uses, implements, imports, inherits, throws, annotated, doc_refs) =
+                result?;
+            merged.merge(diff);
+            all_calls.extend(calls);
+            all_uses.extend(uses);
+            all_implements.extend(implements);
+            all_imports.extend(imports);
+            all_inherits.extend(inherits);
+            all_throws.extend(throws);
+            all_annotated.extend(annotated);
+            all_doc_refs.extend(doc_refs);
+        }
+
+        let name_to_ids: HashMap<&str, Vec<&NodeId>> = {
+            let mut map: HashMap<&str, Vec<&NodeId>> = HashMap::new();
+            for node in &merged.added_nodes {
+                map.entry(node.name.as_str()).or_default().push(&node.id);
+            }
+            map
+        };
+        let id_to_file: HashMap<&NodeId, &Path> = merged
+            .added_nodes
+            .iter()
+            .map(|n| (&n.id, n.file.as_path()))
+            .collect();
+        let imported_by_file: HashMap<&Path, HashSet<&str>> = {
+            let mut map: HashMap<&Path, HashSet<&str>> = HashMap::new();
+            for (mod_id, leaf_name) in &all_imports {
+                if let Some(&file) = id_to_file.get(mod_id) {
+                    map.entry(file).or_default().insert(leaf_name.as_str());
+                }
+            }
+            map
+        };
+        let mut seen_edges: HashSet<(String, String, String)> = merged
+            .added_edges
+            .iter()
+            .map(|e| (e.src.as_str(), e.dst.as_str(), e.kind.to_string()))
+            .collect();
+
+        merged.deferred_calls = resolve_calls(
+            &name_to_ids,
+            &id_to_file,
+            &imported_by_file,
+            &all_calls,
+            &mut merged.added_edges,
+            &mut seen_edges,
+        );
+        merged.deferred_uses = resolve_deferred(
+            &name_to_ids,
+            &id_to_file,
+            &imported_by_file,
+            &all_uses,
+            EdgeKind::Uses,
+            &mut merged.added_edges,
+            &mut seen_edges,
+        );
+        merged.deferred_implements = resolve_deferred(
+            &name_to_ids,
+            &id_to_file,
+            &imported_by_file,
+            &all_implements,
+            EdgeKind::Implements,
+            &mut merged.added_edges,
+            &mut seen_edges,
+        );
+        let _ = resolve_deferred(
+            &name_to_ids,
+            &id_to_file,
+            &imported_by_file,
+            &all_imports,
+            EdgeKind::Imports,
+            &mut merged.added_edges,
+            &mut seen_edges,
+        );
+        merged.deferred_inherits = resolve_deferred(
+            &name_to_ids,
+            &id_to_file,
+            &imported_by_file,
+            &all_inherits,
+            EdgeKind::Inherits,
+            &mut merged.added_edges,
+            &mut seen_edges,
+        );
+        merged.deferred_throws = resolve_deferred(
+            &name_to_ids,
+            &id_to_file,
+            &imported_by_file,
+            &all_throws,
+            EdgeKind::Throws,
+            &mut merged.added_edges,
+            &mut seen_edges,
+        );
+        merged.deferred_annotated = resolve_deferred(
+            &name_to_ids,
+            &id_to_file,
+            &imported_by_file,
+            &all_annotated,
+            EdgeKind::Annotated,
+            &mut merged.added_edges,
+            &mut seen_edges,
+        );
+        merged.deferred_doc_refs = resolve_deferred(
+            &name_to_ids,
+            &id_to_file,
+            &imported_by_file,
+            &all_doc_refs,
+            EdgeKind::References,
+            &mut merged.added_edges,
+            &mut seen_edges,
+        );
+
+        let mut ann_by_id: HashMap<String, Vec<String>> = HashMap::new();
+        for (node_id, name) in &all_annotated {
+            ann_by_id
+                .entry(node_id.as_str())
+                .or_default()
+                .push(name.clone());
+        }
+        for node in &mut merged.added_nodes {
+            if let Some(names) = ann_by_id.get(&node.id.as_str()) {
+                let mut seen: HashSet<String> = HashSet::new();
+                node.metadata.annotations = names
+                    .iter()
+                    .filter(|n| seen.insert((*n).clone()))
+                    .cloned()
+                    .collect();
+            }
+        }
+
+        // Remove stale nodes for these files before the store applies additions.
+        for p in abs_paths {
+            if let Ok(rel) = p.strip_prefix(&self.repo_root) {
+                merged.removed_files.push(rel.to_owned());
+            }
+        }
+
+        let (struct_nodes, struct_edges) = build_structural_nodes(&merged);
+        merged.added_nodes.extend(struct_nodes);
+        merged.added_edges.extend(struct_edges);
+
+        Ok(merged)
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     fn supported_extensions(&self) -> Vec<&'static str> {

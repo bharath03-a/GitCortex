@@ -11,6 +11,7 @@ rust-version.workspace = true
 anyhow.workspace = true
 fastembed.workspace = true
 gitcortex-core.workspace = true
+gitcortex-indexer.workspace = true
 gitcortex-store.workspace = true
 notify.workspace = true
 rmcp.workspace = true
