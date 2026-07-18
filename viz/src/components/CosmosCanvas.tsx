@@ -177,7 +177,7 @@ export function CosmosCanvas({
           const kind = String(value);
           if (hiddenEdgeKinds.has(kind)) return "rgba(0,0,0,0)";
           const link = index != null ? links[index] : undefined;
-          const conf = link?.confidence as string | undefined;
+          const conf = link?.confidence;
           if (hiddenConfidence.has(conf ?? "extracted")) return "rgba(0,0,0,0)";
           const base = EDGE_COLOR[kind] ?? "#666";
           if (highlightSet) {
@@ -201,7 +201,7 @@ export function CosmosCanvas({
         linkWidthByFn={(value: unknown, index?: number): number => {
           const base = EDGE_WIDTH[String(value)] ?? 1;
           const link = index != null ? links[index] : undefined;
-          const conf = link?.confidence as string | undefined;
+          const conf = link?.confidence;
           if (conf === "inferred") return base * 0.5;
           if (conf === "resolved") return base * 0.8;
           return base;
