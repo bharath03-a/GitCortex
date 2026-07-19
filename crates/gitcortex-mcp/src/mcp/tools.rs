@@ -11,7 +11,10 @@ use gitcortex_store::kuzu::KuzuGraphStore;
 use crate::embeddings::{Embedder, SemanticIndex};
 
 use super::git_helpers::{parse_diff_hunks, run_git_diff};
-use super::helpers::{detect_current_branch, parse_node_kind, parse_visibility, sig_line};
+use super::helpers::{
+    confidence_rank, detect_current_branch, is_test_file, parse_node_kind, parse_visibility,
+    sig_line,
+};
 use super::params::*;
 
 pub enum SemanticState {
@@ -127,6 +130,11 @@ impl GitCortexServer {
             self.store.clone(),
             self.default_branch.clone(),
         )
+    }
+
+    /// Return the shared store arc + branch needed by the file watcher.
+    pub fn store_context(&self) -> (Arc<Mutex<KuzuGraphStore>>, String) {
+        (self.store.clone(), self.default_branch.clone())
     }
 
     /// Returns a staleness warning string if the index is behind HEAD or the
@@ -309,15 +317,50 @@ impl GitCortexServer {
         const MAX_PER_HOP: usize = 15;
         if depth == 1 {
             match store.find_callers_with_confidence(&branch, &p.function_name) {
-                Ok(pairs) => {
+                Ok(mut pairs) => {
                     let total = pairs.len();
-                    let n_direct = pairs
+
+                    // Rank: confidence tier first (Extracted < Resolved < Inferred),
+                    // then production-before-test, then alphabetical by file+name.
+                    pairs.sort_by(|(na, ca), (nb, cb)| {
+                        let r = confidence_rank(ca).cmp(&confidence_rank(cb));
+                        if r != std::cmp::Ordering::Equal {
+                            return r;
+                        }
+                        let ta = is_test_file(&na.file) as u8;
+                        let tb = is_test_file(&nb.file) as u8;
+                        let r2 = ta.cmp(&tb);
+                        if r2 != std::cmp::Ordering::Equal {
+                            return r2;
+                        }
+                        na.file.cmp(&nb.file).then(na.name.cmp(&nb.name))
+                    });
+
+                    let n_extracted = pairs
                         .iter()
                         .filter(|(_, c)| {
                             matches!(c, gitcortex_core::schema::EdgeConfidence::Extracted)
                         })
                         .count();
-                    let n_inferred = total - n_direct;
+                    let n_resolved = pairs
+                        .iter()
+                        .filter(|(_, c)| {
+                            matches!(c, gitcortex_core::schema::EdgeConfidence::Resolved)
+                        })
+                        .count();
+                    let n_inferred = total - n_extracted - n_resolved;
+
+                    // Count test-file callers in the tail (those beyond MAX_CALLERS).
+                    let tail_total = total.saturating_sub(MAX_CALLERS);
+                    let tail_test = if tail_total > 0 {
+                        pairs[MAX_CALLERS..]
+                            .iter()
+                            .filter(|(n, _)| is_test_file(&n.file))
+                            .count()
+                    } else {
+                        0
+                    };
+
                     let items: Vec<_> = pairs
                         .iter()
                         .take(MAX_CALLERS)
@@ -342,7 +385,21 @@ impl GitCortexServer {
                         _ => "CRITICAL",
                     };
                     let conf_note = if total > 0 {
-                        format!(" ({n_direct} direct, {n_inferred} inferred)")
+                        format!(
+                            " ({n_extracted} extracted, {n_resolved} resolved, {n_inferred} inferred)"
+                        )
+                    } else {
+                        String::new()
+                    };
+                    let tail_note = if tail_total > 0 {
+                        format!(
+                            " …and {tail_total} more{}",
+                            if tail_test > 0 {
+                                format!(" ({tail_test} in test files)")
+                            } else {
+                                String::new()
+                            }
+                        )
                     } else {
                         String::new()
                     };
@@ -357,12 +414,13 @@ impl GitCortexServer {
                         )
                     } else {
                         format!(
-                            "{total} caller(s){conf_note} — risk {risk}{}",
+                            "{total} caller(s){conf_note} — risk {risk}{}{}",
                             if total > items.len() {
                                 format!(", showing top {}", items.len())
                             } else {
                                 String::new()
-                            }
+                            },
+                            tail_note,
                         )
                     };
                     CallToolResult::structured(json!({

@@ -54,6 +54,7 @@ rmcp               = { version = "1.7", features = ["server", "transport-io"] }
 axum               = "0.7"
 open               = "5"
 fastembed          = { version = "4", features = ["ort-download-binaries", "online"] }
+notify             = { version = "6", features = ["macos_kqueue"] }
 
 [profile.release]
 opt-level     = 3

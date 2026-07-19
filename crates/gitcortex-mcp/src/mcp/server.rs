@@ -32,6 +32,10 @@ pub async fn serve(repo_root: PathBuf, compact: bool) -> Result<()> {
         }
     });
 
+    // Spawn never-stale file watcher: debounced re-index of working-tree edits.
+    let (watch_store, watch_branch) = handler.store_context();
+    crate::mcp::watcher::spawn_file_watcher(repo_root.clone(), watch_store, watch_branch);
+
     let transport = stdio();
     tracing::info!("GitCortex MCP server started (stdio, compact={compact})");
 
