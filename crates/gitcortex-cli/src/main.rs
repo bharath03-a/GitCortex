@@ -132,7 +132,7 @@ pub enum QueryCmd {
         #[arg(long, default_value_t = 25)]
         limit: usize,
         /// Global response budget used by agent-json output.
-        #[arg(long, default_value_t = 2000)]
+        #[arg(long, default_value_t = 600)]
         budget_tokens: usize,
         #[arg(long, value_enum, default_value_t = AgentOutputFormat::Text)]
         format: AgentOutputFormat,
@@ -192,7 +192,7 @@ pub enum QueryCmd {
         #[arg(long, default_value_t = 20)]
         limit: usize,
         /// Global response budget used by agent-json output.
-        #[arg(long, default_value_t = 800)]
+        #[arg(long, default_value_t = 400)]
         budget_tokens: usize,
         #[arg(long, value_enum, default_value_t = AgentOutputFormat::Text)]
         format: AgentOutputFormat,
