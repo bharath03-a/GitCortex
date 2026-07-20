@@ -231,6 +231,32 @@ pub trait GraphStore: Send + Sync {
     /// Return all edges in `branch`'s graph.
     fn list_all_edges(&self, branch: &str) -> Result<Vec<Edge>>;
 
+    /// Return a deterministic page of nodes ordered by stable node ID.
+    ///
+    /// The default implementation slices `list_all_nodes` for compatibility.
+    /// Stores should override this with query-level `OFFSET`/`LIMIT` push-down
+    /// so visualization clients can progressively load very large graphs.
+    fn list_nodes_page(&self, branch: &str, offset: usize, limit: usize) -> Result<Vec<Node>> {
+        let mut nodes = self.list_all_nodes(branch)?;
+        nodes.sort_by_key(|node| node.id.as_str());
+        Ok(nodes.into_iter().skip(offset).take(limit).collect())
+    }
+
+    /// Return a deterministic page of edges ordered by source, destination,
+    /// kind, and source line. See [`GraphStore::list_nodes_page`].
+    fn list_edges_page(&self, branch: &str, offset: usize, limit: usize) -> Result<Vec<Edge>> {
+        let mut edges = self.list_all_edges(branch)?;
+        edges.sort_by_key(|edge| {
+            (
+                edge.src.as_str(),
+                edge.dst.as_str(),
+                edge.kind.to_string(),
+                edge.line,
+            )
+        });
+        Ok(edges.into_iter().skip(offset).take(limit).collect())
+    }
+
     /// Return edges of a specific `kind` in `branch`'s graph.
     /// The default filters `list_all_edges` in-memory; backends should override
     /// with a `WHERE`-clause push-down for large graphs.

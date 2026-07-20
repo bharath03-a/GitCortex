@@ -92,6 +92,30 @@ fn node_table_is_empty(conn: &Connection, nt: &str) -> Result<bool> {
     }
 }
 
+fn rows_to_edges(result: kuzu::QueryResult) -> Result<Vec<Edge>> {
+    let mut out = Vec::new();
+    for row in result {
+        let src_str = str_val(&row[0])?;
+        let dst_str = str_val(&row[1])?;
+        let kind_str = str_val(&row[2])?;
+        let line = i64_val(&row[3])
+            .ok()
+            .filter(|line| *line >= 0)
+            .map(|line| line as u32);
+        let confidence = EdgeConfidence::from_label(&str_val(&row[4]).unwrap_or_default());
+        out.push(Edge {
+            src: NodeId::try_from(src_str.as_str())
+                .map_err(|e| GitCortexError::Store(format!("bad src id: {e}")))?,
+            dst: NodeId::try_from(dst_str.as_str())
+                .map_err(|e| GitCortexError::Store(format!("bad dst id: {e}")))?,
+            kind: edge_kind_from_str(&kind_str),
+            line,
+            confidence,
+        });
+    }
+    Ok(out)
+}
+
 /// Bulk-load a full-index diff via CSV `COPY`. Stages CSVs in a unique temp
 /// dir, loads them, then removes the dir. See [`bulk`] for the rationale.
 fn bulk_apply(conn: &Connection, nt: &str, et: &str, diff: &GraphDiff) -> Result<()> {
@@ -950,6 +974,38 @@ impl GraphStore for KuzuGraphStore {
             }
         }
 
+        let from_et = db_schema::edge_table(from);
+        let to_et = db_schema::edge_table(to);
+        let read_edges = |node_table: &str, edge_table: &str| -> Result<Vec<Edge>> {
+            let result = conn
+                .query(&format!(
+                    "MATCH (s:{node_table})-[e:{edge_table}]->(d:{node_table}) \
+                     RETURN s.id, d.id, e.kind, e.line, e.confidence"
+                ))
+                .map_err(|e| GitCortexError::Store(e.to_string()))?;
+            rows_to_edges(result)
+        };
+        let from_edges = read_edges(&from_nt, &from_et)?;
+        let to_edges = read_edges(&to_nt, &to_et)?;
+        let edge_key = |edge: &Edge| (edge.src.as_str(), edge.dst.as_str(), edge.kind.clone());
+        let from_by_key: HashMap<_, _> = from_edges
+            .iter()
+            .map(|edge| (edge_key(edge), edge))
+            .collect();
+        let to_by_key: HashMap<_, _> = to_edges.iter().map(|edge| (edge_key(edge), edge)).collect();
+
+        for (key, edge) in &to_by_key {
+            if from_by_key.get(key).map(|previous| *previous != *edge) != Some(false) {
+                diff.added_edges.push((*edge).clone());
+            }
+        }
+        for (key, edge) in &from_by_key {
+            if to_by_key.get(key).map(|next| *next != *edge) != Some(false) {
+                diff.removed_edges
+                    .push((edge.src.clone(), edge.dst.clone(), edge.kind.clone()));
+            }
+        }
+
         Ok(diff)
     }
 
@@ -1015,25 +1071,34 @@ impl GraphStore for KuzuGraphStore {
                 "MATCH (s:{nt})-[e:{et}]->(d:{nt}) RETURN s.id, d.id, e.kind, e.line, e.confidence"
             ))
             .map_err(|e| GitCortexError::Store(e.to_string()))?;
+        rows_to_edges(result)
+    }
 
-        let mut out = Vec::new();
-        for row in result {
-            let src_str = str_val(&row[0])?;
-            let dst_str = str_val(&row[1])?;
-            let kind_str = str_val(&row[2])?;
-            let line = i64_val(&row[3]).ok().filter(|l| *l >= 0).map(|l| l as u32);
-            let confidence = EdgeConfidence::from_label(&str_val(&row[4]).unwrap_or_default());
-            out.push(Edge {
-                src: NodeId::try_from(src_str.as_str())
-                    .map_err(|e| GitCortexError::Store(format!("bad src id: {e}")))?,
-                dst: NodeId::try_from(dst_str.as_str())
-                    .map_err(|e| GitCortexError::Store(format!("bad dst id: {e}")))?,
-                kind: edge_kind_from_str(&kind_str),
-                line,
-                confidence,
-            });
-        }
-        Ok(out)
+    fn list_nodes_page(&self, branch: &str, offset: usize, limit: usize) -> Result<Vec<Node>> {
+        self.ensure_branch(branch)?;
+        let nt = db_schema::node_table(branch);
+        let conn = self.conn()?;
+        let mut result = conn
+            .query(&format!(
+                "MATCH (n:{nt}) RETURN {NODE_COLS} ORDER BY n.id SKIP {offset} LIMIT {limit}"
+            ))
+            .map_err(|e| GitCortexError::Store(e.to_string()))?;
+        rows_to_nodes(&mut result)
+    }
+
+    fn list_edges_page(&self, branch: &str, offset: usize, limit: usize) -> Result<Vec<Edge>> {
+        self.ensure_branch(branch)?;
+        let nt = db_schema::node_table(branch);
+        let et = db_schema::edge_table(branch);
+        let conn = self.conn()?;
+        let result = conn
+            .query(&format!(
+                "MATCH (s:{nt})-[e:{et}]->(d:{nt}) \
+                 RETURN s.id, d.id, e.kind, e.line, e.confidence \
+                 ORDER BY s.id, d.id, e.kind, e.line SKIP {offset} LIMIT {limit}"
+            ))
+            .map_err(|e| GitCortexError::Store(e.to_string()))?;
+        rows_to_edges(result)
     }
 
     fn search_by_attributes(

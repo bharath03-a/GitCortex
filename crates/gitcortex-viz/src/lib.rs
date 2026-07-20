@@ -23,6 +23,7 @@ static VIZ_INDEX: &[u8] = include_bytes!("../dist-viz/index.html");
 static VIZ_JS: &[u8] = include_bytes!("../dist-viz/assets/main.js");
 static VIZ_CSS: &[u8] = include_bytes!("../dist-viz/assets/main.css");
 static VIZ_WEBGL: &[u8] = include_bytes!("../dist-viz/assets/webgl-device.js");
+static VIZ_COSMOS: &[u8] = include_bytes!("../dist-viz/assets/CosmosCanvas.js");
 
 /// Output format for `gcx viz`.
 #[derive(clap::ValueEnum, Clone)]
@@ -114,9 +115,14 @@ async fn serve(state: Arc<AppState>, port: u16) -> Result<()> {
         .route("/assets/main.js", get(js_handler))
         .route("/assets/main.css", get(css_handler))
         .route("/assets/webgl-device.js", get(webgl_handler))
+        .route("/assets/CosmosCanvas.js", get(cosmos_handler))
         .route("/data", get(data_handler))
+        .route("/api/graph/manifest", get(graph_manifest_handler))
+        .route("/api/graph/nodes", get(graph_nodes_handler))
+        .route("/api/graph/edges", get(graph_edges_handler))
         .route("/api/symbol-context/:name", get(symbol_context_handler))
         .route("/api/callers/:name", get(callers_handler))
+        .route("/api/callers-by-id/:id", get(callers_by_id_handler))
         .route("/api/branches", get(branches_handler))
         .route("/api/branch-diff", get(branch_diff_handler))
         .route("/api/unused", get(unused_handler))
@@ -194,6 +200,10 @@ async fn css_handler() -> Response {
 
 async fn webgl_handler() -> Response {
     static_response(VIZ_WEBGL, "application/javascript; charset=utf-8")
+}
+
+async fn cosmos_handler() -> Response {
+    static_response(VIZ_COSMOS, "application/javascript; charset=utf-8")
 }
 
 fn static_response(bytes: &'static [u8], content_type: &'static str) -> Response {
@@ -284,6 +294,146 @@ async fn data_handler(State(state): State<Arc<AppState>>) -> Json<Value> {
 
 // ─── /api/* ───────────────────────────────────────────────────────────────────
 
+const DEFAULT_GRAPH_CHUNK: usize = 5_000;
+const MAX_GRAPH_CHUNK: usize = 20_000;
+
+#[derive(Debug, Deserialize)]
+struct GraphBranchQuery {
+    #[serde(default)]
+    branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphPageQuery {
+    #[serde(default)]
+    branch: Option<String>,
+    #[serde(default)]
+    offset: usize,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+impl GraphPageQuery {
+    fn page_limit(&self) -> usize {
+        self.limit
+            .unwrap_or(DEFAULT_GRAPH_CHUNK)
+            .clamp(1, MAX_GRAPH_CHUNK)
+    }
+}
+
+#[tracing::instrument(skip(state))]
+async fn graph_manifest_handler(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<GraphBranchQuery>,
+) -> Json<Value> {
+    let branch = q.branch.unwrap_or_else(|| state.branch.clone());
+    let s = state.clone();
+    let branch_for_query = branch.clone();
+    let result = run_blocking("graph_manifest_handler", move || {
+        with_locked_store(&s, |store| {
+            let stats = store.graph_stats(&branch_for_query)?;
+            let snapshot = store.last_indexed_sha(&branch_for_query)?;
+            Ok((stats, snapshot))
+        })
+    })
+    .await;
+
+    let (stats, snapshot) = match result {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+    Json(json!({
+        "branch": branch,
+        "snapshot": snapshot,
+        "total_nodes": stats.total_nodes,
+        "total_edges": stats.total_edges,
+        "nodes_by_kind": stats.nodes_by_kind,
+        "edges_by_kind": stats.edges_by_kind,
+        "recommended_chunk": DEFAULT_GRAPH_CHUNK,
+        "max_chunk": MAX_GRAPH_CHUNK,
+    }))
+}
+
+#[tracing::instrument(skip(state), fields(offset = q.offset, limit = q.page_limit()))]
+async fn graph_nodes_handler(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<GraphPageQuery>,
+) -> Json<Value> {
+    let offset = q.offset;
+    let limit = q.page_limit();
+    let branch = q.branch.unwrap_or_else(|| state.branch.clone());
+    let s = state.clone();
+    let branch_for_query = branch.clone();
+    let result = run_blocking("graph_nodes_handler", move || {
+        with_locked_store(&s, |store| {
+            let nodes = store.list_nodes_page(&branch_for_query, offset, limit)?;
+            let snapshot = store.last_indexed_sha(&branch_for_query)?;
+            Ok((nodes, snapshot))
+        })
+    })
+    .await;
+
+    let (nodes, snapshot) = match result {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+    let count = nodes.len();
+    Json(json!({
+        "branch": branch,
+        "snapshot": snapshot,
+        "offset": offset,
+        "count": count,
+        "next_offset": (count == limit).then_some(offset.saturating_add(count)),
+        "nodes": nodes.iter().map(node_json).collect::<Vec<_>>(),
+    }))
+}
+
+#[tracing::instrument(skip(state), fields(offset = q.offset, limit = q.page_limit()))]
+async fn graph_edges_handler(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<GraphPageQuery>,
+) -> Json<Value> {
+    let offset = q.offset;
+    let limit = q.page_limit();
+    let branch = q.branch.unwrap_or_else(|| state.branch.clone());
+    let s = state.clone();
+    let branch_for_query = branch.clone();
+    let result = run_blocking("graph_edges_handler", move || {
+        with_locked_store(&s, |store| {
+            let edges = store.list_edges_page(&branch_for_query, offset, limit)?;
+            let snapshot = store.last_indexed_sha(&branch_for_query)?;
+            Ok((edges, snapshot))
+        })
+    })
+    .await;
+
+    let (edges, snapshot) = match result {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+    let count = edges.len();
+    let edge_json = edges
+        .iter()
+        .map(|edge| {
+            json!({
+                "src": edge.src.as_str(),
+                "dst": edge.dst.as_str(),
+                "kind": edge.kind.to_string(),
+                "line": edge.line,
+                "confidence": edge.confidence.to_string(),
+            })
+        })
+        .collect::<Vec<_>>();
+    Json(json!({
+        "branch": branch,
+        "snapshot": snapshot,
+        "offset": offset,
+        "count": count,
+        "next_offset": (count == limit).then_some(offset.saturating_add(count)),
+        "edges": edge_json,
+    }))
+}
+
 #[derive(Debug, Deserialize)]
 struct DepthQuery {
     #[serde(default)]
@@ -361,6 +511,86 @@ async fn callers_handler(
         "depth":      depth,
         "risk_level": result_val.risk_level,
         "hops":       hops,
+    }))
+}
+
+#[tracing::instrument(skip(state))]
+async fn callers_by_id_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(q): Query<DepthQuery>,
+) -> Json<Value> {
+    const MAX_AFFECTED: usize = 500;
+    let depth = q.depth.unwrap_or(2).min(5);
+    let branch = q.branch.unwrap_or_else(|| state.branch.clone());
+    let s = state.clone();
+    let id_for_query = id.clone();
+    let result = run_blocking("callers_by_id_handler", move || {
+        with_locked_store(&s, |store| {
+            let mut seen = std::collections::HashSet::from([id_for_query.clone()]);
+            let mut frontier = vec![id_for_query];
+            let mut hops = Vec::new();
+            let mut truncated = false;
+
+            for _ in 0..depth {
+                let mut hop = Vec::new();
+                let mut next = Vec::new();
+                for target_id in &frontier {
+                    for (caller, _) in
+                        store.find_callers_by_id_with_confidence(&branch, target_id)?
+                    {
+                        let caller_id = caller.id.as_str();
+                        if seen.insert(caller_id.clone()) {
+                            next.push(caller_id);
+                            hop.push(caller);
+                            if seen.len().saturating_sub(1) >= MAX_AFFECTED {
+                                truncated = true;
+                                break;
+                            }
+                        }
+                    }
+                    if truncated {
+                        break;
+                    }
+                }
+                hops.push(hop);
+                if truncated || next.is_empty() {
+                    break;
+                }
+                frontier = next;
+            }
+            Ok((hops, truncated))
+        })
+    })
+    .await;
+
+    let (hops, truncated) = match result {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+    let total_affected: usize = hops.iter().map(Vec::len).sum();
+    let risk_level = match total_affected {
+        0..=2 => "LOW",
+        3..=9 => "MEDIUM",
+        10..=29 => "HIGH",
+        _ => "CRITICAL",
+    };
+    let hop_json = hops
+        .iter()
+        .enumerate()
+        .map(|(index, nodes)| {
+            json!({
+                "hop": index + 1,
+                "nodes": nodes.iter().map(node_json).collect::<Vec<_>>(),
+            })
+        })
+        .collect::<Vec<_>>();
+    Json(json!({
+        "id": id,
+        "depth": depth,
+        "risk_level": risk_level,
+        "truncated": truncated,
+        "hops": hop_json,
     }))
 }
 
@@ -512,6 +742,18 @@ async fn branch_diff_handler(
         "head":             q.head,
         "added_nodes":      diff.added_nodes.iter().map(node_json).collect::<Vec<_>>(),
         "removed_node_ids": diff.removed_node_ids.iter().map(|id| id.as_str()).collect::<Vec<_>>(),
+        "added_edges": diff.added_edges.iter().map(|edge| json!({
+            "src": edge.src.as_str(),
+            "dst": edge.dst.as_str(),
+            "kind": edge.kind.to_string(),
+            "line": edge.line,
+            "confidence": edge.confidence.to_string(),
+        })).collect::<Vec<_>>(),
+        "removed_edges": diff.removed_edges.iter().map(|(src, dst, kind)| json!({
+            "src": src.as_str(),
+            "dst": dst.as_str(),
+            "kind": kind.to_string(),
+        })).collect::<Vec<_>>(),
     }))
 }
 
@@ -895,6 +1137,30 @@ fn repo_root() -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn graph_page_limits_are_bounded() {
+        let query = GraphPageQuery {
+            branch: None,
+            offset: 0,
+            limit: None,
+        };
+        assert_eq!(query.page_limit(), DEFAULT_GRAPH_CHUNK);
+
+        let too_large = GraphPageQuery {
+            branch: None,
+            offset: 0,
+            limit: Some(usize::MAX),
+        };
+        assert_eq!(too_large.page_limit(), MAX_GRAPH_CHUNK);
+
+        let zero = GraphPageQuery {
+            branch: None,
+            offset: 0,
+            limit: Some(0),
+        };
+        assert_eq!(zero.page_limit(), 1);
+    }
 
     #[test]
     fn escape_script_payload_breaks_closing_tag() {

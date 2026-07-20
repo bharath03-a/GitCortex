@@ -13,6 +13,7 @@ interface Props {
   onSelect: (n: RawNode) => void;
   depth: number;
   onDepthChange: (d: number) => void;
+  branch: string;
 }
 
 const RISK_TONE: Record<string, string> = {
@@ -22,7 +23,7 @@ const RISK_TONE: Record<string, string> = {
   CRITICAL: "text-(--color-bad) bg-red-500/20",
 };
 
-export function Inspector({ node, data, onClose, onSelect, depth, onDepthChange }: Props) {
+export function Inspector({ node, data, onClose, onSelect, depth, onDepthChange, branch }: Props) {
   const [tab, setTab] = useState<Tab>("local");
   const { callers, callees, uses } = useMemo(() => {
     const callers: RawNode[] = [];
@@ -156,13 +157,23 @@ export function Inspector({ node, data, onClose, onSelect, depth, onDepthChange 
             {callers.length === 0 && callees.length === 0 && uses.length === 0 && <EmptyHint />}
           </>
         )}
-        {tab === "deep" && <DeepCallersPanel key={node.id} node={node} onSelect={onSelect} />}
+        {tab === "deep" && (
+          <DeepCallersPanel key={node.id} node={node} branch={branch} onSelect={onSelect} />
+        )}
       </div>
     </aside>
   );
 }
 
-function DeepCallersPanel({ node, onSelect }: { node: RawNode; onSelect: (n: RawNode) => void }) {
+function DeepCallersPanel({
+  node,
+  branch,
+  onSelect,
+}: {
+  node: RawNode;
+  branch: string;
+  onSelect: (n: RawNode) => void;
+}) {
   const [result, setResult] = useState<DeepCallersResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -170,7 +181,10 @@ function DeepCallersPanel({ node, onSelect }: { node: RawNode; onSelect: (n: Raw
 
   useEffect(() => {
     let cancelled = false;
-    fetchDeepCallers(node.name, depth)
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    fetchDeepCallers(node.id, branch, depth)
       .then((nextResult) => {
         if (!cancelled) setResult(nextResult);
       })
@@ -183,7 +197,7 @@ function DeepCallersPanel({ node, onSelect }: { node: RawNode; onSelect: (n: Raw
     return () => {
       cancelled = true;
     };
-  }, [node.name, depth]);
+  }, [node.id, branch, depth]);
 
   if (loading)
     return (
@@ -210,6 +224,11 @@ function DeepCallersPanel({ node, onSelect }: { node: RawNode; onSelect: (n: Raw
       {result.hops.map((h) => (
         <NodeList key={h.hop} title={`Hop ${h.hop}`} nodes={h.nodes} onSelect={onSelect} />
       ))}
+      {result.truncated && (
+        <div className="rounded bg-amber-500/10 px-2 py-1.5 text-[11px] text-(--color-warn)">
+          Showing the first 500 affected symbols.
+        </div>
+      )}
       {total === 0 && <EmptyHint label="No callers found" />}
     </div>
   );

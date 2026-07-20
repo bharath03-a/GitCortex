@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, GitBranch } from "lucide-react";
+import { Check, ChevronDown, GitBranch, GitCompare } from "lucide-react";
 import { fetchBranches } from "../api";
 
 interface Props {
   active: string | null;
+  onSetActive: (branch: string) => void;
   diffHead: string | null;
   onSetDiffHead: (head: string | null) => void;
 }
 
-export function BranchPicker({ active, diffHead, onSetDiffHead }: Props) {
+export function BranchPicker({ active, onSetActive, diffHead, onSetDiffHead }: Props) {
   const [open, setOpen] = useState(false);
   const [branches, setBranches] = useState<string[]>([]);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -46,9 +47,30 @@ export function BranchPicker({ active, diffHead, onSetDiffHead }: Props) {
       {open && (
         <div className="animate-fade-in absolute top-full right-0 z-40 mt-1 w-[260px] overflow-hidden rounded-lg border border-(--color-border-subtle) bg-(--color-elevated) shadow-2xl">
           <div className="border-b border-(--color-border-subtle) px-3 py-2 text-[10px] tracking-widest text-(--color-text-dim) uppercase">
-            Diff vs current ({active ?? "—"})
+            View branch
           </div>
-          <ul className="max-h-[40vh] overflow-y-auto py-1">
+          <ul className="max-h-[24vh] overflow-y-auto py-1">
+            {branches.map((branch) => (
+              <li key={`view-${branch}`}>
+                <button
+                  onClick={() => {
+                    if (branch !== active) onSetActive(branch);
+                    setOpen(false);
+                  }}
+                  className={`flex w-full items-center justify-between px-3 py-1.5 text-left hover:bg-(--color-accent-soft) ${
+                    branch === active ? "text-(--color-accent)" : "text-(--color-text-primary)"
+                  }`}
+                >
+                  <span className="font-mono text-[12px]">{branch}</span>
+                  {branch === active && <Check className="size-3.5" />}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="flex items-center gap-1.5 border-y border-(--color-border-subtle) px-3 py-2 text-[10px] tracking-widest text-(--color-text-dim) uppercase">
+            <GitCompare className="size-3" /> Compare {active ?? "—"} with
+          </div>
+          <ul className="max-h-[24vh] overflow-y-auto py-1">
             {diffHead && (
               <li>
                 <button
@@ -56,26 +78,27 @@ export function BranchPicker({ active, diffHead, onSetDiffHead }: Props) {
                     onSetDiffHead(null);
                     setOpen(false);
                   }}
-                  className="flex w-full items-center justify-between px-3 py-1.5 text-left text-(--color-text-muted) hover:bg-(--color-accent-soft) hover:text-(--color-text-primary)"
+                  className="flex w-full items-center px-3 py-1.5 text-left text-[12px] text-(--color-text-muted) hover:bg-(--color-accent-soft) hover:text-(--color-text-primary)"
                 >
-                  <span className="text-[12px]">Clear diff overlay</span>
+                  Clear comparison
                 </button>
               </li>
             )}
             {branches
-              .filter((b) => b !== active)
-              .map((b) => (
-                <li key={b}>
+              .filter((branch) => branch !== active)
+              .map((branch) => (
+                <li key={`compare-${branch}`}>
                   <button
                     onClick={() => {
-                      onSetDiffHead(b);
+                      onSetDiffHead(branch);
                       setOpen(false);
                     }}
                     className={`flex w-full items-center justify-between px-3 py-1.5 text-left hover:bg-(--color-accent-soft) ${
-                      diffHead === b ? "text-(--color-accent)" : "text-(--color-text-primary)"
+                      diffHead === branch ? "text-(--color-accent)" : "text-(--color-text-primary)"
                     }`}
                   >
-                    <span className="font-mono text-[12px]">{b}</span>
+                    <span className="font-mono text-[12px]">{branch}</span>
+                    {diffHead === branch && <Check className="size-3.5" />}
                   </button>
                 </li>
               ))}

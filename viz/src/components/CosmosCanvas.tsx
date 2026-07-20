@@ -179,7 +179,15 @@ export function CosmosCanvas({
           const link = index != null ? links[index] : undefined;
           const conf = link?.confidence;
           if (hiddenConfidence.has(conf ?? "extracted")) return "rgba(0,0,0,0)";
-          const base = EDGE_COLOR[kind] ?? "#666";
+          const edgeKey = link
+            ? `${String(link.source)}\u0000${String(link.target)}\u0000${kind}`
+            : null;
+          const base =
+            edgeKey && diffOverlay?.addedEdgeKeys.has(edgeKey)
+              ? DIFF_ADDED
+              : edgeKey && diffOverlay?.removedEdgeKeys.has(edgeKey)
+                ? DIFF_REMOVED
+                : (EDGE_COLOR[kind] ?? "#666");
           if (highlightSet) {
             if (!link) return base;
             const lit =
