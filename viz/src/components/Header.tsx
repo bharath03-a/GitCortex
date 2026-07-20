@@ -10,6 +10,7 @@ interface Props {
   onSearch: () => void;
   onShowHelp: () => void;
   activeBranch: string | null;
+  onSetActiveBranch: (branch: string) => void;
   diffHead: string | null;
   onSetDiffHead: (b: string | null) => void;
   unusedActive: boolean;
@@ -28,6 +29,7 @@ export function Header({
   onSearch,
   onShowHelp,
   activeBranch,
+  onSetActiveBranch,
   diffHead,
   onSetDiffHead,
   unusedActive,
@@ -45,7 +47,12 @@ export function Header({
         </span>
       </div>
       <div className="flex items-center gap-2">
-        <BranchPicker active={activeBranch} diffHead={diffHead} onSetDiffHead={onSetDiffHead} />
+        <BranchPicker
+          active={activeBranch}
+          onSetActive={onSetActiveBranch}
+          diffHead={diffHead}
+          onSetDiffHead={onSetDiffHead}
+        />
         <button
           onClick={onToggleUnused}
           title="Toggle dead-code overlay (U)"

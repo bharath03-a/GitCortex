@@ -27,7 +27,8 @@ fn main() {
     let needs_build = !dist_dir.join("index.html").exists()
         || !dist_assets.join("main.js").exists()
         || !dist_assets.join("main.css").exists()
-        || !dist_assets.join("webgl-device.js").exists();
+        || !dist_assets.join("webgl-device.js").exists()
+        || !dist_assets.join("CosmosCanvas.js").exists();
 
     if needs_build && viz_dir.exists() && which("npm").is_some() {
         let node_modules = viz_dir.join("node_modules");
@@ -65,8 +66,9 @@ fn ensure_placeholder(dist_dir: &Path, dist_assets: &Path) {
     let js = dist_assets.join("main.js");
     let css = dist_assets.join("main.css");
     let webgl = dist_assets.join("webgl-device.js");
+    let cosmos = dist_assets.join("CosmosCanvas.js");
 
-    if index.exists() && js.exists() && css.exists() && webgl.exists() {
+    if index.exists() && js.exists() && css.exists() && webgl.exists() && cosmos.exists() {
         return;
     }
 
@@ -76,7 +78,7 @@ fn ensure_placeholder(dist_dir: &Path, dist_assets: &Path) {
     if !index.exists() {
         std::fs::write(&index, placeholder_html).ok();
     }
-    for f in [&js, &css, &webgl] {
+    for f in [&js, &css, &webgl, &cosmos] {
         if !f.exists() {
             std::fs::write(f, "").ok();
         }

@@ -149,6 +149,42 @@ fn last_indexed_sha_round_trip() {
 }
 
 #[test]
+fn paged_graph_reads_are_stable_and_complete() {
+    let (mut store, _dir) = tmp_store();
+    let nodes = vec![
+        make_node("alpha", NodeKind::Function, "src/lib.rs", 1),
+        make_node("beta", NodeKind::Function, "src/lib.rs", 10),
+        make_node("gamma", NodeKind::Function, "src/lib.rs", 20),
+    ];
+    let edges = vec![
+        Edge::call(nodes[0].id.clone(), nodes[1].id.clone(), 3),
+        Edge::call(nodes[1].id.clone(), nodes[2].id.clone(), 12),
+    ];
+    store
+        .apply_diff(
+            "main",
+            &GraphDiff {
+                added_nodes: nodes,
+                added_edges: edges,
+                ..Default::default()
+            },
+        )
+        .expect("apply graph");
+
+    let first_nodes = store.list_nodes_page("main", 0, 2).expect("first nodes");
+    let second_nodes = store.list_nodes_page("main", 2, 2).expect("second nodes");
+    assert_eq!(first_nodes.len(), 2);
+    assert_eq!(second_nodes.len(), 1);
+    assert!(first_nodes[0].id.as_str() < first_nodes[1].id.as_str());
+
+    let first_edge = store.list_edges_page("main", 0, 1).expect("first edge");
+    let second_edge = store.list_edges_page("main", 1, 1).expect("second edge");
+    assert_eq!(first_edge.len(), 1);
+    assert_eq!(second_edge.len(), 1);
+    assert_ne!(first_edge[0].src, second_edge[0].src);
+}
+
+#[test]
 fn branch_diff_detects_added_and_removed_nodes() {
     let (mut store, _dir) = tmp_store();
 
@@ -159,13 +195,15 @@ fn branch_diff_detects_added_and_removed_nodes() {
     // main has shared + only_main
     let main_diff = GraphDiff {
         added_nodes: vec![node_a.clone(), node_b.clone()],
+        added_edges: vec![Edge::call(node_a.id.clone(), node_b.id.clone(), 3)],
         ..Default::default()
     };
     store.apply_diff("main", &main_diff).expect("apply main");
 
     // feat has shared + only_feat
     let feat_diff = GraphDiff {
-        added_nodes: vec![node_a, node_c.clone()],
+        added_nodes: vec![node_a.clone(), node_c.clone()],
+        added_edges: vec![Edge::call(node_a.id.clone(), node_c.id.clone(), 4)],
         ..Default::default()
     };
     store
@@ -178,4 +216,8 @@ fn branch_diff_detects_added_and_removed_nodes() {
     assert!(diff.added_nodes.iter().any(|n| n.name == "only_feat"));
     // only_main is in main but not feat → removed
     assert!(!diff.removed_node_ids.is_empty());
+    assert_eq!(diff.added_edges.len(), 1);
+    assert_eq!(diff.added_edges[0].dst, node_c.id);
+    assert_eq!(diff.removed_edges.len(), 1);
+    assert_eq!(diff.removed_edges[0].1, node_b.id);
 }

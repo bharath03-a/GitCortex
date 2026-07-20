@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { GraphData, RawNode } from "./api";
-import { fetchBranches, fetchGraphData, fetchGodNodes, fetchUnused } from "./api";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import type { GraphData, GraphLoadProgress, RawNode } from "./api";
+import { fetchBranches, fetchGodNodes, fetchUnused, loadGraphData } from "./api";
 import { Header } from "./components/Header";
 import { FilterRail, type Flag, type Visibility } from "./components/FilterRail";
-import { CosmosCanvas } from "./components/CosmosCanvas";
+
+const CosmosCanvas = lazy(() =>
+  import("./components/CosmosCanvas").then((module) => ({ default: module.CosmosCanvas })),
+);
 import { Inspector } from "./components/Inspector";
 import { StatusBar } from "./components/StatusBar";
 import { SearchPalette } from "./components/SearchPalette";
@@ -14,6 +17,7 @@ import { useBranchDiff } from "./hooks/useBranchDiff";
 export default function App() {
   const [rawData, setRawData] = useState<GraphData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadProgress, setLoadProgress] = useState<GraphLoadProgress | null>(null);
   const [selected, setSelected] = useState<RawNode | null>(null);
   const [depth, setDepth] = useState(1);
   const [hiddenKinds, setHiddenKinds] = useState<Set<string>>(new Set());
@@ -40,16 +44,38 @@ export default function App() {
   const diffOverlay = useBranchDiff(activeBranch, diffHead);
 
   useEffect(() => {
-    fetchGraphData()
-      .then(setRawData)
-      .catch((e) => setError(String(e)));
     fetchBranches()
-      .then((b) => {
-        setActiveBranch(b.active);
-        setLastSha(b.last_sha);
+      .then((branches) => {
+        setActiveBranch(branches.active);
+        setLastSha(branches.last_sha);
       })
-      .catch(() => {});
+      .catch((fetchError) => setError(String(fetchError)));
   }, []);
+
+  useEffect(() => {
+    if (!activeBranch) return;
+    const controller = new AbortController();
+    setRawData(null);
+    setError(null);
+    setLoadProgress(null);
+    setSelected(null);
+    setDiffHead(null);
+    setUnusedIds(null);
+    setGodNodeIds(null);
+    loadGraphData(
+      activeBranch,
+      (partial, progress) => {
+        setRawData(partial);
+        setLoadProgress(progress);
+        setLastSha(progress.snapshot);
+      },
+      controller.signal,
+    ).catch((loadError) => {
+      if (loadError instanceof DOMException && loadError.name === "AbortError") return;
+      setError(String(loadError));
+    });
+    return () => controller.abort();
+  }, [activeBranch]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -113,45 +139,77 @@ export default function App() {
   useEffect(() => {
     if (unusedIds !== null && unusedIds.size === 0 && !unusedFetchedRef.current) {
       unusedFetchedRef.current = true;
-      fetchUnused()
-        .then((r) => setUnusedIds(new Set(r.nodes.map((n) => n.id))))
+      if (!activeBranch) return;
+      fetchUnused(activeBranch)
+        .then((result) => setUnusedIds(new Set(result.nodes.map((node) => node.id))))
         .catch(() => setUnusedIds(null));
     }
-  }, [unusedIds]);
+  }, [unusedIds, activeBranch]);
 
   // Fetch god nodes when toggle flips on (same guard pattern as above).
   useEffect(() => {
     if (godNodeIds !== null && godNodeIds.size === 0 && !godNodesFetchedRef.current) {
       godNodesFetchedRef.current = true;
-      fetchGodNodes()
-        .then((r) => setGodNodeIds(new Set(r.nodes.map((n) => n.id))))
+      if (!activeBranch) return;
+      fetchGodNodes(activeBranch)
+        .then((result) => setGodNodeIds(new Set(result.nodes.map((node) => node.id))))
         .catch(() => setGodNodeIds(null));
     }
-  }, [godNodeIds]);
+  }, [godNodeIds, activeBranch]);
 
   const data = useMemo(() => {
     if (!rawData) return null;
-    let d = applyDensity(rawData, density);
-    // Apply visibility / flag filters in a single pass
-    if (hiddenVisibility.size > 0 || flagFilter.size > 0) {
-      const keep = new Set(
-        d.nodes
-          .filter(
-            (n) =>
-              !hiddenVisibility.has(n.visibility as Visibility) &&
-              (flagFilter.size === 0 ||
-                (flagFilter.has("async") && n.is_async) ||
-                (flagFilter.has("unsafe") && n.is_unsafe)),
-          )
-          .map((n) => n.id),
+    let source = rawData;
+    if (diffOverlay) {
+      const nodesById = new Map(rawData.nodes.map((node) => [node.id, node]));
+      for (const node of diffOverlay.addedNodes) nodesById.set(node.id, node);
+      const edgeKeys = new Set(
+        rawData.edges.map((edge) => `${edge.src}\u0000${edge.dst}\u0000${edge.kind}`),
       );
-      d = {
-        nodes: d.nodes.filter((n) => keep.has(n.id)),
-        edges: d.edges.filter((e) => keep.has(e.src) && keep.has(e.dst)),
-      };
+      const edges = rawData.edges.slice();
+      for (const edge of diffOverlay.addedEdges) {
+        const key = `${edge.src}\u0000${edge.dst}\u0000${edge.kind}`;
+        if (!edgeKeys.has(key)) {
+          edgeKeys.add(key);
+          edges.push(edge);
+        }
+      }
+      source = { nodes: [...nodesById.values()], edges };
     }
+    let d = applyDensity(source, density);
+    const keep = new Set(
+      d.nodes
+        .filter(
+          (node) =>
+            !hiddenKinds.has(node.kind) &&
+            !hiddenVisibility.has(node.visibility as Visibility) &&
+            (flagFilter.size === 0 ||
+              (flagFilter.has("async") && node.is_async) ||
+              (flagFilter.has("unsafe") && node.is_unsafe)),
+        )
+        .map((node) => node.id),
+    );
+    d = {
+      nodes: d.nodes.filter((node) => keep.has(node.id)),
+      edges: d.edges.filter(
+        (edge) =>
+          keep.has(edge.src) &&
+          keep.has(edge.dst) &&
+          !hiddenEdgeKinds.has(edge.kind) &&
+          !hiddenConfidence.has(edge.confidence ?? "extracted"),
+      ),
+    };
     return d;
-  }, [rawData, density, hiddenVisibility, flagFilter]);
+  }, [
+    rawData,
+    density,
+    hiddenKinds,
+    hiddenEdgeKinds,
+    hiddenConfidence,
+    hiddenVisibility,
+    flagFilter,
+    diffOverlay,
+  ]);
 
   return (
     <div className="flex h-screen flex-col bg-(--color-void) text-(--color-text-primary)">
@@ -163,6 +221,7 @@ export default function App() {
         onSearch={() => setSearchOpen(true)}
         onShowHelp={() => setHelpOpen(true)}
         activeBranch={activeBranch}
+        onSetActiveBranch={setActiveBranch}
         diffHead={diffHead}
         onSetDiffHead={setDiffHead}
         unusedActive={unusedIds !== null}
@@ -179,7 +238,7 @@ export default function App() {
       <main className="flex flex-1 overflow-hidden">
         {railOpen && (
           <FilterRail
-            data={data}
+            data={rawData}
             hiddenKinds={hiddenKinds}
             setHiddenKinds={setHiddenKinds}
             hiddenEdgeKinds={hiddenEdgeKinds}
@@ -209,18 +268,26 @@ export default function App() {
             </div>
           )}
           {data && !error && data.nodes.length > 0 && (
-            <CosmosCanvas
-              data={data}
-              hiddenKinds={hiddenKinds}
-              hiddenEdgeKinds={hiddenEdgeKinds}
-              hiddenConfidence={hiddenConfidence}
-              selected={selected}
-              onSelect={setSelected}
-              depth={depth}
-              diffOverlay={diffOverlay}
-              unusedIds={unusedIds}
-              godNodeIds={godNodeIds}
-            />
+            <Suspense
+              fallback={
+                <div className="absolute inset-0 flex items-center justify-center text-(--color-text-muted)">
+                  Loading GPU renderer…
+                </div>
+              }
+            >
+              <CosmosCanvas
+                data={data}
+                hiddenKinds={hiddenKinds}
+                hiddenEdgeKinds={hiddenEdgeKinds}
+                hiddenConfidence={hiddenConfidence}
+                selected={selected}
+                onSelect={setSelected}
+                depth={depth}
+                diffOverlay={diffOverlay}
+                unusedIds={unusedIds}
+                godNodeIds={godNodeIds}
+              />
+            </Suspense>
           )}
           {data && !error && data.nodes.length === 0 && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center text-(--color-text-muted)">
@@ -234,7 +301,32 @@ export default function App() {
           )}
           {!data && !error && (
             <div className="absolute inset-0 flex items-center justify-center text-(--color-text-muted)">
-              Loading graph…
+              Loading graph manifest…
+            </div>
+          )}
+          {data && loadProgress && loadProgress.stage !== "complete" && (
+            <div className="animate-fade-in absolute bottom-3 left-3 z-20 w-[320px] rounded-lg border border-(--color-border-subtle) bg-(--color-elevated)/90 p-3 font-mono text-[11px] backdrop-blur-sm">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-(--color-text-primary)">Loading {loadProgress.stage}</span>
+                <span className="text-(--color-text-dim)">
+                  {loadProgress.stage === "nodes"
+                    ? `${loadProgress.loadedNodes} / ${loadProgress.totalNodes}`
+                    : `${loadProgress.loadedEdges} / ${loadProgress.totalEdges}`}
+                </span>
+              </div>
+              <progress
+                className="h-1.5 w-full accent-(--color-accent)"
+                max={
+                  loadProgress.stage === "nodes"
+                    ? Math.max(loadProgress.totalNodes, 1)
+                    : Math.max(loadProgress.totalEdges, 1)
+                }
+                value={
+                  loadProgress.stage === "nodes"
+                    ? loadProgress.loadedNodes
+                    : loadProgress.loadedEdges
+                }
+              />
             </div>
           )}
           {diffOverlay && (
@@ -287,6 +379,7 @@ export default function App() {
             onSelect={setSelected}
             depth={depth}
             onDepthChange={setDepth}
+            branch={activeBranch ?? "main"}
           />
         )}
       </main>
@@ -299,9 +392,23 @@ export default function App() {
       />
       {searchOpen && (
         <SearchPalette
-          data={data}
+          data={rawData}
           onClose={() => setSearchOpen(false)}
-          onSelect={(n) => setSelected(n)}
+          onSelect={(node) => {
+            setDensity("full");
+            setHiddenKinds((hidden) => {
+              const next = new Set(hidden);
+              next.delete(node.kind);
+              return next;
+            });
+            setHiddenVisibility((hidden) => {
+              const next = new Set(hidden);
+              next.delete(node.visibility as Visibility);
+              return next;
+            });
+            setFlagFilter(new Set());
+            setSelected(node);
+          }}
         />
       )}
       {helpOpen && <KeyboardHelp onClose={() => setHelpOpen(false)} />}
