@@ -155,8 +155,8 @@ pub struct GetSubgraphParams {
     pub depth: Option<u8>,
     /// Direction: "in" (callers/ancestors), "out" (callees/descendants), "both" (default).
     pub direction: Option<String>,
-    /// Max nodes returned (default 30, capped at 200). Edges are filtered to the
-    /// kept node set; `truncated` flags when the neighbourhood was larger.
+    /// Max ranked direct-relation evidence rows (default 20, capped at 100).
+    /// Coverage still reports the full neighborhood and direct-relation totals.
     pub limit: Option<usize>,
     pub branch: Option<String>,
 }
@@ -183,7 +183,7 @@ pub struct StartTourParams {
     /// along the call graph. When omitted, picks the highest-centrality
     /// entry points across the repo.
     pub seed: Option<String>,
-    /// How many steps in the tour (default 12, capped at 50).
+    /// How many steps/components in the tour (default 6, capped at 20).
     pub limit: Option<usize>,
     pub branch: Option<String>,
 }

@@ -13,12 +13,12 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use gitcortex_core::{
     error::Result,
     graph::Node,
-    schema::{EdgeKind, NodeKind},
+    schema::{EdgeConfidence, EdgeKind, NodeKind, Visibility},
     store::GraphStore,
 };
 use serde::Serialize;
 
-use super::centrality::in_degree_by_calls;
+use super::{centrality::in_degree_by_calls, helpers::is_test_file};
 
 /// One step in a generated tour.
 #[derive(Debug, Clone, Serialize)]
@@ -44,7 +44,7 @@ pub struct Component {
     pub path: String,
     /// Number of distinct source files in the component.
     pub files: u32,
-    /// Highest-centrality public symbols in the component (up to 4).
+    /// Highest-ranked public production symbols in the component (up to 2).
     pub key_symbols: Vec<String>,
     /// Other components this one calls into / uses / imports from.
     pub depends_on: Vec<String>,
@@ -61,12 +61,11 @@ pub struct Tour {
 }
 
 /// Default tour length when caller doesn't specify.
-const DEFAULT_TOUR_LEN: usize = 12;
+const DEFAULT_TOUR_LEN: usize = 6;
 /// Hard cap to keep tour outputs bounded.
-const MAX_TOUR_LEN: usize = 50;
-/// No-seed tours include community-grouped steps. Larger cap so each community
-/// can have meaningful representation; render_markdown groups them visually.
-const NO_SEED_STEP_CAP: usize = 20;
+const MAX_TOUR_LEN: usize = 20;
+/// No-seed tours retain a small internal entry-point head alongside components.
+const NO_SEED_STEP_CAP: usize = 8;
 
 /// Generate a tour for `branch`. If `seed` is `Some`, the tour is rooted at
 /// that symbol and walks outward via `Calls` and `Contains` edges. If `None`,
@@ -96,7 +95,9 @@ pub fn generate<S: GraphStore + ?Sized>(
     // architecture summary so we can show how components fit together.
     let mut dep_edges: Vec<(String, String)> = Vec::new();
     for e in &edges {
-        if matches!(e.kind, EdgeKind::Calls | EdgeKind::Uses | EdgeKind::Imports) {
+        if matches!(e.kind, EdgeKind::Calls | EdgeKind::Uses | EdgeKind::Imports)
+            && !matches!(e.confidence, EdgeConfidence::Inferred)
+        {
             dep_edges.push((e.src.as_str(), e.dst.as_str()));
         }
     }
@@ -108,45 +109,10 @@ pub fn generate<S: GraphStore + ?Sized>(
             seeded_tour(&by_id, &callees_of, &in_degree, name, limit),
             Vec::new(),
         ),
-        None => {
-            // Build cluster labels so no-seed steps can be grouped by community.
-            let all_nodes: Vec<_> = by_id.values().cloned().collect();
-            let raw_labels = super::clustering::node_cluster_labels(&all_nodes, &edges);
-            // Map each label (node-id) to the highest-centrality node name in
-            // that community — gives a human-readable group heading.
-            let mut label_to_rep: HashMap<String, (String, u32)> = HashMap::new();
-            for (id, label) in &raw_labels {
-                let deg = in_degree.get(id.as_str()).copied().unwrap_or(0);
-                let entry = label_to_rep.entry(label.clone()).or_insert_with(|| {
-                    let name = by_id.get(id).map(|n| n.name.clone()).unwrap_or_default();
-                    (name, 0)
-                });
-                if deg > entry.1 {
-                    if let Some(n) = by_id.get(id) {
-                        *entry = (n.name.clone(), deg);
-                    }
-                }
-            }
-            let id_to_community: HashMap<String, String> = raw_labels
-                .into_iter()
-                .map(|(id, label)| {
-                    let human = label_to_rep
-                        .get(&label)
-                        .map(|(name, _)| name.clone())
-                        .unwrap_or(label);
-                    (id, human)
-                })
-                .collect();
-            (
-                global_tour(
-                    &by_id,
-                    &in_degree,
-                    limit.min(NO_SEED_STEP_CAP),
-                    Some(&id_to_community),
-                ),
-                architecture_summary(&by_id, &in_degree, &dep_edges, limit),
-            )
-        }
+        None => (
+            global_tour(&by_id, &in_degree, limit.min(NO_SEED_STEP_CAP)),
+            architecture_summary(&by_id, &in_degree, &dep_edges, limit),
+        ),
     };
 
     Ok(Tour {
@@ -162,8 +128,45 @@ pub fn generate<S: GraphStore + ?Sized>(
 fn component_of(file: &str) -> String {
     match file.rfind('/') {
         Some(i) => file[..i].to_owned(),
-        None => file.to_owned(),
+        None => "<root>".to_owned(),
     }
+}
+
+fn is_agent_relevant(node: &Node) -> bool {
+    let path = node.file.to_string_lossy();
+    let lower = path.to_ascii_lowercase().replace('\\', "/");
+    let generated_or_docs = lower.starts_with("docs/")
+        || lower.starts_with("site/")
+        || lower.starts_with("examples/")
+        || lower.contains("/generated/")
+        || lower.contains("/vendor/")
+        || lower.contains("/node_modules/")
+        || lower.contains("/target/");
+    !generated_or_docs
+        && !is_test_file(&node.file)
+        && !matches!(node.metadata.visibility, Visibility::Private)
+        && matches!(
+            node.kind,
+            NodeKind::Function
+                | NodeKind::Method
+                | NodeKind::Struct
+                | NodeKind::Trait
+                | NodeKind::Interface
+                | NodeKind::Enum
+        )
+}
+
+fn tour_score(node: &Node, in_degree: u32) -> u32 {
+    let kind_weight = match node.kind {
+        NodeKind::Struct | NodeKind::Trait | NodeKind::Interface | NodeKind::Enum => 100,
+        NodeKind::Function => 70,
+        NodeKind::Method => 10,
+        _ => 0,
+    };
+    // Very common helper names can accumulate noisy inferred edges. Cap the
+    // centrality contribution so architecture-bearing types and entry
+    // functions remain ahead of generic methods such as `get` or `as_str`.
+    kind_weight + in_degree.min(30)
 }
 
 /// Group symbols into components (directories) and summarise each: file count,
@@ -178,7 +181,8 @@ fn architecture_summary(
     // id → component, for edge resolution.
     let comp_of_id: HashMap<&str, String> = by_id
         .iter()
-        .map(|(id, n)| (id.as_str(), component_of(&n.file.display().to_string())))
+        .filter(|(_, node)| is_agent_relevant(node))
+        .map(|(id, node)| (id.as_str(), component_of(&node.file.display().to_string())))
         .collect();
 
     // Per-component aggregates.
@@ -187,12 +191,12 @@ fn architecture_summary(
     // (symbol_name "name — file:line", degree) for picking key symbols. The
     // location is embedded so a tour answer needs no follow-up lookups.
     let mut symbols: HashMap<String, Vec<(String, u32)>> = HashMap::new();
-    for n in by_id.values() {
+    for n in by_id.values().filter(|node| is_agent_relevant(node)) {
         let file = n.file.display().to_string();
         let comp = component_of(&file);
         files.entry(comp.clone()).or_default().insert(file.clone());
         let deg = in_degree.get(&n.id.as_str()).copied().unwrap_or(0);
-        *score.entry(comp.clone()).or_insert(0) += deg;
+        *score.entry(comp.clone()).or_insert(0) += tour_score(n, deg);
         if matches!(
             n.kind,
             NodeKind::Function
@@ -200,9 +204,13 @@ fn architecture_summary(
                 | NodeKind::Struct
                 | NodeKind::Trait
                 | NodeKind::Interface
+                | NodeKind::Enum
         ) {
             let label = format!("{} — {}:{}", n.name, file, n.span.start_line);
-            symbols.entry(comp).or_default().push((label, deg));
+            symbols
+                .entry(comp)
+                .or_default()
+                .push((label, tour_score(n, deg)));
         }
     }
 
@@ -226,12 +234,13 @@ fn architecture_summary(
             let mut key = symbols.remove(&comp).unwrap_or_default();
             key.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
             key.dedup_by(|a, b| a.0 == b.0);
-            let key_symbols: Vec<String> = key.into_iter().take(4).map(|(name, _)| name).collect();
+            let key_symbols: Vec<String> = key.into_iter().take(2).map(|(name, _)| name).collect();
             let mut depends_on: Vec<String> = deps
                 .get(&comp)
                 .map(|s| s.iter().cloned().collect())
                 .unwrap_or_default();
             depends_on.sort();
+            depends_on.truncate(5);
             Component {
                 files: files.get(&comp).map(|f| f.len() as u32).unwrap_or(0),
                 path: comp,
@@ -242,34 +251,21 @@ fn architecture_summary(
         .collect()
 }
 
-/// Pick highest-centrality public functions/methods across the repo.
-/// When `community_labels` is provided, each step is annotated with its
-/// cluster community; steps are still ordered by centrality globally but
-/// `render_markdown` will group them by community heading.
+/// Pick architecture-bearing public production symbols across the repo.
 fn global_tour(
     by_id: &HashMap<String, Node>,
     in_degree: &HashMap<String, u32>,
     limit: usize,
-    community_labels: Option<&HashMap<String, String>>,
 ) -> Vec<TourStep> {
-    let mut scored: Vec<(&Node, u32)> = by_id
+    let mut scored: Vec<(&Node, u32, u32)> = by_id
         .values()
-        .filter(|n| {
-            matches!(
-                n.kind,
-                NodeKind::Function
-                    | NodeKind::Method
-                    | NodeKind::Struct
-                    | NodeKind::Trait
-                    | NodeKind::Interface
-            )
-        })
-        .map(|n| {
-            let deg = in_degree.get(&n.id.as_str()).copied().unwrap_or(0);
-            (n, deg)
+        .filter(|node| is_agent_relevant(node) && !matches!(node.kind, NodeKind::Method))
+        .map(|node| {
+            let degree = in_degree.get(&node.id.as_str()).copied().unwrap_or(0);
+            (node, tour_score(node, degree), degree)
         })
         .collect();
-    // Sort: higher degree first, then alphabetic by qualified_name for determinism.
+    // Sort: architecture-weighted score first, then qualified name.
     scored.sort_by(|a, b| {
         b.1.cmp(&a.1)
             .then_with(|| a.0.qualified_name.cmp(&b.0.qualified_name))
@@ -279,7 +275,7 @@ fn global_tour(
         .into_iter()
         .take(limit)
         .enumerate()
-        .map(|(i, (n, deg))| TourStep {
+        .map(|(i, (n, _, deg))| TourStep {
             order: (i + 1) as u32,
             name: n.name.clone(),
             qualified_name: n.qualified_name.clone(),
@@ -291,9 +287,7 @@ fn global_tour(
             } else {
                 format!("central — {deg} inbound calls")
             },
-            community: community_labels
-                .and_then(|m| m.get(&n.id.as_str()))
-                .cloned(),
+            community: None,
         })
         .collect()
 }
@@ -368,59 +362,6 @@ pub fn render_markdown(tour: &Tour) -> String {
     // not dump a long step list, keeping the result token-cheap.
     if tour.seed.is_none() && !tour.components.is_empty() {
         let _ = writeln!(out, "# Architecture (branch={})", tour.branch);
-
-        // Community-grouped steps (when cluster data is available and meaningful).
-        let has_communities = tour.steps.iter().any(|s| s.community.is_some());
-        let distinct_communities: std::collections::HashSet<&str> = tour
-            .steps
-            .iter()
-            .filter_map(|s| s.community.as_deref())
-            .collect();
-        if has_communities && distinct_communities.len() > 1 {
-            let _ = writeln!(
-                out,
-                "\n## Code communities ({} groups, {} symbols)\n",
-                distinct_communities.len(),
-                tour.steps.len()
-            );
-            // Stable group order: sort by descending size, then label.
-            let mut groups: Vec<(String, Vec<&TourStep>)> = {
-                let mut map: std::collections::HashMap<&str, Vec<&TourStep>> =
-                    std::collections::HashMap::new();
-                for s in &tour.steps {
-                    if let Some(c) = s.community.as_deref() {
-                        map.entry(c).or_default().push(s);
-                    }
-                }
-                let mut v: Vec<_> = map.into_iter().map(|(k, v)| (k.to_owned(), v)).collect();
-                v.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then_with(|| a.0.cmp(&b.0)));
-                v
-            };
-            let mut global_order = 1u32;
-            for (label, members) in &mut groups {
-                let _ = writeln!(out, "### Community: `{label}` ({} symbols)", members.len());
-                members.sort_by_key(|s| s.order);
-                for s in members.iter() {
-                    let _ = writeln!(
-                        out,
-                        "{}. `{}` ({})  — `{}:{}`  _{}_",
-                        global_order, s.name, s.kind, s.file, s.start_line, s.reason
-                    );
-                    global_order += 1;
-                }
-            }
-        } else {
-            // Fallback: flat central list when ≤1 community or no labels.
-            if !tour.steps.is_empty() {
-                let names = tour
-                    .steps
-                    .iter()
-                    .map(|s| format!("`{}`", s.name))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                let _ = writeln!(out, "\n## Most central overall\n{names}");
-            }
-        }
 
         let _ = writeln!(
             out,

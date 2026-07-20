@@ -49,7 +49,7 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
             )?;
             match format {
                 AgentOutputFormat::AgentJson => {
-                    println!("{}", serde_json::to_string_pretty(&response)?);
+                    println!("{}", serde_json::to_string(&response)?);
                 }
                 AgentOutputFormat::Text => print_agent_callers(&response),
             }
@@ -173,39 +173,26 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
             depth,
             direction,
             limit,
+            budget_tokens,
+            format,
             branch,
         } => {
-            let sg = store.get_subgraph(&branch, &name, depth, &direction)?;
-            if sg.nodes.is_empty() {
-                println!(
-                    "{}",
-                    empty_msg(&format!("no subgraph for '{name}'"), &branch)
-                );
-            } else {
-                println!(
-                    "{} {} {}",
-                    paint(
-                        header_style(),
-                        &format!("{} nodes, {} edges", sg.nodes.len(), sg.edges.len()),
-                    ),
-                    paint(hint_style(), "—"),
-                    paint(
-                        hint_style(),
-                        &format!("seed={name}, depth={depth}, direction={direction}"),
-                    ),
-                );
-                for n in sg.nodes.iter().take(limit) {
-                    println!("  {}", node_line(n));
+            let response = gitcortex_mcp::mcp::agent::get_subgraph(
+                &store,
+                &branch,
+                &name,
+                depth,
+                &direction,
+                gitcortex_mcp::mcp::agent::AgentQueryOptions {
+                    limit,
+                    budget_tokens,
+                },
+            )?;
+            match format {
+                AgentOutputFormat::AgentJson => {
+                    println!("{}", serde_json::to_string(&response)?);
                 }
-                if sg.nodes.len() > limit {
-                    println!(
-                        "  {}",
-                        paint(
-                            hint_style(),
-                            &format!("showing {limit} of {} nodes", sg.nodes.len())
-                        )
-                    );
-                }
+                AgentOutputFormat::Text => print_agent_subgraph(&response),
             }
         }
 
@@ -329,6 +316,52 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn print_agent_subgraph(response: &gitcortex_mcp::mcp::agent::AgentSubgraphResponse) {
+    println!(
+        "{} {}",
+        paint(header_style(), "[GitCortex]"),
+        paint(hint_style(), &response.answer)
+    );
+    if !response.candidates.is_empty() {
+        println!("  {}", paint(header_style(), "qualified candidates:"));
+        for candidate in &response.candidates {
+            println!(
+                "    {} {}  {}",
+                paint(kind_style_from_str(&candidate.kind), &candidate.kind),
+                paint(name_style(), &candidate.qualified_name),
+                paint(
+                    path_style(),
+                    &format!("{}:{}", candidate.file, candidate.start_line)
+                )
+            );
+        }
+    }
+    for item in &response.evidence {
+        println!(
+            "  {} {}  {}  {}",
+            paint(header_style(), &item.relation),
+            paint(name_style(), &item.qualified_name),
+            paint(path_style(), &format!("{}:{}", item.file, item.line)),
+            paint(hint_style(), &format!("[{}]", item.confidence)),
+        );
+    }
+    if response.coverage.truncated {
+        println!(
+            "  {}",
+            paint(
+                hint_style(),
+                &format!(
+                    "showing {} of {} direct relationships",
+                    response.coverage.returned, response.coverage.direct_relations
+                )
+            )
+        );
+    }
+    if let Some(next) = &response.next_action {
+        println!("  {}", paint(hint_style(), next));
+    }
 }
 
 fn print_agent_callers(response: &gitcortex_mcp::mcp::agent::AgentCallersResponse) {
