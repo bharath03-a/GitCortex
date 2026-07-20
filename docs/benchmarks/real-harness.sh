@@ -52,11 +52,12 @@ BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
 
 # MCP config that exposes the GitCortex graph as the "gcx" server.
 MCP_GCX="$REPO_DIR/.mcp-gcx.json"
-# COMPACT=1 → only expose the single gcx dispatch tool (lower schema overhead)
+# Compact single-dispatch is the server default; retain COMPACT=0 as the
+# historical opt-in to the full schema for old comparison runs.
 if [ "${COMPACT:-0}" = "1" ]; then
-  MCP_ARGS='["serve","--compact"]'
-else
   MCP_ARGS='["serve"]'
+else
+  MCP_ARGS='["serve","--full"]'
 fi
 cat > "$MCP_GCX" <<EOF
 {"mcpServers":{"gcx":{"command":"$GCX","args":$MCP_ARGS}}}

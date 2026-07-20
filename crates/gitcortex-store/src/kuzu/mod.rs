@@ -747,6 +747,46 @@ impl GraphStore for KuzuGraphStore {
         Ok(out)
     }
 
+    fn find_callers_by_id_with_confidence(
+        &self,
+        branch: &str,
+        target_id: &str,
+    ) -> Result<Vec<(Node, EdgeConfidence)>> {
+        self.ensure_branch(branch)?;
+        let nt = db_schema::node_table(branch);
+        let et = db_schema::edge_table(branch);
+        let id_esc = esc(target_id);
+        let conn = self.conn()?;
+
+        let result = conn
+            .query(&format!(
+                "MATCH (n:{nt})-[e:{et} {{kind: 'calls'}}]->(callee:{nt}) \
+                 WHERE callee.id = '{id_esc}' \
+                 RETURN {NODE_COLS}, e.confidence"
+            ))
+            .map_err(|e| GitCortexError::Store(e.to_string()))?;
+
+        let mut out = Vec::new();
+        for row in result {
+            if row.len() <= NODE_COL_COUNT {
+                tracing::debug!(
+                    "skipping short row ({} cols) in find_callers_by_id_with_confidence",
+                    row.len()
+                );
+                continue;
+            }
+            let confidence =
+                EdgeConfidence::from_label(&str_val(&row[NODE_COL_COUNT]).unwrap_or_default());
+            match row_to_node(row) {
+                Ok(node) => out.push((node, confidence)),
+                Err(e) => tracing::debug!(
+                    "skipping malformed row in find_callers_by_id_with_confidence: {e}"
+                ),
+            }
+        }
+        Ok(out)
+    }
+
     fn find_callers_deep(
         &self,
         branch: &str,
@@ -1509,6 +1549,121 @@ impl GraphStore for KuzuGraphStore {
         Ok(SubGraph {
             nodes: all_nodes,
             edges: all_edges,
+        })
+    }
+
+    fn get_subgraph_by_id(
+        &self,
+        branch: &str,
+        seed_id: &str,
+        depth: u8,
+        direction: &str,
+    ) -> Result<SubGraph> {
+        self.ensure_branch(branch)?;
+        let depth = depth.min(5);
+        let nt = db_schema::node_table(branch);
+        let et = db_schema::edge_table(branch);
+        let seed_esc = esc(seed_id);
+        let conn = self.conn()?;
+        let mut seed_result = conn
+            .query(&format!(
+                "MATCH (n:{nt}) WHERE n.id = '{seed_esc}' RETURN {NODE_COLS} LIMIT 1"
+            ))
+            .map_err(|e| GitCortexError::Store(e.to_string()))?;
+        let seed_nodes = rows_to_nodes(&mut seed_result)?;
+        if seed_nodes.is_empty() {
+            return Ok(SubGraph {
+                nodes: Vec::new(),
+                edges: Vec::new(),
+            });
+        }
+
+        let mut all_node_ids = HashSet::new();
+        let mut all_nodes = Vec::new();
+        for node in seed_nodes {
+            all_node_ids.insert(node.id.as_str());
+            all_nodes.push(node);
+        }
+        let mut frontier = vec![seed_id.to_owned()];
+
+        for _ in 0..depth {
+            let mut next = Vec::new();
+            for id in &frontier {
+                let id_esc = esc(id);
+                if direction == "out" || direction == "both" {
+                    let conn2 = self.conn()?;
+                    let mut result = conn2
+                        .query(&format!(
+                            "MATCH (seed:{nt})-[:{et}]->(n:{nt}) \
+                             WHERE seed.id = '{id_esc}' RETURN {NODE_COLS}"
+                        ))
+                        .map_err(|e| GitCortexError::Store(e.to_string()))?;
+                    for node in rows_to_nodes(&mut result)? {
+                        let node_id = node.id.as_str();
+                        if all_node_ids.insert(node_id.clone()) {
+                            next.push(node_id);
+                            all_nodes.push(node);
+                        }
+                    }
+                }
+                if direction == "in" || direction == "both" {
+                    let conn3 = self.conn()?;
+                    let mut result = conn3
+                        .query(&format!(
+                            "MATCH (n:{nt})-[:{et}]->(seed:{nt}) \
+                             WHERE seed.id = '{id_esc}' RETURN {NODE_COLS}"
+                        ))
+                        .map_err(|e| GitCortexError::Store(e.to_string()))?;
+                    for node in rows_to_nodes(&mut result)? {
+                        let node_id = node.id.as_str();
+                        if all_node_ids.insert(node_id.clone()) {
+                            next.push(node_id);
+                            all_nodes.push(node);
+                        }
+                    }
+                }
+            }
+            if next.is_empty() {
+                break;
+            }
+            frontier = next;
+        }
+
+        let ids = all_node_ids
+            .iter()
+            .map(|id| format!("'{}'", esc(id)))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let conn4 = self.conn()?;
+        let result = conn4
+            .query(&format!(
+                "MATCH (s:{nt})-[e:{et}]->(d:{nt}) \
+                 WHERE s.id IN [{ids}] AND d.id IN [{ids}] \
+                 RETURN s.id, d.id, e.kind, e.line, e.confidence"
+            ))
+            .map_err(|e| GitCortexError::Store(e.to_string()))?;
+        let mut edges = Vec::new();
+        for row in result {
+            let src = str_val(&row[0])?;
+            let dst = str_val(&row[1])?;
+            let kind = str_val(&row[2])?;
+            edges.push(Edge {
+                src: NodeId::try_from(src.as_str())
+                    .map_err(|e| GitCortexError::Store(format!("bad src id: {e}")))?,
+                dst: NodeId::try_from(dst.as_str())
+                    .map_err(|e| GitCortexError::Store(format!("bad dst id: {e}")))?,
+                kind: edge_kind_from_str(&kind),
+                line: i64_val(&row[3])
+                    .ok()
+                    .filter(|line| *line >= 0)
+                    .map(|line| line as u32),
+                confidence: EdgeConfidence::from_label(&str_val(&row[4]).unwrap_or_default()),
+            });
+        }
+
+        Ok(SubGraph {
+            nodes: all_nodes,
+            edges,
         })
     }
 

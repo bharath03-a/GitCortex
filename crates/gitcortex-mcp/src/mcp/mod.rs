@@ -1,3 +1,4 @@
+pub mod agent;
 pub mod centrality;
 pub mod clustering;
 pub(crate) mod git_helpers;

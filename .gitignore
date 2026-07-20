@@ -56,3 +56,6 @@ docs/benchmarks/loop-sweep.sh
 !docs/benchmarks/stable-v063/
 !docs/benchmarks/stable-v063/*.json
 !docs/benchmarks/final-report-2026-07-17.html
+
+# Local Lavish review artifacts
+.lavish/

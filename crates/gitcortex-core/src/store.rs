@@ -181,6 +181,33 @@ pub trait GraphStore: Send + Sync {
             .collect())
     }
 
+    /// Find direct callers for one exact target node ID, including edge
+    /// confidence. Agent-facing queries use this after symbol disambiguation so
+    /// common names such as `get` cannot merge unrelated call graphs.
+    ///
+    /// The default implementation filters the full graph in memory. Stores
+    /// should override this with an indexed query.
+    fn find_callers_by_id_with_confidence(
+        &self,
+        branch: &str,
+        target_id: &str,
+    ) -> Result<Vec<(Node, EdgeConfidence)>> {
+        let callers: std::collections::HashMap<String, Node> = self
+            .list_all_nodes(branch)?
+            .into_iter()
+            .map(|n| (n.id.as_str(), n))
+            .collect();
+        let mut out = Vec::new();
+        for edge in self.list_all_edges(branch)? {
+            if edge.kind == EdgeKind::Calls && edge.dst.as_str() == target_id {
+                if let Some(node) = callers.get(&edge.src.as_str()) {
+                    out.push((node.clone(), edge.confidence));
+                }
+            }
+        }
+        Ok(out)
+    }
+
     /// Multi-hop BFS: find callers up to `depth` hops away.
     /// Returns callers grouped by hop distance (1..=depth).
     /// `depth` is capped at 5 to prevent runaway queries.
@@ -550,6 +577,77 @@ pub trait GraphStore: Send + Sync {
         depth: u8,
         direction: &str,
     ) -> Result<SubGraph>;
+
+    /// Return a subgraph around one exact seed node ID. Agent-facing queries
+    /// use this after disambiguation so repeated short names cannot merge
+    /// unrelated neighborhoods.
+    ///
+    /// The default scans the graph in memory. Stores should override this with
+    /// indexed traversal.
+    fn get_subgraph_by_id(
+        &self,
+        branch: &str,
+        seed_id: &str,
+        depth: u8,
+        direction: &str,
+    ) -> Result<SubGraph> {
+        let nodes = self.list_all_nodes(branch)?;
+        let edges = self.list_all_edges(branch)?;
+        let by_id: std::collections::HashMap<String, Node> = nodes
+            .into_iter()
+            .map(|node| (node.id.as_str(), node))
+            .collect();
+        if !by_id.contains_key(seed_id) {
+            return Ok(SubGraph {
+                nodes: Vec::new(),
+                edges: Vec::new(),
+            });
+        }
+
+        let mut selected: std::collections::HashSet<String> =
+            [seed_id.to_owned()].into_iter().collect();
+        let mut frontier = vec![seed_id.to_owned()];
+        for _ in 0..depth.min(5) {
+            let mut next = Vec::new();
+            for edge in &edges {
+                let src = edge.src.as_str();
+                let dst = edge.dst.as_str();
+                let neighbour = if (direction == "out" || direction == "both")
+                    && frontier.contains(&src)
+                {
+                    Some(dst)
+                } else if (direction == "in" || direction == "both") && frontier.contains(&dst) {
+                    Some(src)
+                } else {
+                    None
+                };
+                if let Some(id) = neighbour {
+                    if selected.insert(id.clone()) {
+                        next.push(id);
+                    }
+                }
+            }
+            if next.is_empty() {
+                break;
+            }
+            frontier = next;
+        }
+
+        let selected_edges = edges
+            .into_iter()
+            .filter(|edge| {
+                selected.contains(&edge.src.as_str()) && selected.contains(&edge.dst.as_str())
+            })
+            .collect();
+        let selected_nodes = selected
+            .into_iter()
+            .filter_map(|id| by_id.get(&id).cloned())
+            .collect();
+        Ok(SubGraph {
+            nodes: selected_nodes,
+            edges: selected_edges,
+        })
+    }
 
     // ── Indexing state ───────────────────────────────────────────────────────
 

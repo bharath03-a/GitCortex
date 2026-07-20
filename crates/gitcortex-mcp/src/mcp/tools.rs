@@ -11,10 +11,7 @@ use gitcortex_store::kuzu::KuzuGraphStore;
 use crate::embeddings::{Embedder, SemanticIndex};
 
 use super::git_helpers::{parse_diff_hunks, run_git_diff};
-use super::helpers::{
-    confidence_rank, detect_current_branch, is_test_file, parse_node_kind, parse_visibility,
-    sig_line,
-};
+use super::helpers::{detect_current_branch, parse_node_kind, parse_visibility};
 use super::params::*;
 
 pub enum SemanticState {
@@ -219,8 +216,12 @@ impl GitCortexServer {
     }
 
     fn active_tool_router(&self) -> ToolRouter<Self> {
+        Self::tool_router_for_mode(self.compact)
+    }
+
+    fn tool_router_for_mode(compact: bool) -> ToolRouter<Self> {
         let mut router = Self::tool_router();
-        if self.compact {
+        if compact {
             for name in [
                 "lookup_symbol",
                 "find_callers",
@@ -232,6 +233,13 @@ impl GitCortexServer {
                 "find_implementors",
                 "trace_path",
                 "list_symbols_in_range",
+                "graph_stats",
+                "ast_search",
+                "type_hierarchy",
+                "find_importers",
+                "find_type_usages",
+                "module_dependencies",
+                "get_call_sites",
                 "find_unused_symbols",
                 "get_subgraph",
                 "wiki_symbol",
@@ -240,6 +248,7 @@ impl GitCortexServer {
                 "find_god_nodes",
                 "find_clusters",
                 "find_cycles",
+                "health_report",
             ] {
                 router.disable_route(name);
             }
@@ -296,8 +305,10 @@ impl GitCortexServer {
 
     /// Find all callers of a function or method, with optional multi-hop depth.
     #[tool(
-        description = "Find callers of a function. depth=1 (default) = direct callers; \
-        depth=2..5 = multi-hop. Results capped per hop; total count always returned."
+        description = "Find callers of one exact function or method. Ambiguous short names \
+        return qualified candidates without traversal. Evidence is confidence-ranked, \
+        production-before-test, globally budgeted, and includes total coverage. depth=1 \
+        (default) is direct; depth=2..5 adds ranked transitive callers."
     )]
     fn find_callers(&self, Parameters(p): Parameters<FindCallersParams>) -> CallToolResult {
         let branch = p
@@ -305,177 +316,23 @@ impl GitCortexServer {
             .as_deref()
             .unwrap_or(&self.default_branch)
             .to_owned();
-        let depth = p.depth.unwrap_or(1).max(1);
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
         };
-
-        // Cap the caller list. The risk level is computed from the true total,
-        // so a hub symbol still reports CRITICAL even though we return a head.
-        const MAX_CALLERS: usize = 25;
-        const MAX_PER_HOP: usize = 15;
-        if depth == 1 {
-            match store.find_callers_with_confidence(&branch, &p.function_name) {
-                Ok(mut pairs) => {
-                    let total = pairs.len();
-
-                    // Rank: confidence tier first (Extracted < Resolved < Inferred),
-                    // then production-before-test, then alphabetical by file+name.
-                    pairs.sort_by(|(na, ca), (nb, cb)| {
-                        let r = confidence_rank(ca).cmp(&confidence_rank(cb));
-                        if r != std::cmp::Ordering::Equal {
-                            return r;
-                        }
-                        let ta = is_test_file(&na.file) as u8;
-                        let tb = is_test_file(&nb.file) as u8;
-                        let r2 = ta.cmp(&tb);
-                        if r2 != std::cmp::Ordering::Equal {
-                            return r2;
-                        }
-                        na.file.cmp(&nb.file).then(na.name.cmp(&nb.name))
-                    });
-
-                    let n_extracted = pairs
-                        .iter()
-                        .filter(|(_, c)| {
-                            matches!(c, gitcortex_core::schema::EdgeConfidence::Extracted)
-                        })
-                        .count();
-                    let n_resolved = pairs
-                        .iter()
-                        .filter(|(_, c)| {
-                            matches!(c, gitcortex_core::schema::EdgeConfidence::Resolved)
-                        })
-                        .count();
-                    let n_inferred = total - n_extracted - n_resolved;
-
-                    // Count test-file callers in the tail (those beyond MAX_CALLERS).
-                    let tail_total = total.saturating_sub(MAX_CALLERS);
-                    let tail_test = if tail_total > 0 {
-                        pairs[MAX_CALLERS..]
-                            .iter()
-                            .filter(|(n, _)| is_test_file(&n.file))
-                            .count()
-                    } else {
-                        0
-                    };
-
-                    let items: Vec<_> = pairs
-                        .iter()
-                        .take(MAX_CALLERS)
-                        .map(|(n, c)| {
-                            json!({
-                                "hop": 1,
-                                "kind": n.kind.to_string(),
-                                "name": n.name,
-                                "qualified_name": n.qualified_name,
-                                "file": n.file.display().to_string(),
-                                "start_line": n.span.start_line,
-                                "signature": sig_line(n),
-                                "confidence": c.to_string(),
-                            })
-                        })
-                        .collect();
-                    let (items, budget_trunc) = self.budget_items(items);
-                    let risk = match total {
-                        0..=2 => "LOW",
-                        3..=10 => "MEDIUM",
-                        11..=30 => "HIGH",
-                        _ => "CRITICAL",
-                    };
-                    let conf_note = if total > 0 {
-                        format!(
-                            " ({n_extracted} extracted, {n_resolved} resolved, {n_inferred} inferred)"
-                        )
-                    } else {
-                        String::new()
-                    };
-                    let tail_note = if tail_total > 0 {
-                        format!(
-                            " …and {tail_total} more{}",
-                            if tail_test > 0 {
-                                format!(" ({tail_test} in test files)")
-                            } else {
-                                String::new()
-                            }
-                        )
-                    } else {
-                        String::new()
-                    };
-                    let summary = if total == 0 {
-                        format!(
-                            "No callers found for '{}' in branch '{}'. \
-                             This is a DEFINITIVE result — the function exists in the graph \
-                             but nothing in this codebase calls it. \
-                             Do NOT try alternative symbol names or keep searching. \
-                             Answer the user directly: this function has zero callers.",
-                            p.function_name, branch
-                        )
-                    } else {
-                        format!(
-                            "{total} caller(s){conf_note} — risk {risk}{}{}",
-                            if total > items.len() {
-                                format!(", showing top {}", items.len())
-                            } else {
-                                String::new()
-                            },
-                            tail_note,
-                        )
-                    };
-                    CallToolResult::structured(json!({
-                        "summary": summary,
-                        "function": p.function_name,
-                        "depth": 1,
-                        "risk_level": risk,
-                        "total_callers": total,
-                        "returned": items.len(),
-                        "truncated": total > items.len() || budget_trunc,
-                        "callers": items,
-                    }))
-                }
-                Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
-            }
-        } else {
-            match store.find_callers_deep(&branch, &p.function_name, depth) {
-                Ok(result) => {
-                    let hops: Vec<_> = result
-                        .hops
-                        .iter()
-                        .enumerate()
-                        .map(|(i, nodes)| {
-                            let total = nodes.len();
-                            let callers: Vec<_> = nodes
-                                .iter()
-                                .take(MAX_PER_HOP)
-                                .map(|n| {
-                                    json!({
-                                        "kind": n.kind.to_string(),
-                                        "name": n.name,
-                                        "qualified_name": n.qualified_name,
-                                        "file": n.file.display().to_string(),
-                                        "start_line": n.span.start_line,
-                                        "signature": sig_line(n),
-                                    })
-                                })
-                                .collect();
-                            json!({
-                                "hop": i + 1,
-                                "total": total,
-                                "truncated": total > MAX_PER_HOP,
-                                "callers": callers,
-                            })
-                        })
-                        .collect();
-                    CallToolResult::structured(json!({
-                        "function": p.function_name,
-                        "depth": depth,
-                        "risk_level": result.risk_level,
-                        "hops": hops,
-                    }))
-                }
-                Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
-            }
+        let options = super::agent::AgentQueryOptions {
+            limit: 25,
+            budget_tokens: self.response_budget.min(600),
+        };
+        match super::agent::find_callers(
+            &*store,
+            &branch,
+            &p.function_name,
+            p.depth.unwrap_or(1),
+            options,
+        ) {
+            Ok(response) => CallToolResult::structured(json!(response)),
+            Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
         }
     }
 
@@ -1259,13 +1116,11 @@ impl GitCortexServer {
 
     /// Return a neighbourhood subgraph around a seed symbol.
     #[tool(
-        description = "Return the subgraph centred on a seed symbol. The response always contains \
-        a human-readable `summary` field — read it FIRST and answer the user directly from it \
-        without iterating the raw nodes/edges arrays. ONE call is sufficient for connectivity \
-        questions — do NOT follow up with additional symbol lookups or callers queries. \
-        Seed matching is case-insensitive. Direction='out' downstream, 'in' upstream, \
-        'both' (default). depth default 1. \
-        Prefer find_callers/find_callees for a targeted single-direction answer."
+        description = "Return a compact relationship digest for one exact symbol. Ambiguous \
+        short names return qualified candidates without traversal. Evidence is ranked into \
+        callers/callees/type/import relation buckets with total coverage counts; raw graph \
+        arrays are intentionally omitted. Direction='out' downstream, 'in' upstream, or \
+        'both' (default); depth defaults to 1. ONE successful call is sufficient."
     )]
     fn get_subgraph(&self, Parameters(p): Parameters<GetSubgraphParams>) -> CallToolResult {
         let branch = p
@@ -1273,137 +1128,23 @@ impl GitCortexServer {
             .as_deref()
             .unwrap_or(&self.default_branch)
             .to_owned();
-        let depth = p.depth.unwrap_or(1).clamp(1, 5);
-        let max_nodes = p.limit.unwrap_or(20).min(200);
-        let direction = p.direction.as_deref().unwrap_or("both").to_owned();
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
         };
-        // Resolve seed: prefer code nodes over Section nodes so a symbol like
-        // "Gson" finds the Java class rather than a README heading with the
-        // same name. Section nodes are doc fragments — they don't belong in
-        // code-navigation traversals and their large neighbour sets cause
-        // massive response bloat on repos with detailed READMEs.
-        let resolved_seed = store
-            .lookup_symbol(&branch, &p.seed_name, true)
-            .ok()
-            .and_then(|alts| {
-                alts.into_iter()
-                    .find(|n| {
-                        n.name.eq_ignore_ascii_case(&p.seed_name)
-                            && !matches!(n.kind, NodeKind::Section)
-                    })
-                    .map(|n| n.name)
-            })
-            .unwrap_or_else(|| p.seed_name.clone());
-
-        let sg_result = store.get_subgraph(&branch, &resolved_seed, depth, &direction);
-        match sg_result {
-            Ok(sg) => {
-                // Strip Section nodes — doc headings pollute code-navigation
-                // results and dramatically bloat responses on repos with large
-                // README files (e.g. a class named "Gson" also matches the
-                // README section, dragging in 2 000+ extra nodes).
-                let section_ids: std::collections::HashSet<String> = sg
-                    .nodes
-                    .iter()
-                    .filter(|n| matches!(n.kind, NodeKind::Section))
-                    .map(|n| n.id.as_str())
-                    .collect();
-                let code_nodes: Vec<_> = sg
-                    .nodes
-                    .into_iter()
-                    .filter(|n| !matches!(n.kind, NodeKind::Section))
-                    .collect();
-                let code_edges: Vec<_> = sg
-                    .edges
-                    .into_iter()
-                    .filter(|e| {
-                        !section_ids.contains(&e.src.as_str())
-                            && !section_ids.contains(&e.dst.as_str())
-                    })
-                    .collect();
-
-                // If no code nodes found, the seed doesn't exist (or is only a
-                // doc section). Return a definitive stop-searching message.
-                if code_nodes.is_empty() {
-                    return CallToolResult::structured(json!({
-                        "seed": p.seed_name,
-                        "summary": format!(
-                            "'{}' was not found in the code graph for branch '{}'. \
-                             Symbol names are case-sensitive (Go uses 'main' not 'Main'). \
-                             Use search_code or lookup_symbol to find the exact name. \
-                             Do NOT repeat this query — no code node exists with this name.",
-                            p.seed_name, branch
-                        ),
-                        "node_count": 0,
-                        "edge_count": 0,
-                        "nodes": [],
-                        "edges": [],
-                    }));
-                }
-
-                // Build prose summary from code-only nodes/edges — the count
-                // in the summary now matches what the model will actually see.
-                let summary = super::subgraph::build_prose_summary(
-                    &p.seed_name,
-                    &code_nodes,
-                    &code_edges,
-                    depth,
-                );
-
-                // Cap the node set, then keep only edges whose endpoints both
-                // survive — a full neighbourhood dump on a hub symbol otherwise
-                // costs more tokens than reading the file it describes.
-                let kept: Vec<_> = code_nodes.iter().take(max_nodes).collect();
-                let kept_ids: std::collections::HashSet<String> =
-                    kept.iter().map(|n| n.id.as_str()).collect();
-                let name_of: std::collections::HashMap<String, &str> = kept
-                    .iter()
-                    .map(|n| (n.id.as_str(), n.name.as_str()))
-                    .collect();
-                let nodes: Vec<_> = kept
-                    .iter()
-                    .map(|n| {
-                        json!({
-                            "kind": n.kind.to_string(),
-                            "name": n.name,
-                            "file": n.file.display().to_string(),
-                            "start_line": n.span.start_line,
-                        })
-                    })
-                    .collect();
-                let edges: Vec<_> = code_edges
-                    .iter()
-                    .filter(|e| {
-                        kept_ids.contains(&e.src.as_str()) && kept_ids.contains(&e.dst.as_str())
-                    })
-                    .map(|e| {
-                        json!({
-                            "from": name_of.get(&e.src.as_str()).copied().unwrap_or(""),
-                            "to": name_of.get(&e.dst.as_str()).copied().unwrap_or(""),
-                            "kind": e.kind.to_string(),
-                            "confidence": e.confidence.to_string(),
-                        })
-                    })
-                    .collect();
-                let (nodes, n_trunc) = self.budget_items(nodes);
-                let (edges, e_trunc) = self.budget_items(edges);
-                CallToolResult::structured(json!({
-                    "seed": p.seed_name,
-                    "summary": summary,
-                    "depth": depth,
-                    "direction": direction,
-                    "node_count": code_nodes.len(),
-                    "edge_count": code_edges.len(),
-                    "returned_nodes": nodes.len(),
-                    "returned_edges": edges.len(),
-                    "truncated": code_nodes.len() > nodes.len() || n_trunc || e_trunc,
-                    "nodes": nodes,
-                    "edges": edges,
-                }))
-            }
+        let options = super::agent::AgentQueryOptions {
+            limit: p.limit.unwrap_or(20),
+            budget_tokens: self.response_budget.min(400),
+        };
+        match super::agent::get_subgraph(
+            &*store,
+            &branch,
+            &p.seed_name,
+            p.depth.unwrap_or(1),
+            p.direction.as_deref().unwrap_or("both"),
+            options,
+        ) {
+            Ok(response) => CallToolResult::structured(json!(response)),
             Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
         }
     }
@@ -1435,11 +1176,10 @@ impl GitCortexServer {
 
     /// Search the graph by name + qualified-name with deterministic ranking.
     #[tool(
-        description = "Search the code graph by name or description. The response includes a \
-        `file_groups` field that clusters hits by file with symbol counts — read it first to \
-        identify which files own the concept before drilling into individual hits. Combines \
-        token/fuzzy text matching (CamelCase-aware, typo-tolerant) with semantic vector similarity. \
-        Ranks exact > prefix > semantic > substring; functions/structs boosted. Default limit=10."
+        description = "Search the code graph by name or description. Returns a compact ranked \
+        evidence envelope with file/line, signature, optional doc summary, and coverage counts. \
+        Combines token/fuzzy text matching (CamelCase-aware, typo-tolerant) with semantic vector \
+        similarity when available. Ranks exact > prefix > semantic > substring. Default limit=10."
     )]
     fn search_code(&self, Parameters(p): Parameters<SearchCodeParams>) -> CallToolResult {
         let branch = p
@@ -1533,18 +1273,25 @@ impl GitCortexServer {
         });
         all_hits.truncate(limit);
 
-        let file_groups = super::search::group_by_file(&all_hits);
-        CallToolResult::structured(json!({
-            "query": p.query,
-            "branch": branch,
-            "count": all_hits.len(),
-            "semantic_available": matches!(
-                self.semantic.try_lock().as_deref(),
-                Ok(SemanticState::Ready { .. })
-            ),
-            "file_groups": file_groups,
-            "hits": all_hits,
-        }))
+        let semantic_available = matches!(
+            self.semantic.try_lock().as_deref(),
+            Ok(SemanticState::Ready { .. })
+        );
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        match super::agent::format_search(
+            &*store,
+            &branch,
+            &p.query,
+            all_hits,
+            semantic_available,
+            self.response_budget.min(600),
+        ) {
+            Ok(response) => CallToolResult::structured(json!(response)),
+            Err(e) => CallToolResult::error(vec![Content::text(format!("search failed: {e}"))]),
+        }
     }
 
     /// Generate a guided tour through the repo's important symbols.
@@ -1573,9 +1320,9 @@ impl GitCortexServer {
                 CallToolResult::structured(json!({
                     "branch": tour.branch,
                     "seed": tour.seed,
-                    "components": tour.components,
-                    "steps": tour.steps,
-                    "markdown": markdown,
+                    "component_count": tour.components.len(),
+                    "step_count": tour.steps.len(),
+                    "report": markdown,
                 }))
             }
             Err(e) => CallToolResult::error(vec![Content::text(format!("tour failed: {e}"))]),
@@ -1848,7 +1595,7 @@ impl GitCortexServer {
         get_subgraph | search_code | start_tour | wiki_symbol | trace_path | \
         list_definitions | symbol_context | list_symbols_in_range | graph_stats | ast_search | \
         type_hierarchy | find_importers | find_type_usages | module_dependencies | \
-        get_call_sites | branch_diff_graph | find_god_nodes | find_clusters | find_cycles. \
+        get_call_sites | branch_diff_graph | find_god_nodes | find_clusters | find_cycles | health_report. \
         params: JSON object with the same fields as the individual tool (name/function_name/\
         seed_name/query/file/branch/depth/limit/direction/min_in_degree/min_cluster_size as applicable). \
         Returns identical output to the individual tool.")]
@@ -2100,13 +1847,17 @@ impl GitCortexServer {
                     .map(|n| n as usize),
                 branch: branch_val,
             })),
+            "health_report" => {
+                self.health_report(Parameters(HealthReportParams { branch: branch_val }))
+            }
             other => {
                 return CallToolResult::error(vec![Content::text(format!(
                     "gcx dispatch: unknown action '{other}'. Valid: lookup_symbol, find_callers, \
                 find_callees, find_unused_symbols, get_subgraph, search_code, start_tour, \
                 wiki_symbol, trace_path, list_definitions, symbol_context, list_symbols_in_range, \
                 graph_stats, ast_search, type_hierarchy, find_importers, find_type_usages, \
-                module_dependencies, get_call_sites, find_god_nodes, find_clusters, find_cycles"
+                module_dependencies, get_call_sites, find_god_nodes, find_clusters, find_cycles, \
+                health_report"
                 ))])
             }
         };
@@ -2221,5 +1972,27 @@ Any circular dependencies, large fan-outs, or architectural concerns visible in 
 impl rmcp::ServerHandler for GitCortexServer {
     fn get_tool(&self, name: &str) -> Option<rmcp::model::Tool> {
         self.active_tool_router().get(name).cloned()
+    }
+}
+
+#[cfg(test)]
+mod contract_tests {
+    use super::GitCortexServer;
+
+    #[test]
+    fn compact_mode_exposes_exactly_one_dispatch_tool() {
+        let names: Vec<String> = GitCortexServer::tool_router_for_mode(true)
+            .into_iter()
+            .map(|route| route.attr.name.into_owned())
+            .collect();
+        assert_eq!(names, vec!["gcx"]);
+    }
+
+    #[test]
+    fn compact_dispatch_schema_declares_params_as_object() {
+        let router = GitCortexServer::tool_router_for_mode(true);
+        let tool = router.get("gcx").expect("gcx tool");
+        let schema = serde_json::to_value(&tool.input_schema).expect("serialize schema");
+        assert_eq!(schema["properties"]["params"]["type"], "object");
     }
 }

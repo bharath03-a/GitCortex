@@ -1,0 +1,196 @@
+suite = "core-retrieval-v1"
+version = 1
+
+[[repos]]
+name = "ripgrep"
+url = "https://github.com/BurntSushi/ripgrep"
+commit = "227381db0ee83dfa4341f1e27ff9617c0f5ad992"
+
+[[repos]]
+name = "requests"
+url = "https://github.com/psf/requests"
+commit = "f361ead047be5cb873174218582f7d8b9fcd9f49"
+
+[[repos]]
+name = "hono"
+url = "https://github.com/honojs/hono"
+commit = "cadff88bba34153646c9b35f24d7cc0cb61be913"
+
+[[repos]]
+name = "cobra"
+url = "https://github.com/spf13/cobra"
+commit = "adbc8813901bba65827259daa8e22ff94ec1f30e"
+
+[[repos]]
+name = "gson"
+url = "https://github.com/google/gson"
+commit = "c9f3fd55854a743b66f857ace3c7b268ea3e2ef7"
+
+# Targets and expected evidence are fixed independently of GitCortex output.
+# `required` strings are source-grounded evidence that must appear in output.
+
+[[tasks]]
+id = "ripgrep-search-searcher"
+repo = "ripgrep"
+action = "search"
+query = "Searcher"
+required = ["crates/searcher/src/searcher/mod.rs", "Searcher"]
+forbidden = ["tests/integration"]
+max_bytes = 5000
+
+[[tasks]]
+id = "ripgrep-tour"
+repo = "ripgrep"
+action = "tour"
+required = ["crates/searcher/src", "crates/printer/src"]
+max_bytes = 5000
+
+[[tasks]]
+id = "ripgrep-callers-line-number"
+repo = "ripgrep"
+action = "callers"
+query = "crate::Searcher::line_number"
+required = ["crates/core/flags/hiargs.rs"]
+max_bytes = 4000
+min_evidence = 1
+
+[[tasks]]
+id = "ripgrep-neighborhood-line-number"
+repo = "ripgrep"
+action = "subgraph"
+query = "crate::Searcher::line_number"
+required = ["crates/searcher/src/searcher/mod.rs"]
+max_bytes = 3500
+min_evidence = 1
+
+[[tasks]]
+id = "requests-search-session"
+repo = "requests"
+action = "search"
+query = "Session"
+required = ["src/requests/sessions.py", "Session"]
+max_bytes = 5000
+
+[[tasks]]
+id = "requests-tour"
+repo = "requests"
+action = "tour"
+required = ["src/requests"]
+max_bytes = 5000
+
+[[tasks]]
+id = "requests-callers-send"
+repo = "requests"
+action = "callers"
+query = "SessionRedirectMixin.send"
+required = ["src/requests/sessions.py"]
+max_bytes = 4000
+min_evidence = 1
+
+[[tasks]]
+id = "requests-neighborhood-send"
+repo = "requests"
+action = "subgraph"
+query = "SessionRedirectMixin.send"
+required = ["src/requests/sessions.py"]
+max_bytes = 3500
+min_evidence = 1
+
+[[tasks]]
+id = "hono-search-dispatch"
+repo = "hono"
+action = "search"
+query = "dispatch"
+required = ["src/hono-base.ts", "#dispatch"]
+max_bytes = 5000
+
+[[tasks]]
+id = "hono-tour"
+repo = "hono"
+action = "tour"
+required = ["src"]
+max_bytes = 5000
+
+[[tasks]]
+id = "hono-callers-compose"
+repo = "hono"
+action = "callers"
+query = "compose"
+required = ["Hono.#dispatch", "src/hono-base.ts"]
+max_bytes = 4000
+min_evidence = 1
+
+[[tasks]]
+id = "hono-neighborhood-compose"
+repo = "hono"
+action = "subgraph"
+query = "compose"
+required = ["src/compose.ts"]
+max_bytes = 3500
+min_evidence = 1
+
+[[tasks]]
+id = "cobra-search-parse-flags"
+repo = "cobra"
+action = "search"
+query = "ParseFlags"
+required = ["command.go", "ParseFlags"]
+max_bytes = 5000
+
+[[tasks]]
+id = "cobra-tour"
+repo = "cobra"
+action = "tour"
+required = ["<root>", "command.go"]
+max_bytes = 5000
+
+[[tasks]]
+id = "cobra-callers-add-command"
+repo = "cobra"
+action = "callers"
+query = "Command.AddCommand"
+required = ["command.go"]
+max_bytes = 4000
+min_evidence = 1
+
+[[tasks]]
+id = "cobra-neighborhood-add-command"
+repo = "cobra"
+action = "subgraph"
+query = "Command.AddCommand"
+required = ["command.go"]
+max_bytes = 3500
+min_evidence = 1
+
+[[tasks]]
+id = "gson-search-json-reader"
+repo = "gson"
+action = "search"
+query = "JsonReader"
+required = ["gson/src/main/java/com/google/gson/stream/JsonReader.java", "JsonReader"]
+max_bytes = 5000
+
+[[tasks]]
+id = "gson-tour"
+repo = "gson"
+action = "tour"
+required = ["gson/src/main/java/com/google/gson"]
+max_bytes = 5000
+
+[[tasks]]
+id = "gson-callers-begin-array"
+repo = "gson"
+action = "callers"
+query = "JsonReader.beginArray"
+required = ["ArrayTypeAdapter.java"]
+max_bytes = 4000
+min_evidence = 1
+
+[[tasks]]
+id = "gson-neighborhood-begin-array"
+repo = "gson"
+action = "subgraph"
+query = "JsonReader.beginArray"
+required = ["gson/src/main/java/com/google/gson/stream/JsonReader.java"]
+max_bytes = 3500
+min_evidence = 1
