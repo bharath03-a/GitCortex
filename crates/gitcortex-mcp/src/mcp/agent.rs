@@ -14,7 +14,10 @@ use gitcortex_core::{
 };
 use serde::Serialize;
 
-use super::helpers::{confidence_rank, is_test_file, sig_line};
+use super::{
+    helpers::{confidence_rank, is_test_file, sig_line},
+    search::SearchHit,
+};
 
 const DEFAULT_LIMIT: usize = 25;
 const MAX_LIMIT: usize = 100;
@@ -127,6 +130,39 @@ pub struct AgentSubgraphResponse {
     pub next_action: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct SearchEvidence {
+    pub symbol: String,
+    pub qualified_name: String,
+    pub kind: String,
+    pub file: String,
+    pub line: u32,
+    pub signature: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub doc: Option<String>,
+    pub score: i32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SearchCoverage {
+    pub total: usize,
+    pub returned: usize,
+    pub truncated: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentSearchResponse {
+    pub status: AgentStatus,
+    pub answer: String,
+    pub query: String,
+    pub semantic_available: bool,
+    pub file_count: usize,
+    pub evidence: Vec<SearchEvidence>,
+    pub coverage: SearchCoverage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_action: Option<String>,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct AgentQueryOptions {
     pub limit: usize,
@@ -146,6 +182,83 @@ enum Resolution {
     Exact(Box<Node>),
     Ambiguous(Vec<Node>),
     NotFound(Vec<Node>),
+}
+
+/// Format ranked search hits as compact implementation evidence shared by CLI
+/// and MCP. Retrieval may be lexical-only or RRF hybrid; presentation is stable.
+pub fn format_search<S: GraphStore + ?Sized>(
+    store: &S,
+    branch: &str,
+    query: &str,
+    hits: Vec<SearchHit>,
+    semantic_available: bool,
+    budget_tokens: usize,
+) -> Result<AgentSearchResponse> {
+    let total = hits.len();
+    let ids: Vec<String> = hits.iter().map(|hit| hit.id.clone()).collect();
+    let nodes = store.get_nodes_by_ids(branch, &ids)?;
+    let by_id: HashMap<String, Node> = nodes
+        .into_iter()
+        .map(|node| (node.id.as_str(), node))
+        .collect();
+    let mut files = HashSet::new();
+    let mut evidence = Vec::new();
+    for hit in hits {
+        files.insert(hit.file.clone());
+        let node = by_id.get(&hit.id);
+        let doc = node
+            .and_then(|node| node.metadata.definition.doc_comment.as_deref())
+            .and_then(|text| text.lines().find(|line| !line.trim().is_empty()))
+            .map(|line| line.trim().chars().take(180).collect());
+        evidence.push(SearchEvidence {
+            symbol: hit.name,
+            qualified_name: hit.qualified_name,
+            kind: hit.kind,
+            file: hit.file,
+            line: hit.start_line,
+            signature: node.map(sig_line).unwrap_or_default(),
+            doc,
+            score: hit.score,
+        });
+    }
+    let answer = if total == 0 {
+        format!("No code symbols matched '{query}'.")
+    } else {
+        let top_files = evidence
+            .iter()
+            .map(|item| item.file.as_str())
+            .take(3)
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            "{total} ranked symbol match(es) across {} file(s). Top files: {top_files}.",
+            files.len()
+        )
+    };
+    let mut response = AgentSearchResponse {
+        status: if total == 0 {
+            AgentStatus::NotFound
+        } else {
+            AgentStatus::Ok
+        },
+        answer,
+        query: query.to_owned(),
+        semantic_available,
+        file_count: files.len(),
+        evidence,
+        coverage: SearchCoverage {
+            total,
+            returned: 0,
+            truncated: false,
+        },
+        next_action: if total == 0 {
+            Some("Try a concrete symbol fragment or alternate spelling.".to_owned())
+        } else {
+            None
+        },
+    };
+    apply_search_budget(&mut response, budget_tokens.max(MIN_BUDGET_TOKENS));
+    Ok(response)
 }
 
 /// Find callers for exactly one symbol and return a globally-budgeted response.
@@ -608,6 +721,19 @@ fn to_evidence(node: Node, confidence: EdgeConfidence, hop: u8) -> CallerEvidenc
         confidence: confidence.to_string(),
         is_test: is_test_file(&node.file),
     }
+}
+
+fn apply_search_budget(response: &mut AgentSearchResponse, budget_tokens: usize) {
+    let budget_bytes = budget_tokens * 4;
+    while !response.evidence.is_empty()
+        && serde_json::to_vec(response)
+            .map(|bytes| bytes.len() > budget_bytes)
+            .unwrap_or(false)
+    {
+        response.evidence.pop();
+    }
+    response.coverage.returned = response.evidence.len();
+    response.coverage.truncated = response.coverage.returned < response.coverage.total;
 }
 
 fn apply_subgraph_budget(response: &mut AgentSubgraphResponse, budget_tokens: usize) {

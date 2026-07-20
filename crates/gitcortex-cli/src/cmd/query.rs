@@ -204,26 +204,43 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
         QueryCmd::Search {
             query,
             limit,
+            budget_tokens,
+            format,
             branch,
         } => {
             let hits = search::search(&store, &branch, &query, Some(limit))?;
-            if hits.is_empty() {
-                println!(
-                    "{}",
-                    empty_msg(&format!("no matches for '{query}'"), &branch)
-                );
-            }
-            for h in hits {
-                println!(
-                    "{}  {} {}  {}{}{}  {}",
-                    paint(score_style(), &format!("{:>4}", h.score)),
-                    paint(name_style(), &h.name),
-                    paint(kind_style_from_str(&h.kind), &format!("({})", h.kind)),
-                    paint(path_style(), &h.file),
-                    paint(path_style(), ":"),
-                    paint(path_style(), &h.start_line.to_string()),
-                    paint(hint_style(), &format!("[{}]", h.qualified_name)),
-                );
+            match format {
+                AgentOutputFormat::AgentJson => {
+                    let response = gitcortex_mcp::mcp::agent::format_search(
+                        &store,
+                        &branch,
+                        &query,
+                        hits,
+                        false,
+                        budget_tokens,
+                    )?;
+                    println!("{}", serde_json::to_string(&response)?);
+                }
+                AgentOutputFormat::Text => {
+                    if hits.is_empty() {
+                        println!(
+                            "{}",
+                            empty_msg(&format!("no matches for '{query}'"), &branch)
+                        );
+                    }
+                    for h in hits {
+                        println!(
+                            "{}  {} {}  {}{}{}  {}",
+                            paint(score_style(), &format!("{:>4}", h.score)),
+                            paint(name_style(), &h.name),
+                            paint(kind_style_from_str(&h.kind), &format!("({})", h.kind)),
+                            paint(path_style(), &h.file),
+                            paint(path_style(), ":"),
+                            paint(path_style(), &h.start_line.to_string()),
+                            paint(hint_style(), &format!("[{}]", h.qualified_name)),
+                        );
+                    }
+                }
             }
         }
 

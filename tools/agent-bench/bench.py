@@ -165,7 +165,18 @@ class RetrievalAdapter:
         if task.action == "search":
             if not task.query:
                 raise BenchError(f"{task.id}: search requires query")
-            return common + ["search", task.query, "--branch", "gcx-bench", "--limit", "10"]
+            return common + [
+                "search",
+                task.query,
+                "--branch",
+                "gcx-bench",
+                "--limit",
+                "10",
+                "--budget-tokens",
+                "600",
+                "--format",
+                "agent-json",
+            ]
         if task.action == "tour":
             return common + ["tour", "--branch", "gcx-bench", "--limit", "6"]
         if task.action == "callers":
@@ -290,7 +301,7 @@ def score_task(
     contract_status: str | None = None
     evidence_count: int | None = None
     parse_valid = True
-    if require_contract and task.action in {"callers", "subgraph"} and returncode == 0:
+    if require_contract and task.action in {"search", "callers", "subgraph"} and returncode == 0:
         try:
             payload = json.loads(stdout)
             contract_status = payload.get("status")
