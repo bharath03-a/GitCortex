@@ -1987,4 +1987,12 @@ mod contract_tests {
             .collect();
         assert_eq!(names, vec!["gcx"]);
     }
+
+    #[test]
+    fn compact_dispatch_schema_declares_params_as_object() {
+        let router = GitCortexServer::tool_router_for_mode(true);
+        let tool = router.get("gcx").expect("gcx tool");
+        let schema = serde_json::to_value(&tool.input_schema).expect("serialize schema");
+        assert_eq!(schema["properties"]["params"]["type"], "object");
+    }
 }

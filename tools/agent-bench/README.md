@@ -57,6 +57,23 @@ ChatGPT-account `codex exec` sessions list configured ad-hoc MCP servers but do
 not expose their tools to the model. A missing MCP capability is never silently
 reported as an MCP result.
 
+## Claude Code MCP lane
+
+Claude Code runs the same pinned tasks through a strict per-session MCP config.
+The graph arm exposes `Read` and the compact `mcp__gcx` single-dispatch tool;
+the baseline exposes normal read/search tools and an empty MCP config:
+
+```bash
+python3 tools/agent-bench/agent_run.py --client claude \
+  --gcx target/release/gcx --model haiku --reasoning low \
+  --label claude-smoke --repo cobra --rounds 1
+```
+
+Streamed native-client events are used to enforce exactly one successful MCP
+call, count follow-up tools, capture client-reported cache usage, and score the
+same required final-answer evidence. Claude total tokens include cache reads;
+uncached tokens exclude cache reads.
+
 ## Lanes
 
 1. **Retrieval** (implemented): deterministic, free contract/evidence gate.

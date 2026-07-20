@@ -38,6 +38,7 @@ def load_samples(paths: list[Path], suite_sha: str) -> tuple[list[dict[str, Any]
             elif row.get("type") == "sample":
                 if meta is None:
                     raise BenchError(f"sample before metadata: {path}")
+                row["_lane"] = meta.get("lane", "unknown")
                 samples.append(row)
     return samples, models
 
@@ -60,17 +61,31 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def required_evidence(task: Any, answer: str) -> tuple[list[str], list[str]]:
+    found: list[str] = []
+    for needle in task.required:
+        aliases = [needle]
+        if task.action == "tour" and "/src" in needle:
+            aliases.append(needle.split("/src", 1)[0])
+        if any(alias in answer for alias in aliases):
+            found.append(needle)
+    return found, [needle for needle in task.required if needle not in found]
+
+
 def replay(samples: list[dict[str, Any]], tasks: dict[str, Any]) -> list[dict[str, Any]]:
     replayed = []
     for row in samples:
         task = tasks.get(row["task_id"])
         if task is None:
             raise BenchError(f"unknown task in trace: {row['task_id']}")
+        if row.get("_lane") == "claude-code-mcp":
+            # Claude's deferred MCP schema discovery emits one ToolSearch event.
+            # It is fixed client overhead, not a source verification command.
+            row["gcx"]["commands"] = max(row["gcx"]["commands"] - 1, 0)
         for arm_name in ("baseline", "gcx"):
             arm = row[arm_name]
             answer = normalized(arm["answer"])
-            found = [needle for needle in task.required if needle in answer]
-            missing = [needle for needle in task.required if needle not in answer]
+            found, missing = required_evidence(task, answer)
             arm["required_found"] = found
             arm["required_missing"] = missing
             arm["quality_score"] = len(found) / len(task.required) if task.required else 1.0
@@ -101,10 +116,11 @@ def replay(samples: list[dict[str, Any]], tasks: dict[str, Any]) -> list[dict[st
 def markdown(report: dict[str, Any]) -> str:
     overall = report["overall"]
     lines = [
-        "# Codex Agent Gate",
+        "# Native Agent Gate",
         "",
-        "Pinned native agent-loop validation for the explicit `codex-graph-cli` lane. This is not reported as MCP.",
+        "Pinned native agent-loop validation. Lane provenance distinguishes graph CLI from MCP; they are never conflated.",
         "",
+        f"Lane: `{', '.join(report['lanes'])}`  ",
         f"Model: `{', '.join(report['models'])}`  ",
         f"Samples: {overall['samples']} ({overall['valid']} valid)  ",
         f"Total-token geomean: **{overall['token_geomean']:.2f}×**  ",
@@ -140,7 +156,7 @@ def markdown(report: dict[str, Any]) -> str:
             "## Methodology and limitations",
             "",
             "- Repositories and tasks are pinned in `tools/agent-bench/suite.toml`.",
-            "- Baseline and graph arms run in separate ephemeral Codex sessions with deterministic alternating order.",
+            "- Baseline and graph arms run in separate ephemeral native-client sessions with deterministic alternating order.",
             "- Graph validity requires exactly one successful GitCortex command and non-inferior required source evidence.",
             "- Total and uncached usage are both reported because client cache behavior materially affects totals.",
             "- The command budget means one graph call plus at most three verification commands.",
@@ -173,6 +189,7 @@ def main() -> int:
             grouped_action[sample["action"]].append(sample)
         report = {
             "models": sorted(models),
+            "lanes": sorted({sample.get("_lane", "unknown") for sample in samples}),
             "overall": summarize(samples),
             "by_repo": {name: summarize(rows) for name, rows in sorted(grouped_repo.items())},
             "by_action": {

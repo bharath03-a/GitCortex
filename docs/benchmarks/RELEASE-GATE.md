@@ -1,6 +1,6 @@
 # Historical Claude Token Benchmark
 
-> **Status:** retained for historical Claude API comparisons. The pinned, validity-gated agent-first harness is now documented in [`tools/agent-bench/README.md`](../../tools/agent-bench/README.md). Current deterministic results are in [`agent-retrieval-v1.md`](agent-retrieval-v1.md), and the first native Codex result is in [`codex-agent-gate-v1.md`](codex-agent-gate-v1.md). Do not compare its dynamic tasks directly with the pinned v1 suite.
+> **Status:** retained for historical Claude API comparisons. The pinned, validity-gated agent-first harness is now documented in [`tools/agent-bench/README.md`](../../tools/agent-bench/README.md). Current deterministic results are in [`agent-retrieval-v1.md`](agent-retrieval-v1.md); native-client results are in [`codex-agent-gate-v1.md`](codex-agent-gate-v1.md) and [`claude-agent-gate-v1.md`](claude-agent-gate-v1.md). Do not compare the historical dynamic tasks directly with the pinned v1 suite.
 
 A measured-usage benchmark originally run for releases to catch MCP-tool
 regressions. Unlike the chars/4 proxy in [`token-savings-v0.3.md`](token-savings-v0.3.md),

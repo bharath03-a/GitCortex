@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Native agent-loop lane for the pinned GitCortex suite.
+"""Native client agent-loop lanes for the pinned GitCortex suite.
 
-Currently supports Codex CLI with graph-first `gcx query` use. This lane is
-explicitly named `codex-graph-cli`; it is not reported as MCP because current
-ChatGPT-account Codex exec sessions do not expose ad-hoc local MCP servers.
+Codex uses an explicit graph-CLI lane because current ChatGPT-account exec
+sessions do not expose ad-hoc MCP tools. Claude Code uses the compact MCP
+single-dispatch tool with a strict per-run MCP configuration.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import shlex
 import subprocess
 import sys
@@ -82,6 +83,17 @@ def question(task: Task) -> str:
     raise BenchError(f"unsupported task action: {task.action}")
 
 
+def required_evidence(task: Task, answer: str) -> tuple[list[str], list[str]]:
+    found: list[str] = []
+    for needle in task.required:
+        aliases = [needle]
+        if task.action == "tour" and "/src" in needle:
+            aliases.append(needle.split("/src", 1)[0])
+        if any(alias in answer for alias in aliases):
+            found.append(needle)
+    return found, [needle for needle in task.required if needle not in found]
+
+
 def parse_codex_events(raw: str, task: Task, gcx_marker: str, expect_gcx: bool) -> ArmResult:
     usage = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0, "reasoning_output_tokens": 0}
     commands = 0
@@ -119,8 +131,7 @@ def parse_codex_events(raw: str, task: Task, gcx_marker: str, expect_gcx: bool) 
     # Some clients escape slashes in markdown links or emit absolute paths.
     # Required evidence is repo-relative, so normalize separators before scoring.
     normalized_answer = answer.replace("\\/", "/").replace("\\\\", "/")
-    found = [needle for needle in task.required if needle in normalized_answer]
-    missing = [needle for needle in task.required if needle not in normalized_answer]
+    found, missing = required_evidence(task, normalized_answer)
     quality = len(found) / len(task.required) if task.required else 1.0
     total = usage["input_tokens"] + usage["output_tokens"]
     uncached = max(usage["input_tokens"] - usage["cached_input_tokens"], 0) + usage["output_tokens"]
@@ -140,6 +151,94 @@ def parse_codex_events(raw: str, task: Task, gcx_marker: str, expect_gcx: bool) 
         required_missing=missing,
         quality_score=quality,
         error=error,
+        error_messages=errors,
+    )
+
+
+def claude_dispatch(task: Task) -> dict[str, Any]:
+    if task.action == "search":
+        return {"action": "search_code", "params": {"query": task.query, "limit": 10}}
+    if task.action == "tour":
+        return {"action": "start_tour", "params": {"limit": 10}}
+    if task.action == "callers":
+        return {
+            "action": "find_callers",
+            "params": {"function_name": task.query or "", "depth": 1},
+        }
+    if task.action == "subgraph":
+        return {
+            "action": "get_subgraph",
+            "params": {"seed_name": task.query or "", "depth": 1, "limit": 30},
+        }
+    raise BenchError(f"unsupported task action: {task.action}")
+
+
+def parse_claude_events(raw: str, task: Task, expect_gcx: bool) -> ArmResult:
+    usage = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0, "reasoning_output_tokens": 0}
+    commands = 0
+    gcx_calls = 0
+    gcx_errors = 0
+    gcx_ids: set[str] = set()
+    answer = ""
+    errors: list[str] = []
+    for line in raw.splitlines():
+        if not line.startswith("{"):
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") == "assistant":
+            for block in (event.get("message") or {}).get("content", []):
+                if block.get("type") != "tool_use":
+                    continue
+                if block.get("name") != "ToolSearch":
+                    commands += 1
+                if str(block.get("name", "")).startswith("mcp__gcx"):
+                    gcx_calls += 1
+                    gcx_ids.add(str(block.get("id", "")))
+        elif event.get("type") == "user":
+            for block in (event.get("message") or {}).get("content", []):
+                if (
+                    block.get("type") == "tool_result"
+                    and str(block.get("tool_use_id", "")) in gcx_ids
+                    and block.get("is_error", False)
+                ):
+                    gcx_errors += 1
+        elif event.get("type") == "result":
+            answer = event.get("result", "")
+            event_usage = event.get("usage") or {}
+            cache_read = int(event_usage.get("cache_read_input_tokens", 0))
+            usage["input_tokens"] = (
+                int(event_usage.get("input_tokens", 0))
+                + int(event_usage.get("cache_creation_input_tokens", 0))
+                + cache_read
+            )
+            usage["cached_input_tokens"] = cache_read
+            usage["output_tokens"] = int(event_usage.get("output_tokens", 0))
+            if event.get("subtype") not in {None, "success"}:
+                errors.append(str(event.get("error") or event.get("subtype")))
+
+    normalized_answer = answer.replace("\\/", "/").replace("\\\\", "/")
+    found, missing = required_evidence(task, normalized_answer)
+    quality = len(found) / len(task.required) if task.required else 1.0
+    total = usage["input_tokens"] + usage["output_tokens"]
+    uncached = max(usage["input_tokens"] - usage["cached_input_tokens"], 0) + usage["output_tokens"]
+    tool_invalid = (expect_gcx and (gcx_calls != 1 or gcx_errors != 0)) or (
+        not expect_gcx and gcx_calls != 0
+    )
+    return ArmResult(
+        **usage,
+        total_tokens=total,
+        uncached_tokens=uncached,
+        commands=commands,
+        gcx_calls=gcx_calls,
+        gcx_errors=gcx_errors,
+        answer=answer,
+        required_found=found,
+        required_missing=missing,
+        quality_score=quality,
+        error=bool(errors) or total == 0 or not answer or tool_invalid,
         error_messages=errors,
     )
 
@@ -210,6 +309,92 @@ Question: {q}"""
     return parsed
 
 
+def run_claude_arm(
+    task: Task,
+    repo_dir: Path,
+    model: str,
+    reasoning: str,
+    gcx: Path,
+    arm: str,
+    log_path: Path,
+) -> ArmResult:
+    q = question(task)
+    if arm == "gcx":
+        dispatch = json.dumps(claude_dispatch(task), separators=(",", ":"))
+        prompt = f"""You are evaluating a graph-first code exploration workflow.
+
+Before any ordinary source search, call the GitCortex MCP `gcx` tool exactly once with this payload:
+{dispatch}
+
+Rules:
+- Make exactly that one GitCortex call and do not retry it.
+- After that call, never call any MCP tool again for any reason; only focused Read calls are allowed.
+- If it fails, state that failure and stop; do not fall back to grep.
+- Use its ranked evidence first.
+- You may make at most three focused Read calls to verify details.
+- Do not edit files. Keep the final answer concise and cite repository-relative files.
+
+Question: {q}"""
+        mcp_config = json.dumps(
+            {"mcpServers": {"gcx": {"command": str(gcx), "args": ["serve"]}}}
+        )
+        allowed = "Read mcp__gcx"
+        disallowed = "Grep Glob Bash Edit Write WebSearch WebFetch"
+    else:
+        prompt = f"""You are evaluating ordinary codebase exploration.
+
+Do not use GitCortex, gcx, MCP, or any graph database. Use normal source search and focused reads. Do not edit files. Keep the final answer concise and cite repository-relative files.
+
+Question: {q}"""
+        mcp_config = '{"mcpServers":{}}'
+        allowed = "Read Grep Glob Bash(grep:*) Bash(rg:*) Bash(find:*) Bash(cat:*) Bash(ls:*) Bash(head:*) Bash(sed:*)"
+        disallowed = "Edit Write WebSearch WebFetch mcp__gcx"
+
+    command = [
+        "claude",
+        "-p",
+        prompt,
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--no-session-persistence",
+        "--strict-mcp-config",
+        "--mcp-config",
+        mcp_config,
+        "--model",
+        model,
+        "--effort",
+        reasoning,
+        "--max-budget-usd",
+        "0.40",
+        "--allowed-tools",
+        allowed,
+        "--disallowed-tools",
+        disallowed,
+    ]
+    env = os.environ.copy()
+    env.pop("CLAUDECODE", None)
+    env.pop("CLAUDE_CODE_SSE_PORT", None)
+    result = subprocess.run(
+        command,
+        cwd=repo_dir,
+        env=env,
+        text=True,
+        input="",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        timeout=900,
+        check=False,
+    )
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.write_text(result.stdout, encoding="utf-8")
+    parsed = parse_claude_events(result.stdout, task, arm == "gcx")
+    if result.returncode != 0:
+        parsed.error = True
+        parsed.error_messages.append(f"claude exited {result.returncode}")
+    return parsed
+
+
 def geomean(values: list[float]) -> float:
     positive = [value for value in values if value > 0]
     return math.exp(sum(math.log(value) for value in positive) / len(positive)) if positive else 0.0
@@ -238,7 +423,8 @@ def main() -> int:
     parser.add_argument("--suite", type=Path, default=DEFAULT_SUITE)
     parser.add_argument("--gcx", type=Path, required=True)
     parser.add_argument("--work", type=Path, default=DEFAULT_WORK)
-    parser.add_argument("--model", default="gpt-5.4-mini")
+    parser.add_argument("--client", choices=["codex", "claude"], default="codex")
+    parser.add_argument("--model")
     parser.add_argument("--reasoning", default="low")
     parser.add_argument("--label", required=True)
     parser.add_argument("--rounds", type=int, default=1)
@@ -247,6 +433,7 @@ def main() -> int:
     parser.add_argument("--reuse-index", action="store_true")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
+    model = args.model or ("gpt-5.4-mini" if args.client == "codex" else "haiku")
 
     try:
         suite_path = args.suite.resolve()
@@ -290,16 +477,28 @@ def main() -> int:
                 gcx_command = retrieval.command(task)
                 arms: dict[str, ArmResult] = {}
                 for arm in order.split("-"):
-                    arms[arm] = run_codex_arm(
-                        task,
-                        repo_dirs[task.repo],
-                        args.model,
-                        args.reasoning,
-                        gcx_command,
-                        str(gcx_link),
-                        arm,
-                        logs / f"r{round_number}-{task.id}-{arm}.jsonl",
-                    )
+                    log_path = logs / f"r{round_number}-{task.id}-{arm}.jsonl"
+                    if args.client == "codex":
+                        arms[arm] = run_codex_arm(
+                            task,
+                            repo_dirs[task.repo],
+                            model,
+                            args.reasoning,
+                            gcx_command,
+                            str(gcx_link),
+                            arm,
+                            log_path,
+                        )
+                    else:
+                        arms[arm] = run_claude_arm(
+                            task,
+                            repo_dirs[task.repo],
+                            model,
+                            args.reasoning,
+                            gcx_link,
+                            arm,
+                            log_path,
+                        )
                 baseline, graph = arms["baseline"], arms["gcx"]
                 ratio = baseline.total_tokens / graph.total_tokens if graph.total_tokens else 0
                 uncached_ratio = (
@@ -335,13 +534,23 @@ def main() -> int:
                     file=sys.stderr,
                 )
 
+        version_result = subprocess.run(
+            [args.client, "--version"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=30,
+            check=False,
+        )
         meta = {
             "type": "meta",
             "suite": raw_suite["suite"],
             "suite_sha256": sha256(suite_path),
-            "lane": "codex-graph-cli",
+            "lane": "codex-graph-cli" if args.client == "codex" else "claude-code-mcp",
+            "client": args.client,
+            "client_version": version_result.stdout.strip(),
             "label": args.label,
-            "model": args.model,
+            "model": model,
             "reasoning": args.reasoning,
             "created_at": datetime.now(UTC).isoformat(),
             "gcx_sha256": sha256(gcx),

@@ -14,7 +14,7 @@ pub struct GcxDispatchParams {
     /// Parameters for the chosen action as a JSON object (same fields as the
     /// individual tool: name, function_name, seed_name, query, file, branch,
     /// depth, limit, direction, src, dst, start_line, end_line).
-    pub params: serde_json::Value,
+    pub params: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
