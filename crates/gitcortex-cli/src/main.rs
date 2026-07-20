@@ -188,9 +188,14 @@ pub enum QueryCmd {
         /// Direction: in (callers/ancestors), out (callees/descendants), both.
         #[arg(long, default_value = "both")]
         direction: String,
-        /// Maximum nodes printed. The true node/edge totals remain in the header.
+        /// Maximum ranked relation evidence rows returned.
         #[arg(long, default_value_t = 20)]
         limit: usize,
+        /// Global response budget used by agent-json output.
+        #[arg(long, default_value_t = 800)]
+        budget_tokens: usize,
+        #[arg(long, value_enum, default_value_t = AgentOutputFormat::Text)]
+        format: AgentOutputFormat,
         #[arg(long, default_value = "main")]
         branch: String,
     },
@@ -212,7 +217,7 @@ pub enum QueryCmd {
     Tour {
         #[arg(long)]
         seed: Option<String>,
-        #[arg(long, default_value_t = 12)]
+        #[arg(long, default_value_t = 6)]
         limit: usize,
         #[arg(long, default_value = "main")]
         branch: String,
