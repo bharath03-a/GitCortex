@@ -238,6 +238,30 @@ export async function fetchBranchDiff(base: string, head: string): Promise<Branc
   return r.json();
 }
 
+export interface FileHotspot {
+  path: string;
+  touches: number;
+  additions: number;
+  deletions: number;
+  last_changed: number;
+}
+
+export interface HotFilesResult {
+  branch: string;
+  scanned_commits: number;
+  commit_limit: number;
+  files: FileHotspot[];
+}
+
+export async function fetchHotFiles(
+  branch: string,
+  commits = 500,
+  limit = 25,
+): Promise<HotFilesResult> {
+  const params = new URLSearchParams({ branch, commits: String(commits), limit: String(limit) });
+  return fetchJson(`/api/history/hot-files?${params}`);
+}
+
 export interface GodNodesResult {
   count: number;
   nodes: (RawNode & { in_degree: number })[];

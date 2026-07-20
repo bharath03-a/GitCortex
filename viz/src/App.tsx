@@ -1,6 +1,13 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import type { GraphData, GraphLoadProgress, RawNode } from "./api";
-import { fetchBranches, fetchGodNodes, fetchNeighborhood, fetchUnused, loadGraphData } from "./api";
+import type { FileHotspot, GraphData, GraphLoadProgress, RawNode } from "./api";
+import {
+  fetchBranches,
+  fetchGodNodes,
+  fetchHotFiles,
+  fetchNeighborhood,
+  fetchUnused,
+  loadGraphData,
+} from "./api";
 import { Header } from "./components/Header";
 import { FilterRail, type Flag, type Visibility } from "./components/FilterRail";
 
@@ -41,11 +48,13 @@ export default function App() {
   const [diffHead, setDiffHead] = useState<string | null>(null);
   const [unusedIds, setUnusedIds] = useState<Set<string> | null>(null);
   const [godNodeIds, setGodNodeIds] = useState<Set<string> | null>(null);
+  const [hotFiles, setHotFiles] = useState<FileHotspot[] | null>(null);
   // Track whether a fetch has already been dispatched for the current overlay
   // toggle session — prevents an infinite re-fetch loop when the server returns
   // zero results (empty Set still has size=0, which would re-trigger the effect).
   const unusedFetchedRef = useRef(false);
   const godNodesFetchedRef = useRef(false);
+  const hotFilesFetchedRef = useRef(false);
   const diffOverlay = useBranchDiff(activeBranch, diffHead);
 
   useEffect(() => {
@@ -67,6 +76,7 @@ export default function App() {
     setDiffHead(null);
     setUnusedIds(null);
     setGodNodeIds(null);
+    setHotFiles(null);
     loadGraphData(
       activeBranch,
       (partial, progress) => {
@@ -133,6 +143,11 @@ export default function App() {
           godNodesFetchedRef.current = false;
           setGodNodeIds((cur) => (cur ? null : new Set()));
           break;
+        case "c":
+        case "C":
+          hotFilesFetchedRef.current = false;
+          setHotFiles((current) => (current ? null : []));
+          break;
       }
     };
     window.addEventListener("keydown", onKey);
@@ -180,6 +195,27 @@ export default function App() {
         .catch(() => setGodNodeIds(null));
     }
   }, [godNodeIds, activeBranch]);
+
+  useEffect(() => {
+    if (hotFiles !== null && hotFiles.length === 0 && !hotFilesFetchedRef.current) {
+      if (!activeBranch) return;
+      hotFilesFetchedRef.current = true;
+      fetchHotFiles(activeBranch)
+        .then((result) => setHotFiles(result.files))
+        .catch(() => setHotFiles(null));
+    }
+  }, [hotFiles, activeBranch]);
+
+  const hotspotNodeScores = useMemo(() => {
+    if (!rawData || !hotFiles || hotFiles.length === 0) return null;
+    const touchesByFile = new Map(hotFiles.map((file) => [file.path, file.touches]));
+    const maxTouches = Math.max(...hotFiles.map((file) => file.touches), 1);
+    return new Map(
+      rawData.nodes
+        .filter((node) => touchesByFile.has(node.file))
+        .map((node) => [node.id, (touchesByFile.get(node.file) ?? 0) / maxTouches]),
+    );
+  }, [rawData, hotFiles]);
 
   const data = useMemo(() => {
     if (!rawData) return null;
@@ -270,11 +306,17 @@ export default function App() {
           godNodesFetchedRef.current = false;
           setGodNodeIds((cur) => (cur ? null : new Set()));
         }}
+        hotFilesActive={hotFiles !== null}
+        onToggleHotFiles={() => {
+          hotFilesFetchedRef.current = false;
+          setHotFiles((current) => (current ? null : []));
+        }}
       />
       <main className="flex flex-1 overflow-hidden">
         {railOpen && (
           <FilterRail
             data={rawData}
+            hotFiles={hotFiles}
             hiddenKinds={hiddenKinds}
             setHiddenKinds={setHiddenKinds}
             hiddenEdgeKinds={hiddenEdgeKinds}
@@ -322,6 +364,7 @@ export default function App() {
                 diffOverlay={diffOverlay}
                 unusedIds={unusedIds}
                 godNodeIds={godNodeIds}
+                hotspotScores={hotspotNodeScores}
               />
             </Suspense>
           )}
@@ -393,8 +436,22 @@ export default function App() {
               </span>
             </div>
           )}
-          {unusedIds && unusedIds.size > 0 && !diffOverlay && (
+          {hotFiles && hotFiles.length > 0 && !diffOverlay && viewMode === "atlas" && (
             <div className="animate-fade-in absolute top-3 right-3 z-10 flex items-center gap-2 rounded-lg border border-(--color-border-subtle) bg-(--color-elevated)/90 px-3 py-1.5 font-mono text-[11px] backdrop-blur-sm">
+              <span className="size-2 rounded-full bg-red-400" />
+              <span className="text-red-300">change hotspots · {hotFiles.length} files</span>
+              <button
+                onClick={() => setHotFiles(null)}
+                className="ml-1 text-(--color-text-dim) hover:text-(--color-text-primary)"
+              >
+                clear
+              </button>
+            </div>
+          )}
+          {unusedIds && unusedIds.size > 0 && !diffOverlay && (
+            <div
+              className={`animate-fade-in absolute right-3 z-10 flex items-center gap-2 rounded-lg border border-(--color-border-subtle) bg-(--color-elevated)/90 px-3 py-1.5 font-mono text-[11px] backdrop-blur-sm ${hotFiles && hotFiles.length > 0 ? "top-12" : "top-3"}`}
+            >
               <span className="size-2 rounded-full bg-(--color-warn)" />
               <span className="text-(--color-warn)">{unusedIds.size} unused symbols</span>
               <button
@@ -407,7 +464,7 @@ export default function App() {
           )}
           {godNodeIds && godNodeIds.size > 0 && !diffOverlay && (
             <div
-              className={`animate-fade-in absolute z-10 flex items-center gap-2 rounded-lg border border-(--color-border-subtle) bg-(--color-elevated)/90 px-3 py-1.5 font-mono text-[11px] backdrop-blur-sm ${unusedIds && unusedIds.size > 0 ? "top-12 right-3" : "top-3 right-3"}`}
+              className={`animate-fade-in absolute right-3 z-10 flex items-center gap-2 rounded-lg border border-(--color-border-subtle) bg-(--color-elevated)/90 px-3 py-1.5 font-mono text-[11px] backdrop-blur-sm ${hotFiles && hotFiles.length > 0 && unusedIds && unusedIds.size > 0 ? "top-[84px]" : (hotFiles && hotFiles.length > 0) || (unusedIds && unusedIds.size > 0) ? "top-12" : "top-3"}`}
             >
               <span className="size-2 rounded-full bg-cyan-400" />
               <span className="text-cyan-400">{godNodeIds.size} hub nodes</span>
@@ -429,6 +486,7 @@ export default function App() {
             depth={depth}
             onDepthChange={setDepth}
             branch={activeBranch ?? "main"}
+            hotspot={hotFiles?.find((file) => file.path === selected.file) ?? null}
           />
         )}
       </main>

@@ -52,6 +52,7 @@ pub enum VizFormat {
 struct AppState {
     store: std::sync::Mutex<KuzuGraphStore>,
     branch: String,
+    repo_root: PathBuf,
 }
 
 pub fn run(branch: String, port: u16, format: VizFormat) -> Result<()> {
@@ -83,6 +84,7 @@ pub fn run(branch: String, port: u16, format: VizFormat) -> Result<()> {
             let state = Arc::new(AppState {
                 store: std::sync::Mutex::new(store),
                 branch,
+                repo_root,
             });
 
             // Multi-thread runtime so spawn_blocking has a real worker pool to fall back to.
@@ -128,6 +130,7 @@ async fn serve(state: Arc<AppState>, port: u16) -> Result<()> {
         .route("/api/branch-diff", get(branch_diff_handler))
         .route("/api/unused", get(unused_handler))
         .route("/api/god_nodes", get(god_nodes_handler))
+        .route("/api/history/hot-files", get(hot_files_handler))
         .layer(middleware::from_fn(move |req, next| {
             let allowed = allowed_hosts.clone();
             host_header_guard(req, next, allowed)
@@ -770,6 +773,122 @@ async fn god_nodes_handler(
 }
 
 #[derive(Debug, Deserialize)]
+struct HistoryQuery {
+    #[serde(default)]
+    branch: Option<String>,
+    #[serde(default)]
+    commits: Option<usize>,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Default)]
+struct FileHistory {
+    touches: u64,
+    additions: u64,
+    deletions: u64,
+    last_changed: i64,
+}
+
+fn include_history_path(path: &str) -> bool {
+    !path.is_empty()
+        && !path.starts_with("target/")
+        && !path.starts_with("node_modules/")
+        && !path.starts_with("dist/")
+        && !path.starts_with("vendor/")
+        && !path.contains("/node_modules/")
+        && !path.contains("/target/")
+        && !path.contains("/dist/")
+        && !path.contains("/vendor/")
+}
+
+async fn hot_files_handler(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<HistoryQuery>,
+) -> Json<Value> {
+    let branch = q.branch.unwrap_or_else(|| state.branch.clone());
+    let commit_limit = q.commits.unwrap_or(500).clamp(1, 5_000);
+    let result_limit = q.limit.unwrap_or(25).clamp(1, 200);
+    let commit_limit_arg = commit_limit.to_string();
+    let revision = format!("refs/heads/{branch}");
+    let output = tokio::process::Command::new("git")
+        .args([
+            "log",
+            "--no-renames",
+            "--numstat",
+            "--format=@@%H%x09%ct",
+            "-n",
+            &commit_limit_arg,
+            &revision,
+        ])
+        .current_dir(&state.repo_root)
+        .output()
+        .await;
+    let output = match output {
+        Ok(value) if value.status.success() => value,
+        Ok(value) => {
+            return Json(json!({
+                "error": format!("git log exited with {}", value.status),
+            }));
+        }
+        Err(error) => return Json(json!({ "error": format!("git log failed: {error}") })),
+    };
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut files: std::collections::HashMap<String, FileHistory> =
+        std::collections::HashMap::new();
+    let mut current_timestamp = 0i64;
+    let mut scanned_commits = 0usize;
+    for line in stdout.lines() {
+        if let Some(header) = line.strip_prefix("@@") {
+            let mut fields = header.split('\t');
+            let _sha = fields.next();
+            current_timestamp = fields
+                .next()
+                .and_then(|value| value.parse::<i64>().ok())
+                .unwrap_or(0);
+            scanned_commits += 1;
+            continue;
+        }
+        let mut fields = line.splitn(3, '\t');
+        let Some(additions) = fields.next() else {
+            continue;
+        };
+        let Some(deletions) = fields.next() else {
+            continue;
+        };
+        let Some(path) = fields.next() else { continue };
+        if !include_history_path(path) {
+            continue;
+        }
+        let entry = files.entry(path.to_owned()).or_default();
+        entry.touches += 1;
+        entry.additions += additions.parse::<u64>().unwrap_or(0);
+        entry.deletions += deletions.parse::<u64>().unwrap_or(0);
+        entry.last_changed = entry.last_changed.max(current_timestamp);
+    }
+    let mut ranked: Vec<_> = files.into_iter().collect();
+    ranked.sort_by(|a, b| {
+        b.1.touches
+            .cmp(&a.1.touches)
+            .then_with(|| (b.1.additions + b.1.deletions).cmp(&(a.1.additions + a.1.deletions)))
+            .then_with(|| a.0.cmp(&b.0))
+    });
+    ranked.truncate(result_limit);
+    Json(json!({
+        "branch": branch,
+        "scanned_commits": scanned_commits,
+        "commit_limit": commit_limit,
+        "files": ranked.into_iter().map(|(path, history)| json!({
+            "path": path,
+            "touches": history.touches,
+            "additions": history.additions,
+            "deletions": history.deletions,
+            "last_changed": history.last_changed,
+        })).collect::<Vec<_>>(),
+    }))
+}
+
+#[derive(Debug, Deserialize)]
 struct BranchDiffQuery {
     base: String,
     head: String,
@@ -1193,6 +1312,16 @@ fn repo_root() -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn history_path_filter_excludes_generated_dependency_trees() {
+        assert!(include_history_path("src/lib.rs"));
+        assert!(include_history_path("docs/guide.md"));
+        assert!(!include_history_path("target/debug/build.rs"));
+        assert!(!include_history_path("web/node_modules/pkg/index.js"));
+        assert!(!include_history_path("dist/main.js"));
+        assert!(!include_history_path("vendor/library.rs"));
+    }
 
     #[test]
     fn graph_page_limits_are_bounded() {
