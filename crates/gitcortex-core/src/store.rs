@@ -181,6 +181,33 @@ pub trait GraphStore: Send + Sync {
             .collect())
     }
 
+    /// Find direct callers for one exact target node ID, including edge
+    /// confidence. Agent-facing queries use this after symbol disambiguation so
+    /// common names such as `get` cannot merge unrelated call graphs.
+    ///
+    /// The default implementation filters the full graph in memory. Stores
+    /// should override this with an indexed query.
+    fn find_callers_by_id_with_confidence(
+        &self,
+        branch: &str,
+        target_id: &str,
+    ) -> Result<Vec<(Node, EdgeConfidence)>> {
+        let callers: std::collections::HashMap<String, Node> = self
+            .list_all_nodes(branch)?
+            .into_iter()
+            .map(|n| (n.id.as_str(), n))
+            .collect();
+        let mut out = Vec::new();
+        for edge in self.list_all_edges(branch)? {
+            if edge.kind == EdgeKind::Calls && edge.dst.as_str() == target_id {
+                if let Some(node) = callers.get(&edge.src.as_str()) {
+                    out.push((node.clone(), edge.confidence));
+                }
+            }
+        }
+        Ok(out)
+    }
+
     /// Multi-hop BFS: find callers up to `depth` hops away.
     /// Returns callers grouped by hop distance (1..=depth).
     /// `depth` is capped at 5 to prevent runaway queries.

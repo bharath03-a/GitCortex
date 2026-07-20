@@ -747,6 +747,46 @@ impl GraphStore for KuzuGraphStore {
         Ok(out)
     }
 
+    fn find_callers_by_id_with_confidence(
+        &self,
+        branch: &str,
+        target_id: &str,
+    ) -> Result<Vec<(Node, EdgeConfidence)>> {
+        self.ensure_branch(branch)?;
+        let nt = db_schema::node_table(branch);
+        let et = db_schema::edge_table(branch);
+        let id_esc = esc(target_id);
+        let conn = self.conn()?;
+
+        let result = conn
+            .query(&format!(
+                "MATCH (n:{nt})-[e:{et} {{kind: 'calls'}}]->(callee:{nt}) \
+                 WHERE callee.id = '{id_esc}' \
+                 RETURN {NODE_COLS}, e.confidence"
+            ))
+            .map_err(|e| GitCortexError::Store(e.to_string()))?;
+
+        let mut out = Vec::new();
+        for row in result {
+            if row.len() <= NODE_COL_COUNT {
+                tracing::debug!(
+                    "skipping short row ({} cols) in find_callers_by_id_with_confidence",
+                    row.len()
+                );
+                continue;
+            }
+            let confidence =
+                EdgeConfidence::from_label(&str_val(&row[NODE_COL_COUNT]).unwrap_or_default());
+            match row_to_node(row) {
+                Ok(node) => out.push((node, confidence)),
+                Err(e) => tracing::debug!(
+                    "skipping malformed row in find_callers_by_id_with_confidence: {e}"
+                ),
+            }
+        }
+        Ok(out)
+    }
+
     fn find_callers_deep(
         &self,
         branch: &str,

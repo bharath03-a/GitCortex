@@ -500,6 +500,47 @@ fn cross_file_calls_edge_multiple_callers() {
 }
 
 #[test]
+fn agent_callers_returns_ranked_exact_evidence() {
+    use gitcortex_mcp::mcp::agent::{self, AgentQueryOptions, AgentStatus};
+
+    let (_nodes, _, store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
+    let response = agent::find_callers(
+        &store,
+        "main",
+        "compute_value",
+        1,
+        AgentQueryOptions {
+            limit: 10,
+            budget_tokens: 400,
+        },
+    )
+    .expect("agent find_callers");
+
+    assert_eq!(response.status, AgentStatus::Ok);
+    assert_eq!(response.coverage.total, 2);
+    assert_eq!(response.coverage.returned, 2);
+    assert!(response.evidence.iter().all(|item| item.hop == 1));
+    assert!(response
+        .evidence
+        .iter()
+        .all(|item| item.confidence == "resolved"));
+}
+
+#[test]
+fn agent_callers_rejects_ambiguous_short_name_without_traversal() {
+    use gitcortex_mcp::mcp::agent::{self, AgentQueryOptions, AgentStatus};
+
+    let (_nodes, _, store) = run_pipeline_multi(&["ambiguous_symbols.rs"]);
+    let response = agent::find_callers(&store, "main", "validate", 1, AgentQueryOptions::default())
+        .expect("agent find_callers");
+
+    assert_eq!(response.status, AgentStatus::Ambiguous);
+    assert!(response.candidates.len() > 1);
+    assert!(response.evidence.is_empty());
+    assert_eq!(response.coverage.total, 0);
+}
+
+#[test]
 fn cross_file_implements_edge_resolved() {
     let (nodes, edges, _store) = run_pipeline_multi(&["xfile_trait.rs", "xfile_impl.rs"]);
 

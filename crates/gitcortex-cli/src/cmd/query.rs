@@ -9,7 +9,7 @@ use crate::style::{
     arrow, header_style, hint_style, kind_style, kind_style_from_str, name_style, node_line, paint,
     path_style, risk_style, score_style,
 };
-use crate::QueryCmd;
+use crate::{AgentOutputFormat, QueryCmd};
 
 pub fn run(cmd: QueryCmd) -> Result<()> {
     let repo_root = repo_root()?;
@@ -32,37 +32,26 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
         QueryCmd::FindCallers {
             name,
             depth,
+            limit,
+            budget_tokens,
+            format,
             branch,
         } => {
-            if depth <= 1 {
-                let nodes = store.find_callers(&branch, &name)?;
-                if nodes.is_empty() {
-                    println!("{}", empty_msg(&format!("no callers of '{name}'"), &branch));
+            let response = gitcortex_mcp::mcp::agent::find_callers(
+                &store,
+                &branch,
+                &name,
+                depth,
+                gitcortex_mcp::mcp::agent::AgentQueryOptions {
+                    limit,
+                    budget_tokens,
+                },
+            )?;
+            match format {
+                AgentOutputFormat::AgentJson => {
+                    println!("{}", serde_json::to_string_pretty(&response)?);
                 }
-                for n in nodes {
-                    println!("{}", node_line(&n));
-                }
-            } else {
-                let result = store.find_callers_deep(&branch, &name, depth)?;
-                if result.hops.iter().all(|h| h.is_empty()) {
-                    println!("{}", empty_msg(&format!("no callers of '{name}'"), &branch));
-                } else {
-                    println!(
-                        "{} {}  ({} {})",
-                        paint(header_style(), "callers of"),
-                        paint(name_style(), &format!("'{name}'")),
-                        paint(hint_style(), "risk:"),
-                        paint(risk_style(result.risk_level), result.risk_level),
-                    );
-                    for (i, hop_nodes) in result.hops.iter().enumerate() {
-                        if !hop_nodes.is_empty() {
-                            println!("  {} {}:", paint(hint_style(), "hop"), i + 1);
-                            for n in hop_nodes {
-                                println!("    {}", node_line(n));
-                            }
-                        }
-                    }
-                }
+                AgentOutputFormat::Text => print_agent_callers(&response),
             }
         }
 
@@ -183,6 +172,7 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
             name,
             depth,
             direction,
+            limit,
             branch,
         } => {
             let sg = store.get_subgraph(&branch, &name, depth, &direction)?;
@@ -204,8 +194,17 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
                         &format!("seed={name}, depth={depth}, direction={direction}"),
                     ),
                 );
-                for n in &sg.nodes {
+                for n in sg.nodes.iter().take(limit) {
                     println!("  {}", node_line(n));
+                }
+                if sg.nodes.len() > limit {
+                    println!(
+                        "  {}",
+                        paint(
+                            hint_style(),
+                            &format!("showing {limit} of {} nodes", sg.nodes.len())
+                        )
+                    );
                 }
             }
         }
@@ -330,6 +329,62 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn print_agent_callers(response: &gitcortex_mcp::mcp::agent::AgentCallersResponse) {
+    use gitcortex_mcp::mcp::agent::AgentStatus;
+
+    println!(
+        "{} {}",
+        paint(header_style(), "[GitCortex]"),
+        paint(
+            if response.status == AgentStatus::Ok {
+                risk_style(&response.risk_level)
+            } else {
+                hint_style()
+            },
+            &response.answer,
+        )
+    );
+    if !response.candidates.is_empty() {
+        println!("  {}", paint(header_style(), "qualified candidates:"));
+        for candidate in &response.candidates {
+            println!(
+                "    {} {}  {}",
+                paint(kind_style_from_str(&candidate.kind), &candidate.kind),
+                paint(name_style(), &candidate.qualified_name),
+                paint(
+                    path_style(),
+                    &format!("{}:{}", candidate.file, candidate.start_line)
+                )
+            );
+        }
+    }
+    for item in &response.evidence {
+        println!(
+            "  {} {} {}  {}  {}",
+            paint(hint_style(), &format!("hop {}", item.hop)),
+            paint(name_style(), &item.qualified_name),
+            paint(kind_style_from_str(&item.kind), &format!("({})", item.kind)),
+            paint(path_style(), &format!("{}:{}", item.file, item.line)),
+            paint(hint_style(), &format!("[{}]", item.confidence)),
+        );
+    }
+    if response.coverage.truncated {
+        println!(
+            "  {}",
+            paint(
+                hint_style(),
+                &format!(
+                    "showing {} of {} ranked callers",
+                    response.coverage.returned, response.coverage.total
+                )
+            )
+        );
+    }
+    if let Some(next) = &response.next_action {
+        println!("  {}", paint(hint_style(), next));
+    }
 }
 
 fn empty_msg(prefix: &str, branch: &str) -> String {
