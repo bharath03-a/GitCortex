@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronRight, ExternalLink, X } from "lucide-react";
-import type { DeepCallersResult, GraphData, RawNode } from "../api";
+import type { DeepCallersResult, FileHotspot, GraphData, RawNode } from "../api";
 import { fetchDeepCallers } from "../api";
 import { KIND_COLOR, KIND_LABEL } from "../theme/colors";
 
@@ -14,6 +14,7 @@ interface Props {
   depth: number;
   onDepthChange: (d: number) => void;
   branch: string;
+  hotspot: FileHotspot | null;
 }
 
 const RISK_TONE: Record<string, string> = {
@@ -23,7 +24,16 @@ const RISK_TONE: Record<string, string> = {
   CRITICAL: "text-(--color-bad) bg-red-500/20",
 };
 
-export function Inspector({ node, data, onClose, onSelect, depth, onDepthChange, branch }: Props) {
+export function Inspector({
+  node,
+  data,
+  onClose,
+  onSelect,
+  depth,
+  onDepthChange,
+  branch,
+  hotspot,
+}: Props) {
   const [tab, setTab] = useState<Tab>("local");
   const { callers, callees, uses } = useMemo(() => {
     const callers: RawNode[] = [];
@@ -92,6 +102,11 @@ export function Inspector({ node, data, onClose, onSelect, depth, onDepthChange,
           <Badge>{node.loc} LOC</Badge>
           {node.is_async && <Badge tone="accent">async</Badge>}
           {node.is_unsafe && <Badge tone="warn">unsafe</Badge>}
+          {hotspot && (
+            <Badge tone="hot">
+              {hotspot.touches} changes · +{hotspot.additions}/−{hotspot.deletions}
+            </Badge>
+          )}
         </div>
         <div className="mt-3 flex items-center gap-2">
           <span
@@ -262,14 +277,16 @@ function Badge({
   tone = "default",
 }: {
   children: React.ReactNode;
-  tone?: "default" | "accent" | "warn";
+  tone?: "default" | "accent" | "warn" | "hot";
 }) {
   const cls =
     tone === "accent"
       ? "bg-(--color-accent-soft) text-(--color-accent)"
       : tone === "warn"
         ? "bg-amber-500/15 text-(--color-warn)"
-        : "bg-(--color-elevated) text-(--color-text-muted)";
+        : tone === "hot"
+          ? "bg-red-500/15 text-red-300"
+          : "bg-(--color-elevated) text-(--color-text-muted)";
   return <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] ${cls}`}>{children}</span>;
 }
 

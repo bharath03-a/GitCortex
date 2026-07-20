@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { PanelLeftClose } from "lucide-react";
-import type { GraphData } from "../api";
+import type { FileHotspot, GraphData } from "../api";
 import {
   CONFIDENCE_COLOR,
   CONFIDENCE_LABEL,
@@ -20,6 +20,7 @@ const VIS_LABEL: Record<Visibility, string> = {
 
 interface Props {
   data: GraphData | null;
+  hotFiles: FileHotspot[] | null;
   hiddenKinds: Set<string>;
   setHiddenKinds: (s: Set<string>) => void;
   hiddenEdgeKinds: Set<string>;
@@ -35,6 +36,7 @@ interface Props {
 
 export function FilterRail({
   data,
+  hotFiles,
   hiddenKinds,
   setHiddenKinds,
   hiddenEdgeKinds,
@@ -93,6 +95,25 @@ export function FilterRail({
         </button>
       </div>
       <div className="flex-1 overflow-y-auto p-3">
+        {hotFiles && hotFiles.length > 0 && (
+          <FilterSection title="Most Changed Files">
+            <ol className="space-y-1">
+              {hotFiles.slice(0, 10).map((file, index) => (
+                <li
+                  key={file.path}
+                  title={`${file.path} · +${file.additions} / −${file.deletions}`}
+                  className="flex items-center gap-2 rounded px-2 py-1 text-[11px] hover:bg-(--color-elevated)"
+                >
+                  <span className="w-4 shrink-0 font-mono text-(--color-text-dim)">
+                    {index + 1}
+                  </span>
+                  <span className="flex-1 truncate font-mono">{file.path}</span>
+                  <span className="shrink-0 text-red-300">{file.touches}</span>
+                </li>
+              ))}
+            </ol>
+          </FilterSection>
+        )}
         <FilterSection title="Node Kinds">
           {kinds.map((k) => {
             const hidden = hiddenKinds.has(k);

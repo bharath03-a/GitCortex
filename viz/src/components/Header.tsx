@@ -1,4 +1,4 @@
-import { CircleSlash, Keyboard, Network, Search, Zap } from "lucide-react";
+import { CircleSlash, Flame, Keyboard, Network, Search, Zap } from "lucide-react";
 import type { ViewMode } from "../App";
 import { DENSITY_LABEL, type DensityMode } from "../graph/density";
 import { BranchPicker } from "./BranchPicker";
@@ -21,6 +21,8 @@ interface Props {
   onToggleUnused: () => void;
   godNodesActive: boolean;
   onToggleGodNodes: () => void;
+  hotFilesActive: boolean;
+  onToggleHotFiles: () => void;
 }
 
 const DENSITY_OPTIONS: DensityMode[] = ["focused", "public", "full"];
@@ -43,6 +45,8 @@ export function Header({
   onToggleUnused,
   godNodesActive,
   onToggleGodNodes,
+  hotFilesActive,
+  onToggleHotFiles,
 }: Props) {
   return (
     <header className="flex h-12 items-center justify-between border-b border-(--color-border-subtle) bg-(--color-void-deep) px-4">
@@ -107,6 +111,18 @@ export function Header({
         >
           <Zap className="size-3.5" />
           <span>Hubs</span>
+        </button>
+        <button
+          onClick={onToggleHotFiles}
+          title="Toggle most-changed file overlay"
+          className={`flex items-center gap-1.5 rounded-md border border-(--color-border-subtle) px-2.5 py-1.5 text-[11px] transition-colors ${
+            hotFilesActive
+              ? "bg-red-500/15 text-red-300"
+              : "bg-(--color-elevated) text-(--color-text-muted) hover:text-(--color-text-primary)"
+          }`}
+        >
+          <Flame className="size-3.5" />
+          <span>Changes</span>
         </button>
         <div className="flex items-center gap-1 rounded-md border border-(--color-border-subtle) bg-(--color-elevated) p-0.5">
           {DENSITY_OPTIONS.map((m, i) => {

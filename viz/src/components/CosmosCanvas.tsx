@@ -38,6 +38,7 @@ interface Props {
   diffOverlay: DiffOverlay | null;
   unusedIds: Set<string> | null;
   godNodeIds: Set<string> | null;
+  hotspotScores: Map<string, number> | null;
 }
 
 export function CosmosCanvas({
@@ -51,6 +52,7 @@ export function CosmosCanvas({
   diffOverlay,
   unusedIds,
   godNodeIds,
+  hotspotScores,
 }: Props) {
   const ref = useRef<CosmographRef>(null);
 
@@ -153,6 +155,15 @@ export function CosmosCanvas({
             if (unusedIds.has(node.id)) return "#f59e0b";
             return dimColor(KIND_COLOR[kind] ?? "#89b4fa", 0.82);
           }
+          if (hotspotScores && node) {
+            const score = hotspotScores.get(node.id);
+            if (score != null) {
+              if (score >= 0.66) return "#ef4444";
+              if (score >= 0.33) return "#f97316";
+              return "#f59e0b";
+            }
+            return dimColor(KIND_COLOR[kind] ?? "#89b4fa", 0.82);
+          }
           return KIND_COLOR[kind] ?? "#89b4fa";
         }}
         pointSizeBy="loc"
@@ -163,6 +174,8 @@ export function CosmosCanvas({
           if (!node) return base;
           if (selected?.id === node.id) return base * 1.8;
           if (highlightSet?.has(node.id)) return base * 1.3;
+          const hotspot = hotspotScores?.get(node.id);
+          if (hotspot != null) return base * (1.1 + hotspot * 0.5);
           return base;
         }}
         pointLabelBy="name"
@@ -182,12 +195,21 @@ export function CosmosCanvas({
           const edgeKey = link
             ? `${String(link.source)}\u0000${String(link.target)}\u0000${kind}`
             : null;
+          const sourceHotspot = link ? (hotspotScores?.get(String(link.source)) ?? 0) : 0;
+          const targetHotspot = link ? (hotspotScores?.get(String(link.target)) ?? 0) : 0;
+          const relationHotspot = Math.max(sourceHotspot, targetHotspot);
           const base =
             edgeKey && diffOverlay?.addedEdgeKeys.has(edgeKey)
               ? DIFF_ADDED
               : edgeKey && diffOverlay?.removedEdgeKeys.has(edgeKey)
                 ? DIFF_REMOVED
-                : (EDGE_COLOR[kind] ?? "#666");
+                : relationHotspot >= 0.66
+                  ? "#ef4444"
+                  : relationHotspot >= 0.33
+                    ? "#f97316"
+                    : relationHotspot > 0
+                      ? "#f59e0b"
+                      : (EDGE_COLOR[kind] ?? "#666");
           if (highlightSet) {
             if (!link) return base;
             const lit =
@@ -210,9 +232,16 @@ export function CosmosCanvas({
           const base = EDGE_WIDTH[String(value)] ?? 1;
           const link = index != null ? links[index] : undefined;
           const conf = link?.confidence;
-          if (conf === "inferred") return base * 0.5;
-          if (conf === "resolved") return base * 0.8;
-          return base;
+          const relationHotspot = link
+            ? Math.max(
+                hotspotScores?.get(String(link.source)) ?? 0,
+                hotspotScores?.get(String(link.target)) ?? 0,
+              )
+            : 0;
+          const hotspotScale = 1 + relationHotspot * 1.5;
+          if (conf === "inferred") return base * 0.5 * hotspotScale;
+          if (conf === "resolved") return base * 0.8 * hotspotScale;
+          return base * hotspotScale;
         }}
         linkArrowsSizeScale={0.6}
         backgroundColor="rgba(0,0,0,0)"
