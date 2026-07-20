@@ -322,7 +322,7 @@ impl GitCortexServer {
         };
         let options = super::agent::AgentQueryOptions {
             limit: 25,
-            budget_tokens: self.response_budget,
+            budget_tokens: self.response_budget.min(600),
         };
         match super::agent::find_callers(
             &*store,
@@ -1134,7 +1134,7 @@ impl GitCortexServer {
         };
         let options = super::agent::AgentQueryOptions {
             limit: p.limit.unwrap_or(20),
-            budget_tokens: self.response_budget,
+            budget_tokens: self.response_budget.min(400),
         };
         match super::agent::get_subgraph(
             &*store,
