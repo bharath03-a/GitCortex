@@ -163,6 +163,83 @@ pub struct AgentSearchResponse {
     pub next_action: Option<String>,
 }
 
+/// Format ranked search hits as compact implementation evidence shared by CLI
+/// and MCP. Retrieval may be lexical-only or RRF hybrid; presentation is stable.
+pub fn format_search<S: GraphStore + ?Sized>(
+    store: &S,
+    branch: &str,
+    query: &str,
+    hits: Vec<SearchHit>,
+    semantic_available: bool,
+    budget_tokens: usize,
+) -> Result<AgentSearchResponse> {
+    let total = hits.len();
+    let ids: Vec<String> = hits.iter().map(|hit| hit.id.clone()).collect();
+    let nodes = store.get_nodes_by_ids(branch, &ids)?;
+    let by_id: HashMap<String, Node> = nodes
+        .into_iter()
+        .map(|node| (node.id.as_str(), node))
+        .collect();
+    let mut files = HashSet::new();
+    let mut evidence = Vec::new();
+    for hit in hits {
+        files.insert(hit.file.clone());
+        let node = by_id.get(&hit.id);
+        let doc = node
+            .and_then(|node| node.metadata.definition.doc_comment.as_deref())
+            .and_then(|text| text.lines().find(|line| !line.trim().is_empty()))
+            .map(|line| line.trim().chars().take(180).collect());
+        evidence.push(SearchEvidence {
+            symbol: hit.name,
+            qualified_name: hit.qualified_name,
+            kind: hit.kind,
+            file: hit.file,
+            line: hit.start_line,
+            signature: node.map(sig_line).unwrap_or_default(),
+            doc,
+            score: hit.score,
+        });
+    }
+    let answer = if total == 0 {
+        format!("No code symbols matched '{query}'.")
+    } else {
+        let top_files = evidence
+            .iter()
+            .map(|item| item.file.as_str())
+            .take(3)
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            "{total} ranked symbol match(es) across {} file(s). Top files: {top_files}.",
+            files.len()
+        )
+    };
+    let mut response = AgentSearchResponse {
+        status: if total == 0 {
+            AgentStatus::NotFound
+        } else {
+            AgentStatus::Ok
+        },
+        answer,
+        query: query.to_owned(),
+        semantic_available,
+        file_count: files.len(),
+        evidence,
+        coverage: SearchCoverage {
+            total,
+            returned: 0,
+            truncated: false,
+        },
+        next_action: if total == 0 {
+            Some("Try a concrete symbol fragment or alternate spelling.".to_owned())
+        } else {
+            None
+        },
+    };
+    apply_search_budget(&mut response, budget_tokens.max(MIN_BUDGET_TOKENS));
+    Ok(response)
+}
+
 /// Find callers for exactly one symbol and return a globally-budgeted response.
 /// Ambiguous short names return candidates without traversing the graph.
 pub fn find_callers<S: GraphStore + ?Sized>(
@@ -509,6 +586,133 @@ fn confidence_label_rank(confidence: &str) -> u8 {
         "resolved" => 1,
         _ => 2,
     }
+}
+
+fn resolve_symbol<S: GraphStore + ?Sized>(
+    store: &S,
+    branch: &str,
+    query: &str,
+) -> Result<Resolution> {
+    let query = query.trim();
+    let mut exact = store.lookup_symbol(branch, query, false)?;
+    exact.retain(is_code_node);
+
+    // A qualified query may not match `lookup_symbol`, which is intentionally
+    // short-name based. Search a bounded candidate set and compare exactly.
+    let mut searched = store.search_nodes(branch, query, 50)?;
+    searched.retain(is_code_node);
+    if query.contains("::") || query.contains('.') {
+        let qualified: Vec<Node> = searched
+            .iter()
+            .filter(|node| node.qualified_name.eq_ignore_ascii_case(query))
+            .cloned()
+            .collect();
+        if qualified.len() == 1 {
+            return Ok(Resolution::Exact(Box::new(qualified[0].clone())));
+        }
+        if qualified.len() > 1 {
+            return Ok(Resolution::Ambiguous(qualified));
+        }
+    }
+
+    dedup_nodes(&mut exact);
+    match exact.len() {
+        1 => Ok(Resolution::Exact(Box::new(exact.remove(0)))),
+        n if n > 1 => Ok(Resolution::Ambiguous(exact)),
+        _ => {
+            searched.sort_by(rank_candidates);
+            dedup_nodes(&mut searched);
+            Ok(Resolution::NotFound(searched))
+        }
+    }
+}
+
+fn is_code_node(node: &Node) -> bool {
+    !matches!(
+        node.kind,
+        NodeKind::Section | NodeKind::File | NodeKind::Folder | NodeKind::Module
+    )
+}
+
+fn dedup_nodes(nodes: &mut Vec<Node>) {
+    let mut seen = HashSet::new();
+    nodes.retain(|node| seen.insert(node.id.as_str()));
+}
+
+fn candidate_head(mut nodes: Vec<Node>, limit: usize) -> Vec<SymbolCandidate> {
+    nodes.sort_by(rank_candidates);
+    nodes
+        .into_iter()
+        .take(limit)
+        .map(|n| to_candidate(&n))
+        .collect()
+}
+
+fn rank_candidates(a: &Node, b: &Node) -> std::cmp::Ordering {
+    candidate_rank(a)
+        .cmp(&candidate_rank(b))
+        .then_with(|| a.file.cmp(&b.file))
+        .then_with(|| a.qualified_name.cmp(&b.qualified_name))
+}
+
+fn candidate_rank(node: &Node) -> (u8, u8) {
+    let test = is_test_file(&node.file) as u8;
+    let visibility = match node.metadata.visibility {
+        Visibility::Pub => 0,
+        Visibility::PubCrate => 1,
+        Visibility::Private => 2,
+    };
+    (test, visibility)
+}
+
+fn rank_callers(
+    (a, ac): &(Node, EdgeConfidence),
+    (b, bc): &(Node, EdgeConfidence),
+) -> std::cmp::Ordering {
+    confidence_rank(ac)
+        .cmp(&confidence_rank(bc))
+        .then_with(|| candidate_rank(a).cmp(&candidate_rank(b)))
+        .then_with(|| a.file.cmp(&b.file))
+        .then_with(|| a.qualified_name.cmp(&b.qualified_name))
+}
+
+fn to_candidate(node: &Node) -> SymbolCandidate {
+    SymbolCandidate {
+        id: node.id.as_str(),
+        name: node.name.clone(),
+        qualified_name: node.qualified_name.clone(),
+        kind: node.kind.to_string(),
+        file: node.file.display().to_string(),
+        start_line: node.span.start_line,
+        visibility: node.metadata.visibility.to_string(),
+    }
+}
+
+fn to_evidence(node: Node, confidence: EdgeConfidence, hop: u8) -> CallerEvidence {
+    CallerEvidence {
+        hop,
+        symbol: node.name.clone(),
+        qualified_name: node.qualified_name.clone(),
+        kind: node.kind.to_string(),
+        file: node.file.display().to_string(),
+        line: node.span.start_line,
+        signature: sig_line(&node),
+        confidence: confidence.to_string(),
+        is_test: is_test_file(&node.file),
+    }
+}
+
+fn apply_search_budget(response: &mut AgentSearchResponse, budget_tokens: usize) {
+    let budget_bytes = budget_tokens * 4;
+    while !response.evidence.is_empty()
+        && serde_json::to_vec(response)
+            .map(|bytes| bytes.len() > budget_bytes)
+            .unwrap_or(false)
+    {
+        response.evidence.pop();
+    }
+    response.coverage.returned = response.evidence.len();
+    response.coverage.truncated = response.coverage.returned < response.coverage.total;
 }
 
 fn apply_subgraph_budget(response: &mut AgentSubgraphResponse, budget_tokens: usize) {
