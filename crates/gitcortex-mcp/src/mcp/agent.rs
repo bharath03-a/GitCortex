@@ -182,6 +182,12 @@ pub fn find_callers<S: GraphStore + ?Sized>(
         Resolution::Exact(node) => *node,
         Resolution::Ambiguous(nodes) => {
             let total_candidates = nodes.len();
+            let candidates = candidate_head(nodes, 5);
+            return Ok(AgentCallersResponse {
+                status: AgentStatus::Ambiguous,
+                answer: format!(
+                    "'{}' matches {total_candidates} code symbols; choose a qualified symbol before computing impact.",
+                    query
                 ),
                 query: query.to_owned(),
                 branch: branch.to_owned(),
@@ -503,6 +509,19 @@ fn confidence_label_rank(confidence: &str) -> u8 {
         "resolved" => 1,
         _ => 2,
     }
+}
+
+fn apply_subgraph_budget(response: &mut AgentSubgraphResponse, budget_tokens: usize) {
+    let budget_bytes = budget_tokens * 4;
+    while !response.evidence.is_empty()
+        && serde_json::to_vec(response)
+            .map(|bytes| bytes.len() > budget_bytes)
+            .unwrap_or(false)
+    {
+        response.evidence.pop();
+    }
+    response.coverage.returned = response.evidence.len();
+    response.coverage.truncated = response.coverage.returned < response.coverage.direct_relations;
 }
 
 fn apply_budget(response: &mut AgentCallersResponse, budget_tokens: usize) {
