@@ -101,7 +101,12 @@ button {
 }
 
 .canvas-bg {
-  background:
-    radial-gradient(circle at center, rgba(124, 58, 237, 0.04) 0%, transparent 60%),
-    radial-gradient(circle at center, #0a0a14 0%, #06060a 100%);
+  background-color: var(--color-void);
+  background-image:
+    radial-gradient(circle at center, rgba(124, 58, 237, 0.055) 0%, transparent 58%),
+    radial-gradient(circle, rgba(138, 138, 163, 0.11) 0.7px, transparent 0.8px);
+  background-size:
+    100% 100%,
+    22px 22px;
+  background-position: center;
 }
