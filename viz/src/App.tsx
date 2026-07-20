@@ -19,9 +19,8 @@ import { StatusBar } from "./components/StatusBar";
 import { SearchPalette } from "./components/SearchPalette";
 import { KeyboardHelp } from "./components/KeyboardHelp";
 import { applyDensity, type DensityMode } from "./graph/density";
+import type { ViewMode } from "./graph/view";
 import { useBranchDiff } from "./hooks/useBranchDiff";
-
-export type ViewMode = "atlas" | "investigate";
 
 export default function App() {
   const [rawData, setRawData] = useState<GraphData | null>(null);
@@ -280,43 +279,42 @@ export default function App() {
   return (
     <div className="flex h-screen flex-col bg-(--color-void) text-(--color-text-primary)">
       <Header
-        nodeCount={data?.nodes.length ?? 0}
-        totalNodeCount={rawData?.nodes.length ?? 0}
-        density={density}
-        onDensityChange={setDensity}
-        viewMode={viewMode}
-        onViewModeChange={(mode) => {
-          setViewMode(mode);
-          if (mode === "investigate") setDensity("full");
-        }}
-        canInvestigate={selected !== null}
         onSearch={() => setSearchOpen(true)}
         onShowHelp={() => setHelpOpen(true)}
         activeBranch={activeBranch}
         onSetActiveBranch={setActiveBranch}
         diffHead={diffHead}
         onSetDiffHead={setDiffHead}
-        unusedActive={unusedIds !== null}
-        onToggleUnused={() => {
-          unusedFetchedRef.current = false;
-          setUnusedIds((cur) => (cur ? null : new Set()));
-        }}
-        godNodesActive={godNodeIds !== null}
-        onToggleGodNodes={() => {
-          godNodesFetchedRef.current = false;
-          setGodNodeIds((cur) => (cur ? null : new Set()));
-        }}
-        hotFilesActive={hotFiles !== null}
-        onToggleHotFiles={() => {
-          hotFilesFetchedRef.current = false;
-          setHotFiles((current) => (current ? null : []));
-        }}
       />
       <main className="flex flex-1 overflow-hidden">
         {railOpen && (
           <FilterRail
             data={rawData}
+            visibleNodeCount={data?.nodes.length ?? 0}
             hotFiles={hotFiles}
+            density={density}
+            onDensityChange={setDensity}
+            viewMode={viewMode}
+            onViewModeChange={(mode) => {
+              setViewMode(mode);
+              if (mode === "investigate") setDensity("full");
+            }}
+            canInvestigate={selected !== null}
+            unusedActive={unusedIds !== null}
+            onToggleUnused={() => {
+              unusedFetchedRef.current = false;
+              setUnusedIds((current) => (current ? null : new Set()));
+            }}
+            godNodesActive={godNodeIds !== null}
+            onToggleGodNodes={() => {
+              godNodesFetchedRef.current = false;
+              setGodNodeIds((current) => (current ? null : new Set()));
+            }}
+            hotFilesActive={hotFiles !== null}
+            onToggleHotFiles={() => {
+              hotFilesFetchedRef.current = false;
+              setHotFiles((current) => (current ? null : []));
+            }}
             hiddenKinds={hiddenKinds}
             setHiddenKinds={setHiddenKinds}
             hiddenEdgeKinds={hiddenEdgeKinds}
@@ -341,8 +339,16 @@ export default function App() {
             </button>
           )}
           {error && (
-            <div className="absolute inset-0 flex items-center justify-center text-(--color-bad)">
-              {error}
+            <div className="absolute inset-0 flex items-center justify-center p-6">
+              <div className="max-w-[560px] rounded-2xl border border-red-500/20 bg-(--color-elevated)/95 p-5 shadow-2xl">
+                <div className="mb-1 text-[13px] font-semibold text-red-300">
+                  The graph could not be loaded
+                </div>
+                <p className="mb-3 text-[11px] text-(--color-text-muted)">{error}</p>
+                <div className="rounded-lg bg-(--color-void) px-3 py-2 font-mono text-[10px] text-(--color-text-primary)">
+                  gcx hook
+                </div>
+              </div>
             </div>
           )}
           {data && !error && data.nodes.length > 0 && (
@@ -434,46 +440,6 @@ export default function App() {
                 <span className="size-2 rounded-full bg-red-500" />
                 <span>removed {diffOverlay.removedIds.size}</span>
               </span>
-            </div>
-          )}
-          {hotFiles && hotFiles.length > 0 && !diffOverlay && viewMode === "atlas" && (
-            <div className="animate-fade-in absolute top-3 right-3 z-10 flex items-center gap-2 rounded-lg border border-(--color-border-subtle) bg-(--color-elevated)/90 px-3 py-1.5 font-mono text-[11px] backdrop-blur-sm">
-              <span className="size-2 rounded-full bg-red-400" />
-              <span className="text-red-300">change hotspots · {hotFiles.length} files</span>
-              <button
-                onClick={() => setHotFiles(null)}
-                className="ml-1 text-(--color-text-dim) hover:text-(--color-text-primary)"
-              >
-                clear
-              </button>
-            </div>
-          )}
-          {unusedIds && unusedIds.size > 0 && !diffOverlay && (
-            <div
-              className={`animate-fade-in absolute right-3 z-10 flex items-center gap-2 rounded-lg border border-(--color-border-subtle) bg-(--color-elevated)/90 px-3 py-1.5 font-mono text-[11px] backdrop-blur-sm ${hotFiles && hotFiles.length > 0 ? "top-12" : "top-3"}`}
-            >
-              <span className="size-2 rounded-full bg-(--color-warn)" />
-              <span className="text-(--color-warn)">{unusedIds.size} unused symbols</span>
-              <button
-                onClick={() => setUnusedIds(null)}
-                className="ml-1 text-(--color-text-dim) hover:text-(--color-text-primary)"
-              >
-                clear
-              </button>
-            </div>
-          )}
-          {godNodeIds && godNodeIds.size > 0 && !diffOverlay && (
-            <div
-              className={`animate-fade-in absolute right-3 z-10 flex items-center gap-2 rounded-lg border border-(--color-border-subtle) bg-(--color-elevated)/90 px-3 py-1.5 font-mono text-[11px] backdrop-blur-sm ${hotFiles && hotFiles.length > 0 && unusedIds && unusedIds.size > 0 ? "top-[84px]" : (hotFiles && hotFiles.length > 0) || (unusedIds && unusedIds.size > 0) ? "top-12" : "top-3"}`}
-            >
-              <span className="size-2 rounded-full bg-cyan-400" />
-              <span className="text-cyan-400">{godNodeIds.size} hub nodes</span>
-              <button
-                onClick={() => setGodNodeIds(null)}
-                className="ml-1 text-(--color-text-dim) hover:text-(--color-text-primary)"
-              >
-                clear
-              </button>
             </div>
           )}
         </div>

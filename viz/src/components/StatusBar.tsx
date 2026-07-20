@@ -11,39 +11,34 @@ interface Props {
 
 export function StatusBar({ data, selected, activeBranch, lastSha, diffOverlay }: Props) {
   return (
-    <footer className="flex h-7 items-center justify-between border-t border-(--color-border-subtle) bg-(--color-void-deep) px-3 font-mono text-[11px] text-(--color-text-muted)">
-      <div className="flex items-center gap-3">
-        <span>
-          <span className="text-(--color-text-dim)">nodes</span> {data?.nodes.length ?? "—"}
-        </span>
-        <span>
-          <span className="text-(--color-text-dim)">edges</span> {data?.edges.length ?? "—"}
-        </span>
+    <footer className="flex h-8 items-center justify-between border-t border-(--color-border-subtle) bg-(--color-void-deep) px-4 text-[10px] text-(--color-text-muted)">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span>{(data?.nodes.length ?? 0).toLocaleString()} symbols</span>
+        <span className="text-(--color-border-strong)">·</span>
+        <span>{(data?.edges.length ?? 0).toLocaleString()} relationships</span>
         {activeBranch && (
-          <span>
-            <span className="text-(--color-text-dim)">branch</span> {activeBranch}
-          </span>
-        )}
-        {lastSha && (
-          <span>
-            <span className="text-(--color-text-dim)">sha</span> {lastSha.slice(0, 7)}
-          </span>
+          <>
+            <span className="text-(--color-border-strong)">·</span>
+            <span className="max-w-[240px] truncate font-mono text-(--color-text-dim)">
+              {activeBranch}
+              {lastSha ? ` @ ${lastSha.slice(0, 7)}` : ""}
+            </span>
+          </>
         )}
         {diffOverlay && (
-          <span className="text-(--color-accent)">
-            ↔ {diffOverlay.head} · +{diffOverlay.addedIds.size} / −{diffOverlay.removedIds.size}
+          <span className="rounded bg-(--color-accent-soft) px-1.5 py-0.5 text-(--color-accent)">
+            +{diffOverlay.addedIds.size} / −{diffOverlay.removedIds.size} vs {diffOverlay.head}
           </span>
         )}
       </div>
-      <div className="flex items-center gap-3">
+      <div className="min-w-0 pl-4">
         {selected ? (
-          <span className="text-(--color-accent)">
-            {selected.kind}: {selected.name}
+          <span className="block max-w-[420px] truncate font-mono text-(--color-text-primary)">
+            {selected.qualified_name || selected.name}
           </span>
         ) : (
-          <span className="text-(--color-text-dim)">no selection</span>
+          <span className="text-(--color-text-dim)">Select a symbol to inspect it</span>
         )}
-        <span className="text-(--color-text-dim)">cosmograph · GPGPU</span>
       </div>
     </footer>
   );
