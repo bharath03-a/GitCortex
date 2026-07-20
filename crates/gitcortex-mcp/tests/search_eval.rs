@@ -10,7 +10,10 @@ use std::sync::{Mutex, OnceLock};
 
 use gitcortex_core::store::GraphStore;
 use gitcortex_indexer::IncrementalIndexer;
-use gitcortex_mcp::mcp::search::search;
+use gitcortex_mcp::mcp::{
+    agent::{format_search, AgentStatus},
+    search::search,
+};
 use gitcortex_store::kuzu::KuzuGraphStore;
 
 const FIXTURES: &str = concat!(
@@ -208,5 +211,21 @@ fn whitespace_query_returns_empty() {
     with_store(|s| {
         let hits = search(s, "main", "   ", Some(10)).expect("search");
         assert!(hits.is_empty(), "expected empty, got {hits:?}");
+    });
+}
+
+#[test]
+fn agent_search_contract_adds_source_evidence_within_budget() {
+    with_store(|store| {
+        let hits = search(store, "main", "Greeter", Some(10)).expect("search");
+        let response =
+            format_search(store, "main", "Greeter", hits, false, 400).expect("format search");
+        assert_eq!(response.status, AgentStatus::Ok);
+        assert!(!response.evidence.is_empty());
+        assert!(response
+            .evidence
+            .iter()
+            .any(|item| !item.signature.is_empty()));
+        assert!(serde_json::to_vec(&response).unwrap().len() <= 1_600);
     });
 }

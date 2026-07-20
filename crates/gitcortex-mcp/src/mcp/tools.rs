@@ -1176,11 +1176,10 @@ impl GitCortexServer {
 
     /// Search the graph by name + qualified-name with deterministic ranking.
     #[tool(
-        description = "Search the code graph by name or description. The response includes a \
-        `file_groups` field that clusters hits by file with symbol counts — read it first to \
-        identify which files own the concept before drilling into individual hits. Combines \
-        token/fuzzy text matching (CamelCase-aware, typo-tolerant) with semantic vector similarity. \
-        Ranks exact > prefix > semantic > substring; functions/structs boosted. Default limit=10."
+        description = "Search the code graph by name or description. Returns a compact ranked \
+        evidence envelope with file/line, signature, optional doc summary, and coverage counts. \
+        Combines token/fuzzy text matching (CamelCase-aware, typo-tolerant) with semantic vector \
+        similarity when available. Ranks exact > prefix > semantic > substring. Default limit=10."
     )]
     fn search_code(&self, Parameters(p): Parameters<SearchCodeParams>) -> CallToolResult {
         let branch = p
@@ -1274,18 +1273,25 @@ impl GitCortexServer {
         });
         all_hits.truncate(limit);
 
-        let file_groups = super::search::group_by_file(&all_hits);
-        CallToolResult::structured(json!({
-            "query": p.query,
-            "branch": branch,
-            "count": all_hits.len(),
-            "semantic_available": matches!(
-                self.semantic.try_lock().as_deref(),
-                Ok(SemanticState::Ready { .. })
-            ),
-            "file_groups": file_groups,
-            "hits": all_hits,
-        }))
+        let semantic_available = matches!(
+            self.semantic.try_lock().as_deref(),
+            Ok(SemanticState::Ready { .. })
+        );
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        match super::agent::format_search(
+            &*store,
+            &branch,
+            &p.query,
+            all_hits,
+            semantic_available,
+            self.response_budget.min(600),
+        ) {
+            Ok(response) => CallToolResult::structured(json!(response)),
+            Err(e) => CallToolResult::error(vec![Content::text(format!("search failed: {e}"))]),
+        }
     }
 
     /// Generate a guided tour through the repo's important symbols.
