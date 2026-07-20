@@ -50,6 +50,10 @@ pub(crate) fn is_test_file(path: &Path) -> bool {
         || s.contains("/test/")
         || s.contains("/spec/")
         || s.contains("/__tests__/")
+        || s.starts_with("tests/")
+        || s.starts_with("test/")
+        || s.starts_with("spec/")
+        || s.starts_with("__tests__/")
     {
         return true;
     }
@@ -57,11 +61,16 @@ pub(crate) fn is_test_file(path: &Path) -> bool {
     if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
         if name.starts_with("test_")
             || name.ends_with("_test.rs")
+            || name.ends_with("_test.py")
             || name.ends_with("_spec.rs")
             || name.ends_with(".test.ts")
+            || name.ends_with(".test.tsx")
             || name.ends_with(".spec.ts")
+            || name.ends_with(".spec.tsx")
             || name.ends_with(".test.js")
+            || name.ends_with(".test.jsx")
             || name.ends_with(".spec.js")
+            || name.ends_with(".spec.jsx")
             || name.ends_with("_test.go")
             || name.ends_with("Test.java")
             || name.ends_with("Spec.java")

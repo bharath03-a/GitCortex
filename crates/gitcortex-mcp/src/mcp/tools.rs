@@ -11,10 +11,7 @@ use gitcortex_store::kuzu::KuzuGraphStore;
 use crate::embeddings::{Embedder, SemanticIndex};
 
 use super::git_helpers::{parse_diff_hunks, run_git_diff};
-use super::helpers::{
-    confidence_rank, detect_current_branch, is_test_file, parse_node_kind, parse_visibility,
-    sig_line,
-};
+use super::helpers::{detect_current_branch, parse_node_kind, parse_visibility};
 use super::params::*;
 
 pub enum SemanticState {
@@ -219,8 +216,12 @@ impl GitCortexServer {
     }
 
     fn active_tool_router(&self) -> ToolRouter<Self> {
+        Self::tool_router_for_mode(self.compact)
+    }
+
+    fn tool_router_for_mode(compact: bool) -> ToolRouter<Self> {
         let mut router = Self::tool_router();
-        if self.compact {
+        if compact {
             for name in [
                 "lookup_symbol",
                 "find_callers",
@@ -232,6 +233,13 @@ impl GitCortexServer {
                 "find_implementors",
                 "trace_path",
                 "list_symbols_in_range",
+                "graph_stats",
+                "ast_search",
+                "type_hierarchy",
+                "find_importers",
+                "find_type_usages",
+                "module_dependencies",
+                "get_call_sites",
                 "find_unused_symbols",
                 "get_subgraph",
                 "wiki_symbol",
@@ -240,6 +248,7 @@ impl GitCortexServer {
                 "find_god_nodes",
                 "find_clusters",
                 "find_cycles",
+                "health_report",
             ] {
                 router.disable_route(name);
             }
@@ -305,177 +314,23 @@ impl GitCortexServer {
             .as_deref()
             .unwrap_or(&self.default_branch)
             .to_owned();
-        let depth = p.depth.unwrap_or(1).max(1);
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
         };
-
-        // Cap the caller list. The risk level is computed from the true total,
-        // so a hub symbol still reports CRITICAL even though we return a head.
-        const MAX_CALLERS: usize = 25;
-        const MAX_PER_HOP: usize = 15;
-        if depth == 1 {
-            match store.find_callers_with_confidence(&branch, &p.function_name) {
-                Ok(mut pairs) => {
-                    let total = pairs.len();
-
-                    // Rank: confidence tier first (Extracted < Resolved < Inferred),
-                    // then production-before-test, then alphabetical by file+name.
-                    pairs.sort_by(|(na, ca), (nb, cb)| {
-                        let r = confidence_rank(ca).cmp(&confidence_rank(cb));
-                        if r != std::cmp::Ordering::Equal {
-                            return r;
-                        }
-                        let ta = is_test_file(&na.file) as u8;
-                        let tb = is_test_file(&nb.file) as u8;
-                        let r2 = ta.cmp(&tb);
-                        if r2 != std::cmp::Ordering::Equal {
-                            return r2;
-                        }
-                        na.file.cmp(&nb.file).then(na.name.cmp(&nb.name))
-                    });
-
-                    let n_extracted = pairs
-                        .iter()
-                        .filter(|(_, c)| {
-                            matches!(c, gitcortex_core::schema::EdgeConfidence::Extracted)
-                        })
-                        .count();
-                    let n_resolved = pairs
-                        .iter()
-                        .filter(|(_, c)| {
-                            matches!(c, gitcortex_core::schema::EdgeConfidence::Resolved)
-                        })
-                        .count();
-                    let n_inferred = total - n_extracted - n_resolved;
-
-                    // Count test-file callers in the tail (those beyond MAX_CALLERS).
-                    let tail_total = total.saturating_sub(MAX_CALLERS);
-                    let tail_test = if tail_total > 0 {
-                        pairs[MAX_CALLERS..]
-                            .iter()
-                            .filter(|(n, _)| is_test_file(&n.file))
-                            .count()
-                    } else {
-                        0
-                    };
-
-                    let items: Vec<_> = pairs
-                        .iter()
-                        .take(MAX_CALLERS)
-                        .map(|(n, c)| {
-                            json!({
-                                "hop": 1,
-                                "kind": n.kind.to_string(),
-                                "name": n.name,
-                                "qualified_name": n.qualified_name,
-                                "file": n.file.display().to_string(),
-                                "start_line": n.span.start_line,
-                                "signature": sig_line(n),
-                                "confidence": c.to_string(),
-                            })
-                        })
-                        .collect();
-                    let (items, budget_trunc) = self.budget_items(items);
-                    let risk = match total {
-                        0..=2 => "LOW",
-                        3..=10 => "MEDIUM",
-                        11..=30 => "HIGH",
-                        _ => "CRITICAL",
-                    };
-                    let conf_note = if total > 0 {
-                        format!(
-                            " ({n_extracted} extracted, {n_resolved} resolved, {n_inferred} inferred)"
-                        )
-                    } else {
-                        String::new()
-                    };
-                    let tail_note = if tail_total > 0 {
-                        format!(
-                            " …and {tail_total} more{}",
-                            if tail_test > 0 {
-                                format!(" ({tail_test} in test files)")
-                            } else {
-                                String::new()
-                            }
-                        )
-                    } else {
-                        String::new()
-                    };
-                    let summary = if total == 0 {
-                        format!(
-                            "No callers found for '{}' in branch '{}'. \
-                             This is a DEFINITIVE result — the function exists in the graph \
-                             but nothing in this codebase calls it. \
-                             Do NOT try alternative symbol names or keep searching. \
-                             Answer the user directly: this function has zero callers.",
-                            p.function_name, branch
-                        )
-                    } else {
-                        format!(
-                            "{total} caller(s){conf_note} — risk {risk}{}{}",
-                            if total > items.len() {
-                                format!(", showing top {}", items.len())
-                            } else {
-                                String::new()
-                            },
-                            tail_note,
-                        )
-                    };
-                    CallToolResult::structured(json!({
-                        "summary": summary,
-                        "function": p.function_name,
-                        "depth": 1,
-                        "risk_level": risk,
-                        "total_callers": total,
-                        "returned": items.len(),
-                        "truncated": total > items.len() || budget_trunc,
-                        "callers": items,
-                    }))
-                }
-                Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
-            }
-        } else {
-            match store.find_callers_deep(&branch, &p.function_name, depth) {
-                Ok(result) => {
-                    let hops: Vec<_> = result
-                        .hops
-                        .iter()
-                        .enumerate()
-                        .map(|(i, nodes)| {
-                            let total = nodes.len();
-                            let callers: Vec<_> = nodes
-                                .iter()
-                                .take(MAX_PER_HOP)
-                                .map(|n| {
-                                    json!({
-                                        "kind": n.kind.to_string(),
-                                        "name": n.name,
-                                        "qualified_name": n.qualified_name,
-                                        "file": n.file.display().to_string(),
-                                        "start_line": n.span.start_line,
-                                        "signature": sig_line(n),
-                                    })
-                                })
-                                .collect();
-                            json!({
-                                "hop": i + 1,
-                                "total": total,
-                                "truncated": total > MAX_PER_HOP,
-                                "callers": callers,
-                            })
-                        })
-                        .collect();
-                    CallToolResult::structured(json!({
-                        "function": p.function_name,
-                        "depth": depth,
-                        "risk_level": result.risk_level,
-                        "hops": hops,
-                    }))
-                }
-                Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
-            }
+        let options = super::agent::AgentQueryOptions {
+            limit: 25,
+            budget_tokens: self.response_budget,
+        };
+        match super::agent::find_callers(
+            &*store,
+            &branch,
+            &p.function_name,
+            p.depth.unwrap_or(1),
+            options,
+        ) {
+            Ok(response) => CallToolResult::structured(json!(response)),
+            Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
         }
     }
 
@@ -1848,7 +1703,7 @@ impl GitCortexServer {
         get_subgraph | search_code | start_tour | wiki_symbol | trace_path | \
         list_definitions | symbol_context | list_symbols_in_range | graph_stats | ast_search | \
         type_hierarchy | find_importers | find_type_usages | module_dependencies | \
-        get_call_sites | branch_diff_graph | find_god_nodes | find_clusters | find_cycles. \
+        get_call_sites | branch_diff_graph | find_god_nodes | find_clusters | find_cycles | health_report. \
         params: JSON object with the same fields as the individual tool (name/function_name/\
         seed_name/query/file/branch/depth/limit/direction/min_in_degree/min_cluster_size as applicable). \
         Returns identical output to the individual tool.")]
@@ -2100,13 +1955,17 @@ impl GitCortexServer {
                     .map(|n| n as usize),
                 branch: branch_val,
             })),
+            "health_report" => {
+                self.health_report(Parameters(HealthReportParams { branch: branch_val }))
+            }
             other => {
                 return CallToolResult::error(vec![Content::text(format!(
                     "gcx dispatch: unknown action '{other}'. Valid: lookup_symbol, find_callers, \
                 find_callees, find_unused_symbols, get_subgraph, search_code, start_tour, \
                 wiki_symbol, trace_path, list_definitions, symbol_context, list_symbols_in_range, \
                 graph_stats, ast_search, type_hierarchy, find_importers, find_type_usages, \
-                module_dependencies, get_call_sites, find_god_nodes, find_clusters, find_cycles"
+                module_dependencies, get_call_sites, find_god_nodes, find_clusters, find_cycles, \
+                health_report"
                 ))])
             }
         };
@@ -2221,5 +2080,19 @@ Any circular dependencies, large fan-outs, or architectural concerns visible in 
 impl rmcp::ServerHandler for GitCortexServer {
     fn get_tool(&self, name: &str) -> Option<rmcp::model::Tool> {
         self.active_tool_router().get(name).cloned()
+    }
+}
+
+#[cfg(test)]
+mod contract_tests {
+    use super::GitCortexServer;
+
+    #[test]
+    fn compact_mode_exposes_exactly_one_dispatch_tool() {
+        let names: Vec<String> = GitCortexServer::tool_router_for_mode(true)
+            .into_iter()
+            .map(|route| route.attr.name.into_owned())
+            .collect();
+        assert_eq!(names, vec!["gcx"]);
     }
 }
