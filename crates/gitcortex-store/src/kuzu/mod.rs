@@ -1732,6 +1732,44 @@ impl GraphStore for KuzuGraphStore {
         })
     }
 
+    fn get_neighborhood_by_id(
+        &self,
+        branch: &str,
+        seed_id: &str,
+        direction: &str,
+        limit: usize,
+    ) -> Result<SubGraph> {
+        self.ensure_branch(branch)?;
+        let nt = db_schema::node_table(branch);
+        let et = db_schema::edge_table(branch);
+        let seed_esc = esc(seed_id);
+        let condition = match direction {
+            "in" => format!("d.id = '{seed_esc}'"),
+            "out" => format!("s.id = '{seed_esc}'"),
+            _ => format!("s.id = '{seed_esc}' OR d.id = '{seed_esc}'"),
+        };
+        let conn = self.conn()?;
+        let result = conn
+            .query(&format!(
+                "MATCH (s:{nt})-[e:{et}]->(d:{nt}) WHERE {condition} \
+                 RETURN s.id, d.id, e.kind, e.line, e.confidence \
+                 ORDER BY e.kind, s.id, d.id, e.line LIMIT {limit}"
+            ))
+            .map_err(|e| GitCortexError::Store(e.to_string()))?;
+        let edges = rows_to_edges(result)?;
+        drop(conn);
+
+        let mut ids = HashSet::from([seed_id.to_owned()]);
+        for edge in &edges {
+            ids.insert(edge.src.as_str());
+            ids.insert(edge.dst.as_str());
+        }
+        let mut id_list: Vec<String> = ids.into_iter().collect();
+        id_list.sort();
+        let nodes = self.get_nodes_by_ids(branch, &id_list)?;
+        Ok(SubGraph { nodes, edges })
+    }
+
     // ── Indexing state ────────────────────────────────────────────────────────
 
     fn last_indexed_sha(&self, branch_name: &str) -> Result<Option<String>> {

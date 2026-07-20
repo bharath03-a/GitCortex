@@ -185,6 +185,39 @@ fn paged_graph_reads_are_stable_and_complete() {
 }
 
 #[test]
+fn bounded_exact_neighborhood_respects_direction_and_limit() {
+    let (mut store, _dir) = tmp_store();
+    let seed = make_node("seed", NodeKind::Function, "src/lib.rs", 1);
+    let incoming = make_node("incoming", NodeKind::Function, "src/lib.rs", 10);
+    let outgoing = make_node("outgoing", NodeKind::Function, "src/lib.rs", 20);
+    store
+        .apply_diff(
+            "main",
+            &GraphDiff {
+                added_nodes: vec![seed.clone(), incoming.clone(), outgoing.clone()],
+                added_edges: vec![
+                    Edge::call(incoming.id.clone(), seed.id.clone(), 12),
+                    Edge::call(seed.id.clone(), outgoing.id.clone(), 3),
+                ],
+                ..Default::default()
+            },
+        )
+        .expect("apply graph");
+
+    let inbound = store
+        .get_neighborhood_by_id("main", &seed.id.as_str(), "in", 10)
+        .expect("inbound neighborhood");
+    assert_eq!(inbound.edges.len(), 1);
+    assert_eq!(inbound.edges[0].src, incoming.id);
+
+    let limited = store
+        .get_neighborhood_by_id("main", &seed.id.as_str(), "both", 1)
+        .expect("limited neighborhood");
+    assert_eq!(limited.edges.len(), 1);
+    assert_eq!(limited.nodes.len(), 2);
+}
+
+#[test]
 fn branch_diff_detects_added_and_removed_nodes() {
     let (mut store, _dir) = tmp_store();
 

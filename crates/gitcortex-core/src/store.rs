@@ -675,6 +675,51 @@ pub trait GraphStore: Send + Sync {
         })
     }
 
+    /// Return one bounded hop around an exact seed ID. Visualization clients
+    /// use repeated calls to expand large graphs without materializing an
+    /// unbounded multi-hop neighborhood.
+    fn get_neighborhood_by_id(
+        &self,
+        branch: &str,
+        seed_id: &str,
+        direction: &str,
+        limit: usize,
+    ) -> Result<SubGraph> {
+        let all_nodes = self.list_all_nodes(branch)?;
+        let by_id: std::collections::HashMap<String, Node> = all_nodes
+            .into_iter()
+            .map(|node| (node.id.as_str(), node))
+            .collect();
+        if !by_id.contains_key(seed_id) {
+            return Ok(SubGraph {
+                nodes: Vec::new(),
+                edges: Vec::new(),
+            });
+        }
+        let mut edges = Vec::new();
+        for edge in self.list_all_edges(branch)? {
+            let incoming = edge.dst.as_str() == seed_id;
+            let outgoing = edge.src.as_str() == seed_id;
+            if ((direction == "in" && incoming)
+                || (direction == "out" && outgoing)
+                || (direction == "both" && (incoming || outgoing)))
+                && edges.len() < limit
+            {
+                edges.push(edge);
+            }
+        }
+        let mut ids = std::collections::HashSet::from([seed_id.to_owned()]);
+        for edge in &edges {
+            ids.insert(edge.src.as_str());
+            ids.insert(edge.dst.as_str());
+        }
+        let nodes = ids
+            .into_iter()
+            .filter_map(|id| by_id.get(&id).cloned())
+            .collect();
+        Ok(SubGraph { nodes, edges })
+    }
+
     // ── Indexing state ───────────────────────────────────────────────────────
 
     /// Last commit SHA successfully indexed for `branch`. `None` if the branch

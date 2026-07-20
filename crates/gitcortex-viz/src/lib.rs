@@ -123,6 +123,7 @@ async fn serve(state: Arc<AppState>, port: u16) -> Result<()> {
         .route("/api/symbol-context/:name", get(symbol_context_handler))
         .route("/api/callers/:name", get(callers_handler))
         .route("/api/callers-by-id/:id", get(callers_by_id_handler))
+        .route("/api/neighborhood/:id", get(neighborhood_handler))
         .route("/api/branches", get(branches_handler))
         .route("/api/branch-diff", get(branch_diff_handler))
         .route("/api/unused", get(unused_handler))
@@ -591,6 +592,61 @@ async fn callers_by_id_handler(
         "risk_level": risk_level,
         "truncated": truncated,
         "hops": hop_json,
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+struct NeighborhoodQuery {
+    #[serde(default)]
+    branch: Option<String>,
+    #[serde(default)]
+    direction: Option<String>,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+async fn neighborhood_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(q): Query<NeighborhoodQuery>,
+) -> Json<Value> {
+    const DEFAULT_LIMIT: usize = 500;
+    const MAX_LIMIT: usize = 5_000;
+    let branch = q.branch.unwrap_or_else(|| state.branch.clone());
+    let direction = match q.direction.as_deref() {
+        Some("in") => "in",
+        Some("out") => "out",
+        _ => "both",
+    };
+    let limit = q.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
+    let s = state.clone();
+    let branch_for_query = branch.clone();
+    let id_for_query = id.clone();
+    let result = run_blocking("neighborhood_handler", move || {
+        with_locked_store(&s, |store| {
+            Ok(store.get_neighborhood_by_id(&branch_for_query, &id_for_query, direction, limit)?)
+        })
+    })
+    .await;
+    let subgraph = match result {
+        Ok(value) => value,
+        Err(error) => return error,
+    };
+    let edge_count = subgraph.edges.len();
+    Json(json!({
+        "seed_id": id,
+        "branch": branch,
+        "direction": direction,
+        "limit": limit,
+        "limit_reached": edge_count == limit,
+        "nodes": subgraph.nodes.iter().map(node_json).collect::<Vec<_>>(),
+        "edges": subgraph.edges.iter().map(|edge| json!({
+            "src": edge.src.as_str(),
+            "dst": edge.dst.as_str(),
+            "kind": edge.kind.to_string(),
+            "line": edge.line,
+            "confidence": edge.confidence.to_string(),
+        })).collect::<Vec<_>>(),
     }))
 }
 

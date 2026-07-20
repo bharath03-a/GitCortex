@@ -168,6 +168,25 @@ export interface DeepCallersResult {
   hops: DeepCallersHop[];
 }
 
+export interface NeighborhoodResult extends GraphData {
+  seed_id: string;
+  branch: string;
+  direction: "in" | "out" | "both";
+  limit: number;
+  limit_reached: boolean;
+}
+
+export async function fetchNeighborhood(
+  id: string,
+  branch: string,
+  direction: "in" | "out" | "both" = "both",
+  limit = 500,
+  signal?: AbortSignal,
+): Promise<NeighborhoodResult> {
+  const params = new URLSearchParams({ branch, direction, limit: String(limit) });
+  return fetchJson(`/api/neighborhood/${encodeURIComponent(id)}?${params}`, signal);
+}
+
 export async function fetchDeepCallers(
   id: string,
   branch: string,

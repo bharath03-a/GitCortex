@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type { GraphData, GraphLoadProgress, RawNode } from "./api";
-import { fetchBranches, fetchGodNodes, fetchUnused, loadGraphData } from "./api";
+import { fetchBranches, fetchGodNodes, fetchNeighborhood, fetchUnused, loadGraphData } from "./api";
 import { Header } from "./components/Header";
 import { FilterRail, type Flag, type Visibility } from "./components/FilterRail";
 
@@ -14,11 +14,16 @@ import { KeyboardHelp } from "./components/KeyboardHelp";
 import { applyDensity, type DensityMode } from "./graph/density";
 import { useBranchDiff } from "./hooks/useBranchDiff";
 
+export type ViewMode = "atlas" | "investigate";
+
 export default function App() {
   const [rawData, setRawData] = useState<GraphData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadProgress, setLoadProgress] = useState<GraphLoadProgress | null>(null);
   const [selected, setSelected] = useState<RawNode | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("atlas");
+  const [focusedData, setFocusedData] = useState<GraphData | null>(null);
+  const [focusLimitReached, setFocusLimitReached] = useState(false);
   const [depth, setDepth] = useState(1);
   const [hiddenKinds, setHiddenKinds] = useState<Set<string>>(new Set());
   const [hiddenEdgeKinds, setHiddenEdgeKinds] = useState<Set<string>>(
@@ -134,6 +139,25 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [searchOpen, helpOpen]);
 
+  useEffect(() => {
+    if (viewMode !== "investigate" || !selected || !activeBranch) {
+      setFocusedData(null);
+      setFocusLimitReached(false);
+      return;
+    }
+    const controller = new AbortController();
+    fetchNeighborhood(selected.id, activeBranch, "both", 500, controller.signal)
+      .then((result) => {
+        setFocusedData({ nodes: result.nodes, edges: result.edges });
+        setFocusLimitReached(result.limit_reached);
+      })
+      .catch((focusError) => {
+        if (focusError instanceof DOMException && focusError.name === "AbortError") return;
+        setError(String(focusError));
+      });
+    return () => controller.abort();
+  }, [viewMode, selected, activeBranch]);
+
   // Fetch unused symbols when toggle flips on (guard ref prevents re-fetch loop
   // when server returns zero results — empty Set still has size=0).
   useEffect(() => {
@@ -159,8 +183,11 @@ export default function App() {
 
   const data = useMemo(() => {
     if (!rawData) return null;
-    let source = rawData;
-    if (diffOverlay) {
+    let source =
+      viewMode === "investigate"
+        ? (focusedData ?? { nodes: selected ? [selected] : [], edges: [] })
+        : rawData;
+    if (diffOverlay && viewMode === "atlas") {
       const nodesById = new Map(rawData.nodes.map((node) => [node.id, node]));
       for (const node of diffOverlay.addedNodes) nodesById.set(node.id, node);
       const edgeKeys = new Set(
@@ -202,6 +229,9 @@ export default function App() {
     return d;
   }, [
     rawData,
+    focusedData,
+    selected,
+    viewMode,
     density,
     hiddenKinds,
     hiddenEdgeKinds,
@@ -218,6 +248,12 @@ export default function App() {
         totalNodeCount={rawData?.nodes.length ?? 0}
         density={density}
         onDensityChange={setDensity}
+        viewMode={viewMode}
+        onViewModeChange={(mode) => {
+          setViewMode(mode);
+          if (mode === "investigate") setDensity("full");
+        }}
+        canInvestigate={selected !== null}
         onSearch={() => setSearchOpen(true)}
         onShowHelp={() => setHelpOpen(true)}
         activeBranch={activeBranch}
@@ -329,7 +365,20 @@ export default function App() {
               />
             </div>
           )}
-          {diffOverlay && (
+          {viewMode === "investigate" && selected && (
+            <div className="animate-fade-in absolute top-3 right-3 z-10 flex items-center gap-2 rounded-lg border border-(--color-border-subtle) bg-(--color-elevated)/90 px-3 py-1.5 font-mono text-[11px] backdrop-blur-sm">
+              <span className="size-2 rounded-full bg-(--color-accent)" />
+              <span>Investigation · {selected.name}</span>
+              {focusLimitReached && <span className="text-(--color-warn)">first 500 edges</span>}
+              <button
+                onClick={() => setViewMode("atlas")}
+                className="ml-1 text-(--color-text-dim) hover:text-(--color-text-primary)"
+              >
+                back to atlas
+              </button>
+            </div>
+          )}
+          {diffOverlay && viewMode === "atlas" && (
             <div className="animate-fade-in absolute top-3 right-3 z-10 flex items-center gap-3 rounded-lg border border-(--color-border-subtle) bg-(--color-elevated)/90 px-3 py-1.5 font-mono text-[11px] backdrop-blur-sm">
               <span className="text-(--color-text-dim)">
                 {diffOverlay.base} ↔ {diffOverlay.head}
@@ -396,6 +445,7 @@ export default function App() {
           onClose={() => setSearchOpen(false)}
           onSelect={(node) => {
             setDensity("full");
+            setViewMode("investigate");
             setHiddenKinds((hidden) => {
               const next = new Set(hidden);
               next.delete(node.kind);

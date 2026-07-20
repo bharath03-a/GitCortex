@@ -1,4 +1,5 @@
 import { CircleSlash, Keyboard, Network, Search, Zap } from "lucide-react";
+import type { ViewMode } from "../App";
 import { DENSITY_LABEL, type DensityMode } from "../graph/density";
 import { BranchPicker } from "./BranchPicker";
 
@@ -7,6 +8,9 @@ interface Props {
   totalNodeCount: number;
   density: DensityMode;
   onDensityChange: (m: DensityMode) => void;
+  viewMode: ViewMode;
+  onViewModeChange: (mode: ViewMode) => void;
+  canInvestigate: boolean;
   onSearch: () => void;
   onShowHelp: () => void;
   activeBranch: string | null;
@@ -26,6 +30,9 @@ export function Header({
   totalNodeCount,
   density,
   onDensityChange,
+  viewMode,
+  onViewModeChange,
+  canInvestigate,
   onSearch,
   onShowHelp,
   activeBranch,
@@ -53,6 +60,30 @@ export function Header({
           diffHead={diffHead}
           onSetDiffHead={onSetDiffHead}
         />
+        <div className="flex items-center gap-1 rounded-md border border-(--color-border-subtle) bg-(--color-elevated) p-0.5">
+          <button
+            onClick={() => onViewModeChange("atlas")}
+            className={`rounded px-2 py-1 text-[11px] transition-colors ${
+              viewMode === "atlas"
+                ? "bg-(--color-accent-soft) text-(--color-accent)"
+                : "text-(--color-text-muted) hover:text-(--color-text-primary)"
+            }`}
+          >
+            Atlas
+          </button>
+          <button
+            disabled={!canInvestigate}
+            title={canInvestigate ? "Focus on selected symbol" : "Select a symbol first"}
+            onClick={() => onViewModeChange("investigate")}
+            className={`rounded px-2 py-1 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+              viewMode === "investigate"
+                ? "bg-(--color-accent-soft) text-(--color-accent)"
+                : "text-(--color-text-muted) hover:text-(--color-text-primary)"
+            }`}
+          >
+            Investigate
+          </button>
+        </div>
         <button
           onClick={onToggleUnused}
           title="Toggle dead-code overlay (U)"
