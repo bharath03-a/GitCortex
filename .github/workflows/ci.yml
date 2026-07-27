@@ -115,21 +115,13 @@ jobs:
   # Push to main: adds macOS (linker/platform check).
 
   rust-build-test:
-    name: rust · ${{ matrix.os }} · ${{ matrix.toolchain }}
+    name: rust · ubuntu-latest · ${{ matrix.toolchain }}
     needs: [rust-fmt-clippy]
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            toolchain: stable
-          - os: ubuntu-latest
-            toolchain: "1.95"
-          - os: macos-latest
-            toolchain: stable
-            pr_skip: true   # skip on PRs — macOS runner is 10× slower
-    runs-on: ${{ matrix.os }}
-    if: ${{ matrix.pr_skip != true || github.event_name == 'push' }}
+        toolchain: [stable, "1.95"]
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@master
@@ -137,7 +129,34 @@ jobs:
           toolchain: ${{ matrix.toolchain }}
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "${{ matrix.os }}-${{ matrix.toolchain }}"
+          shared-key: "ubuntu-latest-${{ matrix.toolchain }}"
+      - uses: actions/download-artifact@v4
+        with:
+          name: viz-dist
+          path: viz/dist/
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest
+      - run: cargo build --workspace --all-targets
+      - run: cargo nextest run --workspace
+        env:
+          NEXTEST_PROFILE: ci
+      - run: cargo test --workspace --doc
+
+  # Separate job rather than a matrix leg: the macOS runner is ~10× slower, so it
+  # is gated to pushes on main. A job-level `if` can read `github` but never
+  # `matrix`, so this cannot be expressed as a conditionally-skipped matrix entry.
+  rust-build-test-macos:
+    name: rust · macos-latest · stable
+    needs: [rust-fmt-clippy]
+    runs-on: macos-latest
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "macos-latest-stable"
       - uses: actions/download-artifact@v4
         with:
           name: viz-dist
