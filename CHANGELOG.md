@@ -2,6 +2,45 @@
 
 All notable changes to GitCortex are documented here.
 
+Entries for 0.2.0, 0.2.1, 0.2.2, 0.4.0, 0.6.2, and 0.6.3 were reconstructed
+from release tags and commit history after the fact, so they summarise what
+shipped rather than what was written at release time. Dates for those entries
+are tag dates.
+
+## [0.6.3] - 2026-07-12
+
+Pure refactor release. No behaviour change from 0.6.2.
+
+### Changed
+- **`tools.rs` split** into `params`, `helpers`, and `git_helpers` modules —
+  the MCP tool surface had outgrown a single file.
+- Canonical `FromStr` implementations for `NodeKind` and `Visibility` moved
+  into `gitcortex-core`.
+- Versions bumped across `Cargo.toml`, the npm packages, and the Python sdist.
+
+## [0.6.2] - 2026-07-07
+
+Released from `main` without its own tag; recorded here for completeness.
+
+### Fixed
+- **Section nodes no longer pollute graph traversal.** A README heading sharing
+  a name with a class (for example a `Gson` section) dragged 2,000+ extra nodes
+  into `get_subgraph` responses and triggered 20+ turn exploration spirals.
+  `get_subgraph` now strips `Section` nodes from both traversal and seed
+  resolution, and `lookup_symbol` filters them from results.
+- **Definitive stop-searching responses.** A missing `get_subgraph` seed
+  returned an empty result, which models read as "try again". `get_subgraph`
+  and `find_callers` now return an explicit terminal message, so a leaf
+  function no longer costs 20–33 turns of exploration.
+- **Benchmark symbol selection.** `pick_symbols()` used a regex that never
+  matched the markdown tour format, so every session silently fell back to the
+  symbols `Main` and `init`, which exist in none of the benchmark repos. This
+  was the root cause of benchmark regressions previously attributed to product
+  changes.
+
+### Added
+- Pre-traction versioning rule in `RELEASING.md`.
+
 ## [0.6.0] - 2026-06-30
 
 ### Added
@@ -114,6 +153,30 @@ All notable changes to GitCortex are documented here.
 - Search handled neither space-separated multi-token queries nor typos.
 - Semantic search hits were resolved by name instead of id, dropping every hit.
 
+## [0.4.0] - 2026-06-06
+
+### Added
+- **New `gcx viz --format` targets.** `html` writes a self-contained
+  vis-network page that opens offline and can be shared or embedded in docs;
+  `svg` writes a static kind-grouped concentric layout for pasting into
+  Markdown, PRs, and issues; `graphml` imports into Gephi, yEd, and Cytoscape;
+  `cypher` emits Neo4j bulk `CREATE` statements. The existing `web`
+  (Cosmograph WebGL) and `dot` (Graphviz) formats are unchanged.
+- **Token-savings benchmark harness** asking seven realistic developer
+  questions per repository.
+
+### Fixed
+- **TypeScript and Go interfaces are `NodeKind::Interface`**, not `Trait`.
+  Rust keeps `Trait`. The store's `deferred_uses` Cypher filter matches the
+  `interface` kind, and tour scoring ranks `Interface` in the same tier as
+  `Trait`.
+- **Java nested records are indexed** — `visit_record_nested` now runs in both
+  class and nested-class bodies.
+
+### Changed
+- PyPI and npm publishing auto-trigger from the release workflow, using
+  `manylinux2014` platform tags for Linux wheels.
+
 ## [0.3.0] - 2026-05-27
 
 ### Added
@@ -152,6 +215,39 @@ All notable changes to GitCortex are documented here.
   (KuzuDB/MSVC link incompatibility).
 
 > 0.2.x was an internal iteration line; its changes are folded into 0.3.0.
+
+## [0.2.2] - 2026-05-05
+
+### Fixed
+- Pinned `Cargo.lock` to restore a working `cxx-build` version.
+
+## [0.2.1] - 2026-05-05
+
+### Changed
+- Added the `readme` field to the crates.io manifest.
+
+## [0.2.0] - 2026-05-04
+
+### Added
+- **MCP depth.** `find_callers` takes a `depth` parameter (1–5) for multi-hop
+  BFS call-graph traversal, and `lookup_symbol` takes `fuzzy` for substring
+  matching. Two new tools: `context` returns definition, callers, callees, and
+  used-by in one call; `detect_changes` maps a staged or `HEAD` diff to the
+  affected symbols and a risk assessment.
+- **Language parity — every parser now emits `Uses`, `Implements`, and
+  `Imports` edges.** Python gains type annotations, base-class `Implements`,
+  import statements, and decorators. TypeScript/JavaScript gain
+  `extends`/`implements` clauses, type annotations, named imports, and
+  decorators. Go gains parameter and return types, structural interface
+  assertions, import declarations, and interface method signatures. Java is a
+  new parser covering classes, interfaces, enums, records, `extends` and
+  `implements`, field types, annotations, and imports.
+
+### Changed
+- Published crate renamed from `gitcortex-mcp` to `gitcortex`.
+- Crate descriptions and keywords reworked for crates.io discoverability.
+- `Cargo.lock` and the generated `context.md` are tracked; local Claude
+  settings are ignored.
 
 ## [0.1.0] - 2026-04-30
 

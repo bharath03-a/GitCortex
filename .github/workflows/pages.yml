@@ -1,0 +1,53 @@
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "CHANGELOG.md"
+      - "scripts/build_release_page.py"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+# Read the repo and mint a Pages deployment token.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never cancel an in-flight deployment; queue behind it instead.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: pages · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Render release log from CHANGELOG.md
+        run: python3 scripts/build_release_page.py
+
+      # The site is hand-written HTML; Jekyll would otherwise try to process
+      # the Markdown files sitting alongside it in docs/.
+      - name: Disable Jekyll
+        run: touch docs/.nojekyll
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/
+
+  deploy:
+    name: pages · deploy
+    needs: [build]
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -56,3 +56,11 @@ docs/benchmarks/loop-sweep.sh
 !docs/benchmarks/stable-v063/
 !docs/benchmarks/stable-v063/*.json
 !docs/benchmarks/final-report-2026-07-17.html
+
+# Generated at Pages build time from CHANGELOG.md — never committed
+docs/releases.html
+docs/.nojekyll
+
+# Python bytecode from the tooling scripts
+__pycache__/
+*.pyc
