@@ -27,6 +27,35 @@ python3 tools/agent-bench/bench.py replay tools/agent-bench/results/head.jsonl
 python3 tools/agent-bench/bench.py compare base.jsonl head.jsonl
 ```
 
+## Search relevance
+
+Payload bytes and evidence presence cannot tell a correct top hit from a correct
+tenth hit, so ranking changes are invisible to the byte-oriented gate. Search
+tasks additionally pin ranked ground truth:
+
+```toml
+relevant_files = ["src/requests/sessions.py"]
+relevant_symbols = ["Session", "SessionRedirectMixin"]
+```
+
+Ground truth is read from the pinned repository source, never from `gcx` output.
+Each search task then reports:
+
+- **MRR** — reciprocal rank of the first relevant hit;
+- **precision@5** — relevant share of the top five, divided by the fixed cut-off
+  so a short result cannot buy precision by withholding candidates;
+- **file recall** — pinned files found anywhere in the ranked list.
+
+These are reported, not gated: a task stays valid on contract and evidence
+grounds. `compare` reports `relevance_non_inferior` so a ranking regression fails
+a base/head comparison even when the payload shrank.
+
+Run the tests for the scorer and harness wiring:
+
+```bash
+cd tools/agent-bench && python3 -m unittest discover -p "test_*.py"
+```
+
 ## Validity rules
 
 A task fails when:

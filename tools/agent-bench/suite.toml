@@ -37,6 +37,9 @@ query = "Searcher"
 required = ["crates/searcher/src/searcher/mod.rs", "Searcher"]
 forbidden = ["tests/integration"]
 max_bytes = 5000
+# Searcher and SearcherBuilder are both defined in searcher/mod.rs (lines 597, 298).
+relevant_files = ["crates/searcher/src/searcher/mod.rs"]
+relevant_symbols = ["Searcher", "SearcherBuilder"]
 
 [[tasks]]
 id = "ripgrep-tour"
@@ -70,6 +73,10 @@ action = "search"
 query = "Session"
 required = ["src/requests/sessions.py", "Session"]
 max_bytes = 5000
+# Session (line 395) and SessionRedirectMixin (line 127) are defined in sessions.py.
+# api.py only instantiates Session, so it is not a definition hit.
+relevant_files = ["src/requests/sessions.py"]
+relevant_symbols = ["Session", "SessionRedirectMixin"]
 
 [[tasks]]
 id = "requests-tour"
@@ -103,6 +110,10 @@ action = "search"
 query = "dispatch"
 required = ["src/hono-base.ts", "#dispatch"]
 max_bytes = 5000
+# Hono#dispatch (hono-base.ts:406) and the local dispatch() in compose.ts:32
+# are the two definitions named dispatch.
+relevant_files = ["src/hono-base.ts", "src/compose.ts"]
+relevant_symbols = ["dispatch"]
 
 [[tasks]]
 id = "hono-tour"
@@ -136,6 +147,9 @@ action = "search"
 query = "ParseFlags"
 required = ["command.go", "ParseFlags"]
 max_bytes = 5000
+# Command.ParseFlags is defined once, at command.go:1868.
+relevant_files = ["command.go"]
+relevant_symbols = ["ParseFlags"]
 
 [[tasks]]
 id = "cobra-tour"
@@ -169,6 +183,10 @@ action = "search"
 query = "JsonReader"
 required = ["gson/src/main/java/com/google/gson/stream/JsonReader.java", "JsonReader"]
 max_bytes = 5000
+# JsonReader is defined in stream/JsonReader.java. JsonReaderInternalAccess
+# declares a different class and only references JsonReader, so it is excluded.
+relevant_files = ["gson/src/main/java/com/google/gson/stream/JsonReader.java"]
+relevant_symbols = ["JsonReader"]
 
 [[tasks]]
 id = "gson-tour"

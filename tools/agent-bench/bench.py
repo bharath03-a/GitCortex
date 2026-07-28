@@ -21,6 +21,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from relevance import RelevanceTruth, score_relevance
+
 HERE = Path(__file__).resolve().parent
 DEFAULT_SUITE = HERE / "suite.toml"
 DEFAULT_WORK = Path(os.environ.get("GCX_BENCH_WORK", "/tmp/gcx-agent-bench"))
@@ -47,6 +49,15 @@ class Task:
     forbidden: tuple[str, ...]
     max_bytes: int
     min_evidence: int
+    relevant_files: tuple[str, ...] = ()
+    relevant_symbols: tuple[str, ...] = ()
+
+    @property
+    def relevance_truth(self) -> RelevanceTruth | None:
+        """Ground truth for ranking metrics, or None when the task pins none."""
+        if not self.relevant_files and not self.relevant_symbols:
+            return None
+        return RelevanceTruth(files=self.relevant_files, symbols=self.relevant_symbols)
 
 
 @dataclass
@@ -69,6 +80,9 @@ class TaskResult:
     quality_score: float
     stdout: str
     stderr: str
+    mrr: float | None = None
+    precision_at_5: float | None = None
+    file_recall: float | None = None
 
 
 def run(command: list[str], cwd: Path | None = None, timeout: int = 900) -> subprocess.CompletedProcess[str]:
@@ -117,6 +131,8 @@ def load_suite(path: Path) -> tuple[dict[str, Any], dict[str, Repo], list[Task]]
             forbidden=tuple(entry.get("forbidden", [])),
             max_bytes=int(entry.get("max_bytes", 8000)),
             min_evidence=int(entry.get("min_evidence", 0)),
+            relevant_files=tuple(entry.get("relevant_files", [])),
+            relevant_symbols=tuple(entry.get("relevant_symbols", [])),
         )
         if task.repo not in repos:
             raise BenchError(f"task {task.id} references unknown repo {task.repo}")
@@ -301,6 +317,7 @@ def score_task(
     contract_status: str | None = None
     evidence_count: int | None = None
     parse_valid = True
+    ranked: list[Any] = []
     if require_contract and task.action in {"search", "callers", "subgraph"} and returncode == 0:
         try:
             payload = json.loads(stdout)
@@ -308,8 +325,15 @@ def score_task(
             evidence = payload.get("evidence")
             evidence_count = len(evidence) if isinstance(evidence, list) else None
             parse_valid = contract_status == "ok" and isinstance(evidence, list)
+            if isinstance(evidence, list):
+                ranked = evidence
         except json.JSONDecodeError:
             parse_valid = False
+
+    # Ranking metrics are reported, never gated on: they track whether retrieval
+    # ordering improves across runs, while validity stays a contract question.
+    truth = task.relevance_truth
+    relevance = score_relevance(ranked, truth) if truth is not None else None
     payload_bytes = len(stdout.encode("utf-8"))
     quality_score = len(required_found) / len(task.required) if task.required else 1.0
     valid = (
@@ -339,7 +363,31 @@ def score_task(
         quality_score=quality_score,
         stdout=stdout,
         stderr=stderr,
+        mrr=relevance.mrr if relevance else None,
+        precision_at_5=relevance.precision_at_5 if relevance else None,
+        file_recall=relevance.file_recall if relevance else None,
     )
+
+
+def relevance_summary(results: list[TaskResult]) -> dict[str, Any]:
+    """Mean ranking metrics over the results that pin ground truth.
+
+    Returns an empty mapping when no result carries truth, so actions without a
+    pinned relevance set stay absent from the report instead of reporting zero.
+    """
+    scored = [result for result in results if result.mrr is not None]
+    if not scored:
+        return {}
+    return {
+        "relevance_tasks": len(scored),
+        "mrr_mean": round(statistics.mean(result.mrr for result in scored), 3),
+        "precision_at_5_mean": round(
+            statistics.mean(result.precision_at_5 for result in scored), 3
+        ),
+        "file_recall_mean": round(
+            statistics.mean(result.file_recall for result in scored), 3
+        ),
+    }
 
 
 def summarize(results: list[TaskResult]) -> dict[str, Any]:
@@ -355,6 +403,7 @@ def summarize(results: list[TaskResult]) -> dict[str, Any]:
             "quality_mean": round(statistics.mean(result.quality_score for result in rows), 3),
             "payload_bytes_median": round(statistics.median(result.payload_bytes for result in rows)),
             "latency_ms_median": round(statistics.median(result.elapsed_ms for result in rows)),
+            **relevance_summary(rows),
         }
     return {
         "tasks": len(results),
@@ -473,36 +522,42 @@ def command_replay(args: argparse.Namespace) -> int:
     return 0 if summary["invalid"] == 0 else 1
 
 
-def command_compare(args: argparse.Namespace) -> int:
-    left_meta, left_rows, _ = read_trace(args.left)
-    right_meta, right_rows, _ = read_trace(args.right)
+def compare_traces(left: Path, right: Path) -> dict[str, Any]:
+    left_meta, left_rows, _ = read_trace(left)
+    right_meta, right_rows, _ = read_trace(right)
     if left_meta.get("suite_sha256") != right_meta.get("suite_sha256"):
         raise BenchError("cannot compare traces produced by different suite manifests")
-    left = {row["task_id"]: row for row in left_rows}
-    right = {row["task_id"]: row for row in right_rows}
-    common = sorted(left.keys() & right.keys())
+    before_rows = {row["task_id"]: row for row in left_rows}
+    after_rows = {row["task_id"]: row for row in right_rows}
+    common = sorted(before_rows.keys() & after_rows.keys())
     if not common:
         raise BenchError("traces have no common tasks")
     comparisons = []
     ratios = []
     for task_id in common:
-        before = left[task_id]
-        after = right[task_id]
+        before = before_rows[task_id]
+        after = after_rows[task_id]
         ratio = before["payload_bytes"] / after["payload_bytes"] if after["payload_bytes"] else 0
         ratios.append(ratio)
-        comparisons.append(
-            {
-                "task_id": task_id,
-                "quality_before": before["quality_score"],
-                "quality_after": after["quality_score"],
-                "valid_before": before["valid"],
-                "valid_after": after["valid"],
-                "payload_ratio": round(ratio, 3),
-                "bytes_before": before["payload_bytes"],
-                "bytes_after": after["payload_bytes"],
-            }
-        )
-    report = {
+        comparison = {
+            "task_id": task_id,
+            "quality_before": before["quality_score"],
+            "quality_after": after["quality_score"],
+            "valid_before": before["valid"],
+            "valid_after": after["valid"],
+            "payload_ratio": round(ratio, 3),
+            "bytes_before": before["payload_bytes"],
+            "bytes_after": after["payload_bytes"],
+        }
+        # Ranking metrics only appear when both traces scored the same task
+        # against ground truth, so legacy traces compare on payload alone.
+        for metric in ("mrr", "precision_at_5", "file_recall"):
+            if before.get(metric) is not None and after.get(metric) is not None:
+                comparison[f"{metric}_before"] = before[metric]
+                comparison[f"{metric}_after"] = after[metric]
+        comparisons.append(comparison)
+    ranked = [item for item in comparisons if "mrr_after" in item]
+    report: dict[str, Any] = {
         "left": left_meta.get("label"),
         "right": right_meta.get("label"),
         "tasks": len(common),
@@ -510,11 +565,34 @@ def command_compare(args: argparse.Namespace) -> int:
         "quality_non_inferior": all(
             item["quality_after"] >= item["quality_before"] for item in comparisons
         ),
+        "relevance_non_inferior": all(
+            item["mrr_after"] >= item["mrr_before"] for item in ranked
+        ),
         "all_after_valid": all(item["valid_after"] for item in comparisons),
         "comparisons": comparisons,
     }
+    if ranked:
+        report["ranked_tasks"] = len(ranked)
+        for metric in ("mrr", "precision_at_5", "file_recall"):
+            report[f"{metric}_before_mean"] = round(
+                statistics.mean(item[f"{metric}_before"] for item in ranked), 3
+            )
+            report[f"{metric}_after_mean"] = round(
+                statistics.mean(item[f"{metric}_after"] for item in ranked), 3
+            )
+    return report
+
+
+def command_compare(args: argparse.Namespace) -> int:
+    report = compare_traces(args.left, args.right)
     print(json.dumps(report, indent=2))
-    return 0 if report["quality_non_inferior"] and report["all_after_valid"] else 1
+    return (
+        0
+        if report["quality_non_inferior"]
+        and report["all_after_valid"]
+        and report["relevance_non_inferior"]
+        else 1
+    )
 
 
 def parser() -> argparse.ArgumentParser:
