@@ -159,6 +159,8 @@ PAGE = """<!DOCTYPE html>
 <meta property="og:url" content="https://bharath03-a.github.io/GitCortex/releases.html">
 <meta property="og:title" content="GitCortex — Release Log">
 <meta property="og:description" content="Every GitCortex version, what changed, and when it shipped.">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="apple-touch-icon" href="favicon.svg">
 <link rel="canonical" href="https://bharath03-a.github.io/GitCortex/releases.html">
 <style>
 :root {{

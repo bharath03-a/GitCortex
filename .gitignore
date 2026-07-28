@@ -64,3 +64,6 @@ docs/.nojekyll
 # Python bytecode from the tooling scripts
 __pycache__/
 *.pyc
+
+# Favicon copied from assets/icon.svg at Pages build time
+docs/favicon.svg

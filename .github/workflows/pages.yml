@@ -31,6 +31,11 @@ jobs:
       - name: Render release log from CHANGELOG.md
         run: python3 scripts/build_release_page.py
 
+      # assets/icon.svg stays the single source for the mark; the site gets a
+      # copy at build time rather than a second checked-in file to keep in sync.
+      - name: Copy favicon from the shared icon
+        run: cp assets/icon.svg docs/favicon.svg
+
       # The site is hand-written HTML; Jekyll would otherwise try to process
       # the Markdown files sitting alongside it in docs/.
       - name: Disable Jekyll
