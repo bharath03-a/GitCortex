@@ -59,3 +59,14 @@ docs/benchmarks/loop-sweep.sh
 
 # Local Lavish review artifacts
 .lavish/
+
+# Generated at Pages build time from CHANGELOG.md — never committed
+docs/releases.html
+docs/.nojekyll
+
+# Python bytecode from the tooling scripts
+__pycache__/
+*.pyc
+
+# Favicon copied from assets/icon.svg at Pages build time
+docs/favicon.svg
