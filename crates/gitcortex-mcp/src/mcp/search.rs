@@ -10,8 +10,11 @@
 //! - edit distance ≤1 (typo):            +20
 //! - edit distance ≤2:                   +10
 //! - substring in qualified_name only:   +10
+//! - byte-exact (case-sensitive) name:   +8 on top of the base
 //! - shorter names break ties
 //! - kind boost: Function/Method/Struct/Trait > others
+//! - kind penalty: File -25, Folder -45 — containers are paths, not definitions
+//! - Markdown `Section` headings are excluded from code search entirely
 
 use std::collections::HashSet;
 
@@ -148,7 +151,27 @@ fn edit_distance(a: &str, b: &str) -> usize {
 }
 
 /// Score a node against a query. Returns `None` when the node is not a match.
-fn score(n: &Node, q_lower: &str, q_tokens: &[String]) -> Option<i32> {
+/// Bonus for a byte-exact name match, on top of the case-insensitive base.
+///
+/// Without it, `Searcher` and `searcher` tie on base score and the winner is
+/// decided by kind boost alone — which ranked `HiArgs::searcher` (Method, +5)
+/// above the `Searcher` struct (+4). Must exceed the largest kind-boost gap.
+const EXACT_CASE_BONUS: i32 = 8;
+
+/// Penalty for symbols defined in test files.
+///
+/// Production evidence comes first: an exactly-named test helper must not
+/// outrank a real definition. Sized to drop the exact-match band (100) below
+/// the prefix-match band (60), so tests stay findable but never lead.
+const TEST_FILE_PENALTY: i32 = -45;
+
+fn score(n: &Node, q_lower: &str, q_tokens: &[String], query: &str) -> Option<i32> {
+    // Markdown headings are prose, not definitions. A README section named
+    // after a symbol is never the answer to a code search, and lookup_symbol
+    // and get_subgraph already exclude them.
+    if n.kind == NodeKind::Section {
+        return None;
+    }
     let name_lower = n.name.to_ascii_lowercase();
     let qname_lower = n.qualified_name.to_ascii_lowercase();
     let name_tokens = tokenize(&n.name);
@@ -190,7 +213,13 @@ fn score(n: &Node, q_lower: &str, q_tokens: &[String]) -> Option<i32> {
         }
     };
 
-    Some(base + kind_boost(&n.kind))
+    let exact_case = if n.name == query { EXACT_CASE_BONUS } else { 0 };
+    let test_penalty = if super::helpers::is_test_file(&n.file) {
+        TEST_FILE_PENALTY
+    } else {
+        0
+    };
+    Some(base + kind_boost(&n.kind) + exact_case + test_penalty)
 }
 
 fn kind_boost(k: &NodeKind) -> i32 {
@@ -199,6 +228,13 @@ fn kind_boost(k: &NodeKind) -> i32 {
         NodeKind::Struct | NodeKind::Trait | NodeKind::Interface => 4,
         NodeKind::Enum | NodeKind::TypeAlias => 3,
         NodeKind::Constant | NodeKind::Macro | NodeKind::Annotation => 2,
+        // Containers are paths, not definitions. A folder or file whose name
+        // happens to match should stay findable but must never outrank a real
+        // definition — ripgrep's `crates/searcher` folder was landing above
+        // `SearcherBuilder`. The penalties clear the strongest weaker-match
+        // band (prefix, 60) from the exact-match band (100).
+        NodeKind::File => -25,
+        NodeKind::Folder => -45,
         _ => 0,
     }
 }
@@ -283,7 +319,7 @@ pub fn search<S: GraphStore + ?Sized>(
 
     let mut hits: Vec<SearchHit> = nodes
         .into_iter()
-        .filter_map(|n| score(&n, &q_lower, &q_tokens).map(|s| to_hit(n, s)))
+        .filter_map(|n| score(&n, &q_lower, &q_tokens, query).map(|s| to_hit(n, s)))
         .collect();
 
     hits.sort_by(|a, b| {
@@ -299,6 +335,153 @@ pub fn search<S: GraphStore + ?Sized>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gitcortex_core::graph::{NodeId, NodeMetadata, Span};
+    use std::path::PathBuf;
+
+    fn node_of(kind: NodeKind, name: &str) -> Node {
+        Node {
+            id: NodeId::new(),
+            kind,
+            name: name.to_owned(),
+            qualified_name: name.to_owned(),
+            file: PathBuf::from("src/lib.rs"),
+            span: Span {
+                start_line: 1,
+                end_line: 2,
+            },
+            metadata: NodeMetadata::default(),
+        }
+    }
+
+    /// Score a node against a query the way `search` does.
+    fn score_of(kind: NodeKind, name: &str, query: &str) -> Option<i32> {
+        let q_lower = query.to_ascii_lowercase();
+        let q_tokens = tokenize(query);
+        score(&node_of(kind, name), &q_lower, &q_tokens, query)
+    }
+
+    /// Score a node that lives at an explicit path.
+    fn score_at(kind: NodeKind, name: &str, file: &str, query: &str) -> Option<i32> {
+        let q_lower = query.to_ascii_lowercase();
+        let q_tokens = tokenize(query);
+        let mut n = node_of(kind, name);
+        n.file = PathBuf::from(file);
+        score(&n, &q_lower, &q_tokens, query)
+    }
+
+    // ── ranking defects found by the relevance gate ──────────────────────────
+
+    #[test]
+    fn case_exact_definition_outranks_case_insensitive_method() {
+        // ripgrep: `HiArgs::searcher` (Method) scored 105 and buried the
+        // `Searcher` struct at 104 purely on the Method kind boost.
+        let struct_hit = score_of(NodeKind::Struct, "Searcher", "Searcher").unwrap();
+        let method_hit = score_of(NodeKind::Method, "searcher", "Searcher").unwrap();
+        assert!(
+            struct_hit > method_hit,
+            "case-exact struct {struct_hit} must outrank case-insensitive method {method_hit}"
+        );
+    }
+
+    #[test]
+    fn case_insensitive_match_still_scores() {
+        assert!(score_of(NodeKind::Method, "searcher", "Searcher").is_some());
+    }
+
+    #[test]
+    fn folder_ranks_below_a_weaker_code_match() {
+        // `crates/searcher` (Folder, exact name match) outranked
+        // `SearcherBuilder` (Struct, prefix match) in the measured baseline.
+        let folder = score_of(NodeKind::Folder, "searcher", "Searcher").unwrap();
+        let prefix_struct = score_of(NodeKind::Struct, "SearcherBuilder", "Searcher").unwrap();
+        assert!(
+            folder < prefix_struct,
+            "folder {folder} must rank below prefix-matched struct {prefix_struct}"
+        );
+    }
+
+    #[test]
+    fn file_ranks_below_a_definition_of_the_same_name() {
+        let file = score_of(NodeKind::File, "Searcher", "Searcher").unwrap();
+        let definition = score_of(NodeKind::Struct, "Searcher", "Searcher").unwrap();
+        assert!(
+            file < definition,
+            "file {file} must rank below struct {definition}"
+        );
+    }
+
+    #[test]
+    fn file_is_still_findable_by_its_own_name() {
+        // Demotion must not remove files from search entirely.
+        assert!(score_of(NodeKind::File, "sessions.py", "sessions.py").is_some());
+    }
+
+    #[test]
+    fn test_symbols_rank_below_production_symbols() {
+        // gson put two src/test/ classes in the top five, and requests put a
+        // test method at rank 5. The plan requires production evidence first.
+        let test_exact = score_at(
+            NodeKind::Method,
+            "jsonReader",
+            "src/test/java/NumberLimitsTest.java",
+            "JsonReader",
+        )
+        .unwrap();
+        let prod_prefix = score_at(
+            NodeKind::Struct,
+            "JsonReaderInternal",
+            "src/main/java/JsonReaderInternal.java",
+            "JsonReader",
+        )
+        .unwrap();
+        assert!(
+            test_exact < prod_prefix,
+            "exact-match test symbol {test_exact} must rank below production prefix match {prod_prefix}"
+        );
+    }
+
+    #[test]
+    fn test_support_modules_rank_below_production() {
+        // ripgrep ships `crates/searcher/src/testutil.rs`; its `SearcherTester`
+        // tied `SearcherBuilder` and won on the shorter-name tie-break.
+        let helper = score_at(
+            NodeKind::Struct,
+            "SearcherTester",
+            "crates/searcher/src/testutil.rs",
+            "Searcher",
+        )
+        .unwrap();
+        let production = score_at(
+            NodeKind::Struct,
+            "SearcherBuilder",
+            "crates/searcher/src/searcher/mod.rs",
+            "Searcher",
+        )
+        .unwrap();
+        assert!(
+            helper < production,
+            "test-support struct {helper} must rank below production struct {production}"
+        );
+    }
+
+    #[test]
+    fn test_symbols_are_still_findable() {
+        // Demoted, never dropped: searching for a test by name must still work.
+        assert!(score_at(
+            NodeKind::Struct,
+            "JsonReaderTest",
+            "src/test/java/JsonReaderTest.java",
+            "JsonReaderTest"
+        )
+        .is_some());
+    }
+
+    #[test]
+    fn markdown_sections_are_excluded_from_code_search() {
+        // A README heading named after a symbol is prose, not a definition.
+        // lookup_symbol and get_subgraph already filter Section; search did not.
+        assert_eq!(score_of(NodeKind::Section, "Searcher", "Searcher"), None);
+    }
 
     #[test]
     fn tokenize_camel_case() {

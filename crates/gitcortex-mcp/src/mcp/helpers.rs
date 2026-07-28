@@ -77,6 +77,16 @@ pub(crate) fn is_test_file(path: &Path) -> bool {
         {
             return true;
         }
+        // Test-support modules shipped alongside production code, e.g. ripgrep's
+        // crates/searcher/src/testutil.rs. Matched on the stem so the extension
+        // stays language-agnostic.
+        let stem = name.rsplit_once('.').map_or(name, |(stem, _)| stem);
+        if matches!(
+            stem,
+            "testutil" | "testutils" | "test_util" | "test_utils" | "testing" | "conftest"
+        ) {
+            return true;
+        }
     }
     false
 }
