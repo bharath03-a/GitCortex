@@ -9,12 +9,12 @@ pub struct GcxDispatchParams {
     /// find_unused_symbols, get_subgraph, search_code, start_tour, wiki_symbol,
     /// trace_path, list_definitions, symbol_context, list_symbols_in_range, graph_stats,
     /// ast_search, type_hierarchy, find_importers, find_type_usages, module_dependencies,
-    /// get_call_sites, find_god_nodes, find_clusters.
+    /// get_call_sites, find_god_nodes, find_clusters, find_cycles, health_report.
     pub action: String,
     /// Parameters for the chosen action as a JSON object (same fields as the
     /// individual tool: name, function_name, seed_name, query, file, branch,
     /// depth, limit, direction, src, dst, start_line, end_line).
-    pub params: serde_json::Value,
+    pub params: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -155,8 +155,8 @@ pub struct GetSubgraphParams {
     pub depth: Option<u8>,
     /// Direction: "in" (callers/ancestors), "out" (callees/descendants), "both" (default).
     pub direction: Option<String>,
-    /// Max nodes returned (default 30, capped at 200). Edges are filtered to the
-    /// kept node set; `truncated` flags when the neighbourhood was larger.
+    /// Max ranked direct-relation evidence rows (default 20, capped at 100).
+    /// Coverage still reports the full neighborhood and direct-relation totals.
     pub limit: Option<usize>,
     pub branch: Option<String>,
 }
@@ -183,7 +183,7 @@ pub struct StartTourParams {
     /// along the call graph. When omitted, picks the highest-centrality
     /// entry points across the repo.
     pub seed: Option<String>,
-    /// How many steps in the tour (default 12, capped at 50).
+    /// How many steps/components in the tour (default 6, capped at 20).
     pub limit: Option<usize>,
     pub branch: Option<String>,
 }

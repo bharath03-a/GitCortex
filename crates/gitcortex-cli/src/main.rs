@@ -1,7 +1,7 @@
 mod cmd;
 pub mod style;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use tracing_subscriber::EnvFilter;
 
 use cmd::blast_radius::BlastFormat;
@@ -107,6 +107,12 @@ enum Commands {
     Update,
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum AgentOutputFormat {
+    Text,
+    AgentJson,
+}
+
 #[derive(Subcommand)]
 pub enum QueryCmd {
     /// Look up all nodes with the given name.
@@ -117,9 +123,19 @@ pub enum QueryCmd {
     },
     /// Find all callers of a function. Use --depth for multi-hop traversal (1–5).
     FindCallers {
+        /// Exact short name or qualified symbol name. Ambiguous short names
+        /// return candidates without traversing unrelated call graphs.
         name: String,
         #[arg(long, default_value_t = 1)]
         depth: u8,
+        /// Maximum caller evidence rows returned after ranking.
+        #[arg(long, default_value_t = 25)]
+        limit: usize,
+        /// Global response budget used by agent-json output.
+        #[arg(long, default_value_t = 600)]
+        budget_tokens: usize,
+        #[arg(long, value_enum, default_value_t = AgentOutputFormat::Text)]
+        format: AgentOutputFormat,
         #[arg(long, default_value = "main")]
         branch: String,
     },
@@ -167,11 +183,19 @@ pub enum QueryCmd {
     /// Show all nodes and edges within N hops of a seed symbol.
     GetSubgraph {
         name: String,
-        #[arg(long, default_value_t = 2)]
+        #[arg(long, default_value_t = 1)]
         depth: u8,
         /// Direction: in (callers/ancestors), out (callees/descendants), both.
         #[arg(long, default_value = "both")]
         direction: String,
+        /// Maximum ranked relation evidence rows returned.
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+        /// Global response budget used by agent-json output.
+        #[arg(long, default_value_t = 400)]
+        budget_tokens: usize,
+        #[arg(long, value_enum, default_value_t = AgentOutputFormat::Text)]
+        format: AgentOutputFormat,
         #[arg(long, default_value = "main")]
         branch: String,
     },
@@ -184,8 +208,12 @@ pub enum QueryCmd {
     /// Fuzzy search over the graph by name + qualified path.
     Search {
         query: String,
-        #[arg(long, default_value_t = 25)]
+        #[arg(long, default_value_t = 10)]
         limit: usize,
+        #[arg(long, default_value_t = 600)]
+        budget_tokens: usize,
+        #[arg(long, value_enum, default_value_t = AgentOutputFormat::Text)]
+        format: AgentOutputFormat,
         #[arg(long, default_value = "main")]
         branch: String,
     },
@@ -193,7 +221,7 @@ pub enum QueryCmd {
     Tour {
         #[arg(long)]
         seed: Option<String>,
-        #[arg(long, default_value_t = 12)]
+        #[arg(long, default_value_t = 6)]
         limit: usize,
         #[arg(long, default_value = "main")]
         branch: String,
