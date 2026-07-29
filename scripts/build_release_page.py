@@ -138,13 +138,13 @@ def render_body(markdown: str) -> str:
 
 LOGO = (
     '<svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" '
-    'width="26" height="26" aria-hidden="true">'
-    '<line x1="18" y1="18" x2="46" y2="32" stroke="#cc785c" stroke-width="3" stroke-linecap="round"/>'
-    '<line x1="18" y1="18" x2="32" y2="50" stroke="#cc785c" stroke-width="3" stroke-linecap="round"/>'
-    '<line x1="46" y1="32" x2="32" y2="50" stroke="#cc785c" stroke-width="2.5" stroke-linecap="round" opacity="0.7"/>'
-    '<circle cx="18" cy="18" r="7" fill="#cc785c"/>'
-    '<circle cx="46" cy="32" r="5.5" fill="#e0a07f"/>'
-    '<circle cx="32" cy="50" r="5.5" fill="#e0a07f"/>'
+    'width="22" height="22" aria-hidden="true">'
+    '<line x1="18" y1="18" x2="46" y2="32" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>'
+    '<line x1="18" y1="18" x2="32" y2="50" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>'
+    '<line x1="46" y1="32" x2="32" y2="50" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity=".55"/>'
+    '<circle cx="18" cy="18" r="7" fill="currentColor"/>'
+    '<circle cx="46" cy="32" r="5.5" fill="currentColor" opacity=".72"/>'
+    '<circle cx="32" cy="50" r="5.5" fill="currentColor" opacity=".72"/>'
     "</svg>"
 )
 
@@ -154,135 +154,177 @@ PAGE = """<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="GitCortex release log — every version, what changed, and when it shipped.">
-<title>GitCortex — Release Log</title>
+<title>GitCortex — Release log</title>
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://bharath03-a.github.io/GitCortex/releases.html">
-<meta property="og:title" content="GitCortex — Release Log">
+<meta property="og:title" content="GitCortex — Release log">
 <meta property="og:description" content="Every GitCortex version, what changed, and when it shipped.">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="apple-touch-icon" href="favicon.svg">
 <link rel="canonical" href="https://bharath03-a.github.io/GitCortex/releases.html">
 <style>
 :root {{
-  --bg:#06060a; --surface:#0d0d14; --surface-2:#13131e; --border:#1e1e2e;
-  --accent:#cc785c; --accent-2:#e0a07f; --blue:#7c9ef5; --green:#5bbd8f;
-  --purple:#a78bfa; --text:#e2e2f0; --text-dim:#9090aa; --text-muted:#5a5a72;
-  --radius:12px; --radius-sm:8px;
+  --paper:#FCFCFA; --surface:#FFFFFF; --surface-2:#F5F5F1;
+  --rule:#E5E4DE; --rule-soft:#EFEEE9;
+  --ink:#14141A; --ink-2:#55555F; --ink-3:#8A8A94;
+  --brand:#C4633F; --brand-soft:#FBEFE9;
+  --k-type:#2F6F5E; --k-fn:#2B5CA8; --k-trait:#6B4CA8; --k-doc:#A03D6B;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Helvetica, Arial, sans-serif;
+  --gut:28px; --max:1120px;
+  color-scheme: light;
 }}
 *,*::before,*::after {{ box-sizing:border-box; margin:0; padding:0; }}
-html {{ scroll-behavior:smooth; font-size:16px; }}
+html {{ font-size:16px; scroll-behavior:smooth; }}
+@media (prefers-reduced-motion: reduce) {{ html {{ scroll-behavior:auto; }} }}
 body {{
-  background:var(--bg); color:var(--text);
-  font-family:system-ui,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;
-  line-height:1.65; -webkit-font-smoothing:antialiased;
+  background:var(--paper); color:var(--ink); font-family:var(--sans);
+  line-height:1.6; -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
 }}
-a {{ color:var(--accent-2); text-decoration:none; }}
-a:hover {{ text-decoration:underline; }}
+a {{ color:inherit; text-decoration:none; }}
+:focus-visible {{ outline:2px solid var(--brand); outline-offset:3px; border-radius:2px; }}
 code {{
-  font-family:"JetBrains Mono","Fira Code",ui-monospace,monospace;
-  font-size:.875em; background:var(--surface-2); border:1px solid var(--border);
-  border-radius:4px; padding:.1em .38em; color:var(--accent-2);
+  font-family:var(--mono); font-size:.86em; color:var(--ink);
+  background:var(--surface-2); border:1px solid var(--rule-soft);
+  border-radius:4px; padding:.08em .36em;
 }}
-.container {{ max-width:860px; margin:0 auto; padding:0 24px; }}
-nav {{
-  position:sticky; top:0; z-index:100; background:rgba(6,6,10,.85);
-  backdrop-filter:blur(12px); border-bottom:1px solid var(--border);
+.wrap {{ max-width:var(--max); margin:0 auto; padding:0 var(--gut); }}
+.narrow {{ max-width:760px; }}
+
+.nav {{
+  position:sticky; top:0; z-index:50;
+  background:color-mix(in srgb, var(--paper) 88%, transparent);
+  backdrop-filter:blur(10px); border-bottom:1px solid var(--rule);
 }}
-.nav-inner {{
-  max-width:1100px; margin:0 auto; padding:0 24px; height:60px;
-  display:flex; align-items:center; justify-content:space-between; gap:16px;
+.nav-in {{
+  max-width:var(--max); margin:0 auto; padding:0 var(--gut); height:60px;
+  display:flex; align-items:center; justify-content:space-between; gap:20px;
 }}
-.nav-logo {{ display:flex; align-items:center; gap:10px; font-weight:700; color:var(--text); }}
-.nav-logo:hover {{ text-decoration:none; }}
-.nav-links {{ display:flex; gap:22px; list-style:none; align-items:center; flex-wrap:wrap; }}
-.nav-links a {{ color:var(--text-dim); font-size:.925rem; }}
-.nav-links a:hover {{ color:var(--text); text-decoration:none; }}
-header.page {{ padding:64px 0 28px; }}
-header.page h1 {{ font-size:clamp(2rem,5vw,2.75rem); line-height:1.15; letter-spacing:-.02em; }}
-header.page p {{ color:var(--text-dim); margin-top:12px; max-width:60ch; }}
-.jump {{
-  display:flex; flex-wrap:wrap; gap:8px; margin:28px 0 8px;
-  padding-bottom:28px; border-bottom:1px solid var(--border);
+.brandmark {{ display:flex; align-items:center; gap:9px; font-weight:700; letter-spacing:-.02em; }}
+.brandmark svg {{ display:block; color:var(--brand); }}
+.nav-links {{ display:flex; align-items:center; gap:26px; list-style:none; flex-wrap:wrap; }}
+.nav-links a {{ font-size:.875rem; color:var(--ink-2); }}
+.nav-links a:hover {{ color:var(--ink); }}
+.nav-links a[aria-current="page"] {{ color:var(--ink); font-weight:600; }}
+.nav-cta {{
+  font-family:var(--mono); font-size:.76rem; font-weight:600;
+  border:1px solid var(--rule); border-radius:6px; padding:6px 12px; color:var(--ink);
 }}
-.jump a {{
-  font-size:.8rem; font-family:ui-monospace,monospace; color:var(--text-dim);
-  border:1px solid var(--border); border-radius:999px; padding:4px 11px;
-  background:var(--surface);
+.nav-cta:hover {{ border-color:var(--brand); color:var(--brand); }}
+@media (max-width:760px) {{ .nav-hide {{ display:none; }} }}
+
+.masthead {{ padding:76px 0 34px; }}
+.eyebrow {{
+  font-family:var(--mono); font-size:.69rem; text-transform:uppercase;
+  letter-spacing:.145em; font-weight:600; color:var(--ink-3);
+  display:block; margin-bottom:14px;
 }}
-.jump a:hover {{ color:var(--text); border-color:var(--accent); text-decoration:none; }}
-.release {{ padding:40px 0; border-bottom:1px solid var(--border); }}
-.release:last-child {{ border-bottom:0; }}
-.release-head {{ display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:6px; }}
-.release-head h2 {{ font-size:1.6rem; letter-spacing:-.01em; scroll-margin-top:80px; }}
-.release-date {{ color:var(--text-muted); font-size:.85rem; font-family:ui-monospace,monospace; }}
-.badge-latest {{
-  font-size:.7rem; text-transform:uppercase; letter-spacing:.06em; font-weight:700;
-  color:var(--bg); background:var(--accent); border-radius:999px; padding:2px 9px;
+.masthead h1 {{
+  font-size:clamp(2.1rem,4.6vw,3rem); line-height:1.05;
+  letter-spacing:-.033em; font-weight:800;
+}}
+.masthead p {{ color:var(--ink-2); margin-top:16px; max-width:62ch; }}
+.masthead a {{ color:var(--brand); text-decoration:underline; text-underline-offset:2px; }}
+
+.index {{
+  display:flex; flex-wrap:wrap; gap:7px;
+  padding:26px 0 30px; border-bottom:1px solid var(--rule);
+}}
+.index a {{
+  font-family:var(--mono); font-size:.75rem; font-weight:600; color:var(--ink-2);
+  border:1px solid var(--rule); border-radius:999px; padding:4px 12px; background:var(--surface);
+}}
+.index a:hover {{ color:var(--brand); border-color:var(--brand); }}
+
+.release {{ padding:42px 0; border-bottom:1px solid var(--rule); }}
+.release:last-of-type {{ border-bottom:0; }}
+.release-head {{ display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:4px; }}
+.release-head h2 {{
+  font-size:1.55rem; font-weight:780; letter-spacing:-.022em; scroll-margin-top:80px;
+}}
+.release-date {{ font-family:var(--mono); font-size:.78rem; color:var(--ink-3); }}
+.badge {{
+  font-family:var(--mono); font-size:.65rem; font-weight:700; text-transform:uppercase;
+  letter-spacing:.1em; color:var(--brand); background:var(--brand-soft);
+  border:1px solid color-mix(in srgb, var(--brand) 28%, transparent);
+  border-radius:999px; padding:2px 9px; line-height:1.5;
 }}
 .release h3 {{
-  font-size:.78rem; text-transform:uppercase; letter-spacing:.08em;
-  margin:22px 0 8px; color:var(--text-dim);
+  font-family:var(--mono); font-size:.71rem; text-transform:uppercase;
+  letter-spacing:.12em; font-weight:700; color:var(--ink-3); margin:24px 0 10px;
 }}
-.release h3.tone-green {{ color:var(--green); }}
-.release h3.tone-blue {{ color:var(--blue); }}
-.release h3.tone-accent {{ color:var(--accent-2); }}
-.release h3.tone-purple {{ color:var(--purple); }}
-.release p {{ color:var(--text-dim); margin:10px 0; }}
+.release h3.tone-green {{ color:var(--k-type); }}
+.release h3.tone-blue {{ color:var(--k-fn); }}
+.release h3.tone-accent {{ color:var(--brand); }}
+.release h3.tone-purple {{ color:var(--k-trait); }}
+.release p {{ color:var(--ink-2); margin:12px 0; max-width:74ch; }}
 .release ul {{ list-style:none; }}
-.release li {{ position:relative; padding-left:20px; margin:7px 0; color:var(--text-dim); }}
-.release li::before {{ content:"—"; position:absolute; left:0; color:var(--text-muted); }}
-.release strong {{ color:var(--text); font-weight:650; }}
-.tag-link {{ font-size:.82rem; color:var(--text-muted); }}
-footer {{ border-top:1px solid var(--border); padding:36px 0; margin-top:20px; }}
-.footer-inner {{
-  max-width:1100px; margin:0 auto; padding:0 24px; display:flex;
-  justify-content:space-between; gap:18px; flex-wrap:wrap; align-items:center;
+.release li {{
+  position:relative; padding-left:22px; margin:9px 0;
+  color:var(--ink-2); max-width:74ch;
 }}
-.footer-logo {{ display:flex; align-items:center; gap:10px; color:var(--text-dim); font-size:.9rem; }}
-.footer-links {{ display:flex; gap:20px; flex-wrap:wrap; }}
-.footer-links a {{ color:var(--text-dim); font-size:.9rem; }}
-@media (max-width:640px) {{
-  .nav-links {{ gap:14px; }}
-  .release {{ padding:30px 0; }}
+.release li::before {{
+  content:""; position:absolute; left:2px; top:.72em;
+  width:9px; height:1px; background:var(--ink-3);
 }}
+.release strong {{ color:var(--ink); font-weight:650; }}
+.tag-link {{ margin-top:22px; }}
+.tag-link a {{
+  font-family:var(--mono); font-size:.76rem; color:var(--ink-3);
+  border-bottom:1px solid var(--rule); padding-bottom:2px;
+}}
+.tag-link a:hover {{ color:var(--brand); border-color:var(--brand); }}
+
+.foot {{ border-top:1px solid var(--rule); padding:34px 0 44px; margin-top:30px; }}
+.foot-in {{ display:flex; justify-content:space-between; gap:20px; flex-wrap:wrap; align-items:center; }}
+.foot-id {{ display:flex; align-items:center; gap:9px; font-family:var(--mono); font-size:.78rem; color:var(--ink-3); }}
+.foot-id svg {{ width:18px; height:18px; color:var(--brand); }}
+.foot-links {{ display:flex; gap:20px; flex-wrap:wrap; }}
+.foot-links a {{ font-size:.85rem; color:var(--ink-2); }}
+.foot-links a:hover {{ color:var(--ink); }}
 </style>
 </head>
 <body>
-<nav>
-  <div class="nav-inner">
-    <a class="nav-logo" href="./">{logo} GitCortex</a>
+
+<nav class="nav">
+  <div class="nav-in">
+    <a class="brandmark" href="./" aria-label="GitCortex home">{logo} GitCortex</a>
     <ul class="nav-links">
-      <li><a href="./#features">Features</a></li>
-      <li><a href="./#install">Install</a></li>
-      <li><a href="./#mcp">MCP</a></li>
-      <li><a href="releases.html">Releases</a></li>
-      <li><a href="{repo}">GitHub</a></li>
+      <li class="nav-hide"><a href="./#how">How it works</a></li>
+      <li class="nav-hide"><a href="./#features">Features</a></li>
+      <li class="nav-hide"><a href="./#install">Install</a></li>
+      <li><a href="releases.html" aria-current="page">Releases</a></li>
+      <li><a class="nav-cta" href="{repo}">GitHub</a></li>
     </ul>
   </div>
 </nav>
 
-<header class="page">
-  <div class="container">
-    <h1>Release log</h1>
+<header class="masthead">
+  <div class="wrap">
+    <span class="eyebrow">Release log</span>
+    <h1>Every version, and what changed in it.</h1>
     <p>
-      Every released version of GitCortex, newest first. Generated from
-      <a href="{repo}/blob/main/CHANGELOG.md">CHANGELOG.md</a> at build time.
+      Newest first. Generated from
+      <a href="{repo}/blob/main/CHANGELOG.md">CHANGELOG.md</a> at build time, so this page
+      and the changelog cannot drift apart. Binaries and checksums for each version are on
+      the <a href="{repo}/releases">releases page</a>.
     </p>
-    <div class="jump">{jump}</div>
+    <nav class="index" aria-label="Jump to version">{jump}</nav>
   </div>
 </header>
 
-<main class="container">
+<main class="wrap">
 {releases}
 </main>
 
-<footer>
-  <div class="footer-inner">
-    <div class="footer-logo">{logo} GitCortex · MIT License</div>
-    <div class="footer-links">
+<footer class="foot">
+  <div class="wrap foot-in">
+    <div class="foot-id">{logo} GitCortex · MIT</div>
+    <div class="foot-links">
       <a href="./">Home</a>
       <a href="{repo}">GitHub</a>
       <a href="{repo}/releases">Downloads</a>
+      <a href="{repo}/blob/main/docs/REFERENCE.md">Reference</a>
       <a href="https://crates.io/crates/gitcortex">crates.io</a>
       <a href="https://pypi.org/project/gitcortex/">PyPI</a>
     </div>
@@ -302,8 +344,12 @@ def render_page(releases: list[Release]) -> str:
     blocks = []
     for index, release in enumerate(releases):
         version = html.escape(release.version)
-        date = f'<span class="release-date">{html.escape(release.date)}</span>' if release.date else ""
-        latest = '<span class="badge-latest">Latest</span>' if index == 0 else ""
+        date = (
+            f'<span class="release-date">{html.escape(release.date)}</span>'
+            if release.date
+            else ""
+        )
+        latest = '<span class="badge">Latest</span>' if index == 0 else ""
         blocks.append(
             f'<article class="release">'
             f'<div class="release-head">'
@@ -311,12 +357,12 @@ def render_page(releases: list[Release]) -> str:
             f"</div>"
             f"{render_body(release.body)}"
             f'<p class="tag-link"><a href="{REPO}/releases/tag/v{version}">'
-            f"Downloads and checksums for v{version} →</a></p>"
+            f"Downloads and checksums for v{version} &rarr;</a></p>"
             f"</article>"
         )
-    return PAGE.format(
-        logo=LOGO, repo=REPO, jump=jump, releases="\n".join(blocks)
-    )
+    return PAGE.format(logo=LOGO, repo=REPO, jump=jump, releases="\n".join(blocks))
+
+
 
 
 def main() -> int:
