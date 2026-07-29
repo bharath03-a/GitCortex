@@ -33,6 +33,28 @@ jobs:
       - uses: actions/checkout@v6
       - run: shellcheck hooks/post-commit hooks/post-merge hooks/post-rewrite hooks/post-checkout
 
+  # The benchmark harness and the Pages release-log generator are Python and
+  # ship no dependencies, so this needs nothing but a stdlib interpreter. The
+  # generator writes the published site, so a regression here reaches users.
+  python-tools:
+    name: python · tooling tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: agent-bench
+        working-directory: tools/agent-bench
+        run: python3 -m unittest discover -p "test_*.py" -v
+      - name: release page generator
+        working-directory: scripts
+        run: python3 -m unittest discover -p "test_*.py" -v
+      - name: release page renders from the real changelog
+        run: |
+          python3 scripts/build_release_page.py
+          test -s docs/releases.html
+
   # ── Tier 1: build viz once, upload as artifact, reuse everywhere ─────────────
 
   viz-bundle:
@@ -127,7 +149,11 @@ jobs:
         toolchain: [stable, "1.95"]
     steps:
       - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@master
+      # Pinned by commit rather than @master: that is a moving branch with full
+      # access to the runner. Safe to pin here because the toolchain is selected
+      # by the input below rather than by the ref, which is why the @stable
+      # usages elsewhere in this file cannot be pinned the same way.
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
         with:
           toolchain: ${{ matrix.toolchain }}
       - uses: Swatinem/rust-cache@v2

@@ -125,7 +125,7 @@ The `scope` is the crate name (`core`, `indexer`, `store`, `mcp`, `viz`) or a to
 
 ## Security disclosure
 
-If you discover a vulnerability, please email the maintainer privately rather than opening a public issue. See `SECURITY.md` once we publish it (TODO).
+If you discover a vulnerability, report it privately through GitHub's [report a vulnerability](https://github.com/bharath03-a/GitCortex/security/advisories/new) form rather than opening a public issue. See [`SECURITY.md`](SECURITY.md) for the threat model and what is in scope.
 
 ## Project governance
 
