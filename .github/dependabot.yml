@@ -1,0 +1,57 @@
+# Dependabot is configured for low volume on purpose.
+#
+# Left at its defaults it opens one pull request per dependency, which is
+# unmanageable for a single maintainer. Every ecosystem here is therefore
+# grouped into a single batched pull request, runs monthly rather than weekly,
+# and is capped at one open pull request at a time — at most three a month in
+# total.
+#
+# Major bumps are deliberately excluded: they need a human reading a changelog,
+# not an automated pull request. Review those on your own schedule.
+#
+# Security fixes do not come through this file. Dependabot security updates are
+# alert-driven, rare, and worth interrupting for, so they are enabled as a
+# repository setting and are not subject to these limits.
+version: 2
+
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      cargo:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: npm
+    directory: "/viz"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      viz:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 1
+    commit-message:
+      prefix: "ci(deps)"
+    groups:
+      actions:
+        patterns: ["*"]
