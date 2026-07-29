@@ -426,6 +426,7 @@ impl<'src> FileVisitor<'src> {
             return;
         };
         let name = self.text(name_node).to_owned();
+        let own_name = name.clone();
         let id = self
             .fn_index
             .get(&name)
@@ -461,6 +462,29 @@ impl<'src> FileVisitor<'src> {
 
         if let Some(body) = node.child_by_field_name("body") {
             self.collect_calls(body, &id);
+            let mut inner_scope = scope.to_vec();
+            inner_scope.push(own_name);
+            self.visit_nested_functions(body, &inner_scope, &id);
+        }
+    }
+
+    /// Index `function` declarations nested inside a function body.
+    ///
+    /// Program traversal only reaches top-level statements, so a helper declared
+    /// inside another function is otherwise invisible to the graph — hono's
+    /// `compose.ts` declares `dispatch` inside a returned arrow function.
+    /// Recursion stops at each declaration found, because `visit_function`
+    /// descends into its own body in turn.
+    fn visit_nested_functions(&mut self, node: TsNode<'_>, scope: &[String], parent_id: &NodeId) {
+        let mut cursor = node.walk();
+        let children: Vec<TsNode<'_>> = node.named_children(&mut cursor).collect();
+        for child in children {
+            match child.kind() {
+                "function_declaration" | "generator_function_declaration" => {
+                    self.visit_function(child, scope, Some(parent_id.clone()), NodeKind::Function);
+                }
+                _ => self.visit_nested_functions(child, scope, parent_id),
+            }
         }
     }
 
@@ -684,6 +708,7 @@ impl<'src> FileVisitor<'src> {
                         .get(&name)
                         .cloned()
                         .unwrap_or_else(NodeId::new);
+                    let own_name = name.clone();
                     let graph_node =
                         self.make_node(id.clone(), NodeKind::Function, name, scope, value);
                     self.nodes.push(graph_node);
@@ -691,6 +716,9 @@ impl<'src> FileVisitor<'src> {
                     self.extract_return_type_annotation(value, &id);
                     if let Some(body) = value.child_by_field_name("body") {
                         self.collect_calls(body, &id);
+                        let mut inner_scope = scope.to_vec();
+                        inner_scope.push(own_name);
+                        self.visit_nested_functions(body, &inner_scope, &id);
                     }
                 }
                 _ => {
@@ -1168,6 +1196,51 @@ mod tests {
             .collect();
         assert_eq!(fns.len(), 1);
         assert_eq!(fns[0].name, "greet");
+    }
+
+    #[test]
+    fn parses_function_nested_in_a_function_body() {
+        // hono's compose.ts declares `async function dispatch` inside the body
+        // of a returned arrow function; it was never indexed, so search and
+        // find_callers could not see it at all.
+        let src = "export const compose = () => {\n\
+                   \x20 return (context) => {\n\
+                   \x20   return dispatch(0)\n\
+                   \x20   async function dispatch(i) { return i }\n\
+                   \x20 }\n\
+                   }";
+        let (nodes, _) = parse_ts(src);
+        let names: Vec<&str> = nodes.iter().map(|n| n.name.as_str()).collect();
+        assert!(
+            names.contains(&"dispatch"),
+            "nested function declaration must be indexed, got {names:?}"
+        );
+    }
+
+    #[test]
+    fn nested_function_is_contained_by_its_parent() {
+        let src = "function outer() { function inner() {} }";
+        let (nodes, edges) = parse_ts(src);
+        let outer = nodes.iter().find(|n| n.name == "outer").expect("outer");
+        let inner = nodes.iter().find(|n| n.name == "inner").expect("inner");
+        assert!(
+            edges
+                .iter()
+                .any(|e| e.kind == EdgeKind::Contains && e.src == outer.id && e.dst == inner.id),
+            "expected outer to contain inner"
+        );
+    }
+
+    #[test]
+    fn nested_function_qualified_name_includes_its_parent() {
+        let src = "function outer() { function inner() {} }";
+        let (nodes, _) = parse_ts(src);
+        let inner = nodes.iter().find(|n| n.name == "inner").expect("inner");
+        assert!(
+            inner.qualified_name.contains("outer"),
+            "nested function should be qualified by its parent, got {}",
+            inner.qualified_name
+        );
     }
 
     #[test]
