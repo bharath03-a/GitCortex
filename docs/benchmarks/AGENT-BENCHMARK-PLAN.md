@@ -1,6 +1,6 @@
 # Agent-First Product and Benchmark Plan
 
-Status: proposed
+Status: in progress — Milestones 0–3 shipped (search ranking, TS parser recall, repo hardening); Milestone 4 (native release gate) is blocked on budget/credentials for the 3-round Codex + Claude runs.
 
 ## Executive conclusion
 
