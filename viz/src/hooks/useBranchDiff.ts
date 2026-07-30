@@ -12,10 +12,7 @@ export function useBranchDiff(base: string | null, head: string | null): DiffOve
   const [overlay, setOverlay] = useState<DiffOverlay | null>(null);
 
   useEffect(() => {
-    if (!base || !head) {
-      setOverlay(null);
-      return;
-    }
+    if (!base || !head) return;
     let cancelled = false;
     fetchBranchDiff(base, head)
       .then((d) => {
@@ -35,5 +32,6 @@ export function useBranchDiff(base: string | null, head: string | null): DiffOve
     };
   }, [base, head]);
 
+  if (!base || !head || overlay?.base !== base || overlay.head !== head) return null;
   return overlay;
 }
