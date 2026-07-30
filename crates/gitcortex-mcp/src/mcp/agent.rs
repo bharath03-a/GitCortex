@@ -163,6 +163,27 @@ pub struct AgentSearchResponse {
     pub next_action: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct AgentQueryOptions {
+    pub limit: usize,
+    pub budget_tokens: usize,
+}
+
+impl Default for AgentQueryOptions {
+    fn default() -> Self {
+        Self {
+            limit: DEFAULT_LIMIT,
+            budget_tokens: DEFAULT_BUDGET_TOKENS,
+        }
+    }
+}
+
+enum Resolution {
+    Exact(Box<Node>),
+    Ambiguous(Vec<Node>),
+    NotFound(Vec<Node>),
+}
+
 /// Format ranked search hits as compact implementation evidence shared by CLI
 /// and MCP. Retrieval may be lexical-only or RRF hybrid; presentation is stable.
 pub fn format_search<S: GraphStore + ?Sized>(
