@@ -37,7 +37,10 @@ export function SearchPalette({ data, onClose, onSelect }: Props) {
     return scored.slice(0, 50).map((s) => s.n);
   }, [query, data]);
 
-  useEffect(() => setCursor(0), [query]);
+  const onQueryChange = (nextQuery: string) => {
+    setQuery(nextQuery);
+    setCursor(0);
+  };
 
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") {
@@ -75,7 +78,7 @@ export function SearchPalette({ data, onClose, onSelect }: Props) {
             aria-expanded={results.length > 0}
             aria-activedescendant={results[cursor] ? `search-opt-${results[cursor].id}` : undefined}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => onQueryChange(e.target.value)}
             onKeyDown={onKey}
             placeholder="Search functions, structs, files…"
             className="flex-1 bg-transparent text-(--color-text-primary) placeholder:text-(--color-text-dim) focus:outline-none"

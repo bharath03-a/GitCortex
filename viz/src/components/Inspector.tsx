@@ -156,7 +156,7 @@ export function Inspector({ node, data, onClose, onSelect, depth, onDepthChange 
             {callers.length === 0 && callees.length === 0 && uses.length === 0 && <EmptyHint />}
           </>
         )}
-        {tab === "deep" && <DeepCallersPanel node={node} onSelect={onSelect} />}
+        {tab === "deep" && <DeepCallersPanel key={node.id} node={node} onSelect={onSelect} />}
       </div>
     </aside>
   );
@@ -164,18 +164,25 @@ export function Inspector({ node, data, onClose, onSelect, depth, onDepthChange 
 
 function DeepCallersPanel({ node, onSelect }: { node: RawNode; onSelect: (n: RawNode) => void }) {
   const [result, setResult] = useState<DeepCallersResult | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const depth = 3;
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
-    setResult(null);
+    let cancelled = false;
     fetchDeepCallers(node.name, depth)
-      .then(setResult)
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false));
+      .then((nextResult) => {
+        if (!cancelled) setResult(nextResult);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setError(String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [node.name, depth]);
 
   if (loading)
