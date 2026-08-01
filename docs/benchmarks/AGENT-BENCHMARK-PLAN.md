@@ -1,6 +1,6 @@
 # Agent-First Product and Benchmark Plan
 
-Status: proposed
+Status: in progress — Milestones 0–3 shipped (search ranking, TS parser recall, repo hardening). Milestone 4 step 1 (retrieval lane, free) is done: MRR 1.00, precision@5 0.68, file recall 1.00, 20/20 valid. A Codex graph-CLI smoke run (cobra, 1 round, gpt-5.4-mini) passed clean: 4/4 valid, quality non-inferior on all 4, token geomean 1.67×, uncached geomean 1.82× (`tools/agent-bench/results/codex-smoke-2026-07-31-20260731T070539Z.agent.jsonl`). The remaining gap to a full release gate is not purely a budget question: the controlled-answer lane (Lane 3) is not yet built, and the native-MCP lane (Lane 5) needs an Anthropic API key for Claude and is structurally blocked for Codex (current ChatGPT-account `codex exec` sessions do not expose ad-hoc MCP tools to the model — not fixable from this repo).
 
 ## Executive conclusion
 
