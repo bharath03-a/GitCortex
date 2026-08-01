@@ -173,7 +173,12 @@ export function Inspector({
           </>
         )}
         {tab === "deep" && (
-          <DeepCallersPanel key={node.id} node={node} branch={branch} onSelect={onSelect} />
+          <DeepCallersPanel
+            key={`${branch}\u0000${node.id}`}
+            node={node}
+            branch={branch}
+            onSelect={onSelect}
+          />
         )}
       </div>
     </aside>
@@ -196,9 +201,6 @@ function DeepCallersPanel({
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    setResult(null);
     fetchDeepCallers(node.id, branch, depth)
       .then((nextResult) => {
         if (!cancelled) setResult(nextResult);

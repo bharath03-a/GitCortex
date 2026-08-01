@@ -28,8 +28,12 @@ export default function App() {
   const [loadProgress, setLoadProgress] = useState<GraphLoadProgress | null>(null);
   const [selected, setSelected] = useState<RawNode | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("atlas");
-  const [focusedData, setFocusedData] = useState<GraphData | null>(null);
-  const [focusLimitReached, setFocusLimitReached] = useState(false);
+  const [focusResult, setFocusResult] = useState<{
+    nodeId: string;
+    branch: string;
+    data: GraphData;
+    limitReached: boolean;
+  } | null>(null);
   const [depth, setDepth] = useState(1);
   const [hiddenKinds, setHiddenKinds] = useState<Set<string>>(new Set());
   const [hiddenEdgeKinds, setHiddenEdgeKinds] = useState<Set<string>>(
@@ -55,6 +59,13 @@ export default function App() {
   const godNodesFetchedRef = useRef(false);
   const hotFilesFetchedRef = useRef(false);
   const diffOverlay = useBranchDiff(activeBranch, diffHead);
+  const focusIsCurrent =
+    viewMode === "investigate" &&
+    selected !== null &&
+    focusResult?.nodeId === selected.id &&
+    focusResult.branch === activeBranch;
+  const focusedData = focusIsCurrent ? focusResult.data : null;
+  const focusLimitReached = focusIsCurrent ? focusResult.limitReached : false;
 
   useEffect(() => {
     fetchBranches()
@@ -68,14 +79,6 @@ export default function App() {
   useEffect(() => {
     if (!activeBranch) return;
     const controller = new AbortController();
-    setRawData(null);
-    setError(null);
-    setLoadProgress(null);
-    setSelected(null);
-    setDiffHead(null);
-    setUnusedIds(null);
-    setGodNodeIds(null);
-    setHotFiles(null);
     loadGraphData(
       activeBranch,
       (partial, progress) => {
@@ -154,16 +157,16 @@ export default function App() {
   }, [searchOpen, helpOpen]);
 
   useEffect(() => {
-    if (viewMode !== "investigate" || !selected || !activeBranch) {
-      setFocusedData(null);
-      setFocusLimitReached(false);
-      return;
-    }
+    if (viewMode !== "investigate" || !selected || !activeBranch) return;
     const controller = new AbortController();
     fetchNeighborhood(selected.id, activeBranch, "both", 500, controller.signal)
       .then((result) => {
-        setFocusedData({ nodes: result.nodes, edges: result.edges });
-        setFocusLimitReached(result.limit_reached);
+        setFocusResult({
+          nodeId: selected.id,
+          branch: activeBranch,
+          data: { nodes: result.nodes, edges: result.edges },
+          limitReached: result.limit_reached,
+        });
       })
       .catch((focusError) => {
         if (focusError instanceof DOMException && focusError.name === "AbortError") return;
@@ -276,13 +279,26 @@ export default function App() {
     diffOverlay,
   ]);
 
+  const selectActiveBranch = (branch: string) => {
+    setRawData(null);
+    setError(null);
+    setLoadProgress(null);
+    setSelected(null);
+    setFocusResult(null);
+    setDiffHead(null);
+    setUnusedIds(null);
+    setGodNodeIds(null);
+    setHotFiles(null);
+    setActiveBranch(branch);
+  };
+
   return (
     <div className="flex h-screen flex-col bg-(--color-void) text-(--color-text-primary)">
       <Header
         onSearch={() => setSearchOpen(true)}
         onShowHelp={() => setHelpOpen(true)}
         activeBranch={activeBranch}
-        onSetActiveBranch={setActiveBranch}
+        onSetActiveBranch={selectActiveBranch}
         diffHead={diffHead}
         onSetDiffHead={setDiffHead}
       />
