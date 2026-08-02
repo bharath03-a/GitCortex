@@ -348,27 +348,73 @@ fn resolve_calls_batch(
 pub struct KuzuGraphStore {
     db: Database,
     repo_id: String,
+    /// Held for the store's lifetime so every in-process Kuzu owner participates
+    /// in the same cross-process exclusion protocol.
+    _repository_lock: Option<branch::RepositoryLock>,
+}
+
+fn acquire_repository_lock(repo_root: &Path, operation: &str) -> Result<branch::RepositoryLock> {
+    let mut lock = branch::RepositoryLock::try_acquire(repo_root)?.ok_or_else(|| {
+        let owner = branch::repository_lock_owner(repo_root);
+        GitCortexError::Store(format!(
+            "repository graph is active{}; close editor MCP sessions and stop `gcx viz`, then retry",
+            if owner.is_empty() {
+                String::new()
+            } else {
+                format!(" ({owner})")
+            }
+        ))
+    })?;
+    lock.set_owner(&format!("pid {} ({operation})", std::process::id()))?;
+    Ok(lock)
 }
 
 impl KuzuGraphStore {
     /// Open (or create) the graph database for the repo at `repo_root`.
     ///
-    /// If the persisted schema version doesn't match [`SCHEMA_VERSION`], the
-    /// entire repo data directory is wiped so a fresh full index runs on next
-    /// hook invocation.
+    /// Existing data with a different schema is never deleted as a side effect
+    /// of a query, hook, or server startup. An explicit `gcx init` performs the
+    /// rebuild through [`Self::open_for_init`].
     pub fn open(repo_root: &Path) -> Result<Self> {
-        let repo_id = branch::storage_repo_id(repo_root);
+        let lock = acquire_repository_lock(repo_root, "graph operation")?;
+        Self::open_with_schema_policy(repo_root, false, Some(lock))
+    }
 
+    /// Open the graph as the shared local MCP owner.
+    pub fn open_for_daemon(repo_root: &Path) -> Result<Self> {
+        let lock = acquire_repository_lock(repo_root, "repository daemon")?;
+        Self::open_with_schema_policy(repo_root, false, Some(lock))
+    }
+
+    /// Open the graph for an explicit initialization operation, rebuilding an
+    /// incompatible store only while exclusive repository ownership is held.
+    pub fn open_for_init(repo_root: &Path) -> Result<Self> {
+        let lock = acquire_repository_lock(repo_root, "initialization")?;
+        Self::open_with_schema_policy(repo_root, true, Some(lock))
+    }
+
+    fn open_with_schema_policy(
+        repo_root: &Path,
+        allow_rebuild: bool,
+        repository_lock: Option<branch::RepositoryLock>,
+    ) -> Result<Self> {
+        let repo_id = branch::storage_repo_id(repo_root);
+        let db_path = branch::db_path(&repo_id);
+        let existing_store = db_path.exists();
         let persisted_schema = branch::read_schema_version(&repo_id);
         if persisted_schema != SCHEMA_VERSION {
-            let existing_store = branch::db_path(&repo_id).exists();
-            if persisted_schema != 0 || existing_store {
+            if existing_store && !allow_rebuild {
+                return Err(GitCortexError::Store(format!(
+                    "graph schema version {persisted_schema} is incompatible with expected version {SCHEMA_VERSION}; run `gcx init` to rebuild the local index"
+                )));
+            }
+            if existing_store {
                 eprintln!(
-                    "gitcortex: schema version mismatch (expected {}); wiping graph store for re-index",
+                    "gitcortex: schema version mismatch (expected {}); rebuilding graph store during explicit initialization",
                     SCHEMA_VERSION
                 );
+                branch::wipe_repo_data(&repo_id)?;
             }
-            branch::wipe_repo_data(&repo_id);
             branch::write_schema_version(&repo_id, SCHEMA_VERSION)?;
         }
 
@@ -380,15 +426,20 @@ impl KuzuGraphStore {
         let db = Database::new(&db_path, SystemConfig::default()).map_err(|error| {
             let detail = error.to_string();
             if detail.to_ascii_lowercase().contains("lock") {
-                GitCortexError::Store(format!(
-                    "open db: {detail}; another GitCortex process owns this repository — use the active editor MCP server or stop `gcx serve` before running this command"
-                ))
+                GitCortexError::Store(
+                    "graph store is already owned by another process; close active editor MCP sessions or stop `gcx viz`, then retry"
+                        .to_owned(),
+                )
             } else {
                 GitCortexError::Store(format!("open db: {detail}"))
             }
         })?;
 
-        Ok(Self { db, repo_id })
+        Ok(Self {
+            db,
+            repo_id,
+            _repository_lock: repository_lock,
+        })
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

@@ -96,7 +96,7 @@ Open the repo as a Cargo project. RustRover handles the workspace automatically.
 
 ### "Can't set lock on file /Users/.../graph.kuzu"
 
-Two `gcx` processes are competing for the same KuzuDB. Kill any background `gcx viz` (`pkill -f "gcx viz"`) before running another command that touches the store.
+An operation that opens KuzuDB directly is competing with another graph owner. Multiple `gcx serve` clients normally share one repository daemon automatically; close active editor MCP sessions before running a one-shot CLI or visualization command. Also stop any background `gcx viz` process before another direct store operation. `gcx doctor` reports active daemon ownership without trying to open the database.
 
 ### "Viz frontend not built"
 

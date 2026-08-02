@@ -1234,7 +1234,6 @@ dependencies = [
  "anstyle",
  "anyhow",
  "clap",
- "fs2",
  "gitcortex-core",
  "gitcortex-indexer",
  "gitcortex-mcp",
@@ -1280,7 +1279,6 @@ version = "0.6.3"
 dependencies = [
  "anyhow",
  "fastembed",
- "fs2",
  "gitcortex-core",
  "gitcortex-indexer",
  "gitcortex-store",
@@ -1300,6 +1298,7 @@ version = "0.6.3"
 dependencies = [
  "blake3",
  "directories",
+ "fs2",
  "gitcortex-core",
  "kuzu",
  "tempfile",

@@ -4,10 +4,10 @@ use std::path::{Path, PathBuf};
 
 use gitcortex_core::{
     graph::{Edge, GraphDiff, Node, NodeId, NodeMetadata, Span},
-    schema::{NodeKind, Visibility},
+    schema::{NodeKind, Visibility, SCHEMA_VERSION},
     store::GraphStore,
 };
-use gitcortex_store::kuzu::KuzuGraphStore;
+use gitcortex_store::{branch, kuzu::KuzuGraphStore};
 
 fn make_node(name: &str, kind: NodeKind, file: &str, line: u32) -> Node {
     Node {
@@ -35,6 +35,19 @@ fn tmp_store() -> (KuzuGraphStore, tempfile::TempDir) {
     let dir = tempfile::tempdir().expect("tempdir");
     let store = KuzuGraphStore::open(dir.path()).expect("open store");
     (store, dir)
+}
+
+#[test]
+fn repository_lock_rejects_a_second_store_owner() {
+    let repo = tempfile::tempdir().expect("repo tempdir");
+    let first = KuzuGraphStore::open(repo.path()).expect("first store owner");
+    let error = KuzuGraphStore::open(repo.path())
+        .err()
+        .expect("second owner must be rejected");
+    assert!(error.to_string().contains("repository graph is active"));
+    drop(first);
+    let reopened = KuzuGraphStore::open(repo.path()).expect("lock released on drop");
+    drop(reopened);
 }
 
 #[test]
@@ -253,4 +266,29 @@ fn branch_diff_detects_added_and_removed_nodes() {
     assert_eq!(diff.added_edges[0].dst, node_c.id);
     assert_eq!(diff.removed_edges.len(), 1);
     assert_eq!(diff.removed_edges[0].1, node_b.id);
+}
+
+#[test]
+fn schema_mismatch_requires_explicit_initialization_before_rebuild() {
+    let repo = tempfile::tempdir().expect("repo tempdir");
+    let repo_id = branch::repo_id(repo.path());
+    let db_path = branch::db_path(&repo_id);
+    std::fs::create_dir_all(db_path.parent().expect("data parent")).expect("create data dir");
+    std::fs::write(&db_path, b"existing graph data").expect("fake existing graph");
+    branch::write_schema_version(&repo_id, SCHEMA_VERSION.saturating_sub(1))
+        .expect("old schema marker");
+
+    let error = KuzuGraphStore::open(repo.path())
+        .err()
+        .expect("ordinary open must reject incompatible schema");
+    assert!(error.to_string().contains("run `gcx init`"));
+    assert_eq!(
+        std::fs::read(&db_path).expect("preserved graph"),
+        b"existing graph data"
+    );
+
+    let store = KuzuGraphStore::open_for_init(repo.path()).expect("explicit rebuild");
+    drop(store);
+    assert_eq!(branch::read_schema_version(&repo_id), SCHEMA_VERSION);
+    branch::wipe_repo_data(&repo_id).expect("clean test data");
 }

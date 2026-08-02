@@ -76,7 +76,14 @@ impl GitCortexServer {
     }
 
     pub fn new_with_mode(repo_root: &Path, compact: bool) -> anyhow::Result<Self> {
-        let store = KuzuGraphStore::open(repo_root)?;
+        Self::with_store(repo_root, compact, KuzuGraphStore::open(repo_root)?)
+    }
+
+    pub fn new_daemon(repo_root: &Path) -> anyhow::Result<Self> {
+        Self::with_store(repo_root, true, KuzuGraphStore::open_for_daemon(repo_root)?)
+    }
+
+    fn with_store(repo_root: &Path, compact: bool, store: KuzuGraphStore) -> anyhow::Result<Self> {
         let default_branch = detect_current_branch(repo_root).unwrap_or_else(|| "main".into());
         let response_budget = std::env::var("GCX_RESPONSE_BUDGET")
             .ok()
@@ -93,6 +100,15 @@ impl GitCortexServer {
             semantic: Arc::new(Mutex::new(SemanticState::Pending)),
             staleness_cache: Arc::new(Mutex::new(None)),
         })
+    }
+
+    /// Clone the shared server state while selecting the tool-schema mode for
+    /// one MCP client. This lets the repository daemon serve compact and full
+    /// clients without opening KuzuDB more than once.
+    pub fn clone_with_mode(&self, compact: bool) -> Self {
+        let mut cloned = self.clone();
+        cloned.compact = compact;
+        cloned
     }
 
     fn resolve_branch(&self, requested: Option<&str>) -> String {

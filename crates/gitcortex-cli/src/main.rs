@@ -66,6 +66,12 @@ enum Commands {
         #[arg(long)]
         full: bool,
     },
+    /// Internal repository daemon used to multiplex local MCP clients.
+    #[command(name = "__serve-daemon", hide = true)]
+    ServeDaemon {
+        #[arg(long)]
+        repo_root: std::path::PathBuf,
+    },
     /// One-shot query commands — useful for manual testing.
     #[command(subcommand)]
     Query(QueryCmd),
@@ -295,6 +301,7 @@ fn main() {
         } => cmd::deinit::run(dry_run, purge, global_editor_config, shared_git_hooks),
         Commands::Hook { branch_switch } => cmd::hook::run(branch_switch),
         Commands::Serve { full } => cmd::serve::run(!full),
+        Commands::ServeDaemon { repo_root } => cmd::serve::run_daemon(repo_root),
         Commands::Query(q) => cmd::query::run(q),
         Commands::Viz {
             branch,

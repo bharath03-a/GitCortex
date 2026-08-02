@@ -25,7 +25,7 @@ pub fn run(
     let repo_root = repo_root()?;
     if serve_lock::is_active(&repo_root)? {
         anyhow::bail!(
-            "cannot initialise while `gcx serve` is active; stop the editor MCP server first"
+            "cannot initialise while the repository graph is active; close editor MCP sessions and stop `gcx viz`, then retry"
         );
     }
     ensure_hooks_scope(&repo_root, shared_git_hooks)?;

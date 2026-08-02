@@ -129,7 +129,8 @@ pub fn install_hooks(repo_root: &Path, allow_shared: bool) -> Result<usize> {
 }
 
 pub fn initial_index(repo_root: &Path) -> Result<(usize, usize)> {
-    let mut store = KuzuGraphStore::open(repo_root).context("failed to open graph store")?;
+    let mut store =
+        KuzuGraphStore::open_for_init(repo_root).context("failed to open graph store")?;
     let branch = current_branch(repo_root)?;
     let head_sha = head_sha(repo_root)?;
     let last_sha = store.last_indexed_sha(&branch)?;

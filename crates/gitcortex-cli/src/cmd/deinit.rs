@@ -19,11 +19,13 @@ pub fn run(
 ) -> Result<()> {
     let repo_root = repo_root()?;
     ensure_hooks_scope(&repo_root, shared_git_hooks || dry_run)?;
-    if purge && serve_lock::is_active(&repo_root)? {
-        anyhow::bail!(
-            "cannot purge graph data while `gcx serve` is active; stop the editor MCP server first"
-        );
-    }
+    // Dry-run never needs ownership. A real purge holds the lock throughout
+    // cleanup so daemon startup cannot race the data deletion.
+    let _repository_lock = if purge && !dry_run {
+        Some(serve_lock::acquire_mutation(&repo_root)?)
+    } else {
+        None
+    };
     let mut changes = 0usize;
 
     changes += remove_hooks(&repo_root, dry_run)?;
@@ -92,7 +94,14 @@ pub fn run(
     if purge {
         changes += remove_dir(&repo_root.join(".gitcortex"), dry_run)?;
         let repo_id = branch::storage_repo_id(&repo_root);
-        changes += remove_dir(&branch::data_dir(&repo_id), dry_run)?;
+        let data_dir = branch::data_dir(&repo_id);
+        if branch::has_repo_data(&repo_id)? {
+            show("remove graph data", &data_dir);
+            if !dry_run {
+                branch::wipe_repo_data(&repo_id)?;
+            }
+            changes += 1;
+        }
     }
 
     if changes == 0 {

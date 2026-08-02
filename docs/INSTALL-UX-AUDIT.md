@@ -17,13 +17,14 @@ hooks, storage, cleanup, updates, and release packaging.
 | Copilot received instructions but no MCP registration | Feature appeared enabled but was unavailable | `--editor copilot` now writes repository-local `.vscode/mcp.json` |
 | Hook installation assumed `.git/hooks` | Failed with `core.hooksPath` and linked worktrees | Hook paths come from `git rev-parse --git-path hooks`; external shared paths require `--shared-git-hooks` |
 | Hook failures could block commits and checkouts | Git operations depended on graph availability | Managed hook blocks are non-blocking and preserve existing hook content |
-| Hooks raced a long-running Kuzu owner | Lock errors on every Git operation | One server owns the graph; hooks delegate synchronization to its watcher |
+| Hooks raced a long-running Kuzu owner | Lock errors on every Git operation | The repository daemon owns the graph; hooks delegate synchronization to its watcher |
 | A running server stayed on its startup branch | Queries and semantic search could use stale branch state | Active branch, committed state, working-tree graph, and semantic revision now update while serving |
-| Multiple MCP servers failed with a raw Kuzu error | Poor diagnosis and repeated lock contention | Advisory ownership lock reports the owning PID and the one-server rule |
-| `clean`, purge, or init could touch an open database | Data loss or partial initialization | Destructive/initialization operations refuse while `gcx serve` is active |
+| Multiple MCP servers failed with a raw Kuzu error | Users could not open one repository in multiple editors | Stdio proxies share one user-only repository daemon; compact and full clients run concurrently |
+| `clean`, purge, or init could race an open database between check and mutation | Data loss or partial initialization | Every graph-opening process and destructive operation holds the same OS-released repository lock for its full lifetime |
 | There was no rollback command | Users had to manually find generated files | `gcx deinit`, `--dry-run`, `--global-editor-config`, and `--purge` remove only GitCortex-owned integration |
 | First index ran before `.gitcortex/ignore` existed | Build output could be indexed on first run | Exclusions are written before indexing; hooks are installed last |
 | Fresh installs printed a schema-mismatch wipe warning | Normal setup looked destructive | Fresh stores initialize silently; only real mismatches warn |
+| Any graph open could wipe an incompatible schema before acquiring Kuzu's lock | A query or older hook could delete data as a side effect | Only explicit, ownership-checked `gcx init` may rebuild an incompatible local index; ordinary opens fail with recovery guidance |
 | Durable IDs used unspecified `DefaultHasher` behavior | Future compiler updates could change storage identity | New repositories use a defined BLAKE3 ID; existing IDs remain discoverable |
 | Models were stored as durable application data | Replaceable downloads polluted the data directory | Models use the platform cache directory and migrate from the legacy location |
 | macOS used a Linux-specific default path | Non-native filesystem layout | New installs use native platform data/cache roots while preserving legacy stores |
@@ -31,17 +32,20 @@ hooks, storage, cleanup, updates, and release packaging.
 | Installer filenames and compact-mode docs were stale | Copy/paste commands failed | Documentation now matches cargo-dist artifacts and current CLI flags |
 | Homebrew was unavailable | Missing standard macOS installation path | cargo-dist now builds `gitcortex.rb` and release CI publishes it to the official tap |
 
-## Intentional constraint
+## Repository daemon and remaining embedded-store boundary
 
-KuzuDB permits a single read-write process for a database. GitCortex therefore
-supports one `gcx serve` owner per repository. While that server is active, its
-watcher owns branch and index synchronization; a second server receives a clear
-ownership error. Direct CLI commands that need to open the embedded store must
-use the active editor MCP server or run after stopping `gcx serve`.
+KuzuDB permits a single read-write process for a database. GitCortex now starts
+one short-lived, machine-local daemon per repository and makes each `gcx serve`
+process a stdio proxy. Multiple editors can connect simultaneously, including a
+mix of compact and full tool-schema clients, while the watcher and semantic
+indexer run only once. The Unix socket is repository-scoped, mode `0600`, and is
+removed after the final client disconnects.
 
-A future shared daemon could multiplex multiple MCP clients and CLI requests,
-but this branch deliberately chooses explicit single-process ownership rather
-than hiding lock races or risking concurrent database access.
+One embedded-store boundary remains: one-shot CLI and visualization commands
+still open KuzuDB directly. Run those after editor MCP clients disconnect; the
+daemon releases ownership within a short idle grace period. Routing every CLI
+output format through the daemon would require a versioned internal query
+protocol and is tracked separately from MCP client multiplexing.
 
 ## Homebrew activation prerequisite
 

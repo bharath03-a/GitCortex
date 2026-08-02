@@ -323,12 +323,14 @@ gcx hook --branch-switch   # post-checkout; synchronizes the checked-out branch
 
 ### `gcx serve`
 
-Starts the MCP server on stdio. Wire this up in your assistant's MCP config to give it access to the knowledge graph.
+Starts an MCP stdio proxy for your assistant. The first client starts a machine-local repository daemon that owns KuzuDB; later clients share that daemon, so Codex, Claude, Cursor, and other editors can query the same repository concurrently without lock races. The daemon exits shortly after its final client disconnects.
 
 ```bash
 gcx serve          # compact single-dispatch surface (default)
 gcx serve --full   # compact dispatch plus all individual tools
 ```
+
+Compact and full clients can run at the same time. The socket is repository-scoped, local-only, and permissioned for the current user.
 
 ### `gcx query`
 

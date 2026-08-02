@@ -163,7 +163,7 @@ By default, graph data and `.gitcortex/` are retained. `--global-editor-config` 
 
 ### gcx serve
 
-Start the MCP server on stdio (the transport used by all MCP clients).
+Start an MCP stdio proxy (the transport used by editor clients). The proxy connects to a repository-scoped local daemon that opens KuzuDB once and multiplexes concurrent editors.
 
 ```
 gcx serve [OPTIONS]
@@ -174,7 +174,9 @@ gcx serve [OPTIONS]
 | `--full` | Expose all individual tools in addition to the compact `gcx` dispatch tool. Compact mode is the default. |
 
 **Notes:**
-- The server tracks branch changes while running. Tools without an explicit `branch` use the currently checked-out branch.
+- The first client starts the repository daemon; compact and full clients may then run concurrently.
+- The daemon socket is local-only, permissioned for the current user, and removed shortly after the final client disconnects.
+- The daemon tracks branch changes while running. Tools without an explicit `branch` use the currently checked-out branch.
 - Editors launch `gcx serve` automatically via their MCP config. You rarely need to run this manually.
 
 **Examples:**
@@ -1349,5 +1351,6 @@ Branch names are sanitised for use as KuzuDB table prefixes: `/` â†’ `__`, `-` â
 | `TERM=dumb` | Disable colour (same as above). |
 | `GCX_STORE_PATH` | Override the platform data directory used for graph state. |
 | `GCX_CACHE_PATH` | Override the platform cache directory used for model weights. |
+| `GCX_DISABLE_SEMANTIC` | Disable local embedding-model initialization and use text/graph search only. Any set value enables this mode. |
 | `XDG_DATA_HOME` | Linux/XDG durable data root when `GCX_STORE_PATH` is unset. |
 | `XDG_CACHE_HOME` | Linux/XDG cache root when `GCX_CACHE_PATH` is unset. |

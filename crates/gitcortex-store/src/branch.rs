@@ -1,6 +1,7 @@
 use std::{
-    fs,
+    fs::{self, File, OpenOptions},
     hash::{DefaultHasher, Hash, Hasher},
+    io::{Read, Seek, Write},
     path::{Path, PathBuf},
 };
 
@@ -112,6 +113,58 @@ pub fn data_dir(repo_id: &str) -> PathBuf {
     data_root().join(repo_id)
 }
 
+/// Cross-process ownership guard for operations that may open or mutate one
+/// repository's embedded graph. The operating system releases it on crashes.
+pub struct RepositoryLock {
+    file: File,
+}
+
+impl RepositoryLock {
+    /// Try to claim repository ownership without waiting.
+    pub fn try_acquire(repo_root: &Path) -> Result<Option<Self>> {
+        let repo_id = storage_repo_id(repo_root);
+        let dir = data_dir(&repo_id);
+        fs::create_dir_all(&dir)?;
+        let file = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(dir.join("serve.lock"))?;
+        match fs2::FileExt::try_lock_exclusive(&file) {
+            Ok(()) => Ok(Some(Self { file })),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
+            Err(error) => Err(GitCortexError::Io(error)),
+        }
+    }
+
+    /// Read the diagnostic owner text left by the current or previous owner.
+    pub fn owner(&mut self) -> String {
+        let mut owner = String::new();
+        if self.file.rewind().is_ok() {
+            let _ = self.file.read_to_string(&mut owner);
+        }
+        owner.trim().to_owned()
+    }
+
+    /// Replace diagnostic owner text after ownership has been acquired.
+    pub fn set_owner(&mut self, owner: &str) -> Result<()> {
+        self.file.set_len(0)?;
+        self.file.rewind()?;
+        write!(self.file, "{owner}")?;
+        self.file.sync_data()?;
+        Ok(())
+    }
+}
+
+pub fn repository_lock_owner(repo_root: &Path) -> String {
+    let repo_id = storage_repo_id(repo_root);
+    fs::read_to_string(data_dir(&repo_id).join("serve.lock"))
+        .unwrap_or_default()
+        .trim()
+        .to_owned()
+}
+
 /// Machine-local cache root. Downloadable model weights are cache data, not
 /// durable application state.
 pub fn cache_root() -> PathBuf {
@@ -175,10 +228,45 @@ pub fn write_schema_version(repo_id: &str, version: u32) -> Result<()> {
     std::fs::write(&path, version.to_string()).map_err(GitCortexError::Io)
 }
 
-/// Wipe all per-repo data (DB + SHA files) so a fresh full index can run.
-pub fn wipe_repo_data(repo_id: &str) {
+/// Whether a repository data directory contains anything other than its
+/// reusable ownership lock file.
+pub fn has_repo_data(repo_id: &str) -> Result<bool> {
+    let entries = match fs::read_dir(data_dir(repo_id)) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(GitCortexError::Io(error)),
+    };
+    for entry in entries {
+        if entry?.file_name() != "serve.lock" {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Wipe per-repository graph data while preserving the advisory ownership
+/// lock inode. Keeping the lock file in place prevents a new daemon from
+/// slipping through while an explicit clean or schema rebuild is in progress.
+pub fn wipe_repo_data(repo_id: &str) -> Result<()> {
     let dir = data_dir(repo_id);
-    let _ = std::fs::remove_dir_all(&dir);
+    let entries = match fs::read_dir(&dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(GitCortexError::Io(error)),
+    };
+    for entry in entries {
+        let entry = entry?;
+        if entry.file_name() == "serve.lock" {
+            continue;
+        }
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            fs::remove_dir_all(entry.path())?;
+        } else {
+            fs::remove_file(entry.path())?;
+        }
+    }
+    Ok(())
 }
 
 // ── last_sha persistence ──────────────────────────────────────────────────────
