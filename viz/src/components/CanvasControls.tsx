@@ -47,7 +47,7 @@ export function CanvasControls({ cosmoRef }: Props) {
   };
 
   return (
-    <div className="absolute right-3 bottom-3 z-20 flex items-center gap-1 rounded-lg border border-(--color-border-subtle) bg-(--color-elevated)/90 p-1 backdrop-blur-sm">
+    <div className="graph-panel absolute right-4 bottom-4 z-20 flex items-center gap-px overflow-hidden rounded-md p-1">
       <Btn
         title="Zoom in"
         onClick={() => {
@@ -107,7 +107,7 @@ function Btn({
       title={title}
       aria-label={title}
       onClick={onClick}
-      className="rounded-md p-1.5 text-(--color-text-muted) hover:bg-(--color-elevated-hi) hover:text-(--color-text-primary)"
+      className="rounded p-1.5 text-(--color-text-muted) transition-colors hover:bg-(--color-accent-soft) hover:text-(--color-accent)"
     >
       {children}
     </button>

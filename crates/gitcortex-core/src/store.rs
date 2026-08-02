@@ -231,6 +231,32 @@ pub trait GraphStore: Send + Sync {
     /// Return all edges in `branch`'s graph.
     fn list_all_edges(&self, branch: &str) -> Result<Vec<Edge>>;
 
+    /// Return a deterministic page of nodes ordered by stable node ID.
+    ///
+    /// The default implementation slices `list_all_nodes` for compatibility.
+    /// Stores should override this with query-level `OFFSET`/`LIMIT` push-down
+    /// so visualization clients can progressively load very large graphs.
+    fn list_nodes_page(&self, branch: &str, offset: usize, limit: usize) -> Result<Vec<Node>> {
+        let mut nodes = self.list_all_nodes(branch)?;
+        nodes.sort_by_key(|node| node.id.as_str());
+        Ok(nodes.into_iter().skip(offset).take(limit).collect())
+    }
+
+    /// Return a deterministic page of edges ordered by source, destination,
+    /// kind, and source line. See [`GraphStore::list_nodes_page`].
+    fn list_edges_page(&self, branch: &str, offset: usize, limit: usize) -> Result<Vec<Edge>> {
+        let mut edges = self.list_all_edges(branch)?;
+        edges.sort_by_key(|edge| {
+            (
+                edge.src.as_str(),
+                edge.dst.as_str(),
+                edge.kind.to_string(),
+                edge.line,
+            )
+        });
+        Ok(edges.into_iter().skip(offset).take(limit).collect())
+    }
+
     /// Return edges of a specific `kind` in `branch`'s graph.
     /// The default filters `list_all_edges` in-memory; backends should override
     /// with a `WHERE`-clause push-down for large graphs.
@@ -647,6 +673,51 @@ pub trait GraphStore: Send + Sync {
             nodes: selected_nodes,
             edges: selected_edges,
         })
+    }
+
+    /// Return one bounded hop around an exact seed ID. Visualization clients
+    /// use repeated calls to expand large graphs without materializing an
+    /// unbounded multi-hop neighborhood.
+    fn get_neighborhood_by_id(
+        &self,
+        branch: &str,
+        seed_id: &str,
+        direction: &str,
+        limit: usize,
+    ) -> Result<SubGraph> {
+        let all_nodes = self.list_all_nodes(branch)?;
+        let by_id: std::collections::HashMap<String, Node> = all_nodes
+            .into_iter()
+            .map(|node| (node.id.as_str(), node))
+            .collect();
+        if !by_id.contains_key(seed_id) {
+            return Ok(SubGraph {
+                nodes: Vec::new(),
+                edges: Vec::new(),
+            });
+        }
+        let mut edges = Vec::new();
+        for edge in self.list_all_edges(branch)? {
+            let incoming = edge.dst.as_str() == seed_id;
+            let outgoing = edge.src.as_str() == seed_id;
+            if ((direction == "in" && incoming)
+                || (direction == "out" && outgoing)
+                || (direction == "both" && (incoming || outgoing)))
+                && edges.len() < limit
+            {
+                edges.push(edge);
+            }
+        }
+        let mut ids = std::collections::HashSet::from([seed_id.to_owned()]);
+        for edge in &edges {
+            ids.insert(edge.src.as_str());
+            ids.insert(edge.dst.as_str());
+        }
+        let nodes = ids
+            .into_iter()
+            .filter_map(|id| by_id.get(&id).cloned())
+            .collect();
+        Ok(SubGraph { nodes, edges })
     }
 
     // ── Indexing state ───────────────────────────────────────────────────────

@@ -1,21 +1,112 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../../node_modules/@fontsource/space-grotesk/files/space-grotesk-latin-400-normal.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../../node_modules/@fontsource/space-grotesk/files/space-grotesk-latin-500-normal.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 600 700;
+  font-display: swap;
+  src: url("../../node_modules/@fontsource/space-grotesk/files/space-grotesk-latin-600-normal.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../../node_modules/@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("../../node_modules/@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-500-normal.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("../../node_modules/@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-600-normal.woff2")
+    format("woff2");
+}
+
 @theme {
-  --color-void: #06060a;
-  --color-void-deep: #04040a;
-  --color-elevated: #12121c;
-  --color-elevated-hi: #1a1a26;
-  --color-border-subtle: #2a2a3a;
-  --color-border-strong: #3a3a4e;
-  --color-text-primary: #e6e6f0;
-  --color-text-muted: #8a8aa3;
-  --color-text-dim: #7e7e99;
-  --color-accent: #a78bfa;
-  --color-accent-deep: #7c3aed;
-  --color-accent-soft: rgba(167, 139, 250, 0.12);
-  --color-good: #10b981;
-  --color-warn: #f59e0b;
-  --color-bad: #ef4444;
+  /* GitCortex product palette — shared with the technical datasheet. */
+  --color-void: #fcfcfa;
+  --color-void-deep: #ffffff;
+  --color-elevated: #f5f5f1;
+  --color-elevated-hi: #efeee9;
+  --color-border-subtle: #e5e4de;
+  --color-border-strong: #cbc9c0;
+  --color-text-primary: #14141a;
+  --color-text-muted: #55555f;
+  --color-text-dim: #7a7a84;
+  --color-accent: #c4633f;
+  --color-accent-deep: #a84d2d;
+  --color-accent-soft: rgba(196, 99, 63, 0.1);
+  --color-good: #2f6f5e;
+  --color-warn: #8a6d28;
+  --color-bad: #b84b42;
+}
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --font-sans: "Space Grotesk", sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+  --shadow-float: 0 1px 2px rgba(20, 20, 26, 0.04), 0 18px 44px -22px rgba(20, 20, 26, 0.28);
+  --canvas-grid-minor: rgba(20, 20, 26, 0.028);
+  --canvas-grid-major: rgba(196, 99, 63, 0.035);
+  --canvas-glow: rgba(196, 99, 63, 0.055);
+  --cluster-label-shadow: rgba(20, 20, 26, 0.08);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --color-void: #101216;
+  --color-void-deep: #15171c;
+  --color-elevated: #1b1e24;
+  --color-elevated-hi: #23272e;
+  --color-border-subtle: #2c313a;
+  --color-border-strong: #464d59;
+  --color-text-primary: #f0eee8;
+  --color-text-muted: #b5b1a8;
+  --color-text-dim: #81858f;
+  --color-accent: #e17b54;
+  --color-accent-deep: #f08d66;
+  --color-accent-soft: rgba(225, 123, 84, 0.14);
+  --color-good: #72b69f;
+  --color-warn: #d2ac5c;
+  --color-bad: #df756c;
+  --shadow-float: 0 1px 2px rgba(0, 0, 0, 0.32), 0 22px 54px -24px rgba(0, 0, 0, 0.85);
+  --canvas-grid-minor: rgba(238, 236, 230, 0.025);
+  --canvas-grid-major: rgba(225, 123, 84, 0.045);
+  --canvas-glow: rgba(225, 123, 84, 0.075);
+  --cluster-label-shadow: rgba(0, 0, 0, 0.35);
 }
 
 html,
@@ -26,14 +117,7 @@ body,
   padding: 0;
   background: var(--color-void);
   color: var(--color-text-primary);
-  font-family:
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    "SF Pro Text",
-    "Segoe UI",
-    Roboto,
-    sans-serif;
+  font-family: var(--font-sans);
   font-size: 13px;
   overflow: hidden;
 }
@@ -42,19 +126,26 @@ body,
   box-sizing: border-box;
 }
 
-button {
+button,
+input {
   font-family: inherit;
+}
+
+button {
   cursor: pointer;
 }
 
-/* Visible focus ring for keyboard navigation — applies to all interactive
-   elements when navigated via keyboard, not on mouse click. */
+.font-mono,
+code,
+kbd {
+  font-family: var(--font-mono);
+}
+
 :focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
-/* Screen-reader-only utility (no Tailwind dependency needed here). */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -78,17 +169,21 @@ button {
 
 ::-webkit-scrollbar-thumb {
   background: var(--color-border-subtle);
-  border-radius: 4px;
+  border: 2px solid transparent;
+  border-radius: 99px;
+  background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-border-strong);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 @keyframes fade-in {
   from {
     opacity: 0;
-    transform: translateY(2px);
+    transform: translateY(3px);
   }
   to {
     opacity: 1;
@@ -97,11 +192,50 @@ button {
 }
 
 .animate-fade-in {
-  animation: fade-in 140ms ease-out;
+  animation: fade-in 150ms ease-out;
 }
 
 .canvas-bg {
-  background:
-    radial-gradient(circle at center, rgba(124, 58, 237, 0.04) 0%, transparent 60%),
-    radial-gradient(circle at center, #0a0a14 0%, #06060a 100%);
+  background-color: var(--color-void);
+  background-image:
+    linear-gradient(var(--canvas-grid-minor) 1px, transparent 1px),
+    linear-gradient(90deg, var(--canvas-grid-minor) 1px, transparent 1px),
+    linear-gradient(var(--canvas-grid-major) 1px, transparent 1px),
+    linear-gradient(90deg, var(--canvas-grid-major) 1px, transparent 1px),
+    radial-gradient(circle at 52% 44%, var(--canvas-glow), transparent 54%);
+  background-size:
+    20px 20px,
+    20px 20px,
+    100px 100px,
+    100px 100px,
+    100% 100%;
+  background-position: center;
+}
+
+.graph-panel {
+  border: 1px solid var(--color-border-subtle);
+  background: color-mix(in srgb, var(--color-void-deep) 92%, transparent);
+  box-shadow: var(--shadow-float);
+  backdrop-filter: blur(12px);
+}
+
+.graph-point-label {
+  color: var(--color-text-primary) !important;
+  background: color-mix(in srgb, var(--color-void-deep) 90%, transparent) !important;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+  padding: 2px 5px;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  box-shadow: 0 2px 8px var(--cluster-label-shadow);
+  backdrop-filter: blur(8px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
 }

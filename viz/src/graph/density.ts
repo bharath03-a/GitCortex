@@ -1,11 +1,17 @@
 import type { GraphData, RawEdge, RawNode } from "../api";
 
-export type DensityMode = "focused" | "public" | "full";
+export type DensityMode = "connected" | "api" | "all";
 
 export const DENSITY_LABEL: Record<DensityMode, string> = {
-  focused: "Focused",
-  public: "Public API",
-  full: "Full graph",
+  connected: "Connected",
+  api: "API surface",
+  all: "All indexed",
+};
+
+export const DENSITY_DESCRIPTION: Record<DensityMode, string> = {
+  connected: "Symbols participating in semantic relationships",
+  api: "Symbols exposed outside their local implementation scope",
+  all: "Every indexed symbol and structural node",
 };
 
 const SEMANTIC_EDGE_KINDS = new Set(["calls", "implements", "inherits", "uses", "throws"]);
@@ -13,9 +19,9 @@ const SEMANTIC_EDGE_KINDS = new Set(["calls", "implements", "inherits", "uses", 
 const STRUCTURAL_KINDS = new Set(["folder", "file", "module"]);
 
 export function applyDensity(data: GraphData, mode: DensityMode): GraphData {
-  if (mode === "full") return data;
+  if (mode === "all") return data;
 
-  if (mode === "public") {
+  if (mode === "api") {
     const keep = new Set(data.nodes.filter((n) => n.visibility === "pub").map((n) => n.id));
     return filterByIds(data, keep);
   }

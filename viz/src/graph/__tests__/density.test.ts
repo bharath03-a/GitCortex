@@ -35,25 +35,25 @@ const buildGraph = (): GraphData => ({
 });
 
 describe("applyDensity", () => {
-  it("returns the full graph unchanged in `full` mode", () => {
+  it("returns the full graph unchanged in `all` mode", () => {
     const g = buildGraph();
-    expect(applyDensity(g, "full")).toEqual(g);
+    expect(applyDensity(g, "all")).toEqual(g);
   });
 
-  it("keeps only pub symbols in `public` mode", () => {
-    const out = applyDensity(buildGraph(), "public");
+  it("keeps only exposed symbols in `api` mode", () => {
+    const out = applyDensity(buildGraph(), "api");
     const names = out.nodes.map((n) => n.name).sort();
     expect(names).toEqual(["baz", "file1", "foo", "orphan"]);
   });
 
-  it("drops File/Folder/Module + orphan semantic nodes in `focused` mode", () => {
-    const out = applyDensity(buildGraph(), "focused");
+  it("drops structural and orphan nodes in `connected` mode", () => {
+    const out = applyDensity(buildGraph(), "connected");
     const names = out.nodes.map((n) => n.name).sort();
     expect(names).toEqual(["bar", "baz", "foo"]);
   });
 
   it("filters edges to surviving endpoints", () => {
-    const out = applyDensity(buildGraph(), "focused");
+    const out = applyDensity(buildGraph(), "connected");
     expect(out.edges.every((e) => e.kind !== "contains")).toBe(true);
     for (const e of out.edges) {
       const ids = new Set(out.nodes.map((n) => n.id));
