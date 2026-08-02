@@ -50,18 +50,14 @@ GitCortex gives your AI editor a pre-built, queryable call graph of your repo â€
 
 ## Demo
 
-<!-- VIDEO_SLOT
-     Drop your recording here. Two supported shapes:
+<p align="center">
+  <img src="docs/demo.gif" alt="Scrolling through the GitCortex landing page: the explorer screenshots, then toggling between benchmark runs" width="760"/>
+</p>
 
-       1. GitHub-uploaded asset:
-          https://github.com/user-attachments/assets/<id>
-
-       2. Local file checked in under docs/ (preferred for repeatability):
-
-       https://github.com/bharath03-a/GitCortex/assets/PLACEHOLDER/demo.mp4
--->
-
-> _Demo video coming soon â€” see `docs/demo.mp4` once recorded._
+The Atlas and Investigation screenshots in the tour above are real captures of
+`gcx viz` indexing this repository, not mockups. See the
+[product page](https://bharath03-a.github.io/GitCortex/#explorer) for the
+full-resolution versions.
 
 ---
 
