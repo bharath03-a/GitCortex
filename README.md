@@ -51,13 +51,13 @@ GitCortex gives your AI editor a pre-built, queryable call graph of your repo â€
 ## Demo
 
 <p align="center">
-  <img src="docs/demo.gif" alt="Scrolling through the GitCortex landing page: the explorer screenshots, then toggling between benchmark runs" width="760"/>
+  <img src="docs/demo.gif" alt="GitCortex local visualization moving from the repository atlas into the live symbol graph, searching for KuzuGraphStore, and opening its investigation neighborhood" width="800"/>
 </p>
 
-The Atlas and Investigation screenshots in the tour above are real captures of
-`gcx viz` indexing this repository, not mockups. See the
-[product page](https://bharath03-a.github.io/GitCortex/#explorer) for the
-full-resolution versions.
+This is a real capture of `gcx viz` running locally against the GitCortex
+repository: 2,495 indexed symbols, the live force-directed graph, complete
+symbol search, and an exact investigation neighborhood. No hosted product page
+or mock data is shown.
 
 ---
 
