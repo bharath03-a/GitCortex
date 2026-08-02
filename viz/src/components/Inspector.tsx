@@ -17,6 +17,12 @@ interface Props {
   hotspot: FileHotspot | null;
 }
 
+const VISIBILITY_LABEL: Record<string, string> = {
+  pub: "Exposed",
+  pub_crate: "Package/internal",
+  private: "Local/private",
+};
+
 const RISK_TONE: Record<string, string> = {
   LOW: "text-(--color-good) bg-[#2F6F5E]/10",
   MEDIUM: "text-(--color-warn) bg-[#8A6D28]/10",
@@ -100,7 +106,7 @@ export function Inspector({
           <ExternalLink className="size-3 shrink-0" />
         </a>
         <div className="flex flex-wrap gap-1.5">
-          <Badge>{node.visibility}</Badge>
+          <Badge>{VISIBILITY_LABEL[node.visibility] ?? node.visibility}</Badge>
           <Badge>{node.loc} LOC</Badge>
           {node.is_async && <Badge tone="accent">async</Badge>}
           {node.is_unsafe && <Badge tone="warn">unsafe</Badge>}

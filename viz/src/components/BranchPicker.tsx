@@ -12,37 +12,76 @@ interface Props {
 export function BranchPicker({ active, onSetActive, diffHead, onSetDiffHead }: Props) {
   const [open, setOpen] = useState(false);
   const [branches, setBranches] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
-    fetchBranches()
-      .then((b) => setBranches(b.branches))
-      .catch(() => {});
-  }, [open]);
+    const controller = new AbortController();
+    fetchBranches(controller.signal)
+      .then((result) => {
+        const available = new Set(result.branches);
+        if (active) available.add(active);
+        setBranches(
+          [...available].sort((left, right) => {
+            if (left === active) return -1;
+            if (right === active) return 1;
+            return left.localeCompare(right);
+          }),
+        );
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setLoadError(true);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [open, active]);
 
   useEffect(() => {
-    const onDoc = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+    const onDoc = (event: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(event.target as Node)) setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
     };
     document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
   }, []);
 
   return (
     <div ref={wrapRef} className="relative">
       <button
-        onClick={() => setOpen((o) => !o)}
-        className="flex h-9 max-w-[240px] items-center gap-1.5 rounded-md border border-(--color-border-subtle) bg-(--color-void-deep) px-2.5 text-(--color-text-muted) transition-colors hover:border-(--color-border-strong) hover:text-(--color-text-primary)"
+        onClick={() => {
+          if (!open) {
+            setLoading(true);
+            setLoadError(false);
+          }
+          setOpen((current) => !current);
+        }}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="flex h-9 min-w-[168px] max-w-[240px] items-center gap-1.5 rounded-md border border-(--color-border-subtle) bg-(--color-void-deep) px-2.5 text-(--color-text-muted) transition-colors hover:border-(--color-border-strong) hover:text-(--color-text-primary)"
       >
-        <GitBranch className="size-3.5" />
-        <span className="truncate font-mono text-[10px] font-medium">{active ?? "—"}</span>
+        <GitBranch className="size-3.5 shrink-0" />
+        <span className="min-w-0 flex-1 truncate text-left font-mono text-[10px] font-medium">
+          {active ?? "—"}
+        </span>
         {diffHead && (
-          <span className="font-mono text-[11px] text-(--color-accent)">↔ {diffHead}</span>
+          <span className="max-w-[86px] truncate font-mono text-[10px] text-(--color-accent)">
+            vs {diffHead}
+          </span>
         )}
-        <ChevronDown className="size-3" />
+        <ChevronDown
+          className={`size-3 shrink-0 transition-transform ${open ? "rotate-180" : ""}`}
+        />
       </button>
       {open && (
         <div className="animate-fade-in absolute top-full right-0 z-40 mt-1.5 w-[280px] overflow-hidden rounded-md border border-(--color-border-subtle) bg-(--color-void-deep) shadow-[var(--shadow-float)]">
@@ -66,9 +105,17 @@ export function BranchPicker({ active, onSetActive, diffHead, onSetDiffHead }: P
                 </button>
               </li>
             ))}
+            {loading && branches.length === 0 && (
+              <li className="px-3 py-2 text-[11px] text-(--color-text-dim)">Loading branches…</li>
+            )}
+            {loadError && (
+              <li className="px-3 py-2 text-[11px] text-(--color-bad)">
+                Branches could not be refreshed. Close and retry.
+              </li>
+            )}
           </ul>
           <div className="flex items-center gap-1.5 border-y border-(--color-border-subtle) bg-(--color-elevated)/65 px-3 py-2 font-mono text-[9px] font-semibold tracking-[0.14em] text-(--color-text-dim) uppercase">
-            <GitCompare className="size-3" /> Compare {active ?? "—"} with
+            <GitCompare className="size-3" /> Compare against
           </div>
           <ul className="max-h-[24vh] overflow-y-auto py-1">
             {diffHead && (
@@ -102,8 +149,10 @@ export function BranchPicker({ active, onSetActive, diffHead, onSetDiffHead }: P
                   </button>
                 </li>
               ))}
-            {branches.length === 0 && (
-              <li className="px-3 py-2 text-[11px] text-(--color-text-dim)">Loading branches…</li>
+            {!loading && branches.length <= 1 && (
+              <li className="px-3 py-2 text-[11px] text-(--color-text-dim)">
+                No other local branches
+              </li>
             )}
           </ul>
         </div>

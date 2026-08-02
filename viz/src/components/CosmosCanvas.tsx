@@ -420,12 +420,6 @@ export function CosmosCanvas({
           showDynamicLabelsLimit={scaleProfile.dynamicLabelLimit}
           showTopLabels
           showTopLabelsLimit={scaleProfile.topLabelLimit}
-          showClusterLabels={!selected && points.length > 1_000}
-          showClusterLabelsLimit={12}
-          clusterLabelFontSize={11}
-          clusterLabelClassName="graph-cluster-label"
-          scaleClusterLabels={false}
-          usePointColorStrategyForClusterLabels={false}
           showHoveredPointLabel
           renderHoveredPointRing
           hoveredPointCursor="pointer"

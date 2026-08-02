@@ -10,6 +10,7 @@ import {
   type ErrorInfo,
   type ReactNode,
 } from "react";
+import { PanelLeftOpen } from "lucide-react";
 import type { FileHotspot, GraphData, GraphLoadProgress, RawNode } from "./api";
 import {
   fetchBranches,
@@ -98,7 +99,7 @@ export default function App() {
   const [hiddenVisibility, setHiddenVisibility] = useState<Set<Visibility>>(new Set());
   const [flagFilter, setFlagFilter] = useState<Set<Flag>>(new Set());
   const [railOpen, setRailOpen] = useState(true);
-  const [density, setDensity] = useState<DensityMode>("focused");
+  const [density, setDensity] = useState<DensityMode>("connected");
   const [searchOpen, setSearchOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [activeBranch, setActiveBranch] = useState<string | null>(null);
@@ -114,7 +115,7 @@ export default function App() {
   const unusedFetchedRef = useRef(false);
   const godNodesFetchedRef = useRef(false);
   const hotFilesFetchedRef = useRef(false);
-  const diffOverlay = useBranchDiff(activeBranch, diffHead);
+  const diffOverlay = useBranchDiff(diffHead, activeBranch);
   const focusIsCurrent =
     viewMode === "investigate" &&
     selected !== null &&
@@ -139,6 +140,16 @@ export default function App() {
     document
       .querySelector('meta[name="theme-color"]')
       ?.setAttribute("content", theme === "dark" ? "#101216" : "#fcfcfa");
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => {
+    const next: ProductTheme = theme === "light" ? "dark" : "light";
+    document.documentElement.dataset.theme = next;
+    document.documentElement.style.colorScheme = next;
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute("content", next === "dark" ? "#101216" : "#fcfcfa");
+    setTheme(next);
   }, [theme]);
 
   const selectInsightLens = useCallback(
@@ -219,13 +230,13 @@ export default function App() {
           setSelected(null);
           break;
         case "1":
-          setDensity("focused");
+          setDensity("connected");
           break;
         case "2":
-          setDensity("public");
+          setDensity("api");
           break;
         case "3":
-          setDensity("full");
+          setDensity("all");
           break;
         case "u":
         case "U":
@@ -445,7 +456,7 @@ export default function App() {
         diffHead={diffHead}
         onSetDiffHead={setDiffHead}
         theme={theme}
-        onToggleTheme={() => setTheme((current) => (current === "light" ? "dark" : "light"))}
+        onToggleTheme={toggleTheme}
       />
       <main className="flex flex-1 overflow-hidden">
         {railOpen && (
@@ -458,7 +469,7 @@ export default function App() {
             viewMode={viewMode}
             onViewModeChange={(mode) => {
               setViewMode(mode);
-              if (mode === "investigate") setDensity("full");
+              if (mode === "investigate") setDensity("all");
             }}
             canInvestigate={selected !== null}
             insightLens={insightLens}
@@ -480,10 +491,12 @@ export default function App() {
           {!railOpen && (
             <button
               onClick={() => setRailOpen(true)}
-              title="Show filters ([ )"
-              className="graph-panel absolute top-4 left-4 z-10 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-(--color-text-muted) hover:text-(--color-accent)"
+              title="Open graph workspace ([ )"
+              aria-label="Open graph workspace"
+              className="graph-panel absolute top-4 left-4 z-10 flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-(--color-text-muted) hover:text-(--color-accent)"
             >
-              Filters
+              <PanelLeftOpen className="size-3.5" />
+              Workspace
             </button>
           )}
           {error && (
@@ -656,7 +669,7 @@ export default function App() {
           data={rawData}
           onClose={() => setSearchOpen(false)}
           onSelect={(node) => {
-            setDensity("full");
+            setDensity("all");
             setViewMode("investigate");
             setHiddenKinds((hidden) => {
               const next = new Set(hidden);

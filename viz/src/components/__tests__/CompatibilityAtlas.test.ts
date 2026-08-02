@@ -12,7 +12,7 @@ function node(id: string, file: string, loc: number): RawNode {
     end_line: loc,
     qualified_name: id,
     loc,
-    visibility: "public",
+    visibility: "pub",
     is_async: false,
     is_unsafe: false,
   };

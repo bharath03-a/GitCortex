@@ -216,8 +216,8 @@ export async function fetchUnused(branch: string, kind?: string): Promise<Unused
   return r.json();
 }
 
-export async function fetchBranches(): Promise<BranchListResult> {
-  const r = await fetch("/api/branches");
+export async function fetchBranches(signal?: AbortSignal): Promise<BranchListResult> {
+  const r = await fetch("/api/branches", { signal });
   if (!r.ok) throw new Error(`/api/branches returned ${r.status}`);
   return r.json();
 }

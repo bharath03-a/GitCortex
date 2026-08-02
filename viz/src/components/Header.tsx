@@ -24,7 +24,7 @@ export function Header({
   onToggleTheme,
 }: Props) {
   return (
-    <header className="flex h-[60px] shrink-0 items-center gap-4 border-b border-(--color-border-subtle) bg-(--color-void-deep)/95 px-5 backdrop-blur-xl">
+    <header className="relative z-50 flex h-[60px] shrink-0 items-center gap-4 border-b border-(--color-border-subtle) bg-(--color-void-deep)/95 px-5 backdrop-blur-xl">
       <div className="flex min-w-[220px] shrink-0 items-center gap-3">
         <BrandMark />
         <div className="leading-none">

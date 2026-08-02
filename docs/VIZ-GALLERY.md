@@ -9,8 +9,8 @@ The sample was a clean Git repository created from the GitCortex `origin/main` s
 ```text
 2,369 indexed nodes
 8,006 indexed edges
-14 architecture groups in the default focused view
-1,055 visible symbols and 3,699 visible relations in that view
+14 architecture groups in the default connected-symbol scope
+1,055 visible symbols and 3,699 visible relations in that scope
 ```
 
 The test used an isolated `XDG_DATA_HOME` so it did not read or modify the developer's normal GitCortex graph store.
@@ -30,7 +30,7 @@ The default view uses semantic architecture groups instead of presenting more th
 
 ## Dark theme — exact symbol graph
 
-The graphite theme uses a separately tuned graph palette. The exact WebGL graph is an on-demand detail surface with bounded labels, thin contextual edges, package clustering, and a route back to the grouped overview.
+The graphite theme uses a separately tuned graph palette and the same self-hosted Space Grotesk/IBM Plex Mono product typography. The exact WebGL graph is an on-demand detail surface with bounded labels, thin contextual edges, package clustering, and a route back to the grouped overview.
 
 ![GitCortex exact symbol graph in the dark theme](assets/viz/symbol-graph-dark.png)
 

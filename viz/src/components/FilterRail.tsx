@@ -11,7 +11,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { FileHotspot, GraphData } from "../api";
-import { DENSITY_LABEL, type DensityMode } from "../graph/density";
+import { DENSITY_DESCRIPTION, DENSITY_LABEL, type DensityMode } from "../graph/density";
 import type { ViewMode } from "../graph/view";
 import {
   CONFIDENCE_COLOR,
@@ -26,9 +26,9 @@ export type Flag = "async" | "unsafe";
 export type InsightLens = "changes" | "impact" | "unused" | "complexity" | "boundaries" | null;
 
 const VIS_LABEL: Record<Visibility, string> = {
-  pub: "pub",
-  pub_crate: "pub(crate)",
-  private: "private",
+  pub: "Exposed",
+  pub_crate: "Package/internal",
+  private: "Local/private",
 };
 
 interface Props {
@@ -151,20 +151,20 @@ export function FilterRail({
           />
         </div>
 
-        <SectionLabel className="mt-5">Detail</SectionLabel>
+        <SectionLabel className="mt-5">Graph scope</SectionLabel>
         <div className="grid grid-cols-3 gap-px overflow-hidden rounded-md border border-(--color-border-subtle) bg-(--color-border-subtle)">
-          {(["focused", "public", "full"] as DensityMode[]).map((mode) => (
+          {(["connected", "api", "all"] as DensityMode[]).map((mode) => (
             <button
               key={mode}
               onClick={() => onDensityChange(mode)}
-              title={DENSITY_LABEL[mode]}
+              title={`${DENSITY_LABEL[mode]} — ${DENSITY_DESCRIPTION[mode]}`}
               className={`rounded-md px-1.5 py-1.5 text-[10px] transition-colors ${
                 density === mode
                   ? "bg-(--color-void-deep) font-semibold text-(--color-accent)"
                   : "bg-(--color-elevated) text-(--color-text-muted) hover:bg-(--color-void-deep) hover:text-(--color-text-primary)"
               }`}
             >
-              {mode === "public" ? "Public" : DENSITY_LABEL[mode]}
+              {DENSITY_LABEL[mode]}
             </button>
           ))}
         </div>
@@ -400,7 +400,7 @@ function InsightButton({
       className={`flex w-full items-center gap-2.5 rounded-md border px-2.5 py-2 text-left transition-colors ${
         active
           ? activeTone
-          : "border-(--color-border-subtle) bg-(--color-void-deep) text-(--color-text-muted) hover:border-(--color-border-strong) hover:bg-(--color-elevated) hover:text-(--color-text-primary)"
+          : "border-transparent bg-transparent text-(--color-text-muted) hover:border-(--color-border-subtle) hover:bg-(--color-elevated) hover:text-(--color-text-primary)"
       }`}
     >
       <span className="shrink-0">{icon}</span>
