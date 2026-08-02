@@ -61,14 +61,14 @@ export function SearchPalette({ data, onClose, onSelect }: Props) {
 
   return (
     <div
-      className="animate-fade-in fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-[15vh]"
+      className="animate-fade-in fixed inset-0 z-50 flex items-start justify-center bg-[#14141A]/18 pt-[13vh] backdrop-blur-[2px]"
       onClick={onClose}
     >
       <div
-        className="w-[640px] max-w-[90vw] overflow-hidden rounded-xl border border-(--color-border-subtle) bg-(--color-elevated) shadow-2xl"
+        className="w-[680px] max-w-[90vw] overflow-hidden rounded-lg border border-(--color-border-subtle) bg-(--color-void-deep) shadow-[var(--shadow-float)]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2 border-b border-(--color-border-subtle) px-3 py-2.5">
+        <div className="flex h-12 items-center gap-2.5 border-b border-(--color-border-subtle) bg-(--color-elevated)/45 px-4">
           <Search className="size-4 text-(--color-text-muted)" aria-hidden="true" />
           <input
             ref={inputRef}
@@ -80,10 +80,10 @@ export function SearchPalette({ data, onClose, onSelect }: Props) {
             value={query}
             onChange={(e) => onQueryChange(e.target.value)}
             onKeyDown={onKey}
-            placeholder="Search functions, structs, files…"
-            className="flex-1 bg-transparent text-(--color-text-primary) placeholder:text-(--color-text-dim) focus:outline-none"
+            placeholder="Search every symbol in the active branch…"
+            className="flex-1 bg-transparent font-mono text-[12px] text-(--color-text-primary) placeholder:font-sans placeholder:text-(--color-text-dim) focus:outline-none"
           />
-          <kbd className="rounded bg-(--color-void) px-1.5 py-0.5 font-mono text-[10px] text-(--color-text-dim)">
+          <kbd className="rounded border border-(--color-border-subtle) bg-(--color-void-deep) px-1.5 py-0.5 font-mono text-[9px] text-(--color-text-dim)">
             esc
           </kbd>
         </div>
@@ -91,7 +91,7 @@ export function SearchPalette({ data, onClose, onSelect }: Props) {
           id="search-results-listbox"
           role="listbox"
           aria-label="Search results"
-          className="max-h-[50vh] overflow-y-auto py-1"
+          className="max-h-[56vh] overflow-y-auto py-1.5"
         >
           {results.length === 0 && (
             <li
@@ -110,8 +110,10 @@ export function SearchPalette({ data, onClose, onSelect }: Props) {
                   onSelect(n);
                   onClose();
                 }}
-                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left ${
-                  i === cursor ? "bg-(--color-accent-soft)" : ""
+                className={`flex w-full items-center gap-2.5 border-l-2 px-3 py-2 text-left ${
+                  i === cursor
+                    ? "border-(--color-accent) bg-(--color-accent-soft)"
+                    : "border-transparent"
                 }`}
               >
                 <span

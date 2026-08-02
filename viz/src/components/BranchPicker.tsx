@@ -35,18 +35,18 @@ export function BranchPicker({ active, onSetActive, diffHead, onSetDiffHead }: P
     <div ref={wrapRef} className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 rounded-md border border-(--color-border-subtle) bg-(--color-elevated) px-2.5 py-1.5 text-(--color-text-muted) hover:text-(--color-text-primary)"
+        className="flex h-9 max-w-[240px] items-center gap-1.5 rounded-md border border-(--color-border-subtle) bg-(--color-void-deep) px-2.5 text-(--color-text-muted) transition-colors hover:border-(--color-border-strong) hover:text-(--color-text-primary)"
       >
         <GitBranch className="size-3.5" />
-        <span className="font-mono text-[11px]">{active ?? "—"}</span>
+        <span className="truncate font-mono text-[10px] font-medium">{active ?? "—"}</span>
         {diffHead && (
           <span className="font-mono text-[11px] text-(--color-accent)">↔ {diffHead}</span>
         )}
         <ChevronDown className="size-3" />
       </button>
       {open && (
-        <div className="animate-fade-in absolute top-full right-0 z-40 mt-1 w-[260px] overflow-hidden rounded-lg border border-(--color-border-subtle) bg-(--color-elevated) shadow-2xl">
-          <div className="border-b border-(--color-border-subtle) px-3 py-2 text-[10px] tracking-widest text-(--color-text-dim) uppercase">
+        <div className="animate-fade-in absolute top-full right-0 z-40 mt-1.5 w-[280px] overflow-hidden rounded-md border border-(--color-border-subtle) bg-(--color-void-deep) shadow-[var(--shadow-float)]">
+          <div className="border-b border-(--color-border-subtle) bg-(--color-elevated)/65 px-3 py-2 font-mono text-[9px] font-semibold tracking-[0.14em] text-(--color-text-dim) uppercase">
             View branch
           </div>
           <ul className="max-h-[24vh] overflow-y-auto py-1">
@@ -67,7 +67,7 @@ export function BranchPicker({ active, onSetActive, diffHead, onSetDiffHead }: P
               </li>
             ))}
           </ul>
-          <div className="flex items-center gap-1.5 border-y border-(--color-border-subtle) px-3 py-2 text-[10px] tracking-widest text-(--color-text-dim) uppercase">
+          <div className="flex items-center gap-1.5 border-y border-(--color-border-subtle) bg-(--color-elevated)/65 px-3 py-2 font-mono text-[9px] font-semibold tracking-[0.14em] text-(--color-text-dim) uppercase">
             <GitCompare className="size-3" /> Compare {active ?? "—"} with
           </div>
           <ul className="max-h-[24vh] overflow-y-auto py-1">

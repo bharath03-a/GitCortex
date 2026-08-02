@@ -54,6 +54,107 @@ Remaining foundation work:
 
 A cluster supernode represents its members; it does not discard them. At 100% atlas coverage, every symbol and relationship remains available for search and detail zoom even if the overview paints aggregated glyphs.
 
+## Visual clarity contract
+
+Large-graph design is governed by viewport budgets, not by how many entities happen to be loaded. A 40,000-symbol repository must not appear as 40,000 equally prominent dots.
+
+### Semantic levels of detail
+
+| Level | Typical paint budget | Primary representation |
+|---|---:|---|
+| Repository | 30–300 groups | Package/domain supernodes and aggregated boundary relations |
+| Module/file | 200–2,000 entities | Expanded groups, files, modules, and bundled relations |
+| Symbol | Up to roughly 1,000 entities | Exact symbols and relevant relationships |
+| Investigation | Up to 500 relationships by default | Exact directional neighborhood with evidence |
+
+These are paint budgets, not data caps. Search, tables, counts, and backend queries continue to cover the complete indexed graph. Selecting a global search result opens its bounded symbol context directly; the user does not need to expand every ancestor manually.
+
+### Clutter prevention
+
+- Overview edges are aggregated by source group, destination group, relationship kind, Git state, and confidence. Width represents count; selection reveals exact members.
+- Internal group relationships are summarized inside the group instead of drawn as self-crossing hairballs.
+- Labels follow a strict hierarchy: selected/hovered entity, active path, highest-risk groups, then a small spatially distributed context budget.
+- Labels do not overlap silently. Lower-priority labels hide or collapse to counts.
+- Edge arrowheads appear only in exact detail and investigation views. Direction in architecture overview is communicated by flow treatment and inspection.
+- Hover reveals a group summary; click selects; explicit expand or zoom reveals members. Expansion preserves unrelated group positions and provides breadcrumbs, collapse, and undo.
+- Search, Git overlays, and insight lenses change emphasis without rearranging the whole repository unless the user requests a different layout.
+- Layout follows the task: clustered architecture map, layered call flow, anchored Git diff, circular cycle inspection, and deterministic hierarchy. One global force layout is not used for every question.
+
+### Visual channel ownership
+
+Do not overload node fill with every dimension:
+
+- **fill hue:** semantic code family;
+- **shape:** structural or symbol category;
+- **stroke:** Git state (staged, unstaged, added, deleted, conflicted);
+- **halo/intensity:** the active insight lens such as risk, churn, or impact;
+- **opacity:** surrounding context versus active evidence;
+- **edge hue/style:** relationship kind and confidence;
+- **badges/counts:** aggregated state that cannot be represented honestly by one stroke.
+
+Light and dark themes use separately tuned palettes with equivalent semantic roles and contrast, not simple color inversion. Product typography is self-hosted so local Viz never depends on an external font service.
+
+## Git state is a first-class axis
+
+Viz must model more than a selected branch. A local repository has layered, changing states:
+
+1. a committed base (`HEAD`, another branch, tag, or arbitrary commit);
+2. the Git index, including staged additions, modifications, renames, deletions, and conflict stages;
+3. the working tree, including unstaged and untracked files;
+4. an optional comparison target such as the merge base, another branch, or another commit.
+
+The UI should identify the active state explicitly as a versioned tuple such as:
+
+```text
+{ HEAD oid, index tree oid, worktree generation, comparison oid? }
+```
+
+Committed branch graphs remain durable Kuzu snapshots. Staged and working-tree changes are lightweight overlays over the committed graph; they must not rewrite a complete durable branch graph on every edit. An overlay contains added, updated, renamed, deleted, and conflicted nodes and edges. The renderer composes the base snapshot and overlays while keeping unchanged node positions stable.
+
+Git status is visual evidence, not only a filter. Node and relationship treatments must distinguish committed, staged, modified, untracked, deleted, renamed, and conflicted state. Every Git-derived result should show its base, head/state, and freshness so stale index data cannot look current.
+
+### Dynamic update protocol
+
+The local Viz server should watch both relevant source files and Git metadata (`HEAD`, refs, index, merge/rebase state). Updates follow this path:
+
+1. debounce a burst of filesystem events and read one coherent Git state;
+2. parse only changed files with the existing tree-sitter indexer;
+3. derive a versioned graph patch off the request thread;
+4. atomically publish the new repository-state tuple;
+5. notify the browser over a loopback-only server-sent event stream;
+6. let the browser fetch or receive the bounded patch, update worker-owned adjacency data, and preserve unaffected positions.
+
+Events carry monotonic sequence numbers and their source/target state IDs. A missed event or state mismatch triggers manifest reconciliation rather than applying an unsafe patch. Expensive history rollups never run in this live path.
+
+The dynamic overlay may be rebuilt in memory after server restart. Durable Kuzu writes remain tied to explicit indexing and existing fast Git hooks, avoiding write-lock contention for every keystroke.
+
+### Git-aware product surfaces
+
+- **Working set:** visualize staged, unstaged, untracked, deleted, renamed, and conflicted graph changes relative to `HEAD`.
+- **Commit preview:** show how the staged index would change architecture and blast radius before committing.
+- **Review map:** compare branch or commit against its merge base, rank affected callers and boundary changes, and retain exact diff evidence.
+- **Conflict topology:** show base/ours/theirs symbol relationships for conflicted paths and the dependants affected by each resolution.
+- **Timeline:** scrub commits/tags while preserving the camera and stable logical symbol identity where reconciliation is available.
+- **Regression trail:** combine Git history, co-change evidence, symbol churn, and graph paths to narrow likely change origins.
+- **Live investigation:** keep a selected symbol pinned while its file or callers change, and disclose when it was renamed, removed, or made stale.
+
+## Tool responsibilities
+
+Use each local capability for the work it handles best:
+
+| Layer | Responsibility |
+|---|---|
+| Git plumbing | Exact repository state, merge bases, status, index trees, rename candidates, commit history, and conflict stages |
+| tree-sitter indexer | Incremental symbol and relationship extraction for changed source files |
+| KuzuDB | Durable branch/commit graph snapshots and graph-native traversal |
+| Rust Viz server | Snapshot composition, Git overlays, aggregation, history queries, deterministic layout/cache coordination, and event streaming |
+| Web Worker | Decode compact chunks, maintain frontend adjacency/filters, compute paint sets, and keep work off the UI thread |
+| Cosmograph/WebGL | High-volume interactive rendering when available |
+| Canvas 2D | Cluster maps and bounded exact investigations in compatibility mode—not a raw 100K-node force simulation |
+| Virtualized table/search | Complete keyboard-accessible access to all indexed entities regardless of renderer capability |
+
+No essential investigation may depend exclusively on WebGL. No frontend renderer should become the source of truth for graph or Git state.
+
 ## Core workflows
 
 ### Explore symbol
@@ -145,3 +246,8 @@ History indexing should be an optional bounded initial scan followed by compact 
 - Every canvas result is accessible through a synchronized keyboard-operable list/table.
 - Ambiguous short names never trigger traversal.
 - Temporal fixtures reproduce file, symbol, and edge event counts exactly across modifications, renames, deletions, and merges.
+- Working-tree updates never persist a complete Kuzu branch snapshot per keystroke.
+- Staged, unstaged, untracked, renamed, deleted, and conflicted fixtures produce exact overlays against the advertised base state.
+- Event sequence gaps and snapshot mismatches reconcile through a fresh manifest instead of silently mixing states.
+- Checkout, commit, reset, stash apply, merge, rebase, and conflict-resolution transitions update the state strip without a page reload.
+- WebGL loss or initialization failure keeps search, tables, Git state, and bounded investigations operational.

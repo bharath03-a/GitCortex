@@ -1,8 +1,10 @@
 import { useMemo } from "react";
 import {
+  Boxes,
   CircleSlash,
   Flame,
   Focus,
+  Gauge,
   Globe2,
   PanelLeftClose,
   SlidersHorizontal,
@@ -21,6 +23,7 @@ import {
 
 export type Visibility = "pub" | "pub_crate" | "private";
 export type Flag = "async" | "unsafe";
+export type InsightLens = "changes" | "impact" | "unused" | "complexity" | "boundaries" | null;
 
 const VIS_LABEL: Record<Visibility, string> = {
   pub: "pub",
@@ -37,12 +40,8 @@ interface Props {
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
   canInvestigate: boolean;
-  unusedActive: boolean;
-  onToggleUnused: () => void;
-  godNodesActive: boolean;
-  onToggleGodNodes: () => void;
-  hotFilesActive: boolean;
-  onToggleHotFiles: () => void;
+  insightLens: InsightLens;
+  onInsightLensChange: (lens: Exclude<InsightLens, null>) => void;
   hiddenKinds: Set<string>;
   setHiddenKinds: (set: Set<string>) => void;
   hiddenEdgeKinds: Set<string>;
@@ -65,12 +64,8 @@ export function FilterRail({
   viewMode,
   onViewModeChange,
   canInvestigate,
-  unusedActive,
-  onToggleUnused,
-  godNodesActive,
-  onToggleGodNodes,
-  hotFilesActive,
-  onToggleHotFiles,
+  insightLens,
+  onInsightLensChange,
   hiddenKinds,
   setHiddenKinds,
   hiddenEdgeKinds,
@@ -117,10 +112,10 @@ export function FilterRail({
   const flags: Flag[] = ["async", "unsafe"];
 
   return (
-    <aside className="flex w-[296px] shrink-0 flex-col border-r border-(--color-border-subtle) bg-(--color-void-deep)">
-      <div className="flex h-12 items-center justify-between border-b border-(--color-border-subtle) px-4">
+    <aside className="flex w-[288px] shrink-0 flex-col border-r border-(--color-border-subtle) bg-(--color-void-deep)">
+      <div className="flex h-14 items-center justify-between border-b border-(--color-border-subtle) px-4">
         <div>
-          <div className="text-[12px] font-semibold">Explore</div>
+          <div className="text-[12px] font-semibold tracking-[-0.01em]">Graph workspace</div>
           <div className="font-mono text-[9px] text-(--color-text-dim)">
             {visibleNodeCount.toLocaleString()} visible ·{" "}
             {(data?.nodes.length ?? 0).toLocaleString()} loaded
@@ -157,7 +152,7 @@ export function FilterRail({
         </div>
 
         <SectionLabel className="mt-5">Detail</SectionLabel>
-        <div className="grid grid-cols-3 gap-1 rounded-lg border border-(--color-border-subtle) bg-(--color-elevated)/50 p-1">
+        <div className="grid grid-cols-3 gap-px overflow-hidden rounded-md border border-(--color-border-subtle) bg-(--color-border-subtle)">
           {(["focused", "public", "full"] as DensityMode[]).map((mode) => (
             <button
               key={mode}
@@ -165,8 +160,8 @@ export function FilterRail({
               title={DENSITY_LABEL[mode]}
               className={`rounded-md px-1.5 py-1.5 text-[10px] transition-colors ${
                 density === mode
-                  ? "bg-(--color-accent-soft) font-medium text-(--color-accent)"
-                  : "text-(--color-text-muted) hover:text-(--color-text-primary)"
+                  ? "bg-(--color-void-deep) font-semibold text-(--color-accent)"
+                  : "bg-(--color-elevated) text-(--color-text-muted) hover:bg-(--color-void-deep) hover:text-(--color-text-primary)"
               }`}
             >
               {mode === "public" ? "Public" : DENSITY_LABEL[mode]}
@@ -177,34 +172,50 @@ export function FilterRail({
         <SectionLabel className="mt-5">Insights</SectionLabel>
         <div className="space-y-1.5">
           <InsightButton
-            active={hotFilesActive}
+            active={insightLens === "changes"}
             icon={<Flame className="size-4" />}
             title="Change hotspots"
             description="Frequently changed files and relations"
             tone="hot"
-            onClick={onToggleHotFiles}
+            onClick={() => onInsightLensChange("changes")}
           />
           <InsightButton
-            active={godNodesActive}
+            active={insightLens === "impact"}
             icon={<Zap className="size-4" />}
             title="High-impact hubs"
             description="Symbols with high inbound fan-in"
             tone="cyan"
-            onClick={onToggleGodNodes}
+            onClick={() => onInsightLensChange("impact")}
           />
           <InsightButton
-            active={unusedActive}
+            active={insightLens === "complexity"}
+            icon={<Gauge className="size-4" />}
+            title="Complexity risk"
+            description="Code volume × graph connectivity"
+            tone="hot"
+            onClick={() => onInsightLensChange("complexity")}
+          />
+          <InsightButton
+            active={insightLens === "boundaries"}
+            icon={<Boxes className="size-4" />}
+            title="Boundary crossings"
+            description="Relations crossing package boundaries"
+            tone="purple"
+            onClick={() => onInsightLensChange("boundaries")}
+          />
+          <InsightButton
+            active={insightLens === "unused"}
             icon={<CircleSlash className="size-4" />}
             title="Unused candidates"
             description="Symbols without incoming usage"
             tone="warn"
-            onClick={onToggleUnused}
+            onClick={() => onInsightLensChange("unused")}
           />
         </div>
 
-        {hotFiles && hotFiles.length > 0 && (
-          <div className="mt-3 rounded-xl border border-red-500/15 bg-red-500/5 p-2">
-            <div className="mb-1.5 flex items-center justify-between px-1 text-[9px] font-semibold tracking-wider text-red-300 uppercase">
+        {insightLens === "changes" && hotFiles && hotFiles.length > 0 && (
+          <div className="mt-3 rounded-md border border-(--color-accent)/20 bg-(--color-accent-soft) p-2">
+            <div className="mb-1.5 flex items-center justify-between px-1 font-mono text-[9px] font-semibold tracking-wider text-(--color-accent) uppercase">
               <span>Most changed</span>
               <span>commits</span>
             </div>
@@ -213,7 +224,7 @@ export function FilterRail({
                 <li
                   key={file.path}
                   title={`${file.path} · +${file.additions} / −${file.deletions}`}
-                  className="flex items-center gap-2 rounded-md px-1.5 py-1 text-[10px] hover:bg-red-500/10"
+                  className="flex items-center gap-2 rounded px-1.5 py-1 text-[10px] hover:bg-(--color-void-deep)/70"
                 >
                   <span className="w-3 shrink-0 font-mono text-(--color-text-dim)">
                     {index + 1}
@@ -221,7 +232,9 @@ export function FilterRail({
                   <span className="flex-1 truncate font-mono text-(--color-text-muted)">
                     {file.path}
                   </span>
-                  <span className="shrink-0 font-mono text-red-300">{file.touches}</span>
+                  <span className="shrink-0 font-mono font-semibold text-(--color-accent)">
+                    {file.touches}
+                  </span>
                 </li>
               ))}
             </ol>
@@ -254,10 +267,10 @@ export function FilterRail({
               onChange={() => toggle(hiddenVisibility, visibility, setHiddenVisibility)}
               swatchColor={
                 visibility === "pub"
-                  ? "#a6e3a1"
+                  ? "#2F6F5E"
                   : visibility === "pub_crate"
-                    ? "#f9e2af"
-                    : "#6c7086"
+                    ? "#8A6D28"
+                    : "#9A978F"
               }
               label={VIS_LABEL[visibility]}
               count={visCounts[visibility] ?? 0}
@@ -271,7 +284,7 @@ export function FilterRail({
               key={flag}
               checked={flagFilter.has(flag)}
               onChange={() => toggle(flagFilter, flag, setFlagFilter)}
-              swatchColor={flag === "async" ? "#a78bfa" : "#fab387"}
+              swatchColor={flag === "async" ? "#6B4CA8" : "#C4633F"}
               label={`only ${flag}`}
               count={flagCounts[flag] ?? 0}
             />
@@ -345,10 +358,10 @@ function ModeButton({
     <button
       disabled={disabled}
       onClick={onClick}
-      className={`rounded-xl border p-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+      className={`rounded-md border p-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
         active
-          ? "border-(--color-accent-deep) bg-(--color-accent-soft)"
-          : "border-(--color-border-subtle) bg-(--color-elevated)/45 hover:border-(--color-border-strong) hover:bg-(--color-elevated)"
+          ? "border-(--color-accent) bg-(--color-accent-soft)"
+          : "border-(--color-border-subtle) bg-(--color-void-deep) hover:border-(--color-border-strong) hover:bg-(--color-elevated)"
       }`}
     >
       <span className={active ? "text-(--color-accent)" : "text-(--color-text-muted)"}>{icon}</span>
@@ -370,22 +383,24 @@ function InsightButton({
   icon: React.ReactNode;
   title: string;
   description: string;
-  tone: "hot" | "cyan" | "warn";
+  tone: "hot" | "cyan" | "warn" | "purple";
   onClick: () => void;
 }) {
   const activeTone =
     tone === "hot"
-      ? "border-red-500/30 bg-red-500/10 text-red-300"
+      ? "border-(--color-accent)/30 bg-(--color-accent-soft) text-(--color-accent)"
       : tone === "cyan"
-        ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-300"
-        : "border-amber-500/30 bg-amber-500/10 text-amber-300";
+        ? "border-[#167A86]/30 bg-[#167A86]/8 text-[#167A86]"
+        : tone === "purple"
+          ? "border-[#6B4CA8]/30 bg-[#6B4CA8]/8 text-[#6B4CA8]"
+          : "border-[#8A6D28]/30 bg-[#8A6D28]/8 text-[#8A6D28]";
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center gap-2.5 rounded-xl border px-2.5 py-2 text-left transition-colors ${
+      className={`flex w-full items-center gap-2.5 rounded-md border px-2.5 py-2 text-left transition-colors ${
         active
           ? activeTone
-          : "border-(--color-border-subtle) bg-(--color-elevated)/35 text-(--color-text-muted) hover:bg-(--color-elevated) hover:text-(--color-text-primary)"
+          : "border-(--color-border-subtle) bg-(--color-void-deep) text-(--color-text-muted) hover:border-(--color-border-strong) hover:bg-(--color-elevated) hover:text-(--color-text-primary)"
       }`}
     >
       <span className="shrink-0">{icon}</span>

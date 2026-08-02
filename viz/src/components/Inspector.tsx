@@ -18,10 +18,10 @@ interface Props {
 }
 
 const RISK_TONE: Record<string, string> = {
-  LOW: "text-(--color-good) bg-emerald-500/15",
-  MEDIUM: "text-(--color-warn) bg-amber-500/15",
-  HIGH: "text-(--color-warn) bg-amber-500/20",
-  CRITICAL: "text-(--color-bad) bg-red-500/20",
+  LOW: "text-(--color-good) bg-[#2F6F5E]/10",
+  MEDIUM: "text-(--color-warn) bg-[#8A6D28]/10",
+  HIGH: "text-(--color-accent) bg-(--color-accent-soft)",
+  CRITICAL: "text-(--color-bad) bg-[#B84B42]/10",
 };
 
 export function Inspector({
@@ -62,8 +62,8 @@ export function Inspector({
   const fileRel = node.file.split("/").slice(-4).join("/");
 
   return (
-    <aside className="animate-fade-in flex w-[360px] flex-col border-l border-(--color-border-subtle) bg-(--color-void-deep)">
-      <div className="flex items-start justify-between border-b border-(--color-border-subtle) p-4">
+    <aside className="animate-fade-in flex w-[376px] shrink-0 flex-col border-l border-(--color-border-subtle) bg-(--color-void-deep)">
+      <div className="flex items-start justify-between border-b border-(--color-border-subtle) p-4.5">
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex items-center gap-2">
             <span className="size-2.5 rounded-full" style={{ background: color }} />
@@ -71,7 +71,9 @@ export function Inspector({
               {KIND_LABEL[node.kind] ?? node.kind}
             </span>
           </div>
-          <h2 className="truncate font-mono text-[14px] font-medium">{node.name}</h2>
+          <h2 className="truncate font-mono text-[14px] font-semibold tracking-[-0.02em]">
+            {node.name}
+          </h2>
           {node.qualified_name && node.qualified_name !== node.name && (
             <div className="mt-1 truncate font-mono text-[11px] text-(--color-text-muted)">
               {node.qualified_name}
@@ -86,7 +88,7 @@ export function Inspector({
         </button>
       </div>
 
-      <div className="border-b border-(--color-border-subtle) px-4 py-3">
+      <div className="border-b border-(--color-border-subtle) bg-(--color-elevated)/55 px-4 py-3">
         <a
           href={`vscode://file/${encodeURI(node.file)}:${node.start_line}`}
           title="Open in VS Code / Cursor"
@@ -138,7 +140,7 @@ export function Inspector({
       <div
         role="tablist"
         aria-label="Inspector tabs"
-        className="flex border-b border-(--color-border-subtle) px-2"
+        className="flex border-b border-(--color-border-subtle) bg-(--color-void-deep) px-2"
       >
         <TabBtn
           id="tab-local"
@@ -162,7 +164,7 @@ export function Inspector({
         id="inspector-panel"
         role="tabpanel"
         aria-labelledby={tab === "local" ? "tab-local" : "tab-deep"}
-        className="flex-1 overflow-y-auto p-3"
+        className="flex-1 overflow-y-auto bg-(--color-void-deep) p-3"
       >
         {tab === "local" && (
           <>
@@ -242,7 +244,7 @@ function DeepCallersPanel({
         <NodeList key={h.hop} title={`Hop ${h.hop}`} nodes={h.nodes} onSelect={onSelect} />
       ))}
       {result.truncated && (
-        <div className="rounded bg-amber-500/10 px-2 py-1.5 text-[11px] text-(--color-warn)">
+        <div className="rounded border border-[#8A6D28]/20 bg-[#8A6D28]/8 px-2 py-1.5 text-[11px] text-(--color-warn)">
           Showing the first 500 affected symbols.
         </div>
       )}
@@ -297,9 +299,9 @@ function Badge({
     tone === "accent"
       ? "bg-(--color-accent-soft) text-(--color-accent)"
       : tone === "warn"
-        ? "bg-amber-500/15 text-(--color-warn)"
+        ? "bg-[#8A6D28]/10 text-(--color-warn)"
         : tone === "hot"
-          ? "bg-red-500/15 text-red-300"
+          ? "bg-(--color-accent-soft) text-(--color-accent)"
           : "bg-(--color-elevated) text-(--color-text-muted)";
   return <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] ${cls}`}>{children}</span>;
 }
@@ -325,7 +327,7 @@ function NodeList({
           <li key={n.id}>
             <button
               onClick={() => onSelect(n)}
-              className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-left hover:bg-(--color-elevated)"
+              className="flex w-full items-center gap-1.5 rounded px-2 py-1.5 text-left hover:bg-(--color-elevated)"
             >
               <span
                 className="size-1.5 shrink-0 rounded-full"

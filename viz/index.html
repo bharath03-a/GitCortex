@@ -3,6 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#fcfcfa" />
+    <script>
+      (() => {
+        const saved = localStorage.getItem("gitcortex-theme");
+        const theme = saved === "dark" ? "dark" : "light";
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+      })();
+    </script>
     <title>GitCortex Viz</title>
   </head>
   <body>
