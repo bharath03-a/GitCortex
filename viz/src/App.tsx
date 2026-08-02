@@ -36,7 +36,7 @@ import type { ViewMode } from "./graph/view";
 import { useBranchDiff } from "./hooks/useBranchDiff";
 import type { ProductTheme } from "./theme/colors";
 
-type RendererMode = "webgl" | "compatibility";
+type RendererMode = "auto" | "webgl" | "compatibility";
 
 function supportsAcceleratedWebGl(): boolean {
   try {
@@ -76,7 +76,7 @@ export default function App() {
     document.documentElement.dataset.theme === "dark" ? "dark" : "light",
   );
   const [rendererMode, setRendererMode] = useState<RendererMode>(() =>
-    supportsAcceleratedWebGl() ? "webgl" : "compatibility",
+    supportsAcceleratedWebGl() ? "auto" : "compatibility",
   );
   const [rawData, setRawData] = useState<GraphData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -405,6 +405,9 @@ export default function App() {
     diffOverlay,
   ]);
 
+  const showSemanticOverview =
+    rendererMode === "auto" && viewMode === "atlas" && data !== null && data.nodes.length > 1_000;
+
   const insightSummary =
     insightLens === "changes"
       ? `Change hotspots · ${hotFiles?.length ?? 0} files ranked`
@@ -496,42 +499,52 @@ export default function App() {
               </div>
             </div>
           )}
-          {data && !error && data.nodes.length > 0 && rendererMode === "compatibility" && (
-            <CompatibilityAtlas
-              data={data}
-              selected={selected}
-              onSelect={setSelected}
-              onSearch={() => setSearchOpen(true)}
-              onTryWebGl={() => setRendererMode("webgl")}
-            />
-          )}
-          {data && !error && data.nodes.length > 0 && rendererMode === "webgl" && (
-            <RendererBoundary onFailure={() => setRendererMode("compatibility")}>
-              <Suspense
-                fallback={
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-(--color-text-muted)">
-                    <span className="size-5 animate-spin rounded-full border-2 border-(--color-border-subtle) border-t-(--color-accent)" />
-                    <span className="font-mono text-[10px]">Preparing accelerated renderer…</span>
-                  </div>
-                }
-              >
-                <CosmosCanvas
-                  data={data}
-                  selected={selected}
-                  onSelect={setSelected}
-                  depth={depth}
-                  diffOverlay={diffOverlay}
-                  unusedIds={insightLens === "unused" ? unusedIds : null}
-                  godNodeIds={insightLens === "impact" ? godNodeIds : null}
-                  hotspotScores={hotspotNodeScores}
-                  complexityScores={complexityScores}
-                  boundaryNodeIds={boundaryLens?.nodeIds ?? null}
-                  boundaryEdgeKeys={boundaryLens?.edgeKeys ?? null}
-                  theme={theme}
-                />
-              </Suspense>
-            </RendererBoundary>
-          )}
+          {data &&
+            !error &&
+            data.nodes.length > 0 &&
+            (rendererMode === "compatibility" || showSemanticOverview) && (
+              <CompatibilityAtlas
+                data={data}
+                selected={selected}
+                onSelect={setSelected}
+                onSearch={() => setSearchOpen(true)}
+                onUseWebGl={() => setRendererMode("webgl")}
+                variant={rendererMode === "compatibility" ? "compatibility" : "overview"}
+              />
+            )}
+          {data &&
+            !error &&
+            data.nodes.length > 0 &&
+            (rendererMode === "webgl" || (rendererMode === "auto" && !showSemanticOverview)) && (
+              <RendererBoundary onFailure={() => setRendererMode("compatibility")}>
+                <Suspense
+                  fallback={
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-(--color-text-muted)">
+                      <span className="size-5 animate-spin rounded-full border-2 border-(--color-border-subtle) border-t-(--color-accent)" />
+                      <span className="font-mono text-[10px]">Preparing accelerated renderer…</span>
+                    </div>
+                  }
+                >
+                  <CosmosCanvas
+                    data={data}
+                    selected={selected}
+                    onSelect={setSelected}
+                    depth={depth}
+                    diffOverlay={diffOverlay}
+                    unusedIds={insightLens === "unused" ? unusedIds : null}
+                    godNodeIds={insightLens === "impact" ? godNodeIds : null}
+                    hotspotScores={hotspotNodeScores}
+                    complexityScores={complexityScores}
+                    boundaryNodeIds={boundaryLens?.nodeIds ?? null}
+                    boundaryEdgeKeys={boundaryLens?.edgeKeys ?? null}
+                    theme={theme}
+                    onShowOverview={
+                      data.nodes.length > 1_000 ? () => setRendererMode("auto") : undefined
+                    }
+                  />
+                </Suspense>
+              </RendererBoundary>
+            )}
           {data && !error && data.nodes.length === 0 && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center text-(--color-text-muted)">
               <div className="text-[15px] font-semibold">No indexed symbols on this branch</div>

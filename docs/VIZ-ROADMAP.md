@@ -7,6 +7,8 @@ GitCortex Viz should be a local-first developer investigation workbench with two
 
 The goal is not to hide large graphs. It is to keep every node and edge addressable while changing representation by zoom level and task.
 
+See [VIZ-GALLERY.md](VIZ-GALLERY.md) for screenshots from the real embedded build running against an indexed 2,369-node sample repository.
+
 ## Product principles
 
 1. Search or a developer question should lead; the graph should answer it.

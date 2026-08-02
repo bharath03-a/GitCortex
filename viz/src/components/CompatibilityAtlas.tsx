@@ -9,10 +9,18 @@ interface Props {
   selected: RawNode | null;
   onSelect: (node: RawNode | null) => void;
   onSearch: () => void;
-  onTryWebGl: () => void;
+  onUseWebGl: () => void;
+  variant: "overview" | "compatibility";
 }
 
-export function CompatibilityAtlas({ data, selected, onSelect, onSearch, onTryWebGl }: Props) {
+export function CompatibilityAtlas({
+  data,
+  selected,
+  onSelect,
+  onSearch,
+  onUseWebGl,
+  variant,
+}: Props) {
   const groups = useMemo(() => summarizeGroups(data), [data]);
   const shownGroups = groups.slice(0, 120);
 
@@ -22,13 +30,20 @@ export function CompatibilityAtlas({ data, selected, onSelect, onSearch, onTryWe
         <div className="graph-panel mb-5 flex flex-wrap items-center justify-between gap-4 rounded-lg p-4">
           <div className="flex items-start gap-3">
             <div className="rounded-md bg-(--color-accent-soft) p-2 text-(--color-accent)">
-              <Cpu className="size-4" />
+              {variant === "compatibility" ? (
+                <Cpu className="size-4" />
+              ) : (
+                <Boxes className="size-4" />
+              )}
             </div>
             <div>
-              <div className="text-[13px] font-semibold">Compatibility atlas</div>
+              <div className="text-[13px] font-semibold">
+                {variant === "compatibility" ? "Compatibility atlas" : "Repository atlas"}
+              </div>
               <p className="mt-0.5 text-[11px] text-(--color-text-muted)">
-                WebGL acceleration is unavailable. Repository groups and exact symbol access remain
-                active without running a large CPU force simulation.
+                {variant === "compatibility"
+                  ? "WebGL acceleration is unavailable. Repository groups and exact symbol access remain active without running a large CPU force simulation."
+                  : "A semantic overview keeps the repository legible. Search remains complete, and the exact symbol graph is available on demand."}
               </p>
             </div>
           </div>
@@ -40,10 +55,10 @@ export function CompatibilityAtlas({ data, selected, onSelect, onSearch, onTryWe
               <Search className="size-3.5" /> Search all symbols
             </button>
             <button
-              onClick={onTryWebGl}
+              onClick={onUseWebGl}
               className="rounded-md border border-(--color-border-subtle) px-3 py-2 font-mono text-[10px] text-(--color-text-dim) hover:text-(--color-accent)"
             >
-              retry WebGL
+              {variant === "compatibility" ? "retry WebGL" : "open symbol graph"}
             </button>
           </div>
         </div>

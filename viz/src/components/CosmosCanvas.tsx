@@ -83,6 +83,7 @@ interface Props {
   boundaryNodeIds: Set<string> | null;
   boundaryEdgeKeys: Set<string> | null;
   theme: ProductTheme;
+  onShowOverview?: () => void;
 }
 
 const TYPE_KINDS = new Set(["struct", "enum", "trait", "interface", "typealias"]);
@@ -149,6 +150,7 @@ export function CosmosCanvas({
   boundaryNodeIds,
   boundaryEdgeKeys,
   theme,
+  onShowOverview,
 }: Props) {
   const ref = useRef<CosmographRef>(null);
   const graphTheme = GRAPH_THEME[theme];
@@ -468,6 +470,14 @@ export function CosmosCanvas({
             {scaleProfile.label} · {paintedLinks.length.toLocaleString()} /{" "}
             {links.length.toLocaleString()} relations painted
           </div>
+          {onShowOverview && (
+            <button
+              onClick={onShowOverview}
+              className="pointer-events-auto mb-2 rounded border border-(--color-border-subtle) px-2 py-1 font-mono text-[8px] text-(--color-text-muted) hover:border-(--color-accent) hover:text-(--color-accent)"
+            >
+              grouped overview
+            </button>
+          )}
           <div className="grid grid-cols-3 gap-x-3 gap-y-1.5 text-[10px] text-(--color-text-muted)">
             <Key color={kindPalette.function} shape="rounded-full" label="Callable" />
             <Key color={kindPalette.struct} shape="rotate-45" label="Type" />
