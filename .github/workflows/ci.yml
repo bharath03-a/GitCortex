@@ -130,7 +130,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: "ubuntu-stable-machete"
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@v2.85.4
         with:
           tool: cargo-machete
       - run: cargo machete
@@ -163,7 +163,7 @@ jobs:
         with:
           name: viz-dist
           path: crates/gitcortex-viz/dist-viz/
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@v2.85.4
         with:
           tool: nextest
       - run: cargo build --workspace --all-targets
@@ -190,7 +190,7 @@ jobs:
         with:
           name: viz-dist
           path: crates/gitcortex-viz/dist-viz/
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@v2.85.4
         with:
           tool: nextest
       - run: cargo build --workspace --all-targets
@@ -217,7 +217,7 @@ jobs:
         with:
           name: viz-dist
           path: crates/gitcortex-viz/dist-viz/
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@v2.85.4
         with:
           tool: cargo-llvm-cov,nextest
       - name: Run tests with coverage
