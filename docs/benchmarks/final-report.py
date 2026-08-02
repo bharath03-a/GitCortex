@@ -814,7 +814,7 @@ def render(claude_full: list[dict], claude_compact: list[dict], codex: list[dict
     cache_read excluded — it double-counts re-reads and is already captured in cost.</li>
     <li><strong>Codex uncached.</strong> input + output, excluding cached_input.
     Reasoning output tokens included.</li>
-    <li><strong>Compact mode.</strong> <span class="mono">gcx serve --compact</span>
+    <li><strong>Compact mode.</strong> <span class="mono">gcx serve</span> (the default)
     registers only the single <span class="mono">gcx(action, params)</span> dispatch tool
     instead of fifteen individual tools.</li>
     <li><strong>Repos.</strong> One canonical codebase per language:

@@ -357,13 +357,17 @@ impl KuzuGraphStore {
     /// entire repo data directory is wiped so a fresh full index runs on next
     /// hook invocation.
     pub fn open(repo_root: &Path) -> Result<Self> {
-        let repo_id = branch::repo_id(repo_root);
+        let repo_id = branch::storage_repo_id(repo_root);
 
-        if branch::read_schema_version(&repo_id) != SCHEMA_VERSION {
-            eprintln!(
-                "gitcortex: schema version mismatch (expected {}); wiping graph store for re-index",
-                SCHEMA_VERSION
-            );
+        let persisted_schema = branch::read_schema_version(&repo_id);
+        if persisted_schema != SCHEMA_VERSION {
+            let existing_store = branch::db_path(&repo_id).exists();
+            if persisted_schema != 0 || existing_store {
+                eprintln!(
+                    "gitcortex: schema version mismatch (expected {}); wiping graph store for re-index",
+                    SCHEMA_VERSION
+                );
+            }
             branch::wipe_repo_data(&repo_id);
             branch::write_schema_version(&repo_id, SCHEMA_VERSION)?;
         }
@@ -373,8 +377,16 @@ impl KuzuGraphStore {
             std::fs::create_dir_all(parent)?;
         }
 
-        let db = Database::new(&db_path, SystemConfig::default())
-            .map_err(|e| GitCortexError::Store(format!("open db: {e}")))?;
+        let db = Database::new(&db_path, SystemConfig::default()).map_err(|error| {
+            let detail = error.to_string();
+            if detail.to_ascii_lowercase().contains("lock") {
+                GitCortexError::Store(format!(
+                    "open db: {detail}; another GitCortex process owns this repository — use the active editor MCP server or stop `gcx serve` before running this command"
+                ))
+            } else {
+                GitCortexError::Store(format!("open db: {detail}"))
+            }
+        })?;
 
         Ok(Self { db, repo_id })
     }

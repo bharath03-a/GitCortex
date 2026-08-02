@@ -8,7 +8,10 @@ cargo-dist-version = "0.31.0"
 # CI backends to support
 ci = "github"
 # The installers to generate for each app
-installers = ["shell"]
+installers = ["shell", "homebrew"]
+# Publish the generated formula to the official tap on tagged releases.
+tap = "bharath03-a/homebrew-tap"
+publish-jobs = ["homebrew"]
 # Target platforms to build apps for (Rust target-triple syntax)
 #
 # Windows (x86_64-pc-windows-msvc) is excluded: KuzuDB 0.11.3 (final release;

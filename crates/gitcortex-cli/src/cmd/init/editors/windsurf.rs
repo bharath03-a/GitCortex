@@ -3,16 +3,20 @@ use std::{fs, path::Path};
 use anyhow::{Context, Result};
 use serde_json::json;
 
-use crate::cmd::init::helpers::home_dir;
+use crate::cmd::init::helpers::{home_dir, require_json_object, write_atomic};
 
-const WINDSURF_RULES: &str = r#"# GitCortex Agent Guide
+pub(crate) const WINDSURF_RULES: &str = r#"<!-- >>> gitcortex windsurf integration >>> -->
+# GitCortex Agent Guide
 
 This repository is indexed by GitCortex. The `gitcortex` MCP server is registered
 globally in `~/.codeium/windsurf/mcp_config.json`.
 
-## Key MCP Tools
+The server exposes one compact `gcx` dispatch tool. Use these values as its
+`action` parameter.
 
-| Tool | When to use |
+## Key actions
+
+| Action | When to use |
 |------|-------------|
 | `lookup_symbol` | Find any function, struct, class, or trait by name |
 | `find_callers` | Who calls this function? (backward trace) |
@@ -32,11 +36,14 @@ globally in `~/.codeium/windsurf/mcp_config.json`.
 **Impact analysis**: `find_callers` + `get_subgraph(direction: "in")`
 
 See `.gitcortex/AGENT_GUIDE.md` for the full reference.
+<!-- <<< gitcortex windsurf integration <<< -->
 "#;
 
-pub fn install(repo_root: &Path) -> Result<()> {
+pub fn install(repo_root: &Path, global_editor_config: bool) -> Result<()> {
     write_windsurf_rules(repo_root)?;
-    write_windsurf_mcp()?;
+    if global_editor_config {
+        write_windsurf_mcp()?;
+    }
     Ok(())
 }
 
@@ -47,7 +54,7 @@ fn write_windsurf_rules(repo_root: &Path) -> Result<()> {
         if existing.contains("GitCortex") {
             return Ok(());
         }
-        fs::write(path, format!("{existing}\n\n{WINDSURF_RULES}"))
+        write_atomic(&path, &format!("{existing}\n\n{WINDSURF_RULES}"))
             .context("update .windsurfrules")?;
     } else {
         fs::write(path, WINDSURF_RULES).context("write .windsurfrules")?;
@@ -62,17 +69,19 @@ fn write_windsurf_mcp() -> Result<()> {
 
     let mut root = if path.exists() {
         let text = fs::read_to_string(&path).context("read windsurf mcp_config.json")?;
-        serde_json::from_str::<serde_json::Value>(&text).unwrap_or(json!({}))
+        serde_json::from_str::<serde_json::Value>(&text)
+            .context("parse existing windsurf mcp_config.json")?
     } else {
         json!({})
     };
 
+    require_json_object(&root, &path)?;
     if root.pointer("/mcpServers/gitcortex").is_some() {
         return Ok(());
     }
 
     root["mcpServers"]["gitcortex"] = json!({ "command": "gcx", "args": ["serve"] });
     let text = serde_json::to_string_pretty(&root).context("serialize windsurf mcp_config.json")?;
-    fs::write(path, text).context("write windsurf mcp_config.json")?;
+    write_atomic(&path, &text).context("write windsurf mcp_config.json")?;
     Ok(())
 }

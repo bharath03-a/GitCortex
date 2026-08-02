@@ -4,6 +4,8 @@ use anyhow::Result;
 use gitcortex_core::store::GraphStore;
 use gitcortex_store::kuzu::KuzuGraphStore;
 
+use super::{init::universal::git_hooks_dir, serve_lock};
+
 pub fn run() -> Result<()> {
     eprintln!("gcx doctor\n");
 
@@ -36,58 +38,73 @@ pub fn run() -> Result<()> {
     };
 
     // 3. Git hooks
-    for hook in &["post-commit", "post-merge", "post-rewrite", "post-checkout"] {
-        check_hook(&repo_root, hook, &mut all_ok);
-    }
-
-    // 4. Graph store
-    match KuzuGraphStore::open(&repo_root) {
-        Ok(store) => {
-            let branch = current_branch(&repo_root).unwrap_or_else(|_| "main".into());
-            let node_count = store.list_all_nodes(&branch).map(|v| v.len()).unwrap_or(0);
-            let edge_count = store.list_all_edges(&branch).map(|v| v.len()).unwrap_or(0);
-            ok(&format!(
-                "graph store accessible  ({node_count} nodes, {edge_count} edges on {branch})"
-            ));
-
-            // 5. Index freshness
-            match (store.last_indexed_sha(&branch), head_sha(&repo_root)) {
-                (Ok(Some(indexed)), Ok(head)) if indexed == head => {
-                    ok(&format!(
-                        "index is current  (HEAD {})",
-                        &head[..7.min(head.len())]
-                    ));
-                }
-                (Ok(Some(indexed)), Ok(head)) => {
-                    let msg = format!(
-                        "index is stale  (indexed {} → HEAD {})",
-                        &indexed[..7.min(indexed.len())],
-                        &head[..7.min(head.len())]
-                    );
-                    fail(
-                        &msg,
-                        "run: git commit --allow-empty  or  gcx hook",
-                        &mut all_ok,
-                    );
-                }
-                (Ok(None), _) => {
-                    fail(
-                        "no index found for this branch",
-                        "run: gcx init",
-                        &mut all_ok,
-                    );
-                }
-                _ => {
-                    warn("could not determine index freshness");
-                }
+    match git_hooks_dir(&repo_root) {
+        Ok(hooks_dir) => {
+            for hook in &["post-commit", "post-merge", "post-rewrite", "post-checkout"] {
+                check_hook(&hooks_dir, hook, &mut all_ok);
             }
         }
-        Err(e) => {
-            fail(
-                &format!("graph store not accessible: {e}"),
-                "run: gcx init",
-                &mut all_ok,
-            );
+        Err(error) => fail(
+            &format!("could not resolve Git hooks directory: {error}"),
+            "run: git rev-parse --git-path hooks",
+            &mut all_ok,
+        ),
+    }
+
+    // 4. Graph store. An active MCP server intentionally owns Kuzu's
+    // process-exclusive lock and performs Git synchronization itself.
+    if serve_lock::is_active(&repo_root).unwrap_or(false) {
+        ok("graph store owned by active MCP server");
+        ok("index freshness managed by active MCP watcher");
+    } else {
+        match KuzuGraphStore::open(&repo_root) {
+            Ok(store) => {
+                let branch = current_branch(&repo_root).unwrap_or_else(|_| "main".into());
+                let node_count = store.list_all_nodes(&branch).map(|v| v.len()).unwrap_or(0);
+                let edge_count = store.list_all_edges(&branch).map(|v| v.len()).unwrap_or(0);
+                ok(&format!(
+                    "graph store accessible  ({node_count} nodes, {edge_count} edges on {branch})"
+                ));
+
+                // 5. Index freshness
+                match (store.last_indexed_sha(&branch), head_sha(&repo_root)) {
+                    (Ok(Some(indexed)), Ok(head)) if indexed == head => {
+                        ok(&format!(
+                            "index is current  (HEAD {})",
+                            &head[..7.min(head.len())]
+                        ));
+                    }
+                    (Ok(Some(indexed)), Ok(head)) => {
+                        let msg = format!(
+                            "index is stale  (indexed {} → HEAD {})",
+                            &indexed[..7.min(indexed.len())],
+                            &head[..7.min(head.len())]
+                        );
+                        fail(
+                            &msg,
+                            "run: git commit --allow-empty  or  gcx hook",
+                            &mut all_ok,
+                        );
+                    }
+                    (Ok(None), _) => {
+                        fail(
+                            "no index found for this branch",
+                            "run: gcx init",
+                            &mut all_ok,
+                        );
+                    }
+                    _ => {
+                        warn("could not determine index freshness");
+                    }
+                }
+            }
+            Err(e) => {
+                fail(
+                    &format!("graph store not accessible: {e}"),
+                    "run: gcx init",
+                    &mut all_ok,
+                );
+            }
         }
     }
 
@@ -95,7 +112,7 @@ pub fn run() -> Result<()> {
     check_wsl();
 
     // 7. Assistant/editor registrations
-    check_editor_mcp(&repo_root, &mut all_ok);
+    check_editor_mcp(&repo_root);
 
     eprintln!();
     print_summary(all_ok);
@@ -113,8 +130,8 @@ fn check_wsl() {
     }
 }
 
-fn check_hook(repo_root: &Path, hook: &str, all_ok: &mut bool) {
-    let hook_path = repo_root.join(".git").join("hooks").join(hook);
+fn check_hook(hooks_dir: &Path, hook: &str, all_ok: &mut bool) {
+    let hook_path = hooks_dir.join(hook);
     if hook_path.exists() {
         let content = std::fs::read_to_string(&hook_path).unwrap_or_default();
         if content.contains("gcx hook") {
@@ -133,7 +150,7 @@ fn check_hook(repo_root: &Path, hook: &str, all_ok: &mut bool) {
 
 type EditorCheck = (&'static str, Box<dyn Fn() -> bool>);
 
-fn check_editor_mcp(repo_root: &Path, all_ok: &mut bool) {
+fn check_editor_mcp(repo_root: &Path) {
     let home = dirs_home();
 
     let editors: &[EditorCheck] = &[
@@ -141,17 +158,19 @@ fn check_editor_mcp(repo_root: &Path, all_ok: &mut bool) {
             "Claude Code",
             Box::new({
                 let home = home.clone();
+                let root = repo_root.to_path_buf();
                 move || {
-                    home.as_ref()
-                        .map(|h| {
-                            let p = h.join(".claude.json");
-                            p.exists() && {
-                                std::fs::read_to_string(&p)
-                                    .map(|s| s.contains("gcx"))
-                                    .unwrap_or(false)
-                            }
-                        })
-                        .unwrap_or(false)
+                    file_contains(&root.join(".mcp.json"), "gitcortex")
+                        || home
+                            .as_ref()
+                            .map(|h| {
+                                let p = h.join(".claude.json");
+                                p.exists()
+                                    && std::fs::read_to_string(&p)
+                                        .map(|s| s.contains("gcx"))
+                                        .unwrap_or(false)
+                            })
+                            .unwrap_or(false)
                 }
             }),
         ),
@@ -159,7 +178,7 @@ fn check_editor_mcp(repo_root: &Path, all_ok: &mut bool) {
             "Cursor",
             Box::new({
                 let root = repo_root.to_path_buf();
-                move || root.join(".cursor").join("mcp.json").exists()
+                move || file_contains(&root.join(".cursor/mcp.json"), "gitcortex")
             }),
         ),
         (
@@ -169,11 +188,19 @@ fn check_editor_mcp(repo_root: &Path, all_ok: &mut bool) {
                 move || {
                     home.as_ref()
                         .map(|h| {
-                            h.join(".codeium")
-                                .join("windsurf")
-                                .join("mcp_config.json")
-                                .exists()
+                            file_contains(&h.join(".codeium/windsurf/mcp_config.json"), "gitcortex")
                         })
+                        .unwrap_or(false)
+                }
+            }),
+        ),
+        (
+            "Antigravity",
+            Box::new({
+                let home = home.clone();
+                move || {
+                    home.as_ref()
+                        .map(|h| file_contains(&h.join(".antigravity/mcp.json"), "gitcortex"))
                         .unwrap_or(false)
                 }
             }),
@@ -182,21 +209,14 @@ fn check_editor_mcp(repo_root: &Path, all_ok: &mut bool) {
             "Copilot",
             Box::new({
                 let root = repo_root.to_path_buf();
-                move || {
-                    root.join(".github")
-                        .join("copilot-instructions.md")
-                        .exists()
-                }
+                move || file_contains(&root.join(".vscode/mcp.json"), "gitcortex")
             }),
         ),
         (
             "Codex",
             Box::new({
                 let root = repo_root.to_path_buf();
-                move || {
-                    root.join("AGENTS.md").exists()
-                        && root.join(".codex").join("config.toml").exists()
-                }
+                move || file_contains(&root.join(".codex/config.toml"), "mcp_servers.gitcortex")
             }),
         ),
     ];
@@ -215,12 +235,14 @@ fn check_editor_mcp(repo_root: &Path, all_ok: &mut bool) {
     }
 
     if !any_registered {
-        fail(
-            "assistant not configured for any editor",
-            "run: gcx init",
-            all_ok,
-        );
+        info("assistant not configured (optional; run: gcx init --editor <name>)");
     }
+}
+
+fn file_contains(path: &Path, needle: &str) -> bool {
+    std::fs::read_to_string(path)
+        .map(|content| content.contains(needle))
+        .unwrap_or(false)
 }
 
 fn ok(msg: &str) {

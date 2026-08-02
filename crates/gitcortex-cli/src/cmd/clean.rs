@@ -3,11 +3,16 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use gitcortex_store::branch;
 
+use super::serve_lock;
+
 /// Wipe the entire graph store for this repo (all branches).
 /// The next `gcx hook` or `gcx init` will perform a full re-index.
 pub fn run() -> Result<()> {
     let repo_root = repo_root()?;
-    let repo_id = branch::repo_id(&repo_root);
+    if serve_lock::is_active(&repo_root)? {
+        anyhow::bail!("cannot clean while `gcx serve` is active; stop the editor MCP server first");
+    }
+    let repo_id = branch::storage_repo_id(&repo_root);
     let data_dir = branch::data_dir(&repo_id);
 
     if !data_dir.exists() {

@@ -1,5 +1,5 @@
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{atomic::AtomicU64, Arc, Mutex};
 use std::time::Instant;
 
 use gitcortex_core::{
@@ -19,6 +19,7 @@ pub enum SemanticState {
     Pending,
     /// Model loaded and index populated.
     Ready {
+        branch: String,
         embedder: Box<Embedder>,
         index: Box<SemanticIndex>,
     },
@@ -46,7 +47,8 @@ use serde_json::json;
 pub struct GitCortexServer {
     store: Arc<Mutex<KuzuGraphStore>>,
     repo_root: PathBuf,
-    default_branch: String,
+    default_branch: Arc<Mutex<String>>,
+    graph_revision: Arc<AtomicU64>,
     compact: bool,
     /// Approximate token budget for a single tool's list payload. List-returning
     /// tools truncate their items to fit this, setting `truncated: true`, so a
@@ -84,11 +86,21 @@ impl GitCortexServer {
         Ok(Self {
             store: Arc::new(Mutex::new(store)),
             repo_root: repo_root.to_owned(),
-            default_branch,
+            default_branch: Arc::new(Mutex::new(default_branch)),
+            graph_revision: Arc::new(AtomicU64::new(0)),
             compact,
             response_budget,
             semantic: Arc::new(Mutex::new(SemanticState::Pending)),
             staleness_cache: Arc::new(Mutex::new(None)),
+        })
+    }
+
+    fn resolve_branch(&self, requested: Option<&str>) -> String {
+        requested.map(str::to_owned).unwrap_or_else(|| {
+            self.default_branch
+                .lock()
+                .map(|branch| branch.clone())
+                .unwrap_or_else(|_| "main".to_owned())
         })
     }
 
@@ -125,13 +137,23 @@ impl GitCortexServer {
         (
             self.semantic.clone(),
             self.store.clone(),
-            self.default_branch.clone(),
+            self.resolve_branch(None),
         )
     }
 
     /// Return the shared store arc + branch needed by the file watcher.
-    pub fn store_context(&self) -> (Arc<Mutex<KuzuGraphStore>>, String) {
-        (self.store.clone(), self.default_branch.clone())
+    pub fn store_context(
+        &self,
+    ) -> (
+        Arc<Mutex<KuzuGraphStore>>,
+        Arc<Mutex<String>>,
+        Arc<AtomicU64>,
+    ) {
+        (
+            self.store.clone(),
+            self.default_branch.clone(),
+            self.graph_revision.clone(),
+        )
     }
 
     /// Returns a staleness warning string if the index is behind HEAD or the
@@ -266,11 +288,7 @@ impl GitCortexServer {
         description = "Look up nodes in the code knowledge graph by name. Set fuzzy=true for substring matching (e.g. 'auth' finds 'validate_auth', 'auth_middleware'). Default is exact match."
     )]
     fn lookup_symbol(&self, Parameters(p): Parameters<LookupSymbolParams>) -> CallToolResult {
-        let branch = p
-            .branch
-            .as_deref()
-            .unwrap_or(&self.default_branch)
-            .to_owned();
+        let branch = self.resolve_branch(p.branch.as_deref());
         let fuzzy = p.fuzzy.unwrap_or(false);
         let store = match self.store.lock() {
             Ok(g) => g,
@@ -311,11 +329,7 @@ impl GitCortexServer {
         (default) is direct; depth=2..5 adds ranked transitive callers."
     )]
     fn find_callers(&self, Parameters(p): Parameters<FindCallersParams>) -> CallToolResult {
-        let branch = p
-            .branch
-            .as_deref()
-            .unwrap_or(&self.default_branch)
-            .to_owned();
+        let branch = self.resolve_branch(p.branch.as_deref());
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
@@ -343,11 +357,7 @@ impl GitCortexServer {
         Use this instead of chaining lookup_symbol + find_callers separately."
     )]
     fn symbol_context(&self, Parameters(p): Parameters<SymbolContextParams>) -> CallToolResult {
-        let branch = p
-            .branch
-            .as_deref()
-            .unwrap_or(&self.default_branch)
-            .to_owned();
+        let branch = self.resolve_branch(p.branch.as_deref());
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
@@ -389,11 +399,7 @@ impl GitCortexServer {
         description = "List all functions, structs, traits, and other definitions in a source file, ordered by line number."
     )]
     fn list_definitions(&self, Parameters(p): Parameters<ListDefinitionsParams>) -> CallToolResult {
-        let branch = p
-            .branch
-            .as_deref()
-            .unwrap_or(&self.default_branch)
-            .to_owned();
+        let branch = self.resolve_branch(p.branch.as_deref());
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
@@ -427,11 +433,7 @@ impl GitCortexServer {
         description = "Get aggregate counts for the code graph: total nodes/edges plus per-kind breakdowns (how many functions, structs, calls edges, etc). Use this first to gauge codebase size and shape before drilling into specific symbols."
     )]
     fn graph_stats(&self, Parameters(p): Parameters<GraphStatsParams>) -> CallToolResult {
-        let branch = p
-            .branch
-            .as_deref()
-            .unwrap_or(&self.default_branch)
-            .to_owned();
+        let branch = self.resolve_branch(p.branch.as_deref());
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
@@ -461,11 +463,7 @@ impl GitCortexServer {
         description = "Find symbols by structural attributes rather than name: kind (function/method/struct/...), is_async, visibility (pub/pub_crate/private), cyclomatic complexity range, and annotation/decorator (e.g. annotation='Test' finds @Test methods, 'route' finds @app.route handlers, 'derive' finds #[derive(...)]). Combine filters to answer 'all async methods', 'public structs', 'functions with complexity ≥ 10', or 'all test functions'. Optional name_contains narrows further. Default limit=30."
     )]
     fn ast_search(&self, Parameters(p): Parameters<AstSearchParams>) -> CallToolResult {
-        let branch = p
-            .branch
-            .as_deref()
-            .unwrap_or(&self.default_branch)
-            .to_owned();
+        let branch = self.resolve_branch(p.branch.as_deref());
         let limit = p.limit.unwrap_or(30).min(200);
 
         let kind = p.kind.as_deref().and_then(parse_node_kind);
@@ -604,11 +602,7 @@ impl GitCortexServer {
         and a risk level. Use this before committing to understand blast radius automatically."
     )]
     fn detect_changes(&self, Parameters(p): Parameters<DetectChangesParams>) -> CallToolResult {
-        let branch = p
-            .branch
-            .as_deref()
-            .unwrap_or(&self.default_branch)
-            .to_owned();
+        let branch = self.resolve_branch(p.branch.as_deref());
 
         let diff_text = run_git_diff(&self.repo_root, &["diff", "--staged"])
             .filter(|s| !s.trim().is_empty())
@@ -684,11 +678,7 @@ impl GitCortexServer {
         Returns callees grouped by hop distance."
     )]
     fn find_callees(&self, Parameters(p): Parameters<FindCalleesParams>) -> CallToolResult {
-        let branch = p
-            .branch
-            .as_deref()
-            .unwrap_or(&self.default_branch)
-            .to_owned();
+        let branch = self.resolve_branch(p.branch.as_deref());
         let depth = p.depth.unwrap_or(1).max(1);
         let store = match self.store.lock() {
             Ok(g) => g,
@@ -735,11 +725,7 @@ impl GitCortexServer {
         &self,
         Parameters(p): Parameters<FindImplementorsParams>,
     ) -> CallToolResult {
-        let branch = p
-            .branch
-            .as_deref()
-            .unwrap_or(&self.default_branch)
-            .to_owned();
+        let branch = self.resolve_branch(p.branch.as_deref());
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
@@ -777,11 +763,7 @@ impl GitCortexServer {
         &self,
         Parameters(p): Parameters<ModuleDependenciesParams>,
     ) -> CallToolResult {
-        let branch = p
-            .branch
-            .as_deref()
-            .unwrap_or(&self.default_branch)
-            .to_owned();
+        let branch = self.resolve_branch(p.branch.as_deref());
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
@@ -811,11 +793,7 @@ impl GitCortexServer {
         description = "Find functions/methods that reference a type as a parameter or return type (follows Uses edges). The type-level analogue of find_callers: answers 'what would break if I change type T's shape'. Returns the using functions/methods."
     )]
     fn find_type_usages(&self, Parameters(p): Parameters<FindTypeUsagesParams>) -> CallToolResult {
-        let branch = p
-            .branch
-            .as_deref()
-            .unwrap_or(&self.default_branch)
-            .to_owned();
+        let branch = self.resolve_branch(p.branch.as_deref());
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
@@ -850,11 +828,7 @@ impl GitCortexServer {
         description = "Find every call site of a function: the calling symbol AND the source line of each call. Where find_callers gives only the calling functions, this pinpoints the exact line each call happens on — useful for reviewing or editing every invocation."
     )]
     fn get_call_sites(&self, Parameters(p): Parameters<GetCallSitesParams>) -> CallToolResult {
-        let branch = p
-            .branch
-            .as_deref()
-            .unwrap_or(&self.default_branch)
-            .to_owned();
+        let branch = self.resolve_branch(p.branch.as_deref());
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
@@ -892,11 +866,7 @@ impl GitCortexServer {
         description = "Find which files/modules import a given symbol (follows Imports edges). Answers 'who depends on X' at the import level — useful before renaming or moving a symbol. Returns the importing module nodes."
     )]
     fn find_importers(&self, Parameters(p): Parameters<FindImportersParams>) -> CallToolResult {
-        let branch = p
-            .branch
-            .as_deref()
-            .unwrap_or(&self.default_branch)
-            .to_owned();
+        let branch = self.resolve_branch(p.branch.as_deref());
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
@@ -931,11 +901,7 @@ impl GitCortexServer {
         description = "Map a type's full relationship hierarchy in one call: supertypes (the traits/interfaces/classes it implements or extends) AND subtypes (the types that implement or extend it). Where find_implementors gives only the downward direction, this gives both. Works across Rust traits, Java/TypeScript interfaces, and inheritance chains."
     )]
     fn type_hierarchy(&self, Parameters(p): Parameters<TypeHierarchyParams>) -> CallToolResult {
-        let branch = p
-            .branch
-            .as_deref()
-            .unwrap_or(&self.default_branch)
-            .to_owned();
+        let branch = self.resolve_branch(p.branch.as_deref());
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
@@ -971,11 +937,7 @@ impl GitCortexServer {
         Most useful for debugging 'how can A reach B?' questions."
     )]
     fn trace_path(&self, Parameters(p): Parameters<TracePathParams>) -> CallToolResult {
-        let branch = p
-            .branch
-            .as_deref()
-            .unwrap_or(&self.default_branch)
-            .to_owned();
+        let branch = self.resolve_branch(p.branch.as_deref());
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
@@ -1014,11 +976,7 @@ impl GitCortexServer {
         &self,
         Parameters(p): Parameters<ListSymbolsInRangeParams>,
     ) -> CallToolResult {
-        let branch = p
-            .branch
-            .as_deref()
-            .unwrap_or(&self.default_branch)
-            .to_owned();
+        let branch = self.resolve_branch(p.branch.as_deref());
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
@@ -1061,11 +1019,7 @@ impl GitCortexServer {
         &self,
         Parameters(p): Parameters<FindUnusedSymbolsParams>,
     ) -> CallToolResult {
-        let branch = p
-            .branch
-            .as_deref()
-            .unwrap_or(&self.default_branch)
-            .to_owned();
+        let branch = self.resolve_branch(p.branch.as_deref());
         let kind = p.kind.as_deref().and_then(|k| match k {
             "function" => Some(NodeKind::Function),
             "method" => Some(NodeKind::Method),
@@ -1123,11 +1077,7 @@ impl GitCortexServer {
         'both' (default); depth defaults to 1. ONE successful call is sufficient."
     )]
     fn get_subgraph(&self, Parameters(p): Parameters<GetSubgraphParams>) -> CallToolResult {
-        let branch = p
-            .branch
-            .as_deref()
-            .unwrap_or(&self.default_branch)
-            .to_owned();
+        let branch = self.resolve_branch(p.branch.as_deref());
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
@@ -1155,11 +1105,7 @@ impl GitCortexServer {
         Use for deep explanation; use lookup_symbol for a quick definition."
     )]
     fn wiki_symbol(&self, Parameters(p): Parameters<WikiSymbolParams>) -> CallToolResult {
-        let branch = p
-            .branch
-            .as_deref()
-            .unwrap_or(&self.default_branch)
-            .to_owned();
+        let branch = self.resolve_branch(p.branch.as_deref());
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
@@ -1182,11 +1128,7 @@ impl GitCortexServer {
         similarity when available. Ranks exact > prefix > semantic > substring. Default limit=10."
     )]
     fn search_code(&self, Parameters(p): Parameters<SearchCodeParams>) -> CallToolResult {
-        let branch = p
-            .branch
-            .as_deref()
-            .unwrap_or(&self.default_branch)
-            .to_owned();
+        let branch = self.resolve_branch(p.branch.as_deref());
 
         // ── Text search ───────────────────────────────────────────────────────
         let text_hits = {
@@ -1209,11 +1151,20 @@ impl GitCortexServer {
         // ── Semantic search (best-effort, non-blocking) ───────────────────────
         // try_lock: never block an MCP call waiting for the background indexer.
         let sem_hits: Option<Vec<(String, f32)>> = if let Ok(sem) = self.semantic.try_lock() {
-            if let SemanticState::Ready { embedder, index } = &*sem {
-                embedder.embed_one(&p.query).ok().map(|qvec| {
-                    let limit = p.limit.unwrap_or(10).min(200);
-                    index.top_k(&qvec, limit * 2)
-                })
+            if let SemanticState::Ready {
+                branch: semantic_branch,
+                embedder,
+                index,
+            } = &*sem
+            {
+                if semantic_branch == &branch {
+                    embedder.embed_one(&p.query).ok().map(|qvec| {
+                        let limit = p.limit.unwrap_or(10).min(200);
+                        index.top_k(&qvec, limit * 2)
+                    })
+                } else {
+                    None
+                }
             } else {
                 None
             }
@@ -1275,7 +1226,10 @@ impl GitCortexServer {
 
         let semantic_available = matches!(
             self.semantic.try_lock().as_deref(),
-            Ok(SemanticState::Ready { .. })
+            Ok(SemanticState::Ready {
+                branch: semantic_branch,
+                ..
+            }) if semantic_branch == &branch
         );
         let store = match self.store.lock() {
             Ok(g) => g,
@@ -1305,11 +1259,7 @@ impl GitCortexServer {
         synthesize and answer the user directly from this response."
     )]
     fn start_tour(&self, Parameters(p): Parameters<StartTourParams>) -> CallToolResult {
-        let branch = p
-            .branch
-            .as_deref()
-            .unwrap_or(&self.default_branch)
-            .to_owned();
+        let branch = self.resolve_branch(p.branch.as_deref());
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
@@ -1336,11 +1286,7 @@ impl GitCortexServer {
         min_in_degree default 10, limit default 20."
     )]
     fn find_god_nodes(&self, Parameters(p): Parameters<FindGodNodesParams>) -> CallToolResult {
-        let branch = p
-            .branch
-            .as_deref()
-            .unwrap_or(&self.default_branch)
-            .to_owned();
+        let branch = self.resolve_branch(p.branch.as_deref());
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
@@ -1369,11 +1315,7 @@ impl GitCortexServer {
         re-runs on the same indexed graph. min_cluster_size default 3, limit default 20."
     )]
     fn find_clusters(&self, Parameters(p): Parameters<FindClustersParams>) -> CallToolResult {
-        let branch = p
-            .branch
-            .as_deref()
-            .unwrap_or(&self.default_branch)
-            .to_owned();
+        let branch = self.resolve_branch(p.branch.as_deref());
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
@@ -1402,11 +1344,7 @@ impl GitCortexServer {
         Skipped when the graph has >10 000 import edges (too large). limit default 20."
     )]
     fn find_cycles(&self, Parameters(p): Parameters<FindCyclesParams>) -> CallToolResult {
-        let branch = p
-            .branch
-            .as_deref()
-            .unwrap_or(&self.default_branch)
-            .to_owned();
+        let branch = self.resolve_branch(p.branch.as_deref());
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
@@ -1456,11 +1394,7 @@ impl GitCortexServer {
         find_unused_symbols + find_cycles + find_god_nodes calls."
     )]
     fn health_report(&self, Parameters(p): Parameters<HealthReportParams>) -> CallToolResult {
-        let branch = p
-            .branch
-            .as_deref()
-            .unwrap_or(&self.default_branch)
-            .to_owned();
+        let branch = self.resolve_branch(p.branch.as_deref());
 
         let store = match self.store.lock() {
             Ok(g) => g,
@@ -1606,10 +1540,7 @@ impl GitCortexServer {
             .and_then(|v| v.as_str())
             .map(|s| s.to_owned());
 
-        let branch_for_stale = branch_val
-            .as_deref()
-            .unwrap_or(&self.default_branch)
-            .to_owned();
+        let branch_for_stale = self.resolve_branch(branch_val.as_deref());
 
         // Helper: extract a string field from params.
         macro_rules! str_field {

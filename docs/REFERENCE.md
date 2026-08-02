@@ -10,6 +10,7 @@ Complete reference for the `gcx` CLI, MCP server tools, configuration, and graph
 - [Quick start](#quick-start)
 - [CLI reference](#cli-reference)
   - [gcx init](#gcx-init)
+  - [gcx deinit](#gcx-deinit)
   - [gcx serve](#gcx-serve)
   - [gcx hook](#gcx-hook)
   - [gcx query](#gcx-query)
@@ -27,7 +28,6 @@ Complete reference for the `gcx` CLI, MCP server tools, configuration, and graph
   - [Prompt reference](#prompt-reference)
   - [Slash commands (Claude Code)](#slash-commands-claude-code)
 - [Configuration reference](#configuration-reference)
-  - [.gitcortex/config.toml](#gitcortexconfigtoml)
   - [.gitcortex/ignore](#gitcortexignore)
 - [Graph schema](#graph-schema)
   - [Node kinds](#node-kinds)
@@ -40,6 +40,12 @@ Complete reference for the `gcx` CLI, MCP server tools, configuration, and graph
 ---
 
 ## Installation
+
+### Homebrew
+
+```bash
+brew install bharath03-a/tap/gitcortex
+```
 
 ### Cargo (source)
 
@@ -73,8 +79,8 @@ Download from the [releases page](https://github.com/bharath03-a/GitCortex/relea
 # 1. Go to your repo
 cd /path/to/your/repo
 
-# 2. Install hooks + run initial full index + register MCP for detected editors
-gcx init
+# 2. Index, install hooks, and opt into repository-local MCP setup
+gcx init --editor codex   # omit --editor for CLI-only use
 
 # 3. Verify setup
 gcx doctor
@@ -105,7 +111,7 @@ These flags apply to every subcommand.
 
 ### gcx init
 
-Install git hooks, run the initial full index, and register the MCP server for detected editors.
+Install Git hooks and run the initial full index. Editor MCP registration is opt-in.
 
 ```
 gcx init [OPTIONS]
@@ -114,24 +120,44 @@ gcx init [OPTIONS]
 | Flag | Description |
 |------|-------------|
 | `--ci` | Write `.github/workflows/gcx-blast-radius.yml` for the GitHub Actions PR bot. |
-| `--editor <EDITOR>` | Force a specific editor config. One of: `claude`, `cursor`, `windsurf`, `copilot`, `antigravity`, `codex`, `all`. Defaults to auto-detecting from editor environment variables. |
+| `--editor <EDITOR>` | Select `none`, `auto`, `claude`, `cursor`, `windsurf`, `copilot`, `antigravity`, `codex`, or `all`. Omitted by default. |
+| `--global-editor-config` | Explicitly allow changes to editor configuration outside the repository. |
+| `--shared-git-hooks` | Explicitly allow changes when `core.hooksPath` points outside the repository and Git common directory. |
 
 **What `gcx init` does:**
 
-1. Copies `hooks/post-commit`, `hooks/post-merge`, `hooks/post-rewrite`, `hooks/post-checkout` into `.git/hooks/`.
+1. Resolves the active Git hooks directory with `git rev-parse --git-path hooks` and adds managed, non-blocking hook blocks.
 2. Runs a full index of the current HEAD.
-3. Writes MCP server config for the detected editor(s).
-4. Writes `.claude/commands/gcx/` slash commands (when Claude is detected).
+3. Writes repository-local MCP configuration only when `--editor` is supplied.
+4. Writes `.claude/commands/gcx/` slash commands only when Claude is selected.
 
 **Examples:**
 
 ```bash
-gcx init                        # auto-detect editors, register all
-gcx init --editor claude        # Claude Code only
-gcx init --editor codex         # Codex / OpenAI compact mode
-gcx init --editor all           # all editors
+gcx init                        # no editor configuration
+gcx init --editor claude        # repository-local Claude Code setup
+gcx init --editor auto          # explicitly request environment detection
+gcx init --editor codex         # repository-local Codex setup
+gcx init --editor windsurf --global-editor-config
+gcx init --editor all           # all repository-local integrations
 gcx init --ci                   # + GitHub Actions workflow
 ```
+
+---
+
+### gcx deinit
+
+Remove GitCortex-owned hooks and repository-local editor integrations without disturbing unrelated configuration.
+
+```bash
+gcx deinit --dry-run
+gcx deinit
+gcx deinit --global-editor-config
+gcx deinit --shared-git-hooks
+gcx deinit --purge
+```
+
+By default, graph data and `.gitcortex/` are retained. `--global-editor-config` explicitly permits removing global MCP entries, and `--purge` also deletes this repository's local graph state.
 
 ---
 
@@ -145,17 +171,17 @@ gcx serve [OPTIONS]
 
 | Flag | Description |
 |------|-------------|
-| `--compact` | Expose only the single dispatch tool (`gcx`) instead of all 22 individual tools. Reduces per-turn schema overhead ~95%. Codex uses this by default. |
+| `--full` | Expose all individual tools in addition to the compact `gcx` dispatch tool. Compact mode is the default. |
 
 **Notes:**
-- The server auto-detects the current branch from `git symbolic-ref HEAD` at startup. All tools default to that branch.
+- The server tracks branch changes while running. Tools without an explicit `branch` use the currently checked-out branch.
 - Editors launch `gcx serve` automatically via their MCP config. You rarely need to run this manually.
 
 **Examples:**
 
 ```bash
-gcx serve             # full surface (22 tools + prompts)
-gcx serve --compact   # single dispatch tool only
+gcx serve          # compact single-dispatch surface (default)
+gcx serve --full   # compact dispatch plus all individual tools
 ```
 
 ---
@@ -530,35 +556,42 @@ The MCP server exposes the knowledge graph to AI coding assistants via the [Mode
 
 ### Editor setup
 
-`gcx init` writes the appropriate config for each editor automatically.
+`gcx init --editor <name>` writes repository-local configuration for the selected editor. Global configuration requires `--global-editor-config`.
 
 #### Claude Code
 
-`~/.claude.json` or project `.mcp.json`:
+Project `.mcp.json`, plus optional `~/.claude.json` with `--global-editor-config`:
 
 ```json
 {
   "mcpServers": {
     "gitcortex": {
       "command": "gcx",
-      "args": ["serve"],
-      "type": "stdio"
+      "args": ["serve"]
     }
   }
 }
 ```
 
-#### Cursor / Windsurf / Copilot
+#### Cursor
 
-`~/.cursor/mcp.json` (adjust path per editor):
+Repository-local `.cursor/mcp.json` uses the same `mcpServers` entry as Claude.
+
+#### Windsurf / Antigravity
+
+These editors currently require global MCP files. GitCortex writes them only when `--global-editor-config` is supplied.
+
+#### GitHub Copilot in VS Code
+
+Repository-local `.vscode/mcp.json`:
 
 ```json
 {
-  "mcpServers": {
+  "servers": {
     "gitcortex": {
+      "type": "stdio",
       "command": "gcx",
-      "args": ["serve"],
-      "type": "stdio"
+      "args": ["serve"]
     }
   }
 }
@@ -566,12 +599,12 @@ The MCP server exposes the knowledge graph to AI coding assistants via the [Mode
 
 #### Codex (OpenAI)
 
-Codex uses compact mode by default to reduce token overhead:
+Codex uses the default compact mode to reduce token overhead:
 
 ```toml
 [mcp_servers.gitcortex]
 command = "gcx"
-args = ["serve", "--compact"]
+args = ["serve"]
 startup_timeout_sec = 30
 ```
 
@@ -579,19 +612,19 @@ startup_timeout_sec = 30
 
 ### Compact mode
 
-`gcx serve --compact` exposes only the `gcx` dispatch tool instead of the 15 individual tools.
+`gcx serve` exposes the compact `gcx` dispatch tool by default. `gcx serve --full` additionally exposes every individual tool.
 
 - Reduces per-turn MCP schema overhead ~95%
 - All queries still work via the single `gcx` tool
 - MCP prompts may not be available in clients that only load exposed tools
 
-Switch any editor to compact mode by changing `args` to `["serve", "--compact"]` in its MCP config.
+All generated editor configurations use compact mode. Add `--full` only for clients that require individual tool schemas.
 
 ---
 
 ### Tool reference
 
-All tools accept an optional `branch` parameter. When omitted, defaults to the branch active when `gcx serve` was started.
+All tools accept an optional `branch` parameter. When omitted, the server follows the currently checked-out branch.
 
 ---
 
@@ -1185,49 +1218,6 @@ Generates an architecture diagram from the knowledge graph.
 
 ## Configuration reference
 
-### .gitcortex/config.toml
-
-Committed to the repo and shared with your team. Created by `gcx init`.
-
-```toml
-[index]
-languages = ["rust", "python", "typescript", "go", "java"]
-max_file_size_kb = 500
-
-[lld]
-enabled = false
-srp_method_threshold = 10
-isp_method_threshold = 7
-
-[store]
-backend = "local"
-```
-
-#### `[index]` section
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `languages` | `string[]` | `["rust","python","typescript","go","java"]` | Languages to index. Valid values: `rust`, `python`, `typescript`, `javascript`, `go`, `java`. Files in other languages are skipped. |
-| `max_file_size_kb` | `integer` | `500` | Skip files larger than this. Prevents indexing minified or generated blobs. |
-
-#### `[lld]` section
-
-LLD (Low-Level Design) annotation settings. Currently controls Pass 2 (background quality analysis).
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `enabled` | `boolean` | `false` | Enable Pass 2 background LLD annotation. When `false`, only cyclomatic complexity (computed in Pass 1) is populated. |
-| `srp_method_threshold` | `integer` | `10` | Structs/classes with more methods than this threshold are flagged with `GodStruct` smell. |
-| `isp_method_threshold` | `integer` | `7` | Traits/interfaces with more methods than this threshold are flagged with `FatInterface` smell. |
-
-#### `[store]` section
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `backend` | `string` | `"local"` | Storage backend. Only `"local"` (embedded KuzuDB) is available in v0.4. A remote backend is planned. |
-
----
-
 ### .gitcortex/ignore
 
 `.gitignore`-syntax exclusion patterns for files and directories to skip during indexing. Committed to the repo.
@@ -1337,13 +1327,13 @@ A function with no branching has complexity `1`. Each decision point adds `1`.
 All graph data is machine-local and never committed.
 
 ```
-~/.local/share/gitcortex/{repo_id}/
+<platform-data>/gitcortex/{repo_id}/
     graph.kuzu           # KuzuDB database (all branches, table-namespaced)
     main.sha             # last indexed commit SHA for branch "main"
     feat__auth.sha       # last indexed SHA for branch "feat/auth"
 ```
 
-`{repo_id}` is derived from the repo's origin URL or absolute path.
+`{repo_id}` is a stable BLAKE3 digest of the absolute repository path. Linux uses `$XDG_DATA_HOME` (default `~/.local/share`); macOS uses `~/Library/Application Support`. Existing macOS stores under `~/.local/share/gitcortex` remain supported.
 
 Branch names are sanitised for use as KuzuDB table prefixes: `/` → `__`, `-` → `_`, leading digits escaped.
 
@@ -1357,4 +1347,7 @@ Branch names are sanitised for use as KuzuDB table prefixes: `/` → `__`, `-` �
 | `NO_COLOR` | Disable ANSI colour output (same effect as `--color never`). |
 | `CLICOLOR=0` | Disable colour (same as above). |
 | `TERM=dumb` | Disable colour (same as above). |
-| `GCX_STORE_PATH` | Override the default `~/.local/share/gitcortex` store directory. |
+| `GCX_STORE_PATH` | Override the platform data directory used for graph state. |
+| `GCX_CACHE_PATH` | Override the platform cache directory used for model weights. |
+| `XDG_DATA_HOME` | Linux/XDG durable data root when `GCX_STORE_PATH` is unset. |
+| `XDG_CACHE_HOME` | Linux/XDG cache root when `GCX_CACHE_PATH` is unset. |

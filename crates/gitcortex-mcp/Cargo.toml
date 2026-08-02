@@ -8,6 +8,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+fs2.workspace = true
 anyhow.workspace = true
 fastembed.workspace = true
 gitcortex-core.workspace = true

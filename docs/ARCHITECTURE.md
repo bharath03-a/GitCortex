@@ -114,13 +114,16 @@ The `gcx viz` HTTP server is a parallel surface that exposes the same store data
 ## Storage layout — machine-local
 
 ```
-~/.local/share/gitcortex/{repo_id}/
+<platform-data>/gitcortex/{repo_id}/
     graph.kuzu          # one DB per repo, branch-namespaced tables inside
     main.sha            # last_indexed_sha for branch "main"
     feat__auth.sha      # last_indexed_sha for branch "feat/auth"
+
+<platform-cache>/gitcortex/models/
+    # replaceable semantic-model weights shared across repositories
 ```
 
-Path lookup is deterministic from the absolute path of the repo working tree (hashed). One Git repo, one graph file. Branch switches do not re-index — they only flip the active-branch pointer.
+Path lookup is deterministic from a stable BLAKE3 hash of the absolute working-tree path. Linux follows XDG data/cache roots and macOS uses native Application Support/Cache locations. One Git repo has one graph file; branches are table-namespaced within it.
 
 ## Frontend integration
 
@@ -128,7 +131,7 @@ Path lookup is deterministic from the absolute path of the repo working tree (ha
 
 For active frontend development, run `npm run dev` against a running `gcx viz` backend — Vite's proxy forwards `/data` and `/api/*` to `:5678`, avoiding rebuild cycles.
 
-> **Known caveat:** Cosmograph v2 loads its DuckDB-WASM dependency from `cdn.jsdelivr.net` at runtime. This is not a Rust dependency but it does mean the viz needs internet on first open. See `docs/adr/0004-duckdb-cdn-runtime-dep.md`.
+> **Runtime packaging:** Viz assets, fonts, and renderer dependencies are bundled into `gcx`; opening the graph does not require a CDN or external font service.
 
 ## Where to make changes
 
