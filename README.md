@@ -51,13 +51,13 @@ GitCortex gives your AI editor a pre-built, queryable call graph of your repo â€
 ## Demo
 
 <p align="center">
-  <img src="docs/demo.gif" alt="GitCortex local visualization moving from the repository atlas into the live symbol graph, searching for KuzuGraphStore, and opening its investigation neighborhood" width="800"/>
+  <img src="docs/demo.gif" alt="GitCortex local visualization moving from the repository atlas into the live symbol graph, searching for find_callers, and opening its callers, callees, and investigation neighborhood" width="800"/>
 </p>
 
 This is a real capture of `gcx viz` running locally against the GitCortex
 repository: 2,495 indexed symbols, the live force-directed graph, complete
-symbol search, and an exact investigation neighborhood. No hosted product page
-or mock data is shown.
+symbol search, and a connected `find_callers` investigation with callers and
+callees. No hosted product page or mock data is shown.
 
 ---
 
