@@ -16,7 +16,7 @@
 
 **[→ Product page](https://bharath03-a.github.io/GitCortex/)**
 
-GitCortex (`gcx`) indexes your codebase incrementally on every commit using tree-sitter AST parsing, persists the graph in an embedded KuzuDB database, and exposes it to AI coding assistants via an MCP server — in Codex, Claude Code, Cursor, Windsurf, GitHub Copilot, and Google Antigravity.
+GitCortex (`gcx`) indexes your codebase incrementally on every commit using tree-sitter AST parsing, persists the graph in an embedded KuzuDB database, and exposes it to AI coding assistants via an MCP server, in Codex, Claude Code, Cursor, Windsurf, GitHub Copilot, and Google Antigravity.
 
 ```bash
 cargo install gitcortex   # or: npm i -g gitcortex · pip install gitcortex
@@ -31,20 +31,20 @@ cd your-repo && gcx init  # index + install hooks + register your editor
 
 When you ask an AI editor to work on a large codebase, it either scans dozens of files to build context (burning tokens) or misses the bigger picture entirely. There's no middle ground.
 
-GitCortex gives your AI editor a pre-built, queryable call graph of your repo — functions, structs, traits, interfaces, call relationships, inheritance — so instead of reading raw source files it can ask precise questions like "what calls this function?" or "what implements this trait?" and get structured answers instantly.
+GitCortex gives your AI editor a pre-built, queryable call graph of your repo, functions, structs, traits, interfaces, call relationships, inheritance, so instead of reading raw source files it can ask precise questions like "what calls this function?" or "what implements this trait?" and get structured answers instantly.
 
 ### Highlights
 
-- **MIT licensed** — commercial-friendly.
-- **Zero runtime dependencies** — single static binary, no Node.js / Python runtime required.
-- **5 languages** — Rust, Python, TypeScript/JavaScript, Go, Java ([coverage matrix](#supported-languages)).
-- **Auto-indexing on every git op** — incremental, sub-500 ms on changed files; a full index of a 520k-LOC repo (Django) takes ~4 s.
-- **Per-branch graphs** — switching branches is instant, no re-index.
-- **Wiki, search, tour, blast-radius** — built-in discovery surface for AI assistants and humans.
+- **MIT licensed**: commercial-friendly.
+- **Zero runtime dependencies**: single static binary, no Node.js / Python runtime required.
+- **5 languages**: Rust, Python, TypeScript/JavaScript, Go, Java ([coverage matrix](#supported-languages)).
+- **Auto-indexing on every git op**: incremental, sub-500 ms on changed files; a full index of a 520k-LOC repo (Django) takes ~4 s.
+- **Per-branch graphs**: switching branches is instant, no re-index.
+- **Wiki, search, tour, blast-radius**: built-in discovery surface for AI assistants and humans.
 - **Works in Codex, Claude Code, Cursor, Windsurf, GitHub Copilot, Google Antigravity** via MCP.
-- **Net token savings on real sessions** — median of 3 runs across 5 OSS repos (Rust, Python, TS, Go, Java): **+7.7 % overall**, geomean **1.06×**, with discovery queries (`search_code`) winning **1.30×** and landing in ~half the turns of grep (see [benchmark below](#benchmark)).
-- **`gcx` single-dispatch MCP tool** — one compact schema covers all graph operations, cutting per-turn context overhead vs. loading 22 separate tool schemas.
-- **Six viz formats** — WebGL Cosmograph UI, self-contained HTML, SVG, DOT, GraphML, Neo4j Cypher.
+- **Net token savings on real sessions**: median of 3 runs across 5 OSS repos (Rust, Python, TS, Go, Java): **+7.7 % overall**, geomean **1.06×**, with discovery queries (`search_code`) winning **1.30×** and landing in ~half the turns of grep (see [benchmark below](#benchmark)).
+- **`gcx` single-dispatch MCP tool**: one compact schema covers all graph operations, cutting per-turn context overhead vs. loading 22 separate tool schemas.
+- **Six viz formats**: WebGL Cosmograph UI, self-contained HTML, SVG, DOT, GraphML, Neo4j Cypher.
 
 ---
 
@@ -63,14 +63,14 @@ callees. No hosted product page or mock data is shown.
 
 ## Benchmark
 
-We run real assistant sessions twice on the same questions — once with normal source search/read, once with GitCortex graph access — and record the assistant-reported token usage. No chars/4 proxy.
+We run real assistant sessions twice on the same questions, once with normal source search/read, once with GitCortex graph access, and record the assistant-reported token usage. No chars/4 proxy.
 
 | Question                          | What it tests                                     |
 | --------------------------------- | ------------------------------------------------- |
-| "Find all auth-related code"      | Discovery — where the graph vs. grep matters most |
+| "Find all auth-related code"      | Discovery, where the graph vs. grep matters most |
 | "Give me a tour of this codebase" | Architecture overview                             |
-| "If I change X, what breaks?"     | Refactor impact — honest about limits             |
-| "Show everything connected to X"  | Neighbourhood — honest loss case on large hubs    |
+| "If I change X, what breaks?"     | Refactor impact, honest about limits             |
+| "Show everything connected to X"  | Neighbourhood, honest loss case on large hubs    |
 
 ### Real results (compact MCP, 5 repos × 4 questions, **median of 3 runs**)
 
@@ -84,13 +84,13 @@ We run real assistant sessions twice on the same questions — once with normal 
 
 Aggregate: **+7.7 % tokens saved**, geomean **1.06×**. Per question (median ratio): `search_code` **1.30×**, `start_tour` **1.02×**, `find_callers` **0.96×**, `get_subgraph` **0.94×**.
 
-> **Why these numbers are lower than older claims.** Earlier reports quoted ~38 % from a single run; run-to-run variance is large (one repo swung ±70 pp between identical runs), so single-run aggregates aren't trustworthy. These are medians of 3 rounds with rate-limited/errored sessions excluded — the honest, noise-resistant view. See the [full report](#benchmark) for the previous run behind a dated toggle.
+> **Why these numbers are lower than older claims.** Earlier reports quoted ~38 % from a single run; run-to-run variance is large (one repo swung ±70 pp between identical runs), so single-run aggregates aren't trustworthy. These are medians of 3 rounds with rate-limited/errored sessions excluded, the honest, noise-resistant view. See the [full report](#benchmark) for the previous run behind a dated toggle.
 
-**What improves most:** targeted discovery — `search_code` reliably wins (1.30×) and lands the answer in roughly **half the turns** of grep. Larger, idiomatic repos (Rust, Python) benefit most.
+**What improves most:** targeted discovery, `search_code` reliably wins (1.30×) and lands the answer in roughly **half the turns** of grep. Larger, idiomatic repos (Rust, Python) benefit most.
 
-**Where the graph is still weak:** broad "tour" and "what breaks" questions stay near break-even (the model reads code either way), and Java (gson) is the consistent drag — its parser is the shallowest. Both are active work.
+**Where the graph is still weak:** broad "tour" and "what breaks" questions stay near break-even (the model reads code either way), and Java (gson) is the consistent drag, its parser is the shallowest. Both are active work.
 
-📊 **[Full interactive benchmark report →](https://htmlpreview.github.io/?https://github.com/bharath03-a/GitCortex/blob/main/docs/benchmarks/final-report.html)** — per-language breakdown, full vs. compact MCP comparison, charts, and methodology. (Source: [`docs/benchmarks/final-report.html`](docs/benchmarks/final-report.html))
+📊 **[Full interactive benchmark report →](https://htmlpreview.github.io/?https://github.com/bharath03-a/GitCortex/blob/main/docs/benchmarks/final-report.html)**: per-language breakdown, full vs. compact MCP comparison, charts, and methodology. (Source: [`docs/benchmarks/final-report.html`](docs/benchmarks/final-report.html))
 
 ### Reproducing
 
@@ -123,13 +123,13 @@ python3 docs/benchmarks/real-report.py
 3. `gcx serve` starts an MCP server on stdio so Codex, Claude Code, or any MCP client can query the graph.
 4. `gcx viz` opens an interactive force-directed graph in your browser.
 
-The graph is namespaced per branch — switching branches instantly gives you the graph for that branch with no re-indexing.
+The graph is namespaced per branch, switching branches instantly gives you the graph for that branch with no re-indexing.
 
 ---
 
 ## Supported languages
 
-All five languages parse into the same graph schema (nodes + edges) and work with every query, the MCP tools, and the visualizer. Coverage maturity differs by language — the table is honest about what's deep vs. still shallow.
+All five languages parse into the same graph schema (nodes + edges) and work with every query, the MCP tools, and the visualizer. Coverage maturity differs by language, the table is honest about what's deep vs. still shallow.
 
 | Language                    | Defs (fn/type/method) | Calls | Inheritance                            | Imports | Notes                                                                                                |
 | --------------------------- | --------------------- | ----- | -------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------- |
@@ -141,20 +141,20 @@ All five languages parse into the same graph schema (nodes + edges) and work wit
 
 Call resolution is **syntactic** (no full type inference): a call to a name with more than a handful of same-named definitions is treated as ambiguous and left unlinked rather than fanned out to all of them. This keeps the graph precise and the index fast.
 
-Adding a language is a self-contained task — implement one `LanguageParser` in `gitcortex-indexer`. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Adding a language is a self-contained task, implement one `LanguageParser` in `gitcortex-indexer`. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
 ## Requirements
 
 - Git
-- Rust 1.80+ (only needed for source installs — pre-built binaries require nothing)
+- Rust 1.80+ (only needed for source installs, pre-built binaries require nothing)
 
 ---
 
 ## Installation
 
-**pip / pipx / uv (Python — no Rust required, recommended):**
+**pip / pipx / uv (Python, no Rust required, recommended):**
 
 ```bash
 pip install gitcortex
@@ -195,7 +195,7 @@ curl --proto '=https' --tlsv1.2 -LsSf \
   https://github.com/bharath03-a/GitCortex/releases/latest/download/gitcortex-installer.sh | sh
 ```
 
-**npm / pnpm / yarn (Node.js — no Rust required):**
+**npm / pnpm / yarn (Node.js, no Rust required):**
 
 ```bash
 npm install -g gitcortex
@@ -205,7 +205,7 @@ pnpm add -g gitcortex
 yarn global add gitcortex
 ```
 
-**macOS / Linux — curl installer:**
+**macOS / Linux, curl installer:**
 
 ```bash
 curl --proto '=https' --tlsv1.2 -LsSf \
@@ -217,12 +217,12 @@ curl --proto '=https' --tlsv1.2 -LsSf \
 
 ### Windows (via WSL2)
 
-Native Windows is not currently supported — the embedded graph store (KuzuDB 0.6.3, upstream
+Native Windows is not currently supported, the embedded graph store (KuzuDB 0.6.3, upstream
 archived Oct 2025) does not link cleanly under MSVC (LNK1169/LNK2038 symbol conflicts). Restoring
 native Windows requires replacing the store layer; tracked as a future effort.
 
 **WSL2 is the supported Windows path today.** Install [WSL2 with Ubuntu](https://learn.microsoft.com/en-us/windows/wsl/install),
-then use the Linux x86_64 binary or `pip install gitcortex` / `npm install -g gitcortex` inside WSL2 —
+then use the Linux x86_64 binary or `pip install gitcortex` / `npm install -g gitcortex` inside WSL2:
 everything works identically to native Linux.
 
 **Cargo (from crates.io):**
@@ -263,7 +263,7 @@ gcx --color always  query find-callers bar    # force colour (useful in pipes th
 gcx --color never   query symbol-context baz  # plain text, for scripts and CI
 ```
 
-`gcx` also respects the [`NO_COLOR`](https://no-color.org) convention, `CLICOLOR=0`, and `TERM=dumb`. NodeKinds are coloured to match the WebGL viz palette: structs green, traits/constants yellow, interfaces cyan, functions blue, methods bright-blue, modules magenta — same identity wherever you read it.
+`gcx` also respects the [`NO_COLOR`](https://no-color.org) convention, `CLICOLOR=0`, and `TERM=dumb`. NodeKinds are coloured to match the WebGL viz palette: structs green, traits/constants yellow, interfaces cyan, functions blue, methods bright-blue, modules magenta, same identity wherever you read it.
 
 ### `gcx init`
 
@@ -297,7 +297,7 @@ GitCortex initialised  (820ms)
 
 ### `gcx hook`
 
-Called automatically by the git hooks — you rarely invoke this directly.
+Called automatically by the git hooks, you rarely invoke this directly.
 
 ```bash
 gcx hook                   # post-commit / post-merge / post-rewrite
@@ -330,7 +330,7 @@ gcx query find-callees handle_request
 gcx query trace-path entry_point database_query
 gcx query symbol-context apply_diff           # 360° view (def + callers + callees + uses)
 
-# Discovery — new in v0.3
+# Discovery, new in v0.3
 gcx query wiki apply_diff                     # markdown wiki page for a symbol
 gcx query tour --limit 12                     # centrality-ranked global tour
 gcx query tour --seed main                    # BFS-walk outward from a seed
@@ -364,20 +364,20 @@ Format choice:
 | `graphml`       | XML graph                                         | Open in Gephi / yEd / Cytoscape for analysis       |
 | `cypher`        | Neo4j Cypher                                      | Push the graph into a live Neo4j instance          |
 
-The browser UI is a React 19 + Vite + Tailwind v4 single-page app, rendered by **Cosmograph** (`@cosmos.gl/graph`) — a WebGL/GPGPU force-directed graph engine that runs the entire simulation on the GPU. The whole bundle is embedded in the `gcx` binary via `include_bytes!`, so there is no runtime dependency beyond a browser.
+The browser UI is a React 19 + Vite + Tailwind v4 single-page app, rendered by **Cosmograph** (`@cosmos.gl/graph`), a WebGL/GPGPU force-directed graph engine that runs the entire simulation on the GPU. The whole bundle is embedded in the `gcx` binary via `include_bytes!`, so there is no runtime dependency beyond a browser.
 
 Features:
 
-- **GPGPU force layout** — clusters form naturally on first paint, smooth at 60fps even on thousands of nodes
-- **Three-pane shell** — FilterRail (left) · Cosmograph canvas (center) · Inspector (right) · StatusBar (bottom)
+- **GPGPU force layout**: clusters form naturally on first paint, smooth at 60fps even on thousands of nodes
+- **Three-pane shell**: FilterRail (left) · Cosmograph canvas (center) · Inspector (right) · StatusBar (bottom)
 - **Density modes** in the header: `Focused` (only semantically connected nodes), `Public API` (only `pub` symbols), `Full` (all)
-- **Cmd+K search palette** — fuzzy match on name and qualified_name, ↑/↓/Enter keyboard navigation, click zooms-to-node
-- **Inspector tabs** — local Callers/Callees/Uses (computed client-side from the live graph), plus a **Deep Callers** tab backed by MCP `find_callers_deep` with risk scoring (LOW / MEDIUM / HIGH / CRITICAL)
-- **Branch diff overlay** — pick a branch from the header dropdown; added nodes glow emerald, removed nodes glow red, with a live legend
+- **Cmd+K search palette**: fuzzy match on name and qualified_name, ↑/↓/Enter keyboard navigation, click zooms-to-node
+- **Inspector tabs**: local Callers/Callees/Uses (computed client-side from the live graph), plus a **Deep Callers** tab backed by MCP `find_callers_deep` with risk scoring (LOW / MEDIUM / HIGH / CRITICAL)
+- **Branch diff overlay**: pick a branch from the header dropdown; added nodes glow emerald, removed nodes glow red, with a live legend
 - **NodeKind + EdgeKind filter toggles** in the left rail, with per-kind counts
-- **Floating canvas controls** — zoom in/out, fit, focus selected, play/pause simulation
+- **Floating canvas controls**: zoom in/out, fit, focus selected, play/pause simulation
 - **Catppuccin dark theme** with custom Tailwind v4 design tokens (`--color-void`, `--color-accent`, etc.)
-- **Editor links** — clicking a node opens it in VS Code/Cursor/IDEA via `file:line` URI
+- **Editor links**: clicking a node opens it in VS Code/Cursor/IDEA via `file:line` URI
 
 ### `gcx blast-radius`
 
@@ -411,7 +411,7 @@ Affected callers:
 
 ### `gcx export`
 
-Generates `.gitcortex/context.md` — a readable Markdown codebase map organized by file with hierarchical struct→method containment. Once generated, the git hook keeps it fresh after every commit.
+Generates `.gitcortex/context.md`, a readable Markdown codebase map organized by file with hierarchical struct→method containment. Once generated, the git hook keeps it fresh after every commit.
 
 ```bash
 gcx export                          # writes .gitcortex/context.md (Markdown map)
@@ -420,8 +420,8 @@ gcx export --format json > graph.json   # committable JSON: symbols + edges, joi
 gcx export --claude-md --top 40     # upsert top-N symbols into CLAUDE.md
 ```
 
-- **`--format json`** — emits `{ branch, sha, symbols[], edges[] }` to stdout. Each symbol carries `id`, `name`, `qualified_name`, `kind`, `file`, `line`, `visibility`; edges reference symbol `id`s. Commit it, diff it in PRs, or consume it in CI **without the binary or the embedded DB**.
-- **`--claude-md`** — upserts a compact, centrality-ranked symbol table into `CLAUDE.md` between `<!-- gcx:symbols start/end -->` markers (idempotent). Assistants get the most-referenced symbols (name → `file:line`) **pre-loaded with zero tool calls**, with a hint to fall back to the MCP tools for anything not listed.
+- **`--format json`**: emits `{ branch, sha, symbols[], edges[] }` to stdout. Each symbol carries `id`, `name`, `qualified_name`, `kind`, `file`, `line`, `visibility`; edges reference symbol `id`s. Commit it, diff it in PRs, or consume it in CI **without the binary or the embedded DB**.
+- **`--claude-md`**: upserts a compact, centrality-ranked symbol table into `CLAUDE.md` between `<!-- gcx:symbols start/end -->` markers (idempotent). Assistants get the most-referenced symbols (name → `file:line`) **pre-loaded with zero tool calls**, with a hint to fall back to the MCP tools for anything not listed.
 
 Example output:
 
@@ -559,7 +559,7 @@ Claude Code and the other editors use the full MCP surface unless you manually s
 
 | Tool                    | Description                                                                                                                                                                |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gcx`                   | **Single-dispatch tool** — one schema covers all operations below. Pass `action` + `params` to avoid loading 22 separate schemas per turn. Preferred for token efficiency; the compact server exposes only this tool. |
+| `gcx`                   | **Single-dispatch tool**: one schema covers all operations below. Pass `action` + `params` to avoid loading 22 separate schemas per turn. Preferred for token efficiency; the compact server exposes only this tool. |
 | `lookup_symbol`         | Find all nodes matching a name across the codebase                                                                                                                         |
 | `find_callers`          | All functions that call a given function (backward trace, capped at 25)                                                                                                    |
 | `find_callees`          | All functions called by a given function (forward trace, configurable depth)                                                                                               |
@@ -567,21 +567,21 @@ Claude Code and the other editors use the full MCP surface unless you manually s
 | `find_implementors`     | All structs/classes that implement a trait or interface                                                                                                                    |
 | `trace_path`            | Every call path between two symbols (up to 6 hops)                                                                                                                         |
 | `list_symbols_in_range` | Symbols whose span overlaps a file + line range                                                                                                                            |
-| `find_unused_symbols`   | Symbols with zero callers — dead code candidates (returns top 30, full count always included)                                                                              |
+| `find_unused_symbols`   | Symbols with zero callers, dead code candidates (returns top 30, full count always included)                                                                              |
 | `get_subgraph`          | Nodes + edges within N hops of a seed symbol (default depth 1, capped at 30 nodes)                                                                                         |
 | `branch_diff_graph`     | Nodes added or removed between two branches                                                                                                                                |
 | `detect_changes`        | Changed symbols + blast radius vs a base branch                                                                                                                            |
 | `symbol_context`        | Callers, callees, and used-by for a symbol                                                                                                                                 |
 | `wiki_symbol`           | Markdown wiki page: signature, doc-comment, top callers/callees                                                                                                            |
 | `search_code`           | Ranked fuzzy search over name + qualified path (default 10 results)                                                                                                        |
-| `start_tour`            | Centrality-ranked guided tour — entry points ordered by graph importance                                                                                                   |
-| `graph_stats`           | Aggregate node/edge counts (total + per-kind) — first-call orientation                                                                                                     |
+| `start_tour`            | Centrality-ranked guided tour, entry points ordered by graph importance                                                                                                   |
+| `graph_stats`           | Aggregate node/edge counts (total + per-kind), first-call orientation                                                                                                     |
 | `ast_search`            | Structural search by kind, is_async, visibility, and complexity range                                                                                                      |
 | `type_hierarchy`        | Supertypes and subtypes of a type in one call (both directions)                                                                                                            |
 | `find_importers`        | Files/modules that import a given symbol (in-repo imports)                                                                                                                  |
 | `find_type_usages`      | Functions/methods that use a type as a parameter or return type                                                                                                            |
 | `module_dependencies`   | In-repo modules a module depends on (via imports)                                                                                                                          |
-| `get_call_sites`        | Every call site of a function — caller plus the exact call line                                                                                                            |
+| `get_call_sites`        | Every call site of a function, caller plus the exact call line                                                                                                            |
 | `find_god_nodes`        | High-fan-in hub symbols ranked by inbound `Calls` in-degree; `min_in_degree` configurable                                                                                 |
 | `find_clusters`         | Code communities via label-propagation clustering over `Contains`+`Calls` edges; deterministic, no LLM calls                                                               |
 
@@ -591,8 +591,8 @@ All tools accept an optional `branch` parameter. Defaults to the branch active w
 
 | Prompt          | What it does                                                                                                                 |
 | --------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `detect_impact` | Pre-commit impact analysis — maps a list of changed files to affected callers and scores risk LOW / MEDIUM / HIGH / CRITICAL |
-| `generate_map`  | Architecture diagram — produces a Mermaid module map, key types table, and core execution flows                              |
+| `detect_impact` | Pre-commit impact analysis, maps a list of changed files to affected callers and scores risk LOW / MEDIUM / HIGH / CRITICAL |
+| `generate_map`  | Architecture diagram, produces a Mermaid module map, key types table, and core execution flows                              |
 
 Prompts are multi-step workflows your AI assistant executes automatically using the tools above. In Claude Code, invoke them via the prompt picker or with `/mcp__gitcortex__detect_impact`.
 
@@ -649,7 +649,7 @@ vendor/
 | `Property`   | TS/Python         | Class property, `@property`                                |
 | `Annotation` | Java              | `@interface` annotation type                               |
 | `EnumMember` | all               | Variant inside an enum                                     |
-| `Section`    | Markdown          | A Markdown heading (`## Installation`) — nested via `Contains` |
+| `Section`    | Markdown          | A Markdown heading (`## Installation`), nested via `Contains` |
 
 ### Edge kinds
 
@@ -672,14 +672,14 @@ The Python parser fully resolves the following patterns:
 | Pattern                                     | NodeKind emitted      | Metadata set                             |
 | ------------------------------------------- | --------------------- | ---------------------------------------- |
 | `class Foo(Protocol):`                      | `Interface`           | `is_abstract = true`                     |
-| `class Foo:` / `@dataclass class Foo:`      | `Struct`              | —                                        |
+| `class Foo:` / `@dataclass class Foo:`      | `Struct`              | n/a                                        |
 | `@property def bar(self):`                  | `Property`            | `is_property = true`                     |
 | `@staticmethod def fn():`                   | `Method`              | `is_static = true`                       |
 | `@classmethod def fn(cls):`                 | `Method`              | `is_static = true`                       |
 | `async def fn():`                           | `Function` / `Method` | `is_async = true`                        |
 | `def fn(): yield …`                         | `Function`            | `is_generator = true`                    |
 | `async def fn(): yield …`                   | `Function`            | `is_async = true`, `is_generator = true` |
-| `UPPER_SNAKE_CASE = …` at module level      | `Constant`            | —                                        |
+| `UPPER_SNAKE_CASE = …` at module level      | `Constant`            | n/a                                        |
 | Nested `class Inner:` inside `class Outer:` | `Struct`              | `Contains` edge from `Outer`             |
 
 ### Node metadata flags
@@ -711,7 +711,7 @@ The graph database and semantic index are stored locally and never committed:
 flowchart TD
     subgraph repo["Your Repository"]
         hooks["git hooks\npost-commit · post-merge · post-rewrite · post-checkout"]
-        files["Source Files — .rs · .ts · .py · .go"]
+        files["Source Files: .rs · .ts · .py · .go"]
     end
 
     subgraph indexer["gitcortex-indexer"]
@@ -731,7 +731,7 @@ flowchart TD
     assistants["AI assistants\nCodex compact MCP · Claude Code\nCursor · Windsurf · Copilot"]
     gh["GitHub Actions\nsticky PR blast-radius comment"]
 
-    hooks -->|"gcx hook — incremental diff"| differ
+    hooks -->|"gcx hook: incremental diff"| differ
     files --> differ
     parsers -->|"GraphDiff\nnodes + edges"| kuzu
     kuzu --> server
@@ -741,13 +741,13 @@ flowchart TD
     blast --> gh
 ```
 
-The `GraphStore` trait is the extensibility boundary — the local KuzuDB backend can be swapped for a remote backend without touching the indexer or MCP layer.
+The `GraphStore` trait is the extensibility boundary, the local KuzuDB backend can be swapped for a remote backend without touching the indexer or MCP layer.
 
 ---
 
 ## Limitations & roadmap
 
-GitCortex builds a **syntactic** graph from tree-sitter ASTs. That's deliberate — it keeps indexing fast and dependency-free — but it sets the boundaries below. Contributions toward any of these are welcome.
+GitCortex builds a **syntactic** graph from tree-sitter ASTs. That's deliberate, it keeps indexing fast and dependency-free, but it sets the boundaries below. Contributions toward any of these are welcome.
 
 **Known gaps**
 
@@ -755,11 +755,11 @@ GitCortex builds a **syntactic** graph from tree-sitter ASTs. That's deliberate 
 - **Go interface satisfaction not inferred.** Go satisfies interfaces structurally (no `implements` keyword), so `find-implementors` on a Go interface returns nothing. Embedding (`inherits`) is captured.
 - **Java member annotations & fields not modeled.** `@Override` / `@SerializedName` on members and `static final` fields don't yet produce nodes/edges, so annotation-target and field-level queries are incomplete.
 - **Go type-declaration signatures** render without the leading `type` keyword and struct/interface body (the type name + kind are correct).
-- **Windows is unsupported** — KuzuDB 0.6.3 (upstream archived) doesn't link under MSVC. macOS (arm64/x86_64) and Linux (x86_64/aarch64) ship pre-built binaries.
+- **Windows is unsupported**: KuzuDB 0.6.3 (upstream archived) doesn't link under MSVC. macOS (arm64/x86_64) and Linux (x86_64/aarch64) ship pre-built binaries.
 
 **Roadmap**
 
-- Pass-2 LLD annotation (SOLID hints, design patterns, code smells, cyclomatic complexity) — schema is already in place.
+- Pass-2 LLD annotation (SOLID hints, design patterns, code smells, cyclomatic complexity), schema is already in place.
 - Remote `GraphStore` backend for team-shared graphs (the trait boundary exists today).
 - Deeper Java/Go modeling (fields, annotations, structural interface satisfaction).
 - Code-specific embedding model swap (current: AllMiniLM-L6-v2; identifier tokenisation captures most of the gain cheaply in the meantime).
@@ -770,9 +770,9 @@ See [open issues](https://github.com/bharath03-a/GitCortex/issues) for the live 
 
 ## Contributing
 
-Contributions are welcome — bug reports, language-coverage improvements, new MCP tools, docs.
+Contributions are welcome, bug reports, language-coverage improvements, new MCP tools, docs.
 
-- **Start here:** [CONTRIBUTING.md](CONTRIBUTING.md) — dev setup, build, test, and PR workflow.
+- **Start here:** [CONTRIBUTING.md](CONTRIBUTING.md), dev setup, build, test, and PR workflow.
 - **Conduct:** [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 - **Pre-commit gate:** after cloning, install the hook once: `cp hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit`. It auto-formats with `cargo fmt` (re-stages changed files) and runs `cargo clippy -D warnings` before every commit.
 - **Test your changes against real repos:** `scripts/lang-smoke.sh <git-url> <symbol>` clones a repo, indexes it, exercises every query + the MCP round-trip, and prints PASS/FAIL with metrics.
