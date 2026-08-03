@@ -68,5 +68,6 @@ docs/.nojekyll
 __pycache__/
 *.pyc
 
-# Favicon copied from assets/icon.svg at Pages build time
+# Favicon copied from assets/icon.svg / assets/favicon.ico at Pages build time
 docs/favicon.svg
+docs/favicon.ico
