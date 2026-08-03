@@ -3,30 +3,77 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="GitCortex builds a branch-aware code knowledge graph of your repository — locally, on every commit, with zero LLM calls. MCP-native. Git-hook-driven.">
-  <title>GitCortex — A local code knowledge graph for AI assistants</title>
+  <meta name="description" content="GitCortex builds a branch-aware code knowledge graph of your repository, locally, on every commit, with zero LLM calls. MCP-native. Git-hook-driven.">
+  <title>GitCortex: A local code knowledge graph for AI assistants</title>
 
   <meta property="og:type"        content="website">
   <meta property="og:url"         content="https://bharath03-a.github.io/GitCortex/">
-  <meta property="og:title"       content="GitCortex — A local code knowledge graph for AI assistants">
+  <meta property="og:title"       content="GitCortex: A local code knowledge graph for AI assistants">
   <meta property="og:description" content="Branch-aware knowledge graph of your repo. Zero LLM calls. Git-hook-driven incremental indexing. MCP-native. pip install gitcortex.">
   <meta property="og:image"       content="https://raw.githubusercontent.com/bharath03-a/GitCortex/main/assets/icon.svg">
 
   <meta name="twitter:card"        content="summary">
-  <meta name="twitter:title"       content="GitCortex — A local code knowledge graph for AI assistants">
+  <meta name="twitter:title"       content="GitCortex: A local code knowledge graph for AI assistants">
   <meta name="twitter:description" content="Branch-aware knowledge graph of your repo. Zero LLM calls. Git-hook-driven. MCP-native. pip install gitcortex.">
   <meta name="twitter:image"       content="https://raw.githubusercontent.com/bharath03-a/GitCortex/main/assets/icon.svg">
 
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="shortcut icon" type="image/x-icon" href="favicon.ico">
   <link rel="apple-touch-icon" href="favicon.svg">
   <link rel="canonical" href="https://bharath03-a.github.io/GitCortex/">
   <style>
     /* ─────────────────────────────────────────────────────────────────────────
-       GitCortex — technical datasheet.
+       GitCortex: technical datasheet.
 
-       No web fonts by design: a tool whose premise is that nothing leaves your
-       machine should not call a font CDN from its own marketing page.
+       Typefaces are self-hosted (docs/assets/fonts/), never a font CDN: a tool
+       whose premise is that nothing leaves your machine should not call out to
+       one from its own marketing page. Space Grotesk and IBM Plex Mono are the
+       same two families the product's own graph explorer ships, so the page
+       and the tool it describes read as one thing.
        ───────────────────────────────────────────────────────────────────── */
+    @font-face {
+      font-family: "Space Grotesk";
+      font-style: normal;
+      font-weight: 400;
+      font-display: swap;
+      src: url("assets/fonts/space-grotesk-latin-400-normal.woff2") format("woff2");
+    }
+    @font-face {
+      font-family: "Space Grotesk";
+      font-style: normal;
+      font-weight: 500;
+      font-display: swap;
+      src: url("assets/fonts/space-grotesk-latin-500-normal.woff2") format("woff2");
+    }
+    @font-face {
+      font-family: "Space Grotesk";
+      font-style: normal;
+      font-weight: 600 800;
+      font-display: swap;
+      src: url("assets/fonts/space-grotesk-latin-600-normal.woff2") format("woff2");
+    }
+    @font-face {
+      font-family: "IBM Plex Mono";
+      font-style: normal;
+      font-weight: 400;
+      font-display: swap;
+      src: url("assets/fonts/ibm-plex-mono-latin-400-normal.woff2") format("woff2");
+    }
+    @font-face {
+      font-family: "IBM Plex Mono";
+      font-style: normal;
+      font-weight: 500;
+      font-display: swap;
+      src: url("assets/fonts/ibm-plex-mono-latin-500-normal.woff2") format("woff2");
+    }
+    @font-face {
+      font-family: "IBM Plex Mono";
+      font-style: normal;
+      font-weight: 600;
+      font-display: swap;
+      src: url("assets/fonts/ibm-plex-mono-latin-600-normal.woff2") format("woff2");
+    }
+
     :root {
       --paper:      #FCFCFA;
       --surface:    #FFFFFF;
@@ -39,7 +86,7 @@
       --brand:      #C4633F;
       --brand-soft: #FBEFE9;
 
-      /* Functional palette — one hue per NodeKind, used as the page's
+      /* Functional palette: one hue per NodeKind, used as the page's
          structural language rather than as decoration. */
       --k-type:     #2F6F5E;
       --k-fn:       #2B5CA8;
@@ -47,8 +94,8 @@
       --k-module:   #8A6D28;
       --k-doc:      #A03D6B;
 
-      --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
-      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Helvetica, Arial, sans-serif;
+      --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      --sans: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 
       --gut: 28px;
       --max: 1120px;
@@ -231,6 +278,21 @@
     .kind[data-k="doc"]    { color: var(--k-doc); }
     .kind span { color: var(--ink-2); }
 
+    /* ── Product screenshots ──────────────────────────────────────────────── */
+    .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    @media (max-width: 820px) { .shots { grid-template-columns: 1fr; } }
+    .shot {
+      background: var(--surface); border: 1px solid var(--rule); border-radius: 11px;
+      overflow: hidden; box-shadow: 0 1px 2px rgba(20,20,26,.04), 0 12px 32px -14px rgba(20,20,26,.13);
+    }
+    .shot-bar {
+      display: flex; align-items: center; gap: 9px;
+      padding: 10px 14px; border-bottom: 1px solid var(--rule); background: var(--surface-2);
+      font-family: var(--mono); font-size: .7rem; color: var(--ink-3); letter-spacing: .03em;
+    }
+    .shot-bar .tick { width: 7px; height: 7px; border-radius: 50%; background: var(--rule); flex: none; }
+    .shot img { display: block; width: 100%; height: auto; }
+
     /* ── Principles ───────────────────────────────────────────────────────── */
     .principles { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--rule); }
     @media (max-width: 940px) { .principles { grid-template-columns: repeat(2, 1fr); } }
@@ -303,6 +365,7 @@
     .metric p { font-size: .85rem; color: var(--ink-2); }
     .method { margin-top: 20px; font-size: .85rem; color: var(--ink-2); max-width: 68ch; }
     .method a { color: var(--brand); text-decoration: underline; text-underline-offset: 2px; }
+    .panel > .note { margin-bottom: 16px; max-width: 68ch; }
 
     /* ── Close ────────────────────────────────────────────────────────────── */
     .close { padding: 84px 0; border-top: 1px solid var(--rule); }
@@ -345,6 +408,7 @@
     </a>
     <ul class="nav-links">
       <li class="nav-hide"><a href="#how">How it works</a></li>
+      <li class="nav-hide"><a href="#explorer">Explorer</a></li>
       <li class="nav-hide"><a href="#features">Features</a></li>
       <li class="nav-hide"><a href="#install">Install</a></li>
       <li class="nav-hide"><a href="#mcp">MCP</a></li>
@@ -363,7 +427,7 @@
       <p class="lede">
         GitCortex indexes your repository into a branch-aware knowledge graph on every
         commit, then serves it to AI coding assistants over MCP. It runs entirely on your
-        machine — no cloud, no API keys, no LLM calls, no source code leaving disk.
+        machine: no cloud, no API keys, no LLM calls, no source code leaving disk.
       </p>
       <div class="cmdline">
         <span class="sigil">$</span>
@@ -404,7 +468,7 @@
       <span class="eyebrow">How it works</span>
       <h2>A typed graph, rebuilt incrementally by git itself.</h2>
       <p class="lede">
-        Four git hooks keep the graph honest — <code>post-commit</code>, <code>post-merge</code>,
+        Four git hooks keep the graph honest: <code>post-commit</code>, <code>post-merge</code>,
         <code>post-rewrite</code>, <code>post-checkout</code>. Each run diffs from the last indexed
         SHA rather than <code>HEAD~1</code>, so rebases and amends never leave the graph stale.
       </p>
@@ -434,6 +498,32 @@
           <span class="kind" data-k="doc">References</span>
         </div>
       </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Product screenshots ───────────────────────────────────────────────── -->
+<section class="band band--tint" id="explorer">
+  <div class="wrap">
+    <div class="band-head">
+      <span class="eyebrow">The explorer</span>
+      <h2>Same schema, painted as a graph you can walk.</h2>
+      <p class="lede">
+        <code>gcx viz</code> serves the graph as a local web app: an atlas for
+        orientation across the whole repository, and an investigation canvas for
+        tracing one symbol's exact neighbourhood. Both run against your own indexed
+        repository. These are real captures of GitCortex indexing itself.
+      </p>
+    </div>
+    <div class="shots">
+      <figure class="shot">
+        <div class="shot-bar"><span class="tick"></span> gcx viz &middot; atlas &middot; force layout</div>
+        <img src="assets/screenshots/viz-atlas.jpg" alt="GitCortex graph explorer showing an entire repository as a force-directed node graph, coloured by symbol kind" loading="lazy" width="1456" height="827">
+      </figure>
+      <figure class="shot">
+        <div class="shot-bar"><span class="tick"></span> gcx viz &middot; investigate &middot; symbol selected</div>
+        <img src="assets/screenshots/viz-investigate.jpg" alt="GitCortex graph explorer zoomed into a cluster of functions, with one symbol selected and its neighbours labelled" loading="lazy" width="1456" height="827">
+      </figure>
     </div>
   </div>
 </section>
@@ -479,7 +569,7 @@
   <div class="wrap">
     <div class="band-head">
       <span class="eyebrow">Capabilities</span>
-      <h2>Parsing, retrieval, and analysis — all on your machine.</h2>
+      <h2>Parsing, retrieval, and analysis, all on your machine.</h2>
     </div>
     <div class="features">
       <div class="feature">
@@ -517,7 +607,7 @@
       <div class="feature">
         <h3>Blast-radius reporting</h3>
         <p>Transitive caller analysis against a base branch, ranked production-first with
-          tests reported separately — usable from the CLI or as a pull-request comment.</p>
+          tests reported separately, usable from the CLI or as a pull-request comment.</p>
         <div class="chips"><span class="chip">git2</span><span class="chip">rayon</span><span class="chip">KuzuDB embedded</span></div>
       </div>
     </div>
@@ -545,7 +635,7 @@
       </div>
 
       <div class="panel" role="tabpanel" id="panel-pip" aria-labelledby="tab-pip">
-<pre><code><span class="cmt"># Recommended — any Python 3.8+ environment</span>
+<pre><code><span class="cmt"># Recommended: any Python 3.8+ environment</span>
 <span class="kw">pip</span> install gitcortex
 
 <span class="cmt"># Isolated install</span>
@@ -612,7 +702,7 @@
       <ul class="tools">
         <li class="tool"><code>lookup_symbol(name)</code><span>Every definition matching a name, across the graph</span></li>
         <li class="tool"><code>find_callers(name)</code><span>Ranked callers with file and line evidence</span></li>
-        <li class="tool"><code>get_subgraph(name, depth)</code><span>Bounded neighbourhood — callers, callees, implementations</span></li>
+        <li class="tool"><code>get_subgraph(name, depth)</code><span>Bounded neighbourhood: callers, callees, implementations</span></li>
         <li class="tool"><code>search_code(query)</code><span>Ranked hybrid search over names and qualified paths</span></li>
         <li class="tool"><code>find_god_nodes(min_in_degree)</code><span>High-fan-in symbols: bottlenecks and hot modules</span></li>
         <li class="tool"><code>find_clusters(min_size)</code><span>Label-propagation clusters over the call graph</span></li>
@@ -621,7 +711,7 @@
       </ul>
 
       <div class="config">
-        <p class="config-label"><b>.mcp.json</b> — project root</p>
+        <p class="config-label"><b>.mcp.json</b> (project root)</p>
 <pre><code>{
   <span class="str">"mcpServers"</span>: {
     <span class="str">"gitcortex"</span>: {
@@ -638,44 +728,111 @@
 </section>
 
 <!-- ── Evidence ──────────────────────────────────────────────────────────── -->
-<section class="band">
+<section class="band" id="benchmarks">
   <div class="wrap">
     <div class="band-head">
       <span class="eyebrow">Measured</span>
-      <h2>Claims you can reproduce.</h2>
+      <h2>Claims you can reproduce, tracked release over release.</h2>
       <p class="lede">
-        Retrieval quality is gated by a deterministic, model-free benchmark over five pinned
-        open-source repositories — one each for Rust, Python, TypeScript, Go, and Java.
+        Every run below is reproducible from the scripts named in its methodology line.
+        Numbers are not smoothed across runs: methodology changed between them, and each
+        panel says how.
       </p>
     </div>
 
-    <div class="metrics">
-      <div class="metric">
-        <div class="figure">2.89&times;</div>
-        <div class="cap">Smaller responses</div>
-        <p>Median payload against the previous response contract, with required source
-          evidence preserved on every task.</p>
+    <div class="install-wrap">
+      <div class="tabs" role="tablist" aria-label="Benchmark run">
+        <button class="tab" role="tab" id="tab-bench-latest" aria-controls="panel-bench-latest" aria-selected="true">Latest (retrieval gate)</button>
+        <button class="tab" role="tab" id="tab-bench-0717" aria-controls="panel-bench-0717" aria-selected="false">2026-07-17</button>
+        <button class="tab" role="tab" id="tab-bench-0712" aria-controls="panel-bench-0712" aria-selected="false">2026-07-12</button>
       </div>
-      <div class="metric">
-        <div class="figure">20 / 20</div>
-        <div class="cap">Tasks valid</div>
-        <p>Every task returns the required evidence, omits forbidden evidence, and stays
-          inside its payload budget.</p>
+
+      <div class="panel" role="tabpanel" id="panel-bench-latest" aria-labelledby="tab-bench-latest">
+        <p class="note">Deterministic, model-free retrieval gate over five pinned repositories (Rust, Python, TypeScript, Go, Java), plus one native Codex CLI smoke run.</p>
+        <div class="metrics">
+          <div class="metric">
+            <div class="figure">1.00</div>
+            <div class="cap">Search MRR</div>
+            <p>Mean reciprocal rank on the pinned suite: every query returns a relevant
+              definition in first position.</p>
+          </div>
+          <div class="metric">
+            <div class="figure">20 / 20</div>
+            <div class="cap">Tasks valid</div>
+            <p>Every task returns the required evidence, omits forbidden evidence, and stays
+              inside its payload budget.</p>
+          </div>
+          <div class="metric">
+            <div class="figure">1.82&times;</div>
+            <div class="cap">Codex uncached tokens</div>
+            <p>Native <code>codex exec</code> graph-CLI lane on cobra, one round: uncached
+              token geomean against a grep baseline.</p>
+          </div>
+        </div>
+        <p class="method">
+          This lane is model-free by design, so it is gated on every commit rather than run
+          on a schedule. See
+          <a href="https://github.com/bharath03-a/GitCortex/blob/main/docs/benchmarks/agent-retrieval-v1.md">the retrieval gate write-up</a>
+          and
+          <a href="https://github.com/bharath03-a/GitCortex/blob/main/docs/benchmarks/AGENT-BENCHMARK-PLAN.md">the full benchmark plan</a>.
+          Reproduce: <code>python3 tools/agent-bench/bench.py run</code>.
+        </p>
       </div>
-      <div class="metric">
-        <div class="figure">1.00</div>
-        <div class="cap">Search MRR</div>
-        <p>Mean reciprocal rank on the pinned suite: every query returns a relevant
-          definition in first position.</p>
+
+      <div class="panel" role="tabpanel" id="panel-bench-0717" aria-labelledby="tab-bench-0717" hidden>
+        <p class="note">Median of 3 runs against Claude haiku-4.5, errored and rate-limited sessions excluded. Measured Claude token usage: once with ordinary file search, once through the compact MCP.</p>
+        <div class="metrics">
+          <div class="metric">
+            <div class="figure">1.35&times;</div>
+            <div class="cap">Geomean token ratio</div>
+            <p>Across search, tour, callers, and subgraph questions on five repositories.</p>
+          </div>
+          <div class="metric">
+            <div class="figure">+23.3%</div>
+            <div class="cap">Aggregate tokens saved</div>
+            <p>Summed across all questions and repositories in this run.</p>
+          </div>
+          <div class="metric">
+            <div class="figure">1.44&times;</div>
+            <div class="cap">Search ratio</div>
+            <p>The most consistent win: roughly half the turns to the same answer.</p>
+          </div>
+        </div>
+        <p class="method">
+          Java (gson) remained the weakest repository; large, idiomatic repositories
+          benefited most. Full report:
+          <a href="https://github.com/bharath03-a/GitCortex/blob/main/docs/benchmarks/final-report-2026-07-17.html">final-report-2026-07-17.html</a>.
+          Reproduce: <code>bash docs/benchmarks/stable-sweep.sh</code>.
+        </p>
+      </div>
+
+      <div class="panel" role="tabpanel" id="panel-bench-0712" aria-labelledby="tab-bench-0712" hidden>
+        <p class="note">Single-round v0.6.2 data, superseded by the 2026-07-17 median-of-3 run above. Kept here for the historical record.</p>
+        <div class="metrics">
+          <div class="metric">
+            <div class="figure">1.67&times;</div>
+            <div class="cap">Refactor impact</div>
+            <p>New question type this run; one 13.5&times; outlier on ripgrep.</p>
+          </div>
+          <div class="metric">
+            <div class="figure">1.08&times;</div>
+            <div class="cap">Search</div>
+            <p>The most stable signal across every release measured so far.</p>
+          </div>
+          <div class="metric">
+            <div class="figure">1.09&times;</div>
+            <div class="cap">Subgraph neighbourhood</div>
+            <p>hono excluded from this figure after an errored session.</p>
+          </div>
+        </div>
+        <p class="method">
+          gson and hono were the consistent weak spots in this run: Java parser coverage
+          and TypeScript dynamic patterns were still open work at this point. Full report:
+          <a href="https://github.com/bharath03-a/GitCortex/blob/main/docs/benchmarks/final-report-2026-07-12.html">final-report-2026-07-12.html</a>.
+          Reproduce: <code>bash docs/benchmarks/real-harness.sh</code>.
+        </p>
       </div>
     </div>
-
-    <p class="method">
-      Methodology, raw traces, and the task manifest live in the repository — see
-      <a href="https://github.com/bharath03-a/GitCortex/blob/main/docs/benchmarks/agent-retrieval-v1.md">the retrieval gate write-up</a>.
-      End-to-end token savings through real assistants are measured separately and are not
-      claimed here.
-    </p>
   </div>
 </section>
 
@@ -718,28 +875,33 @@
 </footer>
 
 <script>
-  // Install method tabs — roving selection, keyboard navigable.
+  // Tab groups (install methods, benchmark history): each [role=tablist]
+  // manages its own roving selection, independently of any other group on
+  // the page, and is keyboard navigable with the arrow keys.
   (function () {
-    var tabs = Array.prototype.slice.call(document.querySelectorAll('.tab'));
-    function select(tab) {
-      tabs.forEach(function (candidate) {
-        var panel = document.getElementById(candidate.getAttribute('aria-controls'));
-        var on = candidate === tab;
-        candidate.setAttribute('aria-selected', String(on));
-        candidate.tabIndex = on ? 0 : -1;
-        if (panel) { panel.hidden = !on; }
-      });
-    }
-    tabs.forEach(function (tab, index) {
-      tab.tabIndex = tab.getAttribute('aria-selected') === 'true' ? 0 : -1;
-      tab.addEventListener('click', function () { select(tab); });
-      tab.addEventListener('keydown', function (event) {
-        var step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
-        if (!step) { return; }
-        event.preventDefault();
-        var next = tabs[(index + step + tabs.length) % tabs.length];
-        select(next);
-        next.focus();
+    var groups = Array.prototype.slice.call(document.querySelectorAll('[role="tablist"]'));
+    groups.forEach(function (group) {
+      var tabs = Array.prototype.slice.call(group.querySelectorAll('.tab'));
+      function select(tab) {
+        tabs.forEach(function (candidate) {
+          var panel = document.getElementById(candidate.getAttribute('aria-controls'));
+          var on = candidate === tab;
+          candidate.setAttribute('aria-selected', String(on));
+          candidate.tabIndex = on ? 0 : -1;
+          if (panel) { panel.hidden = !on; }
+        });
+      }
+      tabs.forEach(function (tab, index) {
+        tab.tabIndex = tab.getAttribute('aria-selected') === 'true' ? 0 : -1;
+        tab.addEventListener('click', function () { select(tab); });
+        tab.addEventListener('keydown', function (event) {
+          var step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+          if (!step) { return; }
+          event.preventDefault();
+          var next = tabs[(index + step + tabs.length) % tabs.length];
+          select(next);
+          next.focus();
+        });
       });
     });
   })();

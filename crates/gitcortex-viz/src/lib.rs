@@ -24,6 +24,7 @@ static VIZ_JS: &[u8] = include_bytes!("../dist-viz/assets/main.js");
 static VIZ_CSS: &[u8] = include_bytes!("../dist-viz/assets/main.css");
 static VIZ_WEBGL: &[u8] = include_bytes!("../dist-viz/assets/webgl-device.js");
 static VIZ_COSMOS: &[u8] = include_bytes!("../dist-viz/assets/CosmosCanvas.js");
+static VIZ_FAVICON: &[u8] = include_bytes!("../dist-viz/favicon.ico");
 
 /// Output format for `gcx viz`.
 #[derive(clap::ValueEnum, Clone)]
@@ -118,6 +119,7 @@ async fn serve(state: Arc<AppState>, port: u16) -> Result<()> {
         .route("/assets/main.css", get(css_handler))
         .route("/assets/webgl-device.js", get(webgl_handler))
         .route("/assets/CosmosCanvas.js", get(cosmos_handler))
+        .route("/favicon.ico", get(favicon_handler))
         .route("/data", get(data_handler))
         .route("/api/graph/manifest", get(graph_manifest_handler))
         .route("/api/graph/nodes", get(graph_nodes_handler))
@@ -208,6 +210,10 @@ async fn webgl_handler() -> Response {
 
 async fn cosmos_handler() -> Response {
     static_response(VIZ_COSMOS, "application/javascript; charset=utf-8")
+}
+
+async fn favicon_handler() -> Response {
+    static_response(VIZ_FAVICON, "image/x-icon")
 }
 
 fn static_response(bytes: &'static [u8], content_type: &'static str) -> Response {
