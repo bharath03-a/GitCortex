@@ -35,6 +35,7 @@ import { applyDensity, type DensityMode } from "./graph/density";
 import { graphClusterForFile } from "./graph/semantics";
 import type { ViewMode } from "./graph/view";
 import { useBranchDiff } from "./hooks/useBranchDiff";
+import { useComplexityScores } from "./hooks/useComplexityScores";
 import type { ProductTheme } from "./theme/colors";
 
 type RendererMode = "auto" | "webgl" | "compatibility";
@@ -319,26 +320,7 @@ export default function App() {
     );
   }, [rawData, hotFiles, insightLens]);
 
-  const complexityScores = useMemo(() => {
-    if (insightLens !== "complexity" || !rawData) return null;
-    const degree = new Map<string, number>();
-    for (const edge of rawData.edges) {
-      degree.set(edge.src, (degree.get(edge.src) ?? 0) + 1);
-      degree.set(edge.dst, (degree.get(edge.dst) ?? 0) + 1);
-    }
-    let maxDegree = 1;
-    for (const value of degree.values()) maxDegree = Math.max(maxDegree, value);
-    let maxLoc = 1;
-    for (const node of rawData.nodes) maxLoc = Math.max(maxLoc, node.loc);
-    const locScale = Math.log2(maxLoc + 1);
-    return new Map(
-      rawData.nodes.map((node) => {
-        const locRisk = Math.log2(node.loc + 1) / locScale;
-        const couplingRisk = Math.log2((degree.get(node.id) ?? 0) + 1) / Math.log2(maxDegree + 1);
-        return [node.id, locRisk * 0.55 + couplingRisk * 0.45];
-      }),
-    );
-  }, [rawData, insightLens]);
+  const complexityScores = useComplexityScores(rawData, insightLens === "complexity");
 
   const boundaryLens = useMemo(() => {
     if (insightLens !== "boundaries" || !rawData) return null;
