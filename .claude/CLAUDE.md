@@ -12,7 +12,6 @@ GitCortex (`gcx`) builds and maintains a branch-aware knowledge graph of a Git r
 gitcortex/
 ├── Cargo.toml                          # workspace root, resolver = "2"
 ├── .gitcortex/                         # repo-level config — committed to repo
-│   ├── config.toml                     # indexing config (languages, LLD thresholds, backend)
 │   └── ignore                          # .gitignore-syntax exclusion patterns
 ├── crates/
 │   ├── gitcortex-core/                 # shared types + GraphStore trait — NO I/O, NO async
@@ -169,21 +168,7 @@ write HEAD → last_indexed_sha
 
 ## Config files
 
-### `.gitcortex/config.toml` (committed — team-shared)
-
-```toml
-[index]
-languages = ["rust"]           # v0.1. v0.2 adds "typescript", "python"
-max_file_size_kb = 500
-
-[lld]
-enabled = false                # pass-2 LLD annotation (v0.2)
-srp_method_threshold = 10
-isp_method_threshold = 7
-
-[store]
-backend = "local"              # "local" | "remote" (future)
-```
+Repo config is `.gitcortex/ignore` only — `config.toml` is not parsed by any crate. See `docs/REFERENCE.md#gitcortexignore` for the authoritative reference.
 
 ### `.gitcortex/ignore` (committed — .gitignore syntax)
 
