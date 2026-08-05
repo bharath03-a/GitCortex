@@ -25,7 +25,6 @@ static VIZ_JS: &[u8] = include_bytes!("../dist-viz/assets/main.js");
 static VIZ_CSS: &[u8] = include_bytes!("../dist-viz/assets/main.css");
 static VIZ_WEBGL: &[u8] = include_bytes!("../dist-viz/assets/webgl-device.js");
 static VIZ_COSMOS: &[u8] = include_bytes!("../dist-viz/assets/CosmosCanvas.js");
-static VIZ_FAVICON: &[u8] = include_bytes!("../dist-viz/favicon.ico");
 
 /// Output format for `gcx viz`.
 #[derive(clap::ValueEnum, Clone)]
@@ -216,10 +215,6 @@ async fn webgl_handler() -> Response {
 
 async fn cosmos_handler() -> Response {
     static_response(VIZ_COSMOS, "application/javascript; charset=utf-8")
-}
-
-async fn favicon_handler() -> Response {
-    static_response(VIZ_FAVICON, "image/x-icon")
 }
 
 fn static_response(bytes: &'static [u8], content_type: &'static str) -> Response {
