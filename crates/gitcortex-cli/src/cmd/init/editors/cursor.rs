@@ -3,6 +3,8 @@ use std::{fs, path::Path};
 use anyhow::{Context, Result};
 use serde_json::json;
 
+use crate::cmd::init::helpers::{require_json_object, write_atomic};
+
 const CURSOR_RULES: &str = r#"---
 description: GitCortex knowledge graph — use these MCP tools to navigate the codebase
 globs: ["**/*"]
@@ -12,12 +14,12 @@ alwaysApply: true
 # GitCortex Agent Guide
 
 This repository is indexed by GitCortex. The `gitcortex` MCP server is registered
-in `.cursor/mcp.json`. Use these tools instead of grep or file search for structural
-questions.
+in `.cursor/mcp.json`. It exposes one compact `gcx` dispatch tool; pass the
+following names as its `action` for structural questions.
 
-## Key Tools
+## Key actions
 
-| Tool | When to use |
+| Action | When to use |
 |------|-------------|
 | `lookup_symbol` | Find any function, struct, class, or trait by name |
 | `find_callers` | Who calls this function? (backward trace) |
@@ -41,7 +43,7 @@ questions.
 See `.gitcortex/AGENT_GUIDE.md` for the full reference.
 "#;
 
-pub fn install(repo_root: &Path) -> Result<()> {
+pub fn install(repo_root: &Path, _global_editor_config: bool) -> Result<()> {
     write_cursor_rules(repo_root)?;
     write_cursor_mcp(repo_root)?;
     Ok(())
@@ -64,17 +66,19 @@ fn write_cursor_mcp(repo_root: &Path) -> Result<()> {
 
     let mut root = if path.exists() {
         let text = fs::read_to_string(&path).context("read .cursor/mcp.json")?;
-        serde_json::from_str::<serde_json::Value>(&text).unwrap_or(json!({}))
+        serde_json::from_str::<serde_json::Value>(&text)
+            .context("parse existing .cursor/mcp.json")?
     } else {
         json!({})
     };
 
+    require_json_object(&root, &path)?;
     if root.pointer("/mcpServers/gitcortex").is_some() {
         return Ok(());
     }
 
     root["mcpServers"]["gitcortex"] = json!({ "command": "gcx", "args": ["serve"] });
     let text = serde_json::to_string_pretty(&root).context("serialize .cursor/mcp.json")?;
-    fs::write(path, text).context("write .cursor/mcp.json")?;
+    write_atomic(&path, &text).context("write .cursor/mcp.json")?;
     Ok(())
 }

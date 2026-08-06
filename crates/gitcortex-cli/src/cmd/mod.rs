@@ -1,10 +1,12 @@
 pub mod blast_radius;
 pub mod clean;
+pub mod deinit;
 pub mod doctor;
 pub mod export;
 pub mod hook;
 pub mod init;
 pub mod query;
 pub mod serve;
+pub mod serve_lock;
 pub mod status;
 pub mod update;

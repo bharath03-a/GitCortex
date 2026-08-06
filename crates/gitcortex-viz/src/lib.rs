@@ -20,11 +20,11 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 static VIZ_INDEX: &[u8] = include_bytes!("../dist-viz/index.html");
+static VIZ_FAVICON: &[u8] = include_bytes!("../dist-viz/favicon.svg");
 static VIZ_JS: &[u8] = include_bytes!("../dist-viz/assets/main.js");
 static VIZ_CSS: &[u8] = include_bytes!("../dist-viz/assets/main.css");
 static VIZ_WEBGL: &[u8] = include_bytes!("../dist-viz/assets/webgl-device.js");
 static VIZ_COSMOS: &[u8] = include_bytes!("../dist-viz/assets/CosmosCanvas.js");
-static VIZ_FAVICON: &[u8] = include_bytes!("../dist-viz/favicon.ico");
 
 /// Output format for `gcx viz`.
 #[derive(clap::ValueEnum, Clone)]
@@ -115,6 +115,7 @@ async fn serve(state: Arc<AppState>, port: u16) -> Result<()> {
 
     let app = Router::new()
         .route("/", get(root_handler))
+        .route("/favicon.svg", get(favicon_handler))
         .route("/assets/main.js", get(js_handler))
         .route("/assets/main.css", get(css_handler))
         .route("/assets/webgl-device.js", get(webgl_handler))
@@ -196,6 +197,10 @@ async fn root_handler() -> Response {
     static_response(VIZ_INDEX, "text/html; charset=utf-8")
 }
 
+async fn favicon_handler() -> Response {
+    static_response(VIZ_FAVICON, "image/svg+xml")
+}
+
 async fn js_handler() -> Response {
     static_response(VIZ_JS, "application/javascript; charset=utf-8")
 }
@@ -210,10 +215,6 @@ async fn webgl_handler() -> Response {
 
 async fn cosmos_handler() -> Response {
     static_response(VIZ_COSMOS, "application/javascript; charset=utf-8")
-}
-
-async fn favicon_handler() -> Response {
-    static_response(VIZ_FAVICON, "image/x-icon")
 }
 
 fn static_response(bytes: &'static [u8], content_type: &'static str) -> Response {
@@ -1318,6 +1319,12 @@ fn repo_root() -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn embedded_viz_uses_the_canonical_gitcortex_favicon() {
+        assert!(String::from_utf8_lossy(VIZ_INDEX).contains("href=\"/favicon.svg\""));
+        assert_eq!(VIZ_FAVICON, include_bytes!("../../../assets/icon.svg"));
+    }
 
     #[test]
     fn history_path_filter_excludes_generated_dependency_trees() {

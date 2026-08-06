@@ -2,89 +2,34 @@ use std::{fs, path::Path};
 
 use anyhow::{Context, Result};
 
-const AGENTS_SECTION: &str = r#"# GitCortex - Codex Guide
+use crate::cmd::init::helpers::write_atomic;
 
-## What This Repo Is
+pub(crate) const AGENTS_SECTION: &str = r#"<!-- >>> gitcortex codex integration >>> -->
+## GitCortex knowledge graph
 
-GitCortex (`gcx`) is a local-first, branch-aware code knowledge graph for Git repositories. It indexes changed files with tree-sitter, stores graph data in embedded KuzuDB, and exposes graph queries to AI coding assistants through MCP and the `gcx` CLI.
+This repository is indexed by GitCortex. For structural questions, prefer the
+`gcx` MCP tool before broad file scans:
 
-## Workspace Layout
+- `lookup_symbol` locates a definition.
+- `find_callers` and `find_callees` trace call relationships.
+- `get_subgraph` maps a symbol neighbourhood.
+- `start_tour` summarizes unfamiliar areas.
+- `detect_changes` and `gcx blast-radius` assess change impact.
 
-- `crates/gitcortex-core`: shared schema, graph types, and `GraphStore` trait. No I/O, no async.
-- `crates/gitcortex-indexer`: sync tree-sitter parsers and incremental indexing.
-- `crates/gitcortex-store`: KuzuDB backend implementing `GraphStore`.
-- `crates/gitcortex-mcp`: MCP server and async boundary.
-- `crates/gitcortex-cli`: `gcx` CLI commands.
-- `crates/gitcortex-viz`: Rust-side viz embedding support.
-- `viz`: React/Vite graph UI.
-- `tests/integration/fixtures`: small language fixtures.
-- `.gitcortex`: repo-level GitCortex config and generated context.
-
-## Architecture Rules
-
-- `gitcortex-core` must stay pure: no filesystem, subprocesses, network, or async.
-- `gitcortex-indexer` and `gitcortex-store` are sync-only.
-- `tokio` belongs only in `gitcortex-mcp` and CLI/server boundaries.
-- Store behavior goes through the `GraphStore` trait; do not make indexer or MCP depend on concrete Kuzu details unless that layer owns the concern.
-- Library code in `core`, `indexer`, and `store` should not introduce `.unwrap()` or `.expect()`. Propagate errors with the crate error type.
-- Hook and incremental-index paths must stay fast. Avoid broad scans, unbounded allocations, and expensive work on every git operation.
-- Keep changes surgical. Do not refactor adjacent code unless it is required for the task.
-
-## GitCortex Graph Use
-
-This repo is intended to be indexed by GitCortex. Use the compact GitCortex MCP server first for structural questions; it exposes one dispatch tool (`gcx`) so Codex gets graph access without loading the full tool-schema surface. Read source files after the graph narrows the search.
-
-Useful commands:
-
-```bash
-gcx query search <fragment>
-gcx query lookup-symbol <name>
-gcx query find-callers <name>
-gcx query find-callees <name>
-gcx query list-definitions <path>
-gcx query wiki <name>
-gcx query tour --limit 12
-gcx blast-radius --base main --head HEAD --format text
-```
-
-If graph queries fail with Kuzu schema or lock errors, fall back to `rg` and note that the local graph store likely needs `gcx clean && gcx init`.
-
-## Development Commands
-
-Prefer `just` entry points when available:
-
-```bash
-just fmt
-just fmt-check
-just clippy
-just test
-just ci
-just build
-```
-
-Direct equivalents:
-
-```bash
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-cd viz && npm run lint
-cd viz && npm run test --if-present
-cd viz && npm run build
-```
-
-If `gitcortex-mcp` build fails because `viz/dist` files are missing, build the frontend first:
-
-```bash
-cd viz && npm ci && npm run build
-```
-
-## Review Stance
-
-When asked for a review, lead with concrete bugs and risks. Include file and line references, severity, and suggested fixes. Skip broad summaries unless there are no findings.
+Treat graph output as navigation evidence and confirm behavior in source and
+tests before editing. If the index is stale, run `gcx hook`.
+<!-- <<< gitcortex codex integration <<< -->
 "#;
 
-pub fn install(repo_root: &Path) -> Result<()> {
+pub(crate) const CODEX_MCP_SECTION: &str = r#"# >>> gitcortex codex MCP >>>
+[mcp_servers.gitcortex]
+command = "gcx"
+args = ["serve"]
+startup_timeout_sec = 30
+# <<< gitcortex codex MCP <<<
+"#;
+
+pub fn install(repo_root: &Path, _global_editor_config: bool) -> Result<()> {
     write_agents_md(repo_root)?;
     write_codex_config(repo_root)?;
     Ok(())
@@ -95,10 +40,21 @@ fn write_agents_md(repo_root: &Path) -> Result<()> {
 
     if path.exists() {
         let existing = fs::read_to_string(&path).context("read AGENTS.md")?;
-        if existing.contains("GitCortex - Codex Guide") {
+        if existing.contains("gitcortex codex integration") {
             return Ok(());
         }
-        fs::write(&path, format!("{existing}\n\n{AGENTS_SECTION}")).context("update AGENTS.md")?;
+        if let Some(start) = existing.find("# GitCortex - Codex Guide") {
+            let prefix = existing[..start].trim_end();
+            let migrated = if prefix.is_empty() {
+                AGENTS_SECTION.to_owned()
+            } else {
+                format!("{prefix}\n\n{AGENTS_SECTION}")
+            };
+            write_atomic(&path, &migrated).context("migrate AGENTS.md")?;
+            return Ok(());
+        }
+        write_atomic(&path, &format!("{existing}\n\n{AGENTS_SECTION}"))
+            .context("update AGENTS.md")?;
     } else {
         fs::write(&path, AGENTS_SECTION).context("write AGENTS.md")?;
     }
@@ -109,21 +65,53 @@ fn write_codex_config(repo_root: &Path) -> Result<()> {
     let dir = repo_root.join(".codex");
     fs::create_dir_all(&dir)?;
     let path = dir.join("config.toml");
-    const CODEX_MCP: &str = r#"[mcp_servers.gitcortex]
-command = "gcx"
-args = ["serve", "--compact"]
-startup_timeout_sec = 30
-"#;
+    const CODEX_MCP: &str = CODEX_MCP_SECTION;
 
     if path.exists() {
         let existing = fs::read_to_string(&path).context("read .codex/config.toml")?;
         if existing.contains("[mcp_servers.gitcortex]") {
+            if existing.contains("args = [\"serve\", \"--compact\"]") {
+                let migrated =
+                    existing.replace("args = [\"serve\", \"--compact\"]", "args = [\"serve\"]");
+                write_atomic(&path, &migrated).context("migrate .codex/config.toml")?;
+            }
             return Ok(());
         }
-        fs::write(&path, format!("{}\n\n{CODEX_MCP}", existing.trim_end()))
+        write_atomic(&path, &format!("{}\n\n{CODEX_MCP}", existing.trim_end()))
             .context("update .codex/config.toml")?;
     } else {
         fs::write(&path, CODEX_MCP).context("write .codex/config.toml")?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn migrates_legacy_codex_files() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        fs::write(
+            temp.path().join("AGENTS.md"),
+            "# Existing\n\n# GitCortex - Codex Guide\nlegacy generated body\n",
+        )
+        .expect("write AGENTS");
+        fs::create_dir(temp.path().join(".codex")).expect("create codex dir");
+        fs::write(
+            temp.path().join(".codex/config.toml"),
+            "[mcp_servers.gitcortex]\ncommand = \"gcx\"\nargs = [\"serve\", \"--compact\"]\n",
+        )
+        .expect("write config");
+
+        install(temp.path(), false).expect("install");
+        let agents = fs::read_to_string(temp.path().join("AGENTS.md")).expect("read AGENTS");
+        assert!(agents.contains("# Existing"));
+        assert!(agents.contains("gitcortex codex integration"));
+        assert!(!agents.contains("legacy generated body"));
+        let config =
+            fs::read_to_string(temp.path().join(".codex/config.toml")).expect("read config");
+        assert!(config.contains("args = [\"serve\"]"));
+        assert!(!config.contains("--compact"));
+    }
 }

@@ -20,11 +20,14 @@ fn main() {
     // Paths relative to workspace root so cargo reruns on any viz change.
     println!("cargo:rerun-if-changed=../../viz/src");
     println!("cargo:rerun-if-changed=../../viz/index.html");
+    println!("cargo:rerun-if-changed=../../viz/public/favicon.svg");
+    println!("cargo:rerun-if-changed=../../assets/icon.svg");
     println!("cargo:rerun-if-changed=../../viz/package.json");
     println!("cargo:rerun-if-changed=../../viz/vite.config.ts");
     println!("cargo:rerun-if-changed=../../viz/tsconfig.json");
 
     let needs_build = !dist_dir.join("index.html").exists()
+        || !dist_dir.join("favicon.svg").exists()
         || !dist_assets.join("main.js").exists()
         || !dist_assets.join("main.css").exists()
         || !dist_assets.join("webgl-device.js").exists()
@@ -63,20 +66,30 @@ fn main() {
 
 fn ensure_placeholder(dist_dir: &Path, dist_assets: &Path) {
     let index = dist_dir.join("index.html");
+    let favicon = dist_dir.join("favicon.svg");
     let js = dist_assets.join("main.js");
     let css = dist_assets.join("main.css");
     let webgl = dist_assets.join("webgl-device.js");
     let cosmos = dist_assets.join("CosmosCanvas.js");
 
-    if index.exists() && js.exists() && css.exists() && webgl.exists() && cosmos.exists() {
+    if index.exists()
+        && favicon.exists()
+        && js.exists()
+        && css.exists()
+        && webgl.exists()
+        && cosmos.exists()
+    {
         return;
     }
 
     std::fs::create_dir_all(dist_assets).ok();
-    let placeholder_html = "<!doctype html><html><head><meta charset=\"utf-8\"><title>GitCortex Viz</title></head><body style=\"background:#06060a;color:#e6e6f0;font-family:monospace;padding:24px;\"><h2>Viz frontend not built</h2><p>Run <code>cd viz &amp;&amp; npm install &amp;&amp; npm run build</code> and rebuild <code>gcx</code>.</p></body></html>";
+    let placeholder_html = "<!doctype html><html><head><meta charset=\"utf-8\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.svg\"><title>GitCortex Viz</title></head><body style=\"background:#06060a;color:#e6e6f0;font-family:monospace;padding:24px;\"><h2>Viz frontend not built</h2><p>Run <code>cd viz &amp;&amp; npm install &amp;&amp; npm run build</code> and rebuild <code>gcx</code>.</p></body></html>";
 
     if !index.exists() {
         std::fs::write(&index, placeholder_html).ok();
+    }
+    if !favicon.exists() {
+        std::fs::write(&favicon, include_bytes!("../../assets/icon.svg")).ok();
     }
     for f in [&js, &css, &webgl, &cosmos] {
         if !f.exists() {

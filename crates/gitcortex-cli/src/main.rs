@@ -26,11 +26,31 @@ enum Commands {
         /// Also install the GitHub Actions blast-radius workflow.
         #[arg(long)]
         ci: bool,
-        /// Editor to configure: claude, cursor, windsurf, copilot, antigravity, codex, all.
-        /// Defaults to auto-detecting from environment variables; installs for all editors
-        /// when no editor-specific env var is found.
+        /// Editor to configure: none, auto, claude, cursor, windsurf, copilot, antigravity, codex, all.
+        /// No editor configuration is written unless this flag is supplied.
         #[arg(long, value_name = "EDITOR")]
         editor: Option<String>,
+        /// Permit changes to editor configuration outside this repository.
+        #[arg(long)]
+        global_editor_config: bool,
+        /// Permit changes to a Git hooks path shared outside this repository.
+        #[arg(long)]
+        shared_git_hooks: bool,
+    },
+    /// Remove GitCortex hooks and editor integrations from this repository.
+    Deinit {
+        /// Show every planned change without modifying files.
+        #[arg(long)]
+        dry_run: bool,
+        /// Also remove .gitcortex/ and this repository's machine-local graph data.
+        #[arg(long)]
+        purge: bool,
+        /// Also remove GitCortex entries from editor configuration outside this repository.
+        #[arg(long)]
+        global_editor_config: bool,
+        /// Permit removing GitCortex blocks from a shared external Git hooks path.
+        #[arg(long)]
+        shared_git_hooks: bool,
     },
     /// Incremental index triggered by a git hook.
     Hook {
@@ -45,6 +65,12 @@ enum Commands {
         /// per-turn token overhead (~200 tokens vs ~14 000 in full mode).
         #[arg(long)]
         full: bool,
+    },
+    /// Internal repository daemon used to multiplex local MCP clients.
+    #[command(name = "__serve-daemon", hide = true)]
+    ServeDaemon {
+        #[arg(long)]
+        repo_root: std::path::PathBuf,
     },
     /// One-shot query commands — useful for manual testing.
     #[command(subcommand)]
@@ -256,9 +282,26 @@ fn main() {
     style::init(cli.color);
 
     let result = match cli.command {
-        Commands::Init { ci, editor } => cmd::init::run(ci, editor.as_deref()),
+        Commands::Init {
+            ci,
+            editor,
+            global_editor_config,
+            shared_git_hooks,
+        } => cmd::init::run(
+            ci,
+            editor.as_deref(),
+            global_editor_config,
+            shared_git_hooks,
+        ),
+        Commands::Deinit {
+            dry_run,
+            purge,
+            global_editor_config,
+            shared_git_hooks,
+        } => cmd::deinit::run(dry_run, purge, global_editor_config, shared_git_hooks),
         Commands::Hook { branch_switch } => cmd::hook::run(branch_switch),
         Commands::Serve { full } => cmd::serve::run(!full),
+        Commands::ServeDaemon { repo_root } => cmd::serve::run_daemon(repo_root),
         Commands::Query(q) => cmd::query::run(q),
         Commands::Viz {
             branch,

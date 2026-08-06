@@ -15,10 +15,10 @@ GitCortex is a local-first, branch-aware code knowledge graph for Git repositori
 │                          (binary crate)                         │
 │                                                                 │
 │  ┌──────────────────┐    ┌──────────────────────────────────┐   │
-│  │  MCP server      │    │  HTTP viz server (Axum)          │   │
-│  │  (rmcp / stdio)  │    │  /, /assets/*, /data, /api/*     │   │
+│  │  stdio proxy     │    │  HTTP viz server (Axum)          │   │
+│  │  → local daemon  │    │  /, /assets/*, /data, /api/*     │   │
 │  └────────┬─────────┘    └──────────────────┬───────────────┘   │
-│           │                                 │                   │
+│           │  many clients / one DB owner    │                   │
 │           └───────────────┬─────────────────┘                   │
 └──────────────────────────┬┴────────────────────────────────────┘
                            │ GraphStore trait
@@ -45,7 +45,7 @@ GitCortex is a local-first, branch-aware code knowledge graph for Git repositori
 | `gitcortex-core` | Shared types (`Node`, `Edge`, `GraphDiff`) and the `GraphStore` trait | **No** | Zero I/O, zero async, zero dependencies on the rest of the workspace |
 | `gitcortex-indexer` | tree-sitter parsing + git2 differ + producing `GraphDiff` | **No** | CPU-bound, runs synchronously |
 | `gitcortex-store` | `KuzuGraphStore` — local embedded KuzuDB implementation of `GraphStore` | **No** | Blocking calls only; consumers must `spawn_blocking` if invoked from async |
-| `gitcortex-mcp` | The `gcx` binary — CLI dispatcher, MCP server (`rmcp`), Axum viz server | **Yes** | The async boundary — only crate that pulls in `tokio` |
+| `gitcortex-mcp` | MCP handlers, repository daemon (`rmcp`), watcher, and semantic index | **Yes** | Async service boundary; one daemon owns each open repository graph |
 | `viz/` (under `gitcortex-mcp`) | React + Vite + Cosmograph frontend, embedded via `include_bytes!` | n/a | Built by `build.rs`; output at `crates/gitcortex-mcp/dist-viz/` |
 
 ### Dependency graph
@@ -85,9 +85,9 @@ pub trait GraphStore: Send + Sync {
 
 ## Async / sync boundary
 
-> **Rule:** `tokio` is declared only in `crates/gitcortex-mcp/Cargo.toml`. The indexer and store are entirely synchronous.
+> **Rule:** `tokio` stays at the MCP and CLI/server boundaries. The indexer and store are entirely synchronous.
 
-Why: the indexer is CPU-bound (tree-sitter parsing), and KuzuDB's Rust bindings are not `Send + Sync`-friendly across `.await` points. Async only helps at the I/O boundary — MCP stdio + the Axum viz server. Anywhere we cross from async into store/indexer territory, we use `tokio::task::spawn_blocking`.
+Why: the indexer is CPU-bound (tree-sitter parsing), while async helps at the I/O boundary — MCP stdio proxies, the Unix-socket repository daemon, and the Axum viz server. Blocking semantic/index work is explicitly moved to `tokio::task::spawn_blocking`.
 
 See `docs/adr/0002-tokio-async-boundary.md` for the full rationale.
 
@@ -95,32 +95,39 @@ See `docs/adr/0002-tokio-async-boundary.md` for the full rationale.
 
 1. The user runs `git commit`.
 2. `hooks/post-commit` (installed by `gcx init`) shells out to `gcx hook`.
-3. `gcx hook` reads `last_indexed_sha` for the current branch from the store.
-4. If `last_sha == HEAD`, it exits — idempotent no-op.
-5. Otherwise, `gitcortex-indexer::run_incremental` uses `git2` to diff the working tree against `last_sha`, parses changed files via tree-sitter, and produces a `GraphDiff`.
-6. `KuzuGraphStore::apply_diff` is called inside a write transaction. Per-branch tables are updated.
-7. `last_sha` is bumped to `HEAD`.
+3. If the repository daemon is active, the hook exits immediately; its Git-aware watcher owns synchronization and avoids a second Kuzu process.
+4. Otherwise, `gcx hook` reads `last_indexed_sha` for the current branch from the store.
+5. If `last_sha == HEAD`, it exits — idempotent no-op.
+6. Otherwise, `gitcortex-indexer::run_incremental` diffs against `last_sha`, parses changed files, and produces a `GraphDiff`.
+7. `KuzuGraphStore::apply_diff` updates the branch tables and advances `last_sha` to `HEAD`.
 8. The hook prints a short summary line and exits, typically in <500ms.
 
 ## Data flow — what happens when an AI editor queries
 
 1. The editor sends a JSON-RPC MCP request to `gcx serve` (stdio).
-2. `crates/gitcortex-mcp/src/mcp/tools.rs` dispatches the tool call to the matching `GraphStore` method.
-3. The store runs a Cypher query against the branch's tables in KuzuDB.
-4. Results serialize back as MCP JSON.
+2. The lightweight stdio process connects to, or starts, the repository's local Unix-socket daemon.
+3. One daemon owns KuzuDB and serves all connected editor sessions; each connection independently selects compact or full tool mode.
+4. `crates/gitcortex-mcp/src/mcp/tools.rs` dispatches the tool call to the matching `GraphStore` method.
+5. Results serialize back through the daemon and stdio proxy as MCP JSON.
 
 The `gcx viz` HTTP server is a parallel surface that exposes the same store data to a React UI in the browser via JSON routes (`/data`, `/api/callers/:name`, etc.).
 
 ## Storage layout — machine-local
 
 ```
-~/.local/share/gitcortex/{repo_id}/
+<platform-data>/gitcortex/{repo_id}/
     graph.kuzu          # one DB per repo, branch-namespaced tables inside
     main.sha            # last_indexed_sha for branch "main"
     feat__auth.sha      # last_indexed_sha for branch "feat/auth"
+    serve.lock          # advisory ownership lock for every graph-opening process
+    mcp.sock            # user-only socket while MCP clients are connected
+    daemon.log          # most recent daemon startup diagnostics
+
+<platform-cache>/gitcortex/models/
+    # replaceable semantic-model weights shared across repositories
 ```
 
-Path lookup is deterministic from the absolute path of the repo working tree (hashed). One Git repo, one graph file. Branch switches do not re-index — they only flip the active-branch pointer.
+Path lookup is deterministic from a stable BLAKE3 hash of the absolute working-tree path. Linux follows XDG data/cache roots and macOS uses native Application Support/Cache locations. One Git repo has one graph file; branches are table-namespaced within it.
 
 ## Frontend integration
 
@@ -128,7 +135,7 @@ Path lookup is deterministic from the absolute path of the repo working tree (ha
 
 For active frontend development, run `npm run dev` against a running `gcx viz` backend — Vite's proxy forwards `/data` and `/api/*` to `:5678`, avoiding rebuild cycles.
 
-> **Known caveat:** Cosmograph v2 loads its DuckDB-WASM dependency from `cdn.jsdelivr.net` at runtime. This is not a Rust dependency but it does mean the viz needs internet on first open. See `docs/adr/0004-duckdb-cdn-runtime-dep.md`.
+> **Runtime packaging:** Viz assets, fonts, and renderer dependencies are bundled into `gcx`; opening the graph does not require a CDN or external font service.
 
 ## Where to make changes
 

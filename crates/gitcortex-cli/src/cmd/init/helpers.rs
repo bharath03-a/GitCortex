@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{io::Write, path::PathBuf};
 
 use anyhow::{Context, Result};
 
@@ -13,6 +13,39 @@ pub fn repo_root() -> Result<PathBuf> {
     Ok(PathBuf::from(
         String::from_utf8(output.stdout)?.trim().to_owned(),
     ))
+}
+
+/// Replace a text file atomically while retaining its existing permissions.
+pub fn write_atomic(path: &std::path::Path, content: &str) -> Result<()> {
+    let target = match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => std::fs::canonicalize(path)
+            .with_context(|| format!("resolve symlink {}", path.display()))?,
+        _ => path.to_owned(),
+    };
+    let parent = target
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("{} has no parent directory", path.display()))?;
+    std::fs::create_dir_all(parent)?;
+    let permissions = std::fs::metadata(&target)
+        .ok()
+        .map(|meta| meta.permissions());
+    let mut temp = tempfile::NamedTempFile::new_in(parent)?;
+    temp.write_all(content.as_bytes())?;
+    temp.as_file_mut().sync_all()?;
+    if let Some(permissions) = permissions {
+        temp.as_file().set_permissions(permissions)?;
+    }
+    temp.persist(&target)
+        .map_err(|error| error.error)
+        .with_context(|| format!("replace {}", path.display()))?;
+    Ok(())
+}
+
+pub fn require_json_object(value: &serde_json::Value, path: &std::path::Path) -> Result<()> {
+    if !value.is_object() {
+        anyhow::bail!("{} must contain a JSON object", path.display());
+    }
+    Ok(())
 }
 
 pub fn home_dir() -> PathBuf {

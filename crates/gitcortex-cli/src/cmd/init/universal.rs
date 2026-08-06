@@ -9,81 +9,113 @@ use gitcortex_store::kuzu::KuzuGraphStore;
 
 use super::helpers::current_branch;
 
+pub(crate) const HOOK_BLOCK_START: &str = "# >>> gitcortex managed hook >>>";
+pub(crate) const HOOK_BLOCK_END: &str = "# <<< gitcortex managed hook <<<";
+
 const HOOK_NAMES: &[(&str, &str)] = &[
-    ("post-commit", "gcx hook\n"),
-    ("post-merge", "gcx hook\n"),
-    ("post-rewrite", "gcx hook\n"),
-    ("post-checkout", "gcx hook --branch-switch\n"),
+    ("post-commit", "gcx hook"),
+    ("post-merge", "gcx hook"),
+    ("post-rewrite", "gcx hook"),
+    ("post-checkout", "gcx hook --branch-switch"),
 ];
 
-const HOOK_SHEBANG: &str =
-    "#!/usr/bin/env sh\nset -e\nexport PATH=\"$HOME/.cargo/bin:$HOME/.local/bin:/usr/local/bin:$PATH\"\n";
+fn hook_block(command: &str) -> String {
+    format!(
+        "{HOOK_BLOCK_START}\nexport PATH=\"$HOME/.cargo/bin:$HOME/.local/bin:/usr/local/bin:$PATH\"\nif command -v gcx >/dev/null 2>&1; then\n  {command} || printf '%s\\n' 'warning: GitCortex index update deferred; run gcx doctor' >&2\nfi\n{HOOK_BLOCK_END}\n"
+    )
+}
 
 const AGENT_GUIDE: &str = r#"# GitCortex Agent Guide
 
-This repository is indexed by [GitCortex](https://github.com/bharath03-a/GitCortex).
-The MCP server is configured in `mcp.json` (or your editor's equivalent). Use these
-tools to navigate the codebase — they read the live knowledge graph, not grep output.
+This repository has a local GitCortex knowledge graph. When an MCP integration
+is configured with `gcx init --editor <name>`, use its compact `gcx` dispatch
+tool for cross-file structure and verify behavior in source and tests.
 
-## Available MCP Tools
+## Useful actions
 
-| Tool | Description |
-|------|-------------|
-| `lookup_symbol(name)` | Find any struct, function, trait, or class by name |
-| `find_callers(function_name)` | Who calls this function? |
-| `find_callees(function_name, depth)` | What does this function call? (forward trace) |
-| `list_definitions(file)` | All symbols defined in a file |
-| `find_implementors(trait_name)` | Who implements this trait or interface? |
-| `trace_path(from, to)` | All call paths from A to B |
-| `list_symbols_in_range(file, start, end)` | Symbols overlapping a line range |
-| `find_unused_symbols(branch)` | Dead code candidates (0 callers) |
-| `get_subgraph(seed_name, depth, direction)` | Everything around a symbol |
-| `detect_changes(base_branch)` | Changed symbols + blast radius vs another branch |
+| Action | Purpose |
+|--------|---------|
+| `lookup_symbol` | Locate a function, type, method, or constant by name |
+| `find_callers` | Trace direct and transitive callers |
+| `find_callees` | Trace outgoing calls |
+| `list_definitions` | List symbols defined in a file |
+| `get_subgraph` | Map a bounded symbol neighbourhood |
+| `start_tour` | Get a component-oriented repository overview |
+| `detect_changes` | Relate Git changes to affected symbols |
 
-## Workflows
+CLI equivalents are available under `gcx query`; run `gcx query --help` for the
+current command list. Run `gcx hook` if the index appears stale.
 
-**Navigating unfamiliar code**
-1. `lookup_symbol("ThingYouHeardAbout")` — confirm it exists and find the file
-2. `list_definitions("path/to/file.rs")` — see the full shape of a file
-3. `get_subgraph("ThingYouHeardAbout", 2, "both")` — visualise its neighbours
-
-**Debugging**
-1. `lookup_symbol("failingFn")` — confirm location
-2. `find_callers("failingFn")` — walk up the call chain
-3. Repeat until you reach an entry point
-
-**Impact analysis before changing a public API**
-1. `find_callers("publicFn")` — direct callers
-2. `get_subgraph("publicFn", 3, "in")` — full upstream blast radius
-3. `find_implementors("TraitYouAreChanging")` — all implementors that must change
-
-**Safe refactoring**
-1. `find_unused_symbols(branch)` — find candidates for deletion
-2. `list_symbols_in_range(file, start, end)` — map a diff hunk to graph nodes
-3. `trace_path(from, to)` — verify a code path before removing an intermediate
-
-## Slash commands (Claude Code / Cursor)
-- `/gcx-lookup <name>` — `lookup_symbol` with formatted output
-- `/gcx-callers <name>` — `find_callers` with call chain summary
-- `/gcx-file <path>` — `list_definitions` ordered by line
-- `/gcx-blast-radius` — changed symbols + risk report vs main
+The graph is navigation evidence, not a substitute for reading implementation
+and tests before making changes.
 "#;
 
-pub fn install_hooks(repo_root: &Path) -> Result<usize> {
-    let hooks_dir = repo_root.join(".git").join("hooks");
+pub fn git_hooks_dir(repo_root: &Path) -> Result<std::path::PathBuf> {
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "--git-path", "hooks"])
+        .current_dir(repo_root)
+        .output()
+        .context("resolve Git hooks directory")?;
+    if !output.status.success() {
+        anyhow::bail!("git rev-parse --git-path hooks failed");
+    }
+    let value = String::from_utf8(output.stdout)?.trim().to_owned();
+    let path = std::path::PathBuf::from(value);
+    Ok(if path.is_absolute() {
+        path
+    } else {
+        repo_root.join(path)
+    })
+}
+
+pub fn ensure_hooks_scope(repo_root: &Path, allow_shared: bool) -> Result<()> {
+    let hooks_dir = git_hooks_dir(repo_root)?;
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "--git-common-dir"])
+        .current_dir(repo_root)
+        .output()
+        .context("resolve Git common directory")?;
+    if !output.status.success() {
+        anyhow::bail!("git rev-parse --git-common-dir failed");
+    }
+    let common = std::path::PathBuf::from(String::from_utf8(output.stdout)?.trim());
+    let common = if common.is_absolute() {
+        common
+    } else {
+        repo_root.join(common)
+    };
+    let repository_owned = hooks_dir.starts_with(repo_root) || hooks_dir.starts_with(common);
+    if !repository_owned && !allow_shared {
+        anyhow::bail!(
+            "Git hooks path {} is shared outside this repository; rerun with --shared-git-hooks to permit modifying it",
+            hooks_dir.display()
+        );
+    }
+    Ok(())
+}
+
+pub fn install_hooks(repo_root: &Path, allow_shared: bool) -> Result<usize> {
+    ensure_hooks_scope(repo_root, allow_shared)?;
+    let hooks_dir = git_hooks_dir(repo_root)?;
     fs::create_dir_all(&hooks_dir)?;
 
     let mut installed = 0;
-    for (name, body) in HOOK_NAMES {
+    for (name, command) in HOOK_NAMES {
         let path = hooks_dir.join(name);
+        let block = hook_block(command);
         if path.exists() {
             let existing = fs::read_to_string(&path)?;
-            if existing.contains("gcx hook") {
+            if existing.contains(HOOK_BLOCK_START) {
                 continue;
             }
-            fs::write(&path, format!("{existing}\n{body}"))?;
+            let base = existing
+                .lines()
+                .filter(|line| !line.trim_start().starts_with("gcx hook"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            fs::write(&path, format!("{}\n{block}", base.trim_end()))?;
         } else {
-            fs::write(&path, format!("{HOOK_SHEBANG}{body}"))?;
+            fs::write(&path, format!("#!/usr/bin/env sh\n{block}"))?;
         }
         #[cfg(unix)]
         {
@@ -97,7 +129,8 @@ pub fn install_hooks(repo_root: &Path) -> Result<usize> {
 }
 
 pub fn initial_index(repo_root: &Path) -> Result<(usize, usize)> {
-    let mut store = KuzuGraphStore::open(repo_root).context("failed to open graph store")?;
+    let mut store =
+        KuzuGraphStore::open_for_init(repo_root).context("failed to open graph store")?;
     let branch = current_branch(repo_root)?;
     let head_sha = head_sha(repo_root)?;
     let last_sha = store.last_indexed_sha(&branch)?;
@@ -170,46 +203,6 @@ pub fn write_agent_guide(repo_root: &Path) -> Result<()> {
     Ok(())
 }
 
-const CLAUDE_STEERING_SNIPPET: &str = r#"
-## GitCortex MCP Tools (prefer over grep for code navigation)
-
-This repo is indexed by GitCortex. Use the `gcx` dispatch tool for all code
-navigation instead of grep/file-read when the answer requires cross-file
-relationships. The index is authoritative for call graphs, type hierarchies,
-and blast radius — grep misses them entirely.
-
-Quick reference:
-- `gcx(action="find_callers", params={function_name:"X"})` — who calls X
-- `gcx(action="get_subgraph", params={seed_name:"X", depth:2})` — X's neighbourhood
-- `gcx(action="lookup_symbol", params={name:"X"})` — find X in the graph
-- `gcx(action="find_cycles")` — circular import detection
-- `gcx(action="start_tour")` — community-grouped codebase overview
-- `gcx(action="search_code", params={query:"..."})` — semantic search
-
-Run `gcx hook` if the index seems stale (uncommitted edits are not auto-indexed).
-"#;
-
-/// Write a short GitCortex steering snippet into `.claude/CLAUDE.md` so AI
-/// agents prefer graph tools over grep. Appends to existing file; skips if
-/// the snippet is already present.
-pub fn write_claude_steering(repo_root: &Path) -> Result<()> {
-    let dir = repo_root.join(".claude");
-    fs::create_dir_all(&dir)?;
-    let path = dir.join("CLAUDE.md");
-    let existing = if path.exists() {
-        fs::read_to_string(&path)?
-    } else {
-        String::new()
-    };
-    if existing.contains("GitCortex MCP Tools") {
-        return Ok(());
-    }
-    let mut content = existing;
-    content.push_str(CLAUDE_STEERING_SNIPPET);
-    fs::write(path, content).context("write .claude/CLAUDE.md")?;
-    Ok(())
-}
-
 pub fn write_ci_workflow(repo_root: &Path) -> Result<()> {
     const GH_WORKFLOW: &str = r#"name: GitCortex Blast Radius
 
@@ -251,4 +244,58 @@ jobs:
         fs::write(path, GH_WORKFLOW).context("write gcx-blast-radius.yml")?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hooks_respect_core_hooks_path_and_preserve_existing_content() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let status = std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(temp.path())
+            .status()
+            .expect("git init");
+        assert!(status.success());
+        let status = std::process::Command::new("git")
+            .args(["config", "core.hooksPath", ".custom-hooks"])
+            .current_dir(temp.path())
+            .status()
+            .expect("git config");
+        assert!(status.success());
+
+        let hooks = temp.path().join(".custom-hooks");
+        fs::create_dir_all(&hooks).expect("hooks dir");
+        fs::write(hooks.join("post-commit"), "#!/bin/sh\necho existing\n").expect("existing hook");
+
+        assert_eq!(install_hooks(temp.path(), false).expect("install hooks"), 4);
+        let installed = fs::read_to_string(hooks.join("post-commit")).expect("read hook");
+        assert!(installed.contains("echo existing"));
+        assert!(installed.contains(HOOK_BLOCK_START));
+        assert!(installed.contains("gcx hook ||"));
+        assert!(!temp.path().join(".git/hooks/post-commit").exists());
+    }
+
+    #[test]
+    fn shared_hooks_require_explicit_permission() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let shared = tempfile::tempdir().expect("shared hooks");
+        assert!(std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(temp.path())
+            .status()
+            .expect("git init")
+            .success());
+        assert!(std::process::Command::new("git")
+            .args(["config", "core.hooksPath"])
+            .arg(shared.path())
+            .current_dir(temp.path())
+            .status()
+            .expect("git config")
+            .success());
+        assert!(ensure_hooks_scope(temp.path(), false).is_err());
+        assert!(ensure_hooks_scope(temp.path(), true).is_ok());
+    }
 }

@@ -431,7 +431,7 @@
       </p>
       <div class="cmdline">
         <span class="sigil">$</span>
-        <code id="install-cmd">pip install gitcortex</code>
+        <code id="install-cmd">brew install bharath03-a/tap/gitcortex</code>
         <button class="copy" id="copy-btn" type="button" aria-label="Copy install command">copy</button>
       </div>
       <div class="actions">
@@ -619,7 +619,7 @@
   <div class="wrap">
     <div class="band-head">
       <span class="eyebrow">Install</span>
-      <h2>Four ways in. All of them ship a binary.</h2>
+      <h2>Five ways in. All of them ship a binary.</h2>
       <p class="lede">
         Pre-built binaries cover macOS on arm64 and x86_64, and Linux on x86_64 and arm64.
         On Windows, use WSL2.
@@ -628,13 +628,23 @@
 
     <div class="install-wrap">
       <div class="tabs" role="tablist" aria-label="Installation method">
-        <button class="tab" role="tab" id="tab-pip"    aria-controls="panel-pip"    aria-selected="true">pip / pipx</button>
+        <button class="tab" role="tab" id="tab-brew"   aria-controls="panel-brew"   aria-selected="true">Homebrew</button>
+        <button class="tab" role="tab" id="tab-pip"    aria-controls="panel-pip"    aria-selected="false">pip / pipx</button>
         <button class="tab" role="tab" id="tab-cargo"  aria-controls="panel-cargo"  aria-selected="false">cargo</button>
         <button class="tab" role="tab" id="tab-npm"    aria-controls="panel-npm"    aria-selected="false">npm</button>
         <button class="tab" role="tab" id="tab-binary" aria-controls="panel-binary" aria-selected="false">binary</button>
       </div>
 
-      <div class="panel" role="tabpanel" id="panel-pip" aria-labelledby="tab-pip">
+      <div class="panel" role="tabpanel" id="panel-brew" aria-labelledby="tab-brew">
+<pre><code><span class="cmt"># macOS or Linux</span>
+<span class="kw">brew</span> install bharath03-a/tap/gitcortex
+
+<span class="cmt"># Index a repository; add --editor &lt;name&gt; for opt-in MCP setup</span>
+<span class="kw">gcx</span> init</code></pre>
+        <p class="install-note">The official tap installs the matching pre-built binary. No Rust, Python, or Node.js runtime required.</p>
+      </div>
+
+      <div class="panel" role="tabpanel" id="panel-pip" aria-labelledby="tab-pip" hidden>
 <pre><code><span class="cmt"># Recommended: any Python 3.8+ environment</span>
 <span class="kw">pip</span> install gitcortex
 
@@ -656,7 +666,7 @@
 
 <span class="cmt"># Start the MCP server</span>
 <span class="kw">gcx</span> serve</code></pre>
-        <p class="install-note">Requires Rust 1.82 or newer. KuzuDB is built from source, so the first build takes roughly five minutes.</p>
+        <p class="install-note">Requires Rust 1.80 or newer. KuzuDB is built from source, so the first build takes roughly five minutes.</p>
       </div>
 
       <div class="panel" role="tabpanel" id="panel-npm" aria-labelledby="tab-npm" hidden>
@@ -674,11 +684,13 @@
 
       <div class="panel" role="tabpanel" id="panel-binary" aria-labelledby="tab-binary" hidden>
 <pre><code><span class="cmt"># macOS arm64</span>
-<span class="kw">curl</span> -L https://github.com/bharath03-a/GitCortex/releases/latest/download/gcx-aarch64-apple-darwin.tar.gz | tar xz
+<span class="kw">curl</span> -LO https://github.com/bharath03-a/GitCortex/releases/latest/download/gitcortex-aarch64-apple-darwin.tar.xz
+<span class="kw">tar</span> -xf gitcortex-aarch64-apple-darwin.tar.xz
 <span class="kw">sudo</span> mv gcx /usr/local/bin/
 
 <span class="cmt"># Linux x86_64</span>
-<span class="kw">curl</span> -L https://github.com/bharath03-a/GitCortex/releases/latest/download/gcx-x86_64-unknown-linux-gnu.tar.gz | tar xz
+<span class="kw">curl</span> -LO https://github.com/bharath03-a/GitCortex/releases/latest/download/gitcortex-x86_64-unknown-linux-gnu.tar.xz
+<span class="kw">tar</span> -xf gitcortex-x86_64-unknown-linux-gnu.tar.xz
 <span class="kw">sudo</span> mv gcx /usr/local/bin/</code></pre>
         <p class="install-note">Every target is listed on the <a href="https://github.com/bharath03-a/GitCortex/releases">releases page</a>.</p>
       </div>

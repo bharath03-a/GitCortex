@@ -19,8 +19,8 @@
 GitCortex (`gcx`) indexes your codebase incrementally on every commit using tree-sitter AST parsing, persists the graph in an embedded KuzuDB database, and exposes it to AI coding assistants via an MCP server, in Codex, Claude Code, Cursor, Windsurf, GitHub Copilot, and Google Antigravity.
 
 ```bash
-cargo install gitcortex   # or: npm i -g gitcortex · pip install gitcortex
-cd your-repo && gcx init  # index + install hooks + register your editor
+brew install bharath03-a/tap/gitcortex   # or: pipx install gitcortex · cargo install gitcortex
+cd your-repo && gcx init  # index + install hooks; add --editor <name> for MCP setup
 ```
 
 **Contents:** [Why](#why) · [Demo](#demo) · [How it works](#how-it-works) · [Install](#installation) · [Quick start](#quick-start) · [Commands](#commands) · [Languages](#supported-languages) · [MCP](#mcp-integration) · [Graph schema](#graph-schema) · [Benchmark](#benchmark) · [Architecture](#architecture) · [Limitations & roadmap](#limitations--roadmap) · [Contributing](#contributing)
@@ -154,7 +154,13 @@ Adding a language is a self-contained task, implement one `LanguageParser` in `g
 
 ## Installation
 
-**pip / pipx / uv (Python, no Rust required, recommended):**
+**Homebrew (macOS and Linux — no Rust required):**
+
+```bash
+brew install bharath03-a/tap/gitcortex
+```
+
+**pip / pipx / uv (Python, no Rust required):**
 
 ```bash
 pip install gitcortex
@@ -205,19 +211,12 @@ pnpm add -g gitcortex
 yarn global add gitcortex
 ```
 
-**macOS / Linux, curl installer:**
-
-```bash
-curl --proto '=https' --tlsv1.2 -LsSf \
-  https://github.com/bharath03-a/GitCortex/releases/latest/download/gcx-installer.sh | sh
-```
-
 > Pre-built binaries for macOS (arm64/x86_64) and Linux (x86_64/aarch64) are published automatically
 > on every release via GitHub Releases.
 
 ### Windows (via WSL2)
 
-Native Windows is not currently supported, the embedded graph store (KuzuDB 0.6.3, upstream
+Native Windows is not currently supported, the embedded graph store (KuzuDB 0.11.3, upstream
 archived Oct 2025) does not link cleanly under MSVC (LNK1169/LNK2038 symbol conflicts). Restoring
 native Windows requires replacing the store layer; tracked as a future effort.
 
@@ -267,13 +266,17 @@ gcx --color never   query symbol-context baz  # plain text, for scripts and CI
 
 ### `gcx init`
 
-Installs four git hooks, runs the initial full index, registers the MCP server in the detected editor(s), and writes `.gitcortex/AGENT_GUIDE.md` as a universal context file.
+Installs four non-blocking Git hooks, runs the initial full index, and writes `.gitcortex/AGENT_GUIDE.md`. Editor configuration is opt-in through `--editor`; use `--editor auto` only when you explicitly want environment-based detection.
 
 ```bash
-gcx init                      # auto-detects editor(s) from environment
-gcx init --editor codex       # explicit target: codex, claude, cursor, windsurf, copilot, antigravity
-gcx init --editor all         # write configs for every supported editor
-gcx init --ci                 # also writes .github/workflows/gcx-blast-radius.yml
+gcx init                                # no editor configuration
+gcx init --editor codex                 # repository-local Codex setup
+gcx init --editor claude                # repository-local Claude setup
+gcx init --editor auto                  # explicitly request environment detection
+gcx init --editor windsurf --global-editor-config  # explicitly permit global MCP config
+gcx init --editor all                   # all repository-local integrations
+gcx init --shared-git-hooks             # permit an external shared core.hooksPath
+gcx init --ci                           # also writes .github/workflows/gcx-blast-radius.yml
 ```
 
 Output:
@@ -282,18 +285,32 @@ Output:
 GitCortex initialised  (820ms)
   Graph:     2 141 nodes | 5 328 edges
   Hooks:     4 git hooks installed
-  Editors:   Codex, Cursor, Claude Code (auto-detected)
+  Editors:   Codex
   Universal: .gitcortex/AGENT_GUIDE.md, .gitcortex/ignore
 ```
 
 | Editor      | Files written                                                                                       |
 | ----------- | --------------------------------------------------------------------------------------------------- |
-| Claude Code | `.claude/hooks/`, `.claude/settings.json`, `.claude/skills/`, `.claude/commands/`, `~/.claude.json` |
-| Codex       | `AGENTS.md`, `.codex/config.toml`                                                                   |
-| Cursor      | `.cursor/rules/gitcortex.mdc`, `.cursor/mcp.json`                                                   |
-| Windsurf    | `.windsurfrules`, `~/.codeium/windsurf/mcp_config.json`                                             |
-| Copilot     | `.github/copilot-instructions.md`                                                                   |
-| Antigravity | `~/.antigravity/mcp.json`                                                                           |
+| Claude Code | `.mcp.json`, `.claude/hooks/`, `.claude/settings.json`, `.claude/skills/`, `.claude/commands/`; optionally `~/.claude.json` |
+| Codex       | `AGENTS.md`, `.codex/config.toml` |
+| Cursor      | `.cursor/rules/gitcortex.mdc`, `.cursor/mcp.json` |
+| Windsurf    | `.windsurfrules`; optionally `~/.codeium/windsurf/mcp_config.json` |
+| Copilot     | `.vscode/mcp.json`, `.github/copilot-instructions.md` |
+| Antigravity | `~/.antigravity/mcp.json` only with `--global-editor-config` |
+
+Global files are never changed unless `--global-editor-config` is supplied.
+
+### `gcx deinit`
+
+Safely removes GitCortex-owned hook blocks and repository-local editor integrations. Shared files retain unrelated content.
+
+```bash
+gcx deinit --dry-run                    # review every affected path
+gcx deinit                              # keep graph data and .gitcortex/
+gcx deinit --global-editor-config       # also unregister global MCP entries
+gcx deinit --shared-git-hooks           # permit changes to an external shared hooks path
+gcx deinit --purge                      # also remove repo config and local graph data
+```
 
 ### `gcx hook`
 
@@ -301,17 +318,19 @@ Called automatically by the git hooks, you rarely invoke this directly.
 
 ```bash
 gcx hook                   # post-commit / post-merge / post-rewrite
-gcx hook --branch-switch   # post-checkout (no re-index, just updates branch pointer)
+gcx hook --branch-switch   # post-checkout; synchronizes the checked-out branch
 ```
 
 ### `gcx serve`
 
-Starts the MCP server on stdio. Wire this up in your assistant's MCP config to give it access to the knowledge graph.
+Starts an MCP stdio proxy for your assistant. The first client starts a machine-local repository daemon that owns KuzuDB; later clients share that daemon, so Codex, Claude, Cursor, and other editors can query the same repository concurrently without lock races. The daemon exits shortly after its final client disconnects.
 
 ```bash
-gcx serve             # full MCP surface
-gcx serve --compact   # single-dispatch `gcx` tool only; recommended for Codex/token-sensitive agents
+gcx serve          # compact single-dispatch surface (default)
+gcx serve --full   # compact dispatch plus all individual tools
 ```
+
+Compact and full clients can run at the same time. The socket is repository-scoped, local-only, and permissioned for the current user.
 
 ### `gcx query`
 
@@ -536,7 +555,7 @@ This writes `.github/workflows/gcx-blast-radius.yml`. On every pull request it r
 
 ## MCP integration
 
-`gcx init` registers the MCP server for the detected editor(s). Use `--editor` to force one target:
+Editor registration is opt-in. Use `--editor` to select a target explicitly:
 
 ```bash
 gcx init --editor codex
@@ -549,11 +568,11 @@ Codex uses the compact server by default:
 ```toml
 [mcp_servers.gitcortex]
 command = "gcx"
-args = ["serve", "--compact"]
+args = ["serve"]
 startup_timeout_sec = 30
 ```
 
-Claude Code and the other editors use the full MCP surface unless you manually switch their config to `["serve", "--compact"]`.
+The compact single-dispatch MCP surface is the default for every editor. Run `gcx serve --full` only when an MCP client explicitly needs the complete individual-tool surface.
 
 ### Available MCP tools
 
@@ -585,7 +604,7 @@ Claude Code and the other editors use the full MCP surface unless you manually s
 | `find_god_nodes`        | High-fan-in hub symbols ranked by inbound `Calls` in-degree; `min_in_degree` configurable                                                                                 |
 | `find_clusters`         | Code communities via label-propagation clustering over `Contains`+`Calls` edges; deterministic, no LLM calls                                                               |
 
-All tools accept an optional `branch` parameter. Defaults to the branch active when `gcx serve` was started (auto-detected from `git symbolic-ref HEAD`).
+All tools accept an optional `branch` parameter. When omitted, the running server follows the currently checked-out branch.
 
 ### MCP prompts
 
@@ -693,13 +712,16 @@ Every node carries: `loc`, `visibility` (Pub / PubCrate / Private), `is_async`, 
 The graph database and semantic index are stored locally and never committed:
 
 ```
-~/.local/share/gitcortex/{repo_id}/
+# Linux: $XDG_DATA_HOME/gitcortex (default ~/.local/share/gitcortex)
+# macOS: ~/Library/Application Support/gitcortex
+<platform-data>/gitcortex/{repo_id}/
     graph.kuzu            # KuzuDB database (all branches, namespaced by table prefix)
     main.sha              # last indexed SHA for branch "main"
     feat__auth.sha        # last indexed SHA for branch "feat/auth"
     embeddings_main.bin   # semantic vector index for branch "main"
 
-~/.local/share/gitcortex/models/
+# Linux: $XDG_CACHE_HOME/gitcortex; macOS: ~/Library/Caches/gitcortex
+<platform-cache>/gitcortex/models/
     # fastembed model weights (~23 MB, downloaded once, shared across all repos)
 ```
 

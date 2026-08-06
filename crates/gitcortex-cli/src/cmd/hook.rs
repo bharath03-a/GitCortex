@@ -1,22 +1,23 @@
-use std::path::PathBuf;
-use std::time::Instant;
+use std::{path::PathBuf, time::Instant};
 
 use anyhow::{Context, Result};
 use gitcortex_core::store::GraphStore;
 use gitcortex_indexer::IncrementalIndexer;
 use gitcortex_store::kuzu::KuzuGraphStore;
 
-use crate::cmd::export;
+use crate::cmd::{export, serve_lock};
 
 pub fn run(branch_switch: bool) -> Result<()> {
     let t0 = Instant::now();
     let repo_root = repo_root()?;
 
-    if branch_switch {
-        // post-checkout: no re-index needed, the target branch has its own graph.
+    // The long-lived MCP server owns the embedded Kuzu connection. Its watcher
+    // synchronizes commits and branch changes, so a hook must not contend for
+    // the same process-exclusive database lock.
+    if serve_lock::is_active(&repo_root)? {
         tracing::debug!(
-            elapsed_ms = t0.elapsed().as_millis(),
-            "branch-switch: no-op"
+            branch_switch,
+            "active MCP server will synchronize Git state"
         );
         return Ok(());
     }

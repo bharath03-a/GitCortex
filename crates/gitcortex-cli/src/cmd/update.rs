@@ -65,8 +65,11 @@ fn fetch_latest_version() -> Option<String> {
 
 #[derive(Debug)]
 enum InstallMethod {
+    Homebrew,
     Cargo,
     Npm,
+    Pipx,
+    Uv,
     Pip,
     Curl,
 }
@@ -74,9 +77,12 @@ enum InstallMethod {
 impl std::fmt::Display for InstallMethod {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            InstallMethod::Homebrew => write!(f, "Homebrew"),
             InstallMethod::Cargo => write!(f, "cargo"),
             InstallMethod::Npm => write!(f, "npm"),
-            InstallMethod::Pip => write!(f, "pip/pipx/uv"),
+            InstallMethod::Pipx => write!(f, "pipx"),
+            InstallMethod::Uv => write!(f, "uv tool"),
+            InstallMethod::Pip => write!(f, "pip"),
             InstallMethod::Curl => write!(f, "curl installer"),
         }
     }
@@ -89,11 +95,21 @@ fn detect_install_method() -> InstallMethod {
         .unwrap_or_default()
         .replace('\\', "/");
 
-    if exe.contains(".cargo/bin") {
+    detect_install_method_from_path(&exe)
+}
+
+fn detect_install_method_from_path(exe: &str) -> InstallMethod {
+    if exe.contains("/Cellar/gitcortex/") || exe.contains("/homebrew/Cellar/gitcortex/") {
+        InstallMethod::Homebrew
+    } else if exe.contains(".cargo/bin") {
         InstallMethod::Cargo
     } else if exe.contains("node_modules") || exe.contains("npm") {
         InstallMethod::Npm
-    } else if exe.contains("site-packages") || exe.contains("Scripts") || exe.contains("pipx") {
+    } else if exe.contains("/pipx/venvs/") {
+        InstallMethod::Pipx
+    } else if exe.contains("/uv/tools/") || exe.contains("/uv/tool/") {
+        InstallMethod::Uv
+    } else if exe.contains("site-packages") || exe.contains("Scripts") {
         InstallMethod::Pip
     } else {
         InstallMethod::Curl
@@ -102,10 +118,34 @@ fn detect_install_method() -> InstallMethod {
 
 fn update_command(method: &InstallMethod) -> &'static str {
     match method {
+        InstallMethod::Homebrew => "brew upgrade gitcortex",
         InstallMethod::Cargo => "cargo install gitcortex",
-        InstallMethod::Npm   => "npm install -g gitcortex@latest",
-        InstallMethod::Pip   => "pip install --upgrade gitcortex",
-        InstallMethod::Curl  =>
-            "curl --proto '=https' --tlsv1.2 -LsSf \\\n      https://github.com/bharath03-a/GitCortex/releases/latest/download/gcx-installer.sh | sh",
+        InstallMethod::Npm => "npm install -g gitcortex@latest",
+        InstallMethod::Pipx => "pipx upgrade gitcortex",
+        InstallMethod::Uv => "uv tool upgrade gitcortex",
+        InstallMethod::Pip => "pip install --upgrade gitcortex",
+        InstallMethod::Curl =>
+            "curl --proto '=https' --tlsv1.2 -LsSf \\\n      https://github.com/bharath03-a/GitCortex/releases/latest/download/gitcortex-installer.sh | sh",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recognizes_package_manager_locations() {
+        assert!(matches!(
+            detect_install_method_from_path("/opt/homebrew/Cellar/gitcortex/0.7/bin/gcx"),
+            InstallMethod::Homebrew
+        ));
+        assert!(matches!(
+            detect_install_method_from_path("/home/me/.local/pipx/venvs/gitcortex/bin/gcx"),
+            InstallMethod::Pipx
+        ));
+        assert!(matches!(
+            detect_install_method_from_path("/home/me/.local/share/uv/tools/gitcortex/bin/gcx"),
+            InstallMethod::Uv
+        ));
     }
 }

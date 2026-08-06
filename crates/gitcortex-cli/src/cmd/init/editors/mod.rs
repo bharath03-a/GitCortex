@@ -43,13 +43,17 @@ impl EditorKind {
     }
 }
 
-pub fn install_for_editor(editor: &EditorKind, repo_root: &Path) -> Result<()> {
+pub fn install_for_editor(
+    editor: &EditorKind,
+    repo_root: &Path,
+    global_editor_config: bool,
+) -> Result<()> {
     match editor {
-        EditorKind::ClaudeCode => claude::install(repo_root),
-        EditorKind::Cursor => cursor::install(repo_root),
-        EditorKind::Windsurf => windsurf::install(repo_root),
-        EditorKind::Copilot => copilot::install(repo_root),
-        EditorKind::Antigravity => antigravity::install(repo_root),
-        EditorKind::Codex => codex::install(repo_root),
+        EditorKind::ClaudeCode => claude::install(repo_root, global_editor_config),
+        EditorKind::Cursor => cursor::install(repo_root, global_editor_config),
+        EditorKind::Windsurf => windsurf::install(repo_root, global_editor_config),
+        EditorKind::Copilot => copilot::install(repo_root, global_editor_config),
+        EditorKind::Antigravity => antigravity::install(repo_root, global_editor_config),
+        EditorKind::Codex => codex::install(repo_root, global_editor_config),
     }
 }

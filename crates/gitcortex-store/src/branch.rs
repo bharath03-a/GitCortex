@@ -1,9 +1,11 @@
 use std::{
-    fs,
+    fs::{self, File, OpenOptions},
     hash::{DefaultHasher, Hash, Hasher},
+    io::{Read, Seek, Write},
     path::{Path, PathBuf},
 };
 
+use directories::BaseDirs;
 use gitcortex_core::error::{GitCortexError, Result};
 
 // ── Branch name sanitization ──────────────────────────────────────────────────
@@ -41,40 +43,156 @@ pub fn sanitize(branch: &str) -> String {
 
 // ── Repository identity ───────────────────────────────────────────────────────
 
-/// Derive a stable 16-hex-char ID from the absolute repo root path.
-/// Used to namespace per-repo data directories without path encoding issues.
+/// Derive a stable 16-hex-character ID from the repo's absolute path.
+///
+/// BLAKE3 is deliberately specified here instead of `DefaultHasher`, whose
+/// algorithm is an implementation detail and may change between Rust releases.
 pub fn repo_id(repo_root: &Path) -> String {
+    let digest = blake3::hash(repo_root.to_string_lossy().as_bytes());
+    digest.to_hex()[..16].to_owned()
+}
+
+fn legacy_repo_id(repo_root: &Path) -> String {
     let mut hasher = DefaultHasher::new();
     repo_root.to_string_lossy().hash(&mut hasher);
     format!("{:016x}", hasher.finish())
 }
 
-// ── XDG data paths ────────────────────────────────────────────────────────────
+/// Resolve the ID used on disk, retaining access to stores created before the
+/// stable BLAKE3 ID was introduced. New repositories always use [`repo_id`].
+pub fn storage_repo_id(repo_root: &Path) -> String {
+    let stable = repo_id(repo_root);
+    if data_dir(&stable).exists() {
+        return stable;
+    }
 
-/// Root data directory for a repo: `$XDG_DATA_HOME/gitcortex/{repo_id}/`
-pub fn data_dir(repo_id: &str) -> PathBuf {
-    let base = std::env::var("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| home_dir().join(".local/share"));
-    base.join("gitcortex").join(repo_id)
+    let legacy = legacy_repo_id(repo_root);
+    if data_dir(&legacy).exists() {
+        legacy
+    } else {
+        stable
+    }
 }
+
+// ── Platform data and cache paths ─────────────────────────────────────────────
 
 fn home_dir() -> PathBuf {
-    std::env::var("HOME")
+    std::env::var_os("HOME")
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("."))
+        .or_else(|| BaseDirs::new().map(|dirs| dirs.home_dir().to_owned()))
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
-/// Shared model cache directory: `$XDG_DATA_HOME/gitcortex/models`
+/// Machine-local durable data root.
 ///
-/// Shared across all repos — the embedding model is identical everywhere.
-/// fastembed-rs writes the downloaded model here instead of `.fastembed_cache`
-/// in the repo root.
+/// `GCX_STORE_PATH` is the explicit application override. Otherwise the native
+/// platform data directory is used (`$XDG_DATA_HOME` on Linux and
+/// `~/Library/Application Support` on macOS). Existing macOS installations in
+/// `~/.local/share/gitcortex` continue using that location until moved.
+pub fn data_root() -> PathBuf {
+    if let Some(path) = std::env::var_os("GCX_STORE_PATH") {
+        return PathBuf::from(path);
+    }
+    if let Some(path) = std::env::var_os("XDG_DATA_HOME") {
+        return PathBuf::from(path).join("gitcortex");
+    }
+
+    let native = BaseDirs::new()
+        .map(|dirs| dirs.data_local_dir().join("gitcortex"))
+        .unwrap_or_else(|| home_dir().join(".local/share/gitcortex"));
+    let legacy = home_dir().join(".local/share/gitcortex");
+    if cfg!(target_os = "macos") && legacy.exists() && !native.exists() {
+        legacy
+    } else {
+        native
+    }
+}
+
+/// Root data directory for a repository.
+pub fn data_dir(repo_id: &str) -> PathBuf {
+    data_root().join(repo_id)
+}
+
+/// Cross-process ownership guard for operations that may open or mutate one
+/// repository's embedded graph. The operating system releases it on crashes.
+pub struct RepositoryLock {
+    file: File,
+}
+
+impl RepositoryLock {
+    /// Try to claim repository ownership without waiting.
+    pub fn try_acquire(repo_root: &Path) -> Result<Option<Self>> {
+        let repo_id = storage_repo_id(repo_root);
+        let dir = data_dir(&repo_id);
+        fs::create_dir_all(&dir)?;
+        let file = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(dir.join("serve.lock"))?;
+        match fs2::FileExt::try_lock_exclusive(&file) {
+            Ok(()) => Ok(Some(Self { file })),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
+            Err(error) => Err(GitCortexError::Io(error)),
+        }
+    }
+
+    /// Read the diagnostic owner text left by the current or previous owner.
+    pub fn owner(&mut self) -> String {
+        let mut owner = String::new();
+        if self.file.rewind().is_ok() {
+            let _ = self.file.read_to_string(&mut owner);
+        }
+        owner.trim().to_owned()
+    }
+
+    /// Replace diagnostic owner text after ownership has been acquired.
+    pub fn set_owner(&mut self, owner: &str) -> Result<()> {
+        self.file.set_len(0)?;
+        self.file.rewind()?;
+        write!(self.file, "{owner}")?;
+        self.file.sync_data()?;
+        Ok(())
+    }
+}
+
+pub fn repository_lock_owner(repo_root: &Path) -> String {
+    let repo_id = storage_repo_id(repo_root);
+    fs::read_to_string(data_dir(&repo_id).join("serve.lock"))
+        .unwrap_or_default()
+        .trim()
+        .to_owned()
+}
+
+/// Machine-local cache root. Downloadable model weights are cache data, not
+/// durable application state.
+pub fn cache_root() -> PathBuf {
+    if let Some(path) = std::env::var_os("GCX_CACHE_PATH") {
+        return PathBuf::from(path);
+    }
+    if let Some(path) = std::env::var_os("XDG_CACHE_HOME") {
+        return PathBuf::from(path).join("gitcortex");
+    }
+    BaseDirs::new()
+        .map(|dirs| dirs.cache_dir().join("gitcortex"))
+        .unwrap_or_else(|| home_dir().join(".cache/gitcortex"))
+}
+
+/// Shared model cache directory. On first use, migrate the legacy model cache
+/// out of the durable data directory when a same-filesystem rename is possible.
 pub fn models_dir() -> PathBuf {
-    let base = std::env::var("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| home_dir().join(".local/share"));
-    base.join("gitcortex").join("models")
+    let target = cache_root().join("models");
+    let legacy = data_root().join("models");
+    if !target.exists() && legacy.exists() {
+        if let Some(parent) = target.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if fs::rename(&legacy, &target).is_err() {
+            return legacy;
+        }
+    }
+    target
 }
 
 /// Path to the single KuzuDB file for a repo (all branches, namespaced by table prefix).
@@ -110,10 +228,45 @@ pub fn write_schema_version(repo_id: &str, version: u32) -> Result<()> {
     std::fs::write(&path, version.to_string()).map_err(GitCortexError::Io)
 }
 
-/// Wipe all per-repo data (DB + SHA files) so a fresh full index can run.
-pub fn wipe_repo_data(repo_id: &str) {
+/// Whether a repository data directory contains anything other than its
+/// reusable ownership lock file.
+pub fn has_repo_data(repo_id: &str) -> Result<bool> {
+    let entries = match fs::read_dir(data_dir(repo_id)) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(GitCortexError::Io(error)),
+    };
+    for entry in entries {
+        if entry?.file_name() != "serve.lock" {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Wipe per-repository graph data while preserving the advisory ownership
+/// lock inode. Keeping the lock file in place prevents a new daemon from
+/// slipping through while an explicit clean or schema rebuild is in progress.
+pub fn wipe_repo_data(repo_id: &str) -> Result<()> {
     let dir = data_dir(repo_id);
-    let _ = std::fs::remove_dir_all(&dir);
+    let entries = match fs::read_dir(&dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(GitCortexError::Io(error)),
+    };
+    for entry in entries {
+        let entry = entry?;
+        if entry.file_name() == "serve.lock" {
+            continue;
+        }
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            fs::remove_dir_all(entry.path())?;
+        } else {
+            fs::remove_file(entry.path())?;
+        }
+    }
+    Ok(())
 }
 
 // ── last_sha persistence ──────────────────────────────────────────────────────
@@ -164,7 +317,7 @@ mod tests {
     #[test]
     fn repo_id_is_stable() {
         let path = Path::new("/home/user/myproject");
-        assert_eq!(repo_id(path), repo_id(path));
+        assert_eq!(repo_id(path), "b6dd9f32aba035a6");
     }
 
     #[test]

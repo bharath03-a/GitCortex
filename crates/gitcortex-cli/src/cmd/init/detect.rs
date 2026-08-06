@@ -1,9 +1,11 @@
 use std::env;
 
+use anyhow::{bail, Result};
+
 use super::editors::EditorKind;
 
-/// Detect which AI editors are active by inspecting environment variables.
-/// Returns all known editors if none are detected (idempotent install).
+/// Detect active AI editors by inspecting environment variables. An empty
+/// result is intentional: failing detection must never configure every editor.
 pub fn detect_editors() -> Vec<EditorKind> {
     let mut detected = Vec::new();
 
@@ -26,16 +28,15 @@ pub fn detect_editors() -> Vec<EditorKind> {
         detected.push(EditorKind::Codex);
     }
 
-    if detected.is_empty() {
-        EditorKind::all()
-    } else {
-        detected
-    }
+    detected
 }
 
-/// Parse the `--editor` flag value into a list of EditorKind.
-pub fn parse_editor_flag(value: &str) -> Vec<EditorKind> {
-    match value.to_ascii_lowercase().as_str() {
+/// Parse the `--editor` flag value into a list of EditorKind. Unknown values
+/// are errors rather than permission to modify every supported editor.
+pub fn parse_editor_flag(value: &str) -> Result<Vec<EditorKind>> {
+    let editors = match value.to_ascii_lowercase().as_str() {
+        "none" => Vec::new(),
+        "auto" => detect_editors(),
         "all" => EditorKind::all(),
         "claude" | "claudecode" | "claude-code" => vec![EditorKind::ClaudeCode],
         "cursor" => vec![EditorKind::Cursor],
@@ -43,11 +44,11 @@ pub fn parse_editor_flag(value: &str) -> Vec<EditorKind> {
         "copilot" | "github-copilot" => vec![EditorKind::Copilot],
         "antigravity" => vec![EditorKind::Antigravity],
         "codex" | "openai-codex" => vec![EditorKind::Codex],
-        other => {
-            eprintln!("warning: unknown editor '{other}', installing for all editors");
-            EditorKind::all()
-        }
-    }
+        other => bail!(
+            "unknown editor '{other}'; expected one of: none, auto, claude, cursor, windsurf, copilot, antigravity, codex, all"
+        ),
+    };
+    Ok(editors)
 }
 
 fn env_prefix(prefixes: &[&str]) -> bool {
@@ -59,4 +60,27 @@ fn env_prefix(prefixes: &[&str]) -> bool {
         }
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn none_is_an_explicit_safe_choice() {
+        assert!(parse_editor_flag("none").expect("parse none").is_empty());
+    }
+
+    #[test]
+    fn unknown_editor_is_an_error() {
+        assert!(parse_editor_flag("mystery").is_err());
+    }
+
+    #[test]
+    fn all_remains_explicit() {
+        assert_eq!(
+            parse_editor_flag("all").expect("parse all").len(),
+            EditorKind::all().len()
+        );
+    }
 }

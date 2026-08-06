@@ -1,5 +1,8 @@
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, Mutex,
+};
 use std::time::Duration;
 
 use gitcortex_core::store::GraphStore;
@@ -18,10 +21,11 @@ const DEBOUNCE_MS: u64 = 500;
 pub fn spawn_file_watcher(
     repo_root: PathBuf,
     store_arc: Arc<Mutex<KuzuGraphStore>>,
-    branch: String,
+    branch: Arc<Mutex<String>>,
+    graph_revision: Arc<AtomicU64>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        if let Err(e) = run_watcher(repo_root, store_arc, branch).await {
+        if let Err(e) = run_watcher(repo_root, store_arc, branch, graph_revision).await {
             warn!("file watcher stopped: {e}");
         }
     })
@@ -30,7 +34,8 @@ pub fn spawn_file_watcher(
 async fn run_watcher(
     repo_root: PathBuf,
     store_arc: Arc<Mutex<KuzuGraphStore>>,
-    branch: String,
+    branch: Arc<Mutex<String>>,
+    graph_revision: Arc<AtomicU64>,
 ) -> anyhow::Result<()> {
     let (tx, mut rx) = mpsc::unbounded_channel::<PathBuf>();
 
@@ -66,13 +71,110 @@ async fn run_watcher(
                     None => break,
                 }
             }
-            _ = sleep(Duration::from_millis(DEBOUNCE_MS)), if !pending.is_empty() => {
-                let batch = std::mem::take(&mut pending);
-                reindex_batch(repo_root.as_path(), &store_arc, &branch, batch);
+            _ = sleep(Duration::from_millis(DEBOUNCE_MS)) => {
+                let current = detect_current_branch(&repo_root).unwrap_or_else(|| "main".to_owned());
+                if let Ok(mut active) = branch.lock() {
+                    if *active != current {
+                        info!("watcher: active branch changed from '{}' to '{}'", *active, current);
+                        *active = current.clone();
+                    }
+                }
+                sync_committed_state(
+                    repo_root.as_path(),
+                    &store_arc,
+                    &current,
+                    &graph_revision,
+                );
+                if !pending.is_empty() {
+                    let batch = std::mem::take(&mut pending);
+                    reindex_batch(
+                        repo_root.as_path(),
+                        &store_arc,
+                        &current,
+                        batch,
+                        &graph_revision,
+                    );
+                }
             }
         }
     }
     Ok(())
+}
+
+fn sync_committed_state(
+    repo_root: &Path,
+    store_arc: &Arc<Mutex<KuzuGraphStore>>,
+    branch: &str,
+    graph_revision: &AtomicU64,
+) {
+    let mut store = match store_arc.lock() {
+        Ok(store) => store,
+        Err(_) => {
+            warn!("watcher: store mutex poisoned");
+            return;
+        }
+    };
+    let last_sha = match store.last_indexed_sha(branch) {
+        Ok(sha) => sha,
+        Err(error) => {
+            warn!("watcher: read last indexed SHA failed: {error}");
+            return;
+        }
+    };
+    let Some(current_head) = detect_head(repo_root) else {
+        return;
+    };
+    if last_sha.as_deref() == Some(current_head.as_str()) {
+        return;
+    }
+    let indexer = match IncrementalIndexer::new(repo_root) {
+        Ok(indexer) => indexer,
+        Err(error) => {
+            warn!("watcher: indexer init failed: {error}");
+            return;
+        }
+    };
+    let (diff, head_sha) = match indexer.run(last_sha.as_deref()) {
+        Ok(result) => result,
+        Err(error) => {
+            warn!("watcher: committed-state sync failed: {error}");
+            return;
+        }
+    };
+    if let Err(error) = store.apply_diff(branch, &diff) {
+        warn!("watcher: committed-state apply failed: {error}");
+        return;
+    }
+    if let Err(error) = store.set_last_indexed_sha(branch, &head_sha) {
+        warn!("watcher: persist indexed SHA failed: {error}");
+        return;
+    }
+    graph_revision.fetch_add(1, Ordering::Release);
+    info!("watcher: synchronized branch '{branch}' to {head_sha}");
+}
+
+fn detect_head(repo_root: &Path) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(repo_root)
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
+fn detect_current_branch(repo_root: &Path) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .args(["symbolic-ref", "--short", "HEAD"])
+        .current_dir(repo_root)
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
 
 fn reindex_batch(
@@ -80,6 +182,7 @@ fn reindex_batch(
     store_arc: &Arc<Mutex<KuzuGraphStore>>,
     branch: &str,
     paths: Vec<PathBuf>,
+    graph_revision: &AtomicU64,
 ) {
     let indexer = match IncrementalIndexer::new(repo_root) {
         Ok(i) => i,
@@ -102,10 +205,13 @@ fn reindex_batch(
                 }
             };
             match store.apply_diff(branch, &diff) {
-                Ok(()) => info!(
-                    "watcher: re-indexed {} file(s) → +{n_add} nodes, +{n_edge} edges, -{n_del} stale",
-                    paths.len()
-                ),
+                Ok(()) => {
+                    graph_revision.fetch_add(1, Ordering::Release);
+                    info!(
+                        "watcher: re-indexed {} file(s) → +{n_add} nodes, +{n_edge} edges, -{n_del} stale",
+                        paths.len()
+                    );
+                }
                 Err(e) => warn!("watcher: apply_diff failed: {e}"),
             }
         }

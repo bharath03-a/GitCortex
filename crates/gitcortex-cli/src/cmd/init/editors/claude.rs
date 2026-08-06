@@ -5,9 +5,10 @@ use std::{fs, path::Path};
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
 
-use crate::cmd::init::helpers::home_dir;
+use crate::cmd::init::helpers::{home_dir, require_json_object, write_atomic};
 
-const CLAUDE_MD_SECTION: &str = r#"
+pub(crate) const CLAUDE_MD_SECTION: &str = r#"
+<!-- >>> gitcortex claude integration >>> -->
 ## GitCortex Knowledge Graph
 
 This repo is indexed by [GitCortex](https://github.com/bharath03-a/GitCortex).
@@ -17,6 +18,7 @@ Use the MCP server (`gcx serve`, configured in `.mcp.json`) or these slash comma
 - `/gcx-callers <name>` — find all callers of a function
 - `/gcx-file <path>` — list all definitions in a file
 - `/gcx-blast-radius` — show blast radius of changes vs main
+<!-- <<< gitcortex claude integration <<< -->
 "#;
 
 const PRE_TOOL_USE_HOOK: &str = r#"#!/usr/bin/env sh
@@ -125,8 +127,11 @@ Summarise which functions changed and which callers are affected, and highlight 
     ),
 ];
 
-pub fn install(repo_root: &Path) -> Result<()> {
-    write_mcp_json()?;
+pub fn install(repo_root: &Path, global_editor_config: bool) -> Result<()> {
+    write_project_mcp_json(repo_root)?;
+    if global_editor_config {
+        write_mcp_json()?;
+    }
     write_slash_commands(repo_root)?;
     write_skills(repo_root)?;
     update_claude_md(repo_root)?;
@@ -135,23 +140,41 @@ pub fn install(repo_root: &Path) -> Result<()> {
     Ok(())
 }
 
+fn write_project_mcp_json(repo_root: &Path) -> Result<()> {
+    let path = repo_root.join(".mcp.json");
+    let mut root: Value = if path.exists() {
+        let text = fs::read_to_string(&path).context("read .mcp.json")?;
+        serde_json::from_str(&text).context("parse existing .mcp.json")?
+    } else {
+        json!({})
+    };
+    require_json_object(&root, &path)?;
+    if root.pointer("/mcpServers/gitcortex").is_none() {
+        root["mcpServers"]["gitcortex"] = json!({ "command": "gcx", "args": ["serve"] });
+        let text = serde_json::to_string_pretty(&root).context("serialize .mcp.json")?;
+        write_atomic(&path, &text).context("write .mcp.json")?;
+    }
+    Ok(())
+}
+
 fn write_mcp_json() -> Result<()> {
     let path = home_dir().join(".claude.json");
 
     let mut root: Value = if path.exists() {
         let text = fs::read_to_string(&path).context("read ~/.claude.json")?;
-        serde_json::from_str(&text).unwrap_or(json!({}))
+        serde_json::from_str(&text).context("parse existing ~/.claude.json")?
     } else {
         json!({})
     };
 
+    require_json_object(&root, &path)?;
     if root.pointer("/mcpServers/gitcortex").is_some() {
         return Ok(());
     }
 
     root["mcpServers"]["gitcortex"] = json!({ "command": "gcx", "args": ["serve"] });
     let text = serde_json::to_string_pretty(&root).context("serialize ~/.claude.json")?;
-    fs::write(path, text).context("write ~/.claude.json")?;
+    write_atomic(&path, &text).context("write ~/.claude.json")?;
     Ok(())
 }
 
@@ -193,7 +216,8 @@ fn update_claude_md(repo_root: &Path) -> Result<()> {
         if existing.contains("GitCortex Knowledge Graph") {
             return Ok(());
         }
-        fs::write(&path, format!("{existing}{CLAUDE_MD_SECTION}")).context("update CLAUDE.md")?;
+        write_atomic(&path, &format!("{existing}{CLAUDE_MD_SECTION}"))
+            .context("update CLAUDE.md")?;
     } else {
         fs::write(&path, CLAUDE_MD_SECTION.trim_start()).context("write CLAUDE.md")?;
     }
@@ -224,14 +248,15 @@ fn write_claude_settings(repo_root: &Path) -> Result<()> {
         if text.contains("gcx-context.sh") {
             return Ok(());
         }
-        serde_json::from_str(&text).unwrap_or(json!({}))
+        serde_json::from_str(&text).context("parse existing .claude/settings.json")?
     } else {
         json!({})
     };
 
+    require_json_object(&root, &path)?;
     add_gcx_hook_entry(&mut root);
     let text = serde_json::to_string_pretty(&root)?;
-    fs::write(path, text).context("write .claude/settings.json")?;
+    write_atomic(&path, &text).context("write .claude/settings.json")?;
     Ok(())
 }
 
