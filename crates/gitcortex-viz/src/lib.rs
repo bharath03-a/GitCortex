@@ -234,7 +234,6 @@ async fn favicon_ico_handler() -> Response {
     static_response(VIZ_FAVICON_ICO, "image/x-icon")
 }
 
-
 fn static_response(bytes: &'static [u8], content_type: &'static str) -> Response {
     ([(header::CONTENT_TYPE, content_type)], bytes).into_response()
 }

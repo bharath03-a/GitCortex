@@ -35,6 +35,11 @@ anything past a few thousand nodes.
    Web Worker boundary around `viz/src/graph/view.ts` and `density.ts`.
    Acceptance: loading a 10k-node fixture produces no long task
    (>50ms) on the main thread, verified with Chrome DevTools performance trace.
+   `complexity` insight-lens scoring (degree map + LOC/coupling pass, was an
+   inline `useMemo` in `App.tsx`) has already moved to a Web Worker
+   (`viz/src/graph/complexityWorker.ts`, wired via
+   `viz/src/hooks/useComplexityScores.ts`) — `view.ts`/`density.ts` transforms
+   are still on the main thread.
 
 2. **Typed-array/columnar chunk format** for graph transport, replacing
    whatever JSON shape `crates/gitcortex-viz/src/lib.rs`'s paged endpoints
@@ -56,11 +61,12 @@ anything past a few thousand nodes.
    version: sample `performance.memory` (or a frame-time rolling average)
    and drop label/edge density when frame time degrades.
 
-6. **Benchmark fixtures at 1k/10k/50k/100k nodes.** These don't exist yet —
-   generate synthetic graphs (e.g. a script producing N nodes/edges in the
-   manifest wire format) and check them into `tests/integration/fixtures/`
-   or a viz-specific fixtures directory. Every acceptance criterion above
-   depends on these existing first — build this sub-step before 1–5, not after.
+6. **Benchmark fixtures at 1k/10k/50k/100k nodes.** Done —
+   `viz/src/graph/fixtures.ts` (`generateSyntheticGraph`, deterministic
+   mulberry32 PRNG) plus `viz/scripts/generate-fixtures.ts`
+   (`npm run bench:fixtures`) materialize these into `viz/bench-fixtures/`
+   for manual Chrome DevTools profiling. Every acceptance criterion above
+   depends on these existing first — this sub-step is done; 1–5 remain.
 
 **Release gates this workstream must hit** (from `VIZ-ROADMAP.md`):
 - first useful investigation view does not wait for full-atlas load
@@ -126,7 +132,7 @@ measure-before/measure-after discipline as Workstream A.
 ## Suggested order
 
 1. Open the PR for `feat/viz-investigation-foundation` (blocking everything else)
-2. Workstream A, sub-step 6 first (fixtures), then 1–5 in listed order
+2. Workstream A: sub-step 6 (fixtures) is done; remaining sub-steps 1–5 in listed order
 3. Workstream B design note, then implementation
 4. Workstream C, feature by feature, lowest priority
 
