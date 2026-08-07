@@ -263,6 +263,7 @@ impl GitCortexServer {
             for name in [
                 "lookup_symbol",
                 "find_callers",
+                "pre_edit_impact",
                 "symbol_context",
                 "list_definitions",
                 "branch_diff_graph",
@@ -345,6 +346,38 @@ impl GitCortexServer {
         (default) is direct; depth=2..5 adds ranked transitive callers."
     )]
     fn find_callers(&self, Parameters(p): Parameters<FindCallersParams>) -> CallToolResult {
+        let branch = self.resolve_branch(p.branch.as_deref());
+        let store = match self.store.lock() {
+            Ok(g) => g,
+            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+        };
+        let options = super::agent::AgentQueryOptions {
+            limit: 25,
+            budget_tokens: self.response_budget.min(600),
+        };
+        match super::agent::find_callers(
+            &*store,
+            &branch,
+            &p.function_name,
+            p.depth.unwrap_or(1),
+            options,
+        ) {
+            Ok(response) => CallToolResult::structured(json!(response)),
+            Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
+        }
+    }
+
+    /// Compute the blast radius of a function before editing it.
+    #[tool(
+        description = "Call this BEFORE editing, renaming, or removing a function or method's \
+        signature or behavior — not just to answer 'who calls this?' after the fact. Returns \
+        every caller within the given hop radius, ranked by confidence and production-before-test, \
+        plus a risk_level (LOW/MEDIUM/HIGH/CRITICAL) based on caller count. Use the result to decide \
+        how carefully to make the change and who else is affected before writing the edit. \
+        Ambiguous short names return qualified candidates without traversal. depth=1 (default) is \
+        direct callers; depth=2..5 adds ranked transitive callers."
+    )]
+    fn pre_edit_impact(&self, Parameters(p): Parameters<FindCallersParams>) -> CallToolResult {
         let branch = self.resolve_branch(p.branch.as_deref());
         let store = match self.store.lock() {
             Ok(g) => g,
@@ -1541,7 +1574,7 @@ impl GitCortexServer {
     /// Prefer this tool to keep per-turn schema overhead low. All individual
     /// tools remain available for direct use; this is an additive alias.
     #[tool(description = "Query the GitCortex code knowledge graph. \
-        action: lookup_symbol | find_callers | find_callees | find_unused_symbols | \
+        action: lookup_symbol | find_callers | pre_edit_impact | find_callees | find_unused_symbols | \
         get_subgraph | search_code | start_tour | wiki_symbol | trace_path | \
         list_definitions | symbol_context | list_symbols_in_range | graph_stats | ast_search | \
         type_hierarchy | find_importers | find_type_usages | module_dependencies | \
@@ -1580,6 +1613,15 @@ impl GitCortexServer {
                 branch: branch_val,
             })),
             "find_callers" => self.find_callers(Parameters(FindCallersParams {
+                function_name: str_field!("function_name"),
+                depth: p
+                    .params
+                    .get("depth")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as u8),
+                branch: branch_val,
+            })),
+            "pre_edit_impact" => self.pre_edit_impact(Parameters(FindCallersParams {
                 function_name: str_field!("function_name"),
                 depth: p
                     .params
