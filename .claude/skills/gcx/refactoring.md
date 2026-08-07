@@ -5,7 +5,7 @@ Use the knowledge graph to plan refactors in the right order and avoid breaking 
 ## Workflow
 
 1. **Map current structure** — `list_definitions` on every file in the module being refactored
-2. **Find all dependents** — `find_callers` and `lookup_symbol` to identify callers and uses
+2. **Find all dependents** — `pre_edit_impact` (blast radius before the change) and `lookup_symbol` to identify callers and uses
 3. **Check trait implementations** — look for structs that implement traits you're changing
 4. **Plan the order** — change leaf nodes first (no callers), then work toward roots
 5. **Verify after** — `branch_diff_graph(from: "main", to: "HEAD")` to confirm only intended nodes changed

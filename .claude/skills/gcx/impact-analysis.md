@@ -5,8 +5,8 @@ Before modifying a function, struct, or trait — understand everything that dep
 ## Workflow
 
 1. **Look up the symbol** — `lookup_symbol(name: "YourSymbol")`
-2. **Find direct callers** — `find_callers(function_name: "your_function")`
-3. **Walk the blast radius** — repeat `find_callers` on each caller; stop when callers are entry points
+2. **Check blast radius before editing** — `pre_edit_impact(function_name: "your_function")` (same params/response as `find_callers`, but call it before writing the edit)
+3. **Walk the blast radius** — repeat `pre_edit_impact` on each caller; stop when callers are entry points
 4. **After changes** — run `gcx blast-radius --base main --head HEAD` for a full risk report
 
 ## Risk heuristic

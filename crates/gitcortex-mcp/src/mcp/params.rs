@@ -5,8 +5,8 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GcxDispatchParams {
-    /// Which graph operation to run. One of: lookup_symbol, find_callers, find_callees,
-    /// find_unused_symbols, get_subgraph, search_code, start_tour, wiki_symbol,
+    /// Which graph operation to run. One of: lookup_symbol, find_callers, pre_edit_impact,
+    /// find_callees, find_unused_symbols, get_subgraph, search_code, start_tour, wiki_symbol,
     /// trace_path, list_definitions, symbol_context, list_symbols_in_range, graph_stats,
     /// ast_search, type_hierarchy, find_importers, find_type_usages, module_dependencies,
     /// get_call_sites, find_god_nodes, find_clusters, find_cycles, health_report.
