@@ -25,4 +25,14 @@ export default defineConfig({
       },
     },
   },
+  worker: {
+    // Vite builds Worker entry points as a separate bundle; without this the
+    // chunk gets a content hash in its name, which the Axum server (fixed,
+    // hardcoded /assets/* routes, no wildcard static serving) can't route to.
+    rollupOptions: {
+      output: {
+        entryFileNames: "assets/[name].js",
+      },
+    },
+  },
 });
