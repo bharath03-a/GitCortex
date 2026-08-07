@@ -638,7 +638,7 @@ The compact server exposes only this tool. Use it to keep per-turn schema overhe
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `action` | `string` | yes | One of: `lookup_symbol`, `find_callers`, `find_callees`, `find_unused_symbols`, `get_subgraph`, `search_code`, `start_tour`, `wiki_symbol`, `trace_path`, `list_definitions`, `symbol_context`, `list_symbols_in_range`, `graph_stats`, `ast_search`, `type_hierarchy`, `find_importers`, `find_type_usages`, `module_dependencies`, `get_call_sites`, `branch_diff_graph` |
+| `action` | `string` | yes | One of: `lookup_symbol`, `find_callers`, `pre_edit_impact`, `find_callees`, `find_unused_symbols`, `get_subgraph`, `search_code`, `start_tour`, `wiki_symbol`, `trace_path`, `list_definitions`, `symbol_context`, `list_symbols_in_range`, `graph_stats`, `ast_search`, `type_hierarchy`, `find_importers`, `find_type_usages`, `module_dependencies`, `get_call_sites`, `branch_diff_graph` |
 | `params` | `object` | yes | Same fields as the individual tool for the chosen action |
 
 **Example:**
@@ -713,6 +713,22 @@ Find all callers of a function, with optional multi-hop depth.
 | `callers` | `array` | Caller node objects (capped at 25) |
 
 **Returns (depth>1):** `hops` array, each hop has `hop`, `total`, `truncated`, `callers`.
+
+**Example:**
+
+```json
+{ "function_name": "apply_diff", "depth": 2 }
+```
+
+---
+
+#### `pre_edit_impact`
+
+Blast radius check to run *before* editing, renaming, or removing a function or method's signature or behavior — same response shape as `find_callers`, called with the same parameters. Wraps `find_callers` behind a tool identity whose description nudges pre-edit use, so the assistant checks impact before writing the edit instead of only after.
+
+**Parameters:** same as [`find_callers`](#find_callers).
+
+**Returns:** same as [`find_callers`](#find_callers).
 
 **Example:**
 

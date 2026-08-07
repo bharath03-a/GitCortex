@@ -1984,4 +1984,15 @@ mod contract_tests {
         let schema = serde_json::to_value(&tool.input_schema).expect("serialize schema");
         assert_eq!(schema["properties"]["params"]["type"], "object");
     }
+
+    #[test]
+    fn pre_edit_impact_registered_with_pre_edit_nudge_in_description() {
+        let router = GitCortexServer::tool_router_for_mode(false);
+        let tool = router.get("pre_edit_impact").expect("pre_edit_impact tool");
+        let description = tool.description.as_deref().unwrap_or("");
+        assert!(
+            description.contains("BEFORE"),
+            "expected pre-edit nudge in description, got: {description}"
+        );
+    }
 }

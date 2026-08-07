@@ -581,6 +581,7 @@ The compact single-dispatch MCP surface is the default for every editor. Run `gc
 | `gcx`                   | **Single-dispatch tool**: one schema covers all operations below. Pass `action` + `params` to avoid loading 22 separate schemas per turn. Preferred for token efficiency; the compact server exposes only this tool. |
 | `lookup_symbol`         | Find all nodes matching a name across the codebase                                                                                                                         |
 | `find_callers`          | All functions that call a given function (backward trace, capped at 25)                                                                                                    |
+| `pre_edit_impact`       | Blast radius check before editing/renaming/removing a function — same response as `find_callers`                                                                          |
 | `find_callees`          | All functions called by a given function (forward trace, configurable depth)                                                                                               |
 | `list_definitions`      | All definitions in a source file ordered by line                                                                                                                           |
 | `find_implementors`     | All structs/classes that implement a trait or interface                                                                                                                    |

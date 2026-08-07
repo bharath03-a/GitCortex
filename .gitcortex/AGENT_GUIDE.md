@@ -10,6 +10,7 @@ tools to navigate the codebase — they read the live knowledge graph, not grep 
 |------|-------------|
 | `lookup_symbol(name)` | Find any struct, function, trait, or class by name |
 | `find_callers(function_name)` | Who calls this function? |
+| `pre_edit_impact(function_name)` | Blast radius check before editing/renaming/removing a function — same response as `find_callers` |
 | `find_callees(function_name, depth)` | What does this function call? (forward trace) |
 | `list_definitions(file)` | All symbols defined in a file |
 | `find_implementors(trait_name)` | Who implements this trait or interface? |
@@ -32,7 +33,7 @@ tools to navigate the codebase — they read the live knowledge graph, not grep 
 3. Repeat until you reach an entry point
 
 **Impact analysis before changing a public API**
-1. `find_callers("publicFn")` — direct callers
+1. `pre_edit_impact("publicFn")` — direct callers, checked before writing the edit
 2. `get_subgraph("publicFn", 3, "in")` — full upstream blast radius
 3. `find_implementors("TraitYouAreChanging")` — all implementors that must change
 
