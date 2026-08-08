@@ -40,12 +40,25 @@ async fn proxy_stdio(repo_root: PathBuf, compact: bool) -> Result<()> {
         .context("select repository daemon MCP mode")?;
 
     let (mut socket_read, mut socket_write) = stream.into_split();
-    let mut stdin = tokio::io::stdin();
+    let stdin = tokio::io::stdin();
     let mut stdout = tokio::io::stdout();
     let upstream = async {
-        tokio::io::copy(&mut stdin, &mut socket_write)
+        let mut lines = tokio::io::AsyncBufReadExt::lines(tokio::io::BufReader::new(stdin));
+        while let Some(line) = lines
+            .next_line()
             .await
-            .context("forward MCP requests to repository daemon")?;
+            .context("read MCP request from editor")?
+        {
+            let rewritten = rewrite_handshake(&line);
+            socket_write
+                .write_all(rewritten.as_bytes())
+                .await
+                .context("forward MCP requests to repository daemon")?;
+            socket_write
+                .write_all(b"\n")
+                .await
+                .context("forward MCP requests to repository daemon")?;
+        }
         socket_write.shutdown().await?;
         Ok::<_, anyhow::Error>(())
     };
@@ -71,6 +84,42 @@ async fn proxy_stdio(repo_root: PathBuf, compact: bool) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Antigravity's `agy` CLI sends a non-standard `server/discover` handshake
+/// instead of the MCP spec's `initialize`, with client capabilities/info
+/// namespaced under `params._meta` rather than as top-level params. Rewrite
+/// it into a spec-compliant `initialize` request so the daemon's `rmcp`
+/// server (which only understands the standard method) actually responds
+/// instead of silently ignoring an unrecognized method forever. Any other
+/// line passes through unchanged.
+fn rewrite_handshake(line: &str) -> String {
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(line) else {
+        return line.to_owned();
+    };
+    if value.get("method").and_then(|m| m.as_str()) != Some("server/discover") {
+        return line.to_owned();
+    }
+    let meta = value
+        .pointer("/params/_meta")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let capabilities = meta
+        .get("io.modelcontextprotocol/clientCapabilities")
+        .cloned()
+        .unwrap_or(serde_json::json!({}));
+    let client_info = meta
+        .get("io.modelcontextprotocol/clientInfo")
+        .cloned()
+        .unwrap_or(serde_json::json!({"name": "unknown", "version": "0.0.0"}));
+
+    value["method"] = serde_json::Value::String("initialize".to_owned());
+    value["params"] = serde_json::json!({
+        "protocolVersion": "2024-11-05",
+        "capabilities": capabilities,
+        "clientInfo": client_info,
+    });
+    serde_json::to_string(&value).unwrap_or_else(|_| line.to_owned())
 }
 
 async fn connect_or_start(repo_root: &Path) -> Result<UnixStream> {
@@ -131,4 +180,41 @@ fn repo_root() -> Result<PathBuf> {
     Ok(PathBuf::from(
         String::from_utf8(out.stdout)?.trim().to_owned(),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rewrite_handshake;
+
+    #[test]
+    fn rewrites_antigravity_server_discover_to_initialize() {
+        let line = r#"{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/clientCapabilities":{"roots":{"listChanged":true}},"io.modelcontextprotocol/clientInfo":{"name":"antigravity-client","version":"v1.0.0"},"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}"#;
+        let rewritten: serde_json::Value =
+            serde_json::from_str(&rewrite_handshake(line)).expect("valid JSON");
+
+        assert_eq!(rewritten["method"], "initialize");
+        assert_eq!(rewritten["id"], 1);
+        assert_eq!(rewritten["params"]["protocolVersion"], "2024-11-05");
+        assert_eq!(
+            rewritten["params"]["clientInfo"]["name"],
+            "antigravity-client"
+        );
+        assert_eq!(
+            rewritten["params"]["capabilities"]["roots"]["listChanged"],
+            true
+        );
+    }
+
+    #[test]
+    fn passes_through_standard_initialize_unchanged() {
+        let line = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}"#;
+        assert_eq!(rewrite_handshake(line), line);
+    }
+
+    #[test]
+    fn passes_through_non_json_and_other_methods_unchanged() {
+        assert_eq!(rewrite_handshake("not json"), "not json");
+        let other = r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{}}"#;
+        assert_eq!(rewrite_handshake(other), other);
+    }
 }
