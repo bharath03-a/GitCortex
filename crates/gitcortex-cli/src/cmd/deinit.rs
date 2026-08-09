@@ -89,6 +89,7 @@ pub fn run(
             dry_run,
         )?;
         changes += remove_mcp_entry(&home_dir().join(".antigravity/mcp.json"), dry_run)?;
+        changes += remove_mcp_entry(&home_dir().join(".gemini/config/mcp_config.json"), dry_run)?;
     }
 
     if purge {
