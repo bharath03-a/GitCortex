@@ -48,3 +48,52 @@ fn write_mcp_config(path: &Path) -> Result<()> {
     write_atomic(path, &text).with_context(|| format!("write {}", path.display()))?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::write_mcp_config;
+
+    #[test]
+    fn writes_new_agy_style_mcp_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config").join("mcp_config.json");
+
+        write_mcp_config(&path).unwrap();
+
+        let written: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(written["mcpServers"]["gitcortex"]["command"], "gcx");
+        assert_eq!(written["mcpServers"]["gitcortex"]["args"][0], "serve");
+    }
+
+    #[test]
+    fn preserves_existing_servers_when_merging() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mcp_config.json");
+        std::fs::write(&path, r#"{"mcpServers":{"other":{"command":"foo"}}}"#).unwrap();
+
+        write_mcp_config(&path).unwrap();
+
+        let written: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(written["mcpServers"]["other"]["command"], "foo");
+        assert_eq!(written["mcpServers"]["gitcortex"]["command"], "gcx");
+    }
+
+    #[test]
+    fn is_idempotent_when_gitcortex_already_present() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mcp_config.json");
+        std::fs::write(
+            &path,
+            r#"{"mcpServers":{"gitcortex":{"command":"custom"}}}"#,
+        )
+        .unwrap();
+
+        write_mcp_config(&path).unwrap();
+
+        let written: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(written["mcpServers"]["gitcortex"]["command"], "custom");
+    }
+}

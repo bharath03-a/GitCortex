@@ -296,7 +296,7 @@ GitCortex initialised  (820ms)
 | Cursor      | `.cursor/rules/gitcortex.mdc`, `.cursor/mcp.json` |
 | Windsurf    | `.windsurfrules`; optionally `~/.codeium/windsurf/mcp_config.json` |
 | Copilot     | `.vscode/mcp.json`, `.github/copilot-instructions.md` |
-| Antigravity | `~/.antigravity/mcp.json` only with `--global-editor-config` |
+| Antigravity | `~/.antigravity/mcp.json`, `~/.gemini/config/mcp_config.json` (for the `agy` CLI); only with `--global-editor-config` |
 
 Global files are never changed unless `--global-editor-config` is supplied.
 
