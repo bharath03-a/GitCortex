@@ -581,7 +581,7 @@ Repository-local `.cursor/mcp.json` uses the same `mcpServers` entry as Claude.
 
 #### Windsurf / Antigravity
 
-These editors currently require global MCP files. GitCortex writes them only when `--global-editor-config` is supplied.
+These editors currently require global MCP files. GitCortex writes them only when `--global-editor-config` is supplied. For Antigravity this includes both `~/.antigravity/mcp.json` (the IDE) and `~/.gemini/config/mcp_config.json` (the separate `agy` CLI, which reads its own config).
 
 #### GitHub Copilot in VS Code
 
