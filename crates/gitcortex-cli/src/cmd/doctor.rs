@@ -206,6 +206,19 @@ fn check_editor_mcp(repo_root: &Path) {
             }),
         ),
         (
+            "Agy CLI",
+            Box::new({
+                let home = home.clone();
+                move || {
+                    home.as_ref()
+                        .map(|h| {
+                            file_contains(&h.join(".gemini/config/mcp_config.json"), "gitcortex")
+                        })
+                        .unwrap_or(false)
+                }
+            }),
+        ),
+        (
             "Copilot",
             Box::new({
                 let root = repo_root.to_path_buf();
