@@ -5,6 +5,7 @@ import { BranchPicker } from "./BranchPicker";
 interface Props {
   onSearch: () => void;
   onShowHelp: () => void;
+  repoName: string | null;
   activeBranch: string | null;
   onSetActiveBranch: (branch: string) => void;
   diffHead: string | null;
@@ -16,6 +17,7 @@ interface Props {
 export function Header({
   onSearch,
   onShowHelp,
+  repoName,
   activeBranch,
   onSetActiveBranch,
   diffHead,
@@ -30,7 +32,7 @@ export function Header({
         <div className="leading-none">
           <div className="text-[14px] font-bold tracking-[-0.025em]">GitCortex</div>
           <div className="mt-1.5 font-mono text-[8px] font-semibold tracking-[0.16em] text-(--color-text-dim) uppercase">
-            Local code atlas
+            {repoName ? `${repoName} · local code atlas` : "Local code atlas"}
           </div>
         </div>
         <span className="ml-1 rounded-full bg-(--color-accent-soft) px-2 py-1 font-mono text-[8px] font-semibold tracking-[0.08em] text-(--color-accent) uppercase">

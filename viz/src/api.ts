@@ -33,6 +33,7 @@ export async function fetchGraphData(): Promise<GraphData> {
 
 export interface GraphManifest {
   branch: string;
+  repo_name: string;
   snapshot: string | null;
   total_nodes: number;
   total_edges: number;
@@ -44,6 +45,7 @@ export interface GraphManifest {
 
 export interface GraphLoadProgress {
   stage: "nodes" | "edges" | "complete";
+  repoName: string;
   snapshot: string | null;
   loadedNodes: number;
   loadedEdges: number;
@@ -114,6 +116,7 @@ export async function loadGraphData(
       { nodes: nodes.slice(), edges },
       {
         stage: "nodes",
+        repoName: manifest.repo_name,
         snapshot: manifest.snapshot,
         loadedNodes: nodes.length,
         loadedEdges: 0,
@@ -134,6 +137,7 @@ export async function loadGraphData(
       { nodes, edges: edges.slice() },
       {
         stage: "edges",
+        repoName: manifest.repo_name,
         snapshot: manifest.snapshot,
         loadedNodes: nodes.length,
         loadedEdges: edges.length,
@@ -146,6 +150,7 @@ export async function loadGraphData(
   const data = { nodes, edges };
   onProgress(data, {
     stage: "complete",
+    repoName: manifest.repo_name,
     snapshot: manifest.snapshot,
     loadedNodes: nodes.length,
     loadedEdges: edges.length,

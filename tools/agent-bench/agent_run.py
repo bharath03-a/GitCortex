@@ -2,13 +2,16 @@
 """Native client agent-loop lanes for the pinned GitCortex suite.
 
 Codex uses an explicit graph-CLI lane because current ChatGPT-account exec
-sessions do not expose ad-hoc MCP tools. Claude Code uses the compact MCP
-single-dispatch tool with a strict per-run MCP configuration.
+sessions do not expose ad-hoc MCP tools. Claude Code and Agy (Antigravity's
+CLI) both use the compact MCP single-dispatch `gcx` tool; Agy has no
+per-invocation MCP config flag, so its arm swaps its global config file
+(~/.gemini/config/mcp_config.json) around each run instead.
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import math
@@ -80,6 +83,24 @@ def question(task: Task) -> str:
         return f"If I change '{task.query}', what breaks? List direct callers and the most important impact."
     if task.action == "subgraph":
         return f"What is directly connected to '{task.query}'? Summarize callers, callees, types, and other important relationships."
+    if task.action == "impact":
+        return (
+            f"I'm about to change the signature or behavior of '{task.query}'. Before I edit it, "
+            "give me the full blast radius: every direct and transitive caller worth knowing about, "
+            "not just the first hop, so I can judge how risky this change is."
+        )
+    if task.action == "architecture":
+        return (
+            f"Explain how '{task.query}' fits into the codebase's architecture: what other files, "
+            "types, and functions it's connected to (both directions), so I understand the cross-file "
+            "shape of this part of the system before I touch it."
+        )
+    if task.action == "refactor":
+        return (
+            f"I'm planning to refactor '{task.query}'. Is it safe? List everything that would need to "
+            "change: its callers, what it calls, and anything else that uses it, so I know the full "
+            "surface area of the refactor."
+        )
     raise BenchError(f"unsupported task action: {task.action}")
 
 
@@ -170,6 +191,18 @@ def claude_dispatch(task: Task) -> dict[str, Any]:
             "action": "get_subgraph",
             "params": {"seed_name": task.query or "", "depth": 1, "limit": 30},
         }
+    if task.action == "impact":
+        return {
+            "action": "pre_edit_impact",
+            "params": {"function_name": task.query or "", "depth": 2},
+        }
+    if task.action == "architecture":
+        return {
+            "action": "get_subgraph",
+            "params": {"seed_name": task.query or "", "depth": 2, "limit": 30},
+        }
+    if task.action == "refactor":
+        return {"action": "symbol_context", "params": {"name": task.query or ""}}
     raise BenchError(f"unsupported task action: {task.action}")
 
 
@@ -326,6 +359,10 @@ def run_claude_arm(
 Before any ordinary source search, call the GitCortex MCP `gcx` tool exactly once with this payload:
 {dispatch}
 
+If `mcp__gcx` is not directly callable (some Claude Code versions defer MCP tool
+schemas until requested), first call ToolSearch with query "select:mcp__gcx" to
+load it, then call it as normal. Do not treat a deferred tool as "unavailable."
+
 Rules:
 - Make exactly that one GitCortex call and do not retry it.
 - After that call, never call any MCP tool again for any reason; only focused Read calls are allowed.
@@ -338,7 +375,7 @@ Question: {q}"""
         mcp_config = json.dumps(
             {"mcpServers": {"gcx": {"command": str(gcx), "args": ["serve"]}}}
         )
-        allowed = "Read mcp__gcx"
+        allowed = "Read mcp__gcx ToolSearch"
         disallowed = "Grep Glob Bash Edit Write WebSearch WebFetch"
     else:
         prompt = f"""You are evaluating ordinary codebase exploration.
@@ -395,6 +432,181 @@ Question: {q}"""
     return parsed
 
 
+AGY_MCP_CONFIG = Path.home() / ".gemini" / "config" / "mcp_config.json"
+AGY_SERVER_NAME = "gitcortex"
+
+
+@contextlib.contextmanager
+def agy_mcp_config(gcx: Path, enabled: bool):
+    """Agy has no per-invocation --mcp-config flag; it only reads its global
+    config file. Swap that file around each arm's run and restore whatever
+    was there before, so this benchmark never leaves the user's own agy
+    setup altered."""
+    AGY_MCP_CONFIG.parent.mkdir(parents=True, exist_ok=True)
+    previous = AGY_MCP_CONFIG.read_text(encoding="utf-8") if AGY_MCP_CONFIG.exists() else None
+    servers = {AGY_SERVER_NAME: {"command": str(gcx), "args": ["serve"]}} if enabled else {}
+    AGY_MCP_CONFIG.write_text(json.dumps({"mcpServers": servers}), encoding="utf-8")
+    try:
+        yield
+    finally:
+        if previous is not None:
+            AGY_MCP_CONFIG.write_text(previous, encoding="utf-8")
+        else:
+            AGY_MCP_CONFIG.unlink(missing_ok=True)
+
+
+def parse_agy_events(raw: str, task: Task, expect_gcx: bool) -> ArmResult:
+    usage = {"input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0, "reasoning_output_tokens": 0}
+    commands = 0
+    gcx_calls = 0
+    gcx_errors = 0
+    answer = ""
+    errors: list[str] = []
+    status = ""
+    for line in raw.splitlines():
+        if not line.startswith("{"):
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("event") == "step_update":
+            step = event.get("step_update") or {}
+            if step.get("step_type") == "tool" and step.get("state") in {"DONE", "ERROR"}:
+                commands += 1
+                info = step.get("tool_info") or {}
+                params = info.get("parameters") or {}
+                if step.get("tool_name") == "call_mcp_tool" and params.get("ServerName") == AGY_SERVER_NAME:
+                    gcx_calls += 1
+                    if step.get("state") == "ERROR":
+                        gcx_errors += 1
+        elif event.get("event") == "result":
+            result = event.get("result") or {}
+            status = result.get("status", "")
+            answer = result.get("response", "")
+            event_usage = result.get("usage") or {}
+            cache_read = int(event_usage.get("cache_read_tokens", 0))
+            usage["input_tokens"] = int(event_usage.get("input_tokens", 0))
+            usage["cached_input_tokens"] = cache_read
+            usage["output_tokens"] = int(event_usage.get("output_tokens", 0))
+            usage["reasoning_output_tokens"] = int(event_usage.get("thinking_tokens", 0))
+            if status != "SUCCESS":
+                errors.append(str(result.get("error") or status))
+
+    normalized_answer = answer.replace("\\/", "/").replace("\\\\", "/")
+    found, missing = required_evidence(task, normalized_answer)
+    quality = len(found) / len(task.required) if task.required else 1.0
+    total = usage["input_tokens"] + usage["output_tokens"]
+    uncached = max(usage["input_tokens"] - usage["cached_input_tokens"], 0) + usage["output_tokens"]
+    tool_invalid = (expect_gcx and (gcx_calls != 1 or gcx_errors != 0)) or (
+        not expect_gcx and gcx_calls != 0
+    )
+    return ArmResult(
+        **usage,
+        total_tokens=total,
+        uncached_tokens=uncached,
+        commands=commands,
+        gcx_calls=gcx_calls,
+        gcx_errors=gcx_errors,
+        answer=answer,
+        required_found=found,
+        required_missing=missing,
+        quality_score=quality,
+        error=bool(errors) or total == 0 or not answer or tool_invalid,
+        error_messages=errors,
+    )
+
+
+def run_agy_arm(
+    task: Task,
+    repo_dir: Path,
+    model: str,
+    gcx: Path,
+    arm: str,
+    log_path: Path,
+) -> ArmResult:
+    q = question(task)
+    if arm == "gcx":
+        dispatch = json.dumps(claude_dispatch(task), separators=(",", ":"))
+        prompt = f"""You are evaluating a graph-first code exploration workflow.
+
+Before any ordinary source search, call the gitcortex MCP tool named exactly "gcx" exactly once with this payload:
+{dispatch}
+
+Rules:
+- Make exactly that one gitcortex call and do not retry it.
+- After that call, never call any MCP tool again for any reason; only focused file reads are allowed.
+- If it fails, state that failure and stop; do not fall back to grep.
+- Use its ranked evidence first.
+- You may make at most three focused file reads to verify details.
+- Do not edit files. Keep the final answer concise and cite repository-relative files.
+
+Question: {q}"""
+    else:
+        prompt = f"""You are evaluating ordinary codebase exploration.
+
+Do not use gitcortex, gcx, MCP, or any graph database. Use normal source search and focused reads. Do not edit files. Keep the final answer concise and cite repository-relative files.
+
+Question: {q}"""
+
+    command = [
+        "agy",
+        "-p",
+        prompt,
+        "--output-format",
+        "stream-json",
+        "--model",
+        model,
+        "--dangerously-skip-permissions",
+        "--print-timeout",
+        "300s",
+    ]
+    with agy_mcp_config(gcx, enabled=(arm == "gcx")):
+        result = subprocess.run(
+            command,
+            cwd=repo_dir,
+            text=True,
+            input="",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=330,
+            check=False,
+        )
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.write_text(result.stdout, encoding="utf-8")
+    parsed = parse_agy_events(result.stdout, task, arm == "gcx")
+    if result.returncode != 0:
+        parsed.error = True
+        parsed.error_messages.append(f"agy exited {result.returncode}")
+    return parsed
+
+
+def error_arm_result(message: str) -> ArmResult:
+    """One flaky/slow client call must not discard an otherwise-completed
+    benchmark batch. Callers catch subprocess timeouts and BenchErrors per
+    arm and substitute this instead of letting the exception propagate."""
+    zero_usage = {
+        "input_tokens": 0,
+        "cached_input_tokens": 0,
+        "output_tokens": 0,
+        "reasoning_output_tokens": 0,
+    }
+    return ArmResult(
+        **zero_usage,
+        total_tokens=0,
+        uncached_tokens=0,
+        commands=0,
+        gcx_calls=0,
+        gcx_errors=0,
+        answer="",
+        required_found=[],
+        required_missing=[],
+        quality_score=0.0,
+        error=True,
+        error_messages=[message],
+    )
+
+
 def geomean(values: list[float]) -> float:
     positive = [value for value in values if value > 0]
     return math.exp(sum(math.log(value) for value in positive) / len(positive)) if positive else 0.0
@@ -423,7 +635,7 @@ def main() -> int:
     parser.add_argument("--suite", type=Path, default=DEFAULT_SUITE)
     parser.add_argument("--gcx", type=Path, required=True)
     parser.add_argument("--work", type=Path, default=DEFAULT_WORK)
-    parser.add_argument("--client", choices=["codex", "claude"], default="codex")
+    parser.add_argument("--client", choices=["codex", "claude", "agy"], default="codex")
     parser.add_argument("--model")
     parser.add_argument("--reasoning", default="low")
     parser.add_argument("--label", required=True)
@@ -433,7 +645,11 @@ def main() -> int:
     parser.add_argument("--reuse-index", action="store_true")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    model = args.model or ("gpt-5.4-mini" if args.client == "codex" else "haiku")
+    model = args.model or {
+        "codex": "gpt-5.4-mini",
+        "claude": "haiku",
+        "agy": "Gemini 3.6 Flash (Low)",
+    }[args.client]
 
     try:
         suite_path = args.suite.resolve()
@@ -478,27 +694,40 @@ def main() -> int:
                 arms: dict[str, ArmResult] = {}
                 for arm in order.split("-"):
                     log_path = logs / f"r{round_number}-{task.id}-{arm}.jsonl"
-                    if args.client == "codex":
-                        arms[arm] = run_codex_arm(
-                            task,
-                            repo_dirs[task.repo],
-                            model,
-                            args.reasoning,
-                            gcx_command,
-                            str(gcx_link),
-                            arm,
-                            log_path,
-                        )
-                    else:
-                        arms[arm] = run_claude_arm(
-                            task,
-                            repo_dirs[task.repo],
-                            model,
-                            args.reasoning,
-                            gcx_link,
-                            arm,
-                            log_path,
-                        )
+                    try:
+                        if args.client == "codex":
+                            arms[arm] = run_codex_arm(
+                                task,
+                                repo_dirs[task.repo],
+                                model,
+                                args.reasoning,
+                                gcx_command,
+                                str(gcx_link),
+                                arm,
+                                log_path,
+                            )
+                        elif args.client == "agy":
+                            arms[arm] = run_agy_arm(
+                                task,
+                                repo_dirs[task.repo],
+                                model,
+                                gcx_link,
+                                arm,
+                                log_path,
+                            )
+                        else:
+                            arms[arm] = run_claude_arm(
+                                task,
+                                repo_dirs[task.repo],
+                                model,
+                                args.reasoning,
+                                gcx_link,
+                                arm,
+                                log_path,
+                            )
+                    except (subprocess.TimeoutExpired, BenchError) as exc:
+                        print(f"  arm '{arm}' errored: {exc}", file=sys.stderr)
+                        arms[arm] = error_arm_result(str(exc))
                 baseline, graph = arms["baseline"], arms["gcx"]
                 ratio = baseline.total_tokens / graph.total_tokens if graph.total_tokens else 0
                 uncached_ratio = (
@@ -546,7 +775,11 @@ def main() -> int:
             "type": "meta",
             "suite": raw_suite["suite"],
             "suite_sha256": sha256(suite_path),
-            "lane": "codex-graph-cli" if args.client == "codex" else "claude-code-mcp",
+            "lane": {
+                "codex": "codex-graph-cli",
+                "claude": "claude-code-mcp",
+                "agy": "agy-mcp",
+            }[args.client],
             "client": args.client,
             "client_version": version_result.stdout.strip(),
             "label": args.label,

@@ -256,8 +256,28 @@ export function CosmosCanvas({
     ref.current.zoomToPoint(index, 600, 4.2, true);
   }, [selected, nodeIndexById]);
 
+  // Cosmograph's own init (duckdb-wasm boot + first GPU upload + fitView) takes
+  // a beat before anything paints, with no library hook to know when it's done.
+  // Without this, the canvas looks identically blank whether it's working or
+  // broken. Tie the overlay to actual data changes (not a fixed mount timer) so
+  // it also reappears on branch switches and investigate-mode transitions.
+  const [rendering, setRendering] = useState(true);
+  useEffect(() => {
+    setRendering(true);
+    const timer = setTimeout(() => setRendering(false), 1200);
+    return () => clearTimeout(timer);
+  }, [points, paintedLinks]);
+
   return (
     <div ref={wrapperRef} className="absolute inset-0 overflow-hidden">
+      {rendering && (
+        <div className="graph-panel pointer-events-none absolute inset-0 z-20 flex items-center justify-center gap-2.5">
+          <span className="size-3 animate-spin rounded-full border-2 border-(--color-accent) border-t-transparent" />
+          <span className="font-mono text-[11px] text-(--color-text-muted)">
+            Rendering {points.length.toLocaleString()} symbols…
+          </span>
+        </div>
+      )}
       <CosmographProvider>
         <p className="sr-only">
           Interactive force-directed graph visualization. The canvas is not navigable by keyboard.

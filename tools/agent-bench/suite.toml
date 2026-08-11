@@ -212,3 +212,150 @@ query = "JsonReader.beginArray"
 required = ["gson/src/main/java/com/google/gson/stream/JsonReader.java"]
 max_bytes = 3500
 min_evidence = 1
+
+# ── Harder question types (v2): deep blast-radius, cross-file architecture,
+# refactor-safety. Each verified live against the pinned commit above via
+# `gcx query ... --format agent-json` before being written down here.
+
+[[tasks]]
+id = "ripgrep-impact-line-number"
+repo = "ripgrep"
+action = "impact"
+query = "crate::Searcher::line_number"
+# depth-1 only surfaces hiargs.rs; util.rs only appears at depth 2 — proves
+# the deep-impact path actually traverses further than find-callers depth=1.
+required = ["crates/core/flags/hiargs.rs", "crates/printer/src/util.rs"]
+max_bytes = 5200
+min_evidence = 1
+
+[[tasks]]
+id = "ripgrep-architecture-searcher"
+repo = "ripgrep"
+action = "architecture"
+query = "Searcher"
+required = ["crates/printer/src/json.rs", "crates/searcher/src/searcher/mod.rs"]
+max_bytes = 5200
+min_evidence = 1
+
+[[tasks]]
+id = "ripgrep-refactor-searcher"
+repo = "ripgrep"
+action = "refactor"
+query = "Searcher"
+required = ["crates/core/search.rs", "crates/printer/src/json.rs"]
+max_bytes = 4000
+min_evidence = 1
+
+[[tasks]]
+id = "requests-impact-send"
+repo = "requests"
+action = "impact"
+query = "SessionRedirectMixin.send"
+required = ["src/requests/sessions.py", "src/requests/auth.py"]
+max_bytes = 5200
+min_evidence = 1
+
+[[tasks]]
+id = "requests-architecture-session"
+repo = "requests"
+action = "architecture"
+query = "Session"
+required = ["src/requests/api.py", "src/requests/sessions.py"]
+max_bytes = 5200
+min_evidence = 1
+
+[[tasks]]
+id = "requests-refactor-session"
+repo = "requests"
+action = "refactor"
+query = "Session"
+required = ["src/requests/sessions.py"]
+max_bytes = 4000
+min_evidence = 1
+
+[[tasks]]
+id = "hono-impact-compose"
+repo = "hono"
+action = "impact"
+query = "compose"
+required = ["src/hono-base.ts"]
+max_bytes = 5200
+min_evidence = 1
+
+[[tasks]]
+id = "hono-architecture-dispatch"
+repo = "hono"
+action = "architecture"
+query = "dispatch"
+required = ["src/compose.ts", "src/context.ts"]
+max_bytes = 5200
+min_evidence = 1
+
+[[tasks]]
+id = "hono-refactor-compose"
+repo = "hono"
+action = "refactor"
+query = "compose"
+required = ["src/hono-base.ts"]
+max_bytes = 4000
+min_evidence = 1
+
+[[tasks]]
+id = "cobra-impact-add-command"
+repo = "cobra"
+action = "impact"
+query = "Command.AddCommand"
+required = ["command.go", "completions.go"]
+max_bytes = 5200
+min_evidence = 1
+
+[[tasks]]
+id = "cobra-architecture-parse-flags"
+repo = "cobra"
+action = "architecture"
+query = "ParseFlags"
+required = ["command.go", "completions.go"]
+max_bytes = 5200
+min_evidence = 1
+
+[[tasks]]
+id = "cobra-refactor-add-command"
+repo = "cobra"
+action = "refactor"
+query = "AddCommand"
+required = ["command.go"]
+max_bytes = 4000
+min_evidence = 1
+
+[[tasks]]
+id = "gson-impact-begin-array"
+repo = "gson"
+action = "impact"
+query = "JsonReader.beginArray"
+required = [
+  "gson/src/main/java/com/google/gson/internal/bind/ArrayTypeAdapter.java",
+  "gson/src/main/java/com/google/gson/internal/bind/CollectionTypeAdapterFactory.java",
+]
+max_bytes = 5200
+min_evidence = 1
+
+[[tasks]]
+id = "gson-architecture-peek"
+repo = "gson"
+action = "architecture"
+query = "JsonReader.peek"
+required = [
+  "gson/src/main/java/com/google/gson/stream/JsonReader.java",
+  "gson/src/main/java/com/google/gson/TypeAdapter.java",
+]
+max_bytes = 5200
+min_evidence = 1
+
+[[tasks]]
+id = "gson-refactor-begin-array"
+repo = "gson"
+action = "refactor"
+query = "JsonReader.beginArray"
+required = ["gson/src/main/java/com/google/gson/internal/bind/ArrayTypeAdapter.java"]
+max_bytes = 4000
+min_evidence = 1
