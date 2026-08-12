@@ -174,6 +174,14 @@ pub enum QueryCmd {
     /// 360° view of a symbol: definition, callers, callees, and type usages.
     SymbolContext {
         name: String,
+        /// Maximum callers/callees/used_by rows returned per relation.
+        #[arg(long, default_value_t = 25)]
+        limit: usize,
+        /// Global response budget used by agent-json output.
+        #[arg(long, default_value_t = 800)]
+        budget_tokens: usize,
+        #[arg(long, value_enum, default_value_t = AgentOutputFormat::Text)]
+        format: AgentOutputFormat,
         #[arg(long, default_value = "main")]
         branch: String,
     },
@@ -195,6 +203,8 @@ pub enum QueryCmd {
     TracePath {
         from: String,
         to: String,
+        #[arg(long, value_enum, default_value_t = AgentOutputFormat::Text)]
+        format: AgentOutputFormat,
         #[arg(long, default_value = "main")]
         branch: String,
     },

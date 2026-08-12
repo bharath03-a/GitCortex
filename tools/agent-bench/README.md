@@ -103,12 +103,28 @@ call, count follow-up tools, capture client-reported cache usage, and score the
 same required final-answer evidence. Claude total tokens include cache reads;
 uncached tokens exclude cache reads.
 
+## Agy MCP lane
+
+Agy has no per-invocation MCP config flag — it only reads its global
+`~/.gemini/config/mcp_config.json`. The harness swaps that file around each
+arm's run and restores whatever was there before, so a benchmark run never
+leaves the user's own `agy` setup altered:
+
+```bash
+python3 tools/agent-bench/agent_run.py --client agy \
+  --gcx target/release/gcx --model "Gemini 3.6 Flash (Low)" --reasoning low \
+  --label agy-smoke --repo cobra --rounds 1
+```
+
+This lane is reported as `agy-mcp` and scores the same required
+final-answer evidence as the Codex and Claude Code lanes.
+
 ## Lanes
 
 1. **Retrieval** (implemented): deterministic, free contract/evidence gate.
 2. **Codex graph CLI** (implemented): native autonomous baseline vs graph-first loop.
 3. **Controlled answer**: fixed baseline or GitCortex context, one provider call.
 4. **Provider tool loop**: equivalent single dispatch schema through OpenAI/Anthropic APIs.
-5. **Native MCP clients**: Claude Code MCP and Codex MCP when local MCP is actually exposed.
+5. **Native MCP clients**: Claude Code MCP, Codex MCP, and Agy MCP when local MCP is actually exposed.
 
 Provider lanes must consume the same pinned manifest and emit provenance-rich JSONL. A missing client capability is `unsupported`, never a silent CLI fallback.

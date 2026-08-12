@@ -570,6 +570,207 @@ pub fn get_subgraph<S: GraphStore + ?Sized>(
     Ok(response)
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentSymbolContextResponse {
+    pub status: AgentStatus,
+    pub answer: String,
+    pub query: String,
+    pub branch: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub symbol: Option<SymbolCandidate>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub candidates: Vec<SymbolCandidate>,
+    pub callers: Vec<RelationEvidence>,
+    pub callees: Vec<RelationEvidence>,
+    pub used_by: Vec<RelationEvidence>,
+    pub coverage: Coverage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_action: Option<String>,
+}
+
+/// 360° view of exactly one resolved symbol: direct callers, callees, and
+/// type usages. Unlike the old name-based `GraphStore::symbol_context`, this
+/// goes through `resolve_symbol` first so an ambiguous short name (e.g. two
+/// unrelated `beginArray` methods) surfaces candidates instead of silently
+/// picking one — the same ambiguity handling `find_callers`/`get_subgraph`
+/// already have.
+pub fn symbol_context<S: GraphStore + ?Sized>(
+    store: &S,
+    branch: &str,
+    query: &str,
+    options: AgentQueryOptions,
+) -> Result<AgentSymbolContextResponse> {
+    let options = AgentQueryOptions {
+        limit: options.limit.clamp(1, MAX_LIMIT),
+        budget_tokens: options.budget_tokens.max(MIN_BUDGET_TOKENS),
+    };
+
+    let target = match resolve_symbol(store, branch, query)? {
+        Resolution::Exact(node) => *node,
+        Resolution::Ambiguous(nodes) => {
+            let total = nodes.len();
+            return Ok(AgentSymbolContextResponse {
+                status: AgentStatus::Ambiguous,
+                answer: format!(
+                    "'{query}' matches {total} code symbols; choose a qualified symbol before requesting its context."
+                ),
+                query: query.to_owned(),
+                branch: branch.to_owned(),
+                symbol: None,
+                candidates: candidate_head(nodes, 5),
+                callers: Vec::new(),
+                callees: Vec::new(),
+                used_by: Vec::new(),
+                coverage: Coverage {
+                    total: 0,
+                    returned: 0,
+                    truncated: false,
+                    confidence_mix: ConfidenceMix::default(),
+                },
+                next_action: Some(
+                    "Repeat symbol_context with one candidate's qualified_name.".to_owned(),
+                ),
+            });
+        }
+        Resolution::NotFound(nodes) => {
+            return Ok(AgentSymbolContextResponse {
+                status: AgentStatus::NotFound,
+                answer: format!("No exact code symbol matching '{query}' was found."),
+                query: query.to_owned(),
+                branch: branch.to_owned(),
+                symbol: None,
+                candidates: candidate_head(nodes, 5),
+                callers: Vec::new(),
+                callees: Vec::new(),
+                used_by: Vec::new(),
+                coverage: Coverage {
+                    total: 0,
+                    returned: 0,
+                    truncated: false,
+                    confidence_mix: ConfidenceMix::default(),
+                },
+                next_action: Some("Use search_code to find the exact qualified symbol.".to_owned()),
+            });
+        }
+    };
+
+    let graph = store.get_subgraph_by_id(branch, &target.id.as_str(), 1, "both")?;
+    let by_id: HashMap<String, &Node> = graph
+        .nodes
+        .iter()
+        .filter(|node| is_code_node(node))
+        .map(|node| (node.id.as_str(), node))
+        .collect();
+    let target_id = target.id.as_str();
+
+    let mut callers = Vec::new();
+    let mut callees = Vec::new();
+    let mut used_by = Vec::new();
+    let mut seen = HashSet::new();
+    let mut mix = ConfidenceMix::default();
+
+    for edge in &graph.edges {
+        let src = edge.src.as_str();
+        let dst = edge.dst.as_str();
+        let (other_id, edge_direction) = if src == target_id {
+            (dst, "out")
+        } else if dst == target_id {
+            (src, "in")
+        } else {
+            continue;
+        };
+        let Some(other) = by_id.get(&other_id) else {
+            continue;
+        };
+        let bucket = match (&edge.kind, edge_direction) {
+            (EdgeKind::Calls, "in") => &mut callers,
+            (EdgeKind::Calls, "out") => &mut callees,
+            (EdgeKind::Uses, "in") => &mut used_by,
+            _ => continue,
+        };
+        if !seen.insert((edge_direction, other_id)) {
+            continue;
+        }
+        match edge.confidence {
+            EdgeConfidence::Extracted => mix.extracted += 1,
+            EdgeConfidence::Resolved => mix.resolved += 1,
+            EdgeConfidence::Inferred => mix.inferred += 1,
+        }
+        bucket.push(RelationEvidence {
+            relation: relation_label(&edge.kind, edge_direction).to_owned(),
+            direction: edge_direction.to_owned(),
+            symbol: other.name.clone(),
+            qualified_name: other.qualified_name.clone(),
+            kind: other.kind.to_string(),
+            file: other.file.display().to_string(),
+            line: edge.line.unwrap_or(other.span.start_line),
+            confidence: edge.confidence.to_string(),
+            is_test: is_test_file(&other.file),
+        });
+    }
+    for bucket in [&mut callers, &mut callees, &mut used_by] {
+        bucket.sort_by(|a, b| {
+            a.file
+                .cmp(&b.file)
+                .then_with(|| a.qualified_name.cmp(&b.qualified_name))
+        });
+    }
+
+    let total = callers.len() + callees.len() + used_by.len();
+    for bucket in [&mut callers, &mut callees, &mut used_by] {
+        bucket.truncate(options.limit);
+    }
+    let answer = format!(
+        "'{}' has {} caller(s), {} callee(s), {} usage site(s).",
+        target.qualified_name,
+        callers.len(),
+        callees.len(),
+        used_by.len()
+    );
+    let mut response = AgentSymbolContextResponse {
+        status: AgentStatus::Ok,
+        answer,
+        query: query.to_owned(),
+        branch: branch.to_owned(),
+        symbol: Some(to_candidate(&target)),
+        candidates: Vec::new(),
+        callers,
+        callees,
+        used_by,
+        coverage: Coverage {
+            total,
+            returned: 0,
+            truncated: false,
+            confidence_mix: mix,
+        },
+        next_action: None,
+    };
+    apply_symbol_context_budget(&mut response, options.budget_tokens);
+    Ok(response)
+}
+
+fn apply_symbol_context_budget(response: &mut AgentSymbolContextResponse, budget_tokens: usize) {
+    let budget_bytes = budget_tokens * 4;
+    while (!response.used_by.is_empty()
+        || !response.callees.is_empty()
+        || !response.callers.is_empty())
+        && serde_json::to_vec(response)
+            .map(|bytes| bytes.len() > budget_bytes)
+            .unwrap_or(false)
+    {
+        if !response.used_by.is_empty() {
+            response.used_by.pop();
+        } else if !response.callees.is_empty() {
+            response.callees.pop();
+        } else {
+            response.callers.pop();
+        }
+    }
+    response.coverage.returned =
+        response.callers.len() + response.callees.len() + response.used_by.len();
+    response.coverage.truncated = response.coverage.returned < response.coverage.total;
+}
+
 fn relation_label(kind: &EdgeKind, direction: &str) -> &'static str {
     match (kind, direction) {
         (EdgeKind::Calls, "out") => "calls",

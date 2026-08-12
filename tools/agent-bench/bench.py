@@ -231,6 +231,57 @@ class RetrievalAdapter:
                 "--format",
                 "agent-json",
             ]
+        if task.action == "impact":
+            if not task.query:
+                raise BenchError(f"{task.id}: impact requires query")
+            return common + [
+                "find-callers",
+                task.query,
+                "--branch",
+                "gcx-bench",
+                "--depth",
+                "2",
+                "--limit",
+                "25",
+                "--budget-tokens",
+                "1200",
+                "--format",
+                "agent-json",
+            ]
+        if task.action == "architecture":
+            if not task.query:
+                raise BenchError(f"{task.id}: architecture requires query")
+            return common + [
+                "get-subgraph",
+                task.query,
+                "--branch",
+                "gcx-bench",
+                "--depth",
+                "2",
+                "--direction",
+                "both",
+                "--limit",
+                "20",
+                "--budget-tokens",
+                "1200",
+                "--format",
+                "agent-json",
+            ]
+        if task.action == "refactor":
+            if not task.query:
+                raise BenchError(f"{task.id}: refactor requires query")
+            return common + [
+                "symbol-context",
+                task.query,
+                "--branch",
+                "gcx-bench",
+                "--limit",
+                "10",
+                "--budget-tokens",
+                "800",
+                "--format",
+                "agent-json",
+            ]
         raise BenchError(f"{task.id}: unsupported action {task.action}")
 
     def execute(self, task: Task, repo_dir: Path) -> TaskResult:

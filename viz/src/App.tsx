@@ -81,6 +81,7 @@ export default function App() {
     supportsAcceleratedWebGl() ? "auto" : "compatibility",
   );
   const [rawData, setRawData] = useState<GraphData | null>(null);
+  const [repoName, setRepoName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadProgress, setLoadProgress] = useState<GraphLoadProgress | null>(null);
   const [selected, setSelected] = useState<RawNode | null>(null);
@@ -189,6 +190,7 @@ export default function App() {
         setRawData(partial);
         setLoadProgress(progress);
         setLastSha(progress.snapshot);
+        setRepoName(progress.repoName);
       },
       controller.signal,
     ).catch((loadError) => {
@@ -433,6 +435,7 @@ export default function App() {
       <Header
         onSearch={() => setSearchOpen(true)}
         onShowHelp={() => setHelpOpen(true)}
+        repoName={repoName}
         activeBranch={activeBranch}
         onSetActiveBranch={selectActiveBranch}
         diffHead={diffHead}

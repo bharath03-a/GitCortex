@@ -1,9 +1,10 @@
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use gitcortex_core::{schema::NodeKind, store::GraphStore};
+use gitcortex_core::{graph::Node, schema::NodeKind, store::GraphStore};
 use gitcortex_mcp::mcp::{centrality, clustering, search, tour, wiki};
 use gitcortex_store::kuzu::KuzuGraphStore;
+use serde_json::json;
 
 use crate::style::{
     arrow, header_style, hint_style, kind_style, kind_style_from_str, name_style, node_line, paint,
@@ -73,22 +74,28 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
             }
         }
 
-        QueryCmd::SymbolContext { name, branch } => {
-            let ctx = store.symbol_context(&branch, &name)?;
-            println!(
-                "{} {} {}",
-                paint(hint_style(), "[GitCortex]"),
-                paint(name_style(), &name),
-                paint(hint_style(), &format!("({branch})")),
-            );
-            println!(
-                "  {} {}",
-                paint(header_style(), "definition:"),
-                node_line(&ctx.definition),
-            );
-            print_section("callers", &ctx.callers);
-            print_section("callees", &ctx.callees);
-            print_section("used_by", &ctx.used_by);
+        QueryCmd::SymbolContext {
+            name,
+            limit,
+            budget_tokens,
+            format,
+            branch,
+        } => {
+            let response = gitcortex_mcp::mcp::agent::symbol_context(
+                &store,
+                &branch,
+                &name,
+                gitcortex_mcp::mcp::agent::AgentQueryOptions {
+                    limit,
+                    budget_tokens,
+                },
+            )?;
+            match format {
+                AgentOutputFormat::AgentJson => {
+                    println!("{}", serde_json::to_string(&response)?);
+                }
+                AgentOutputFormat::Text => print_agent_symbol_context(&response),
+            }
         }
 
         QueryCmd::FindCallees {
@@ -129,24 +136,36 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
             }
         }
 
-        QueryCmd::TracePath { from, to, branch } => {
+        QueryCmd::TracePath {
+            from,
+            to,
+            format,
+            branch,
+        } => {
             let path = store.trace_path(&branch, &from, &to)?;
-            if path.is_empty() {
-                println!(
-                    "{} {} {} {} {} {}",
-                    paint(hint_style(), "no path from"),
-                    paint(name_style(), &format!("'{from}'")),
-                    paint(hint_style(), "to"),
-                    paint(name_style(), &format!("'{to}'")),
-                    paint(hint_style(), &format!("on branch '{branch}'")),
-                    paint(hint_style(), "(max 6 hops)"),
-                );
-            } else {
-                for (i, n) in path.iter().enumerate() {
-                    if i == 0 {
-                        println!("  {}", node_line(n));
+            match format {
+                AgentOutputFormat::AgentJson => {
+                    println!("{}", serde_json::to_string(&trace_path_json(&path))?);
+                }
+                AgentOutputFormat::Text => {
+                    if path.is_empty() {
+                        println!(
+                            "{} {} {} {} {} {}",
+                            paint(hint_style(), "no path from"),
+                            paint(name_style(), &format!("'{from}'")),
+                            paint(hint_style(), "to"),
+                            paint(name_style(), &format!("'{to}'")),
+                            paint(hint_style(), &format!("on branch '{branch}'")),
+                            paint(hint_style(), "(max 6 hops)"),
+                        );
                     } else {
-                        println!("  {}  {}", arrow(), node_line(n));
+                        for (i, n) in path.iter().enumerate() {
+                            if i == 0 {
+                                println!("  {}", node_line(n));
+                            } else {
+                                println!("  {}  {}", arrow(), node_line(n));
+                            }
+                        }
                     }
                 }
             }
@@ -445,18 +464,80 @@ fn empty_msg(prefix: &str, branch: &str) -> String {
     )
 }
 
-fn print_section(label: &str, nodes: &[gitcortex_core::graph::Node]) {
-    if nodes.is_empty() {
-        return;
-    }
+fn node_json(n: &Node) -> serde_json::Value {
+    json!({
+        "kind": n.kind.to_string(),
+        "name": n.name,
+        "qualified_name": n.qualified_name,
+        "file": n.file.display().to_string(),
+        "start_line": n.span.start_line,
+    })
+}
+
+fn print_agent_symbol_context(response: &gitcortex_mcp::mcp::agent::AgentSymbolContextResponse) {
     println!(
-        "  {} {}",
-        paint(header_style(), &format!("{label}:")),
-        paint(hint_style(), &format!("({})", nodes.len()))
+        "{} {}",
+        paint(header_style(), "[GitCortex]"),
+        paint(hint_style(), &response.answer)
     );
-    for n in nodes {
-        println!("    {}", node_line(n));
+    if !response.candidates.is_empty() {
+        println!("  {}", paint(header_style(), "qualified candidates:"));
+        for candidate in &response.candidates {
+            println!(
+                "    {} {}  {}",
+                paint(kind_style_from_str(&candidate.kind), &candidate.kind),
+                paint(name_style(), &candidate.qualified_name),
+                paint(
+                    path_style(),
+                    &format!("{}:{}", candidate.file, candidate.start_line)
+                )
+            );
+        }
     }
+    for (label, relations) in [
+        ("callers", &response.callers),
+        ("callees", &response.callees),
+        ("used_by", &response.used_by),
+    ] {
+        if relations.is_empty() {
+            continue;
+        }
+        println!(
+            "  {} {}",
+            paint(header_style(), &format!("{label}:")),
+            paint(hint_style(), &format!("({})", relations.len()))
+        );
+        for item in relations {
+            println!(
+                "    {} {}  {}",
+                paint(kind_style_from_str(&item.kind), &item.qualified_name),
+                paint(path_style(), &format!("{}:{}", item.file, item.line)),
+                paint(hint_style(), &format!("[{}]", item.confidence)),
+            );
+        }
+    }
+    if response.coverage.truncated {
+        println!(
+            "  {}",
+            paint(
+                hint_style(),
+                &format!(
+                    "showing {} of {} related symbols",
+                    response.coverage.returned, response.coverage.total
+                )
+            )
+        );
+    }
+}
+
+/// Agent-json for `trace-path`. The path is capped at 6 hops by the store, so
+/// no separate budget truncation is needed — the full path is always useful.
+fn trace_path_json(path: &[Node]) -> serde_json::Value {
+    json!({
+        "found": !path.is_empty(),
+        "hops": path.len().saturating_sub(1),
+        "path": path.iter().map(node_json).collect::<Vec<_>>(),
+    })
 }
 
 fn parse_node_kind(s: &str) -> Option<NodeKind> {

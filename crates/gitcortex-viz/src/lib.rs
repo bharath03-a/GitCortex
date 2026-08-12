@@ -370,8 +370,15 @@ async fn graph_manifest_handler(
         Ok(value) => value,
         Err(error) => return error,
     };
+    let repo_name = state
+        .repo_root
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("repository")
+        .to_owned();
     Json(json!({
         "branch": branch,
+        "repo_name": repo_name,
         "snapshot": snapshot,
         "total_nodes": stats.total_nodes,
         "total_edges": stats.total_edges,

@@ -411,34 +411,12 @@ impl GitCortexServer {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
         };
-        match store.symbol_context(&branch, &p.name) {
-            Ok(ctx) => {
-                let node_json = |n: &gitcortex_core::graph::Node| {
-                    json!({
-                        "kind": n.kind.to_string(),
-                        "name": n.name,
-                        "qualified_name": n.qualified_name,
-                        "file": n.file.display().to_string(),
-                        "start_line": n.span.start_line,
-                    })
-                };
-                CallToolResult::structured(json!({
-                    "definition": {
-                        "kind": ctx.definition.kind.to_string(),
-                        "name": ctx.definition.name,
-                        "qualified_name": ctx.definition.qualified_name,
-                        "file": ctx.definition.file.display().to_string(),
-                        "start_line": ctx.definition.span.start_line,
-                        "end_line": ctx.definition.span.end_line,
-                        "visibility": format!("{:?}", ctx.definition.metadata.visibility),
-                        "is_async": ctx.definition.metadata.is_async,
-                        "complexity": ctx.definition.metadata.lld.complexity,
-                    },
-                    "callers": ctx.callers.iter().map(node_json).collect::<Vec<_>>(),
-                    "callees": ctx.callees.iter().map(node_json).collect::<Vec<_>>(),
-                    "used_by": ctx.used_by.iter().map(node_json).collect::<Vec<_>>(),
-                }))
-            }
+        let options = super::agent::AgentQueryOptions {
+            limit: 25,
+            budget_tokens: self.response_budget.min(800),
+        };
+        match super::agent::symbol_context(&*store, &branch, &p.name, options) {
+            Ok(response) => CallToolResult::structured(json!(response)),
             Err(e) => CallToolResult::error(vec![Content::text(format!("query failed: {e}"))]),
         }
     }
