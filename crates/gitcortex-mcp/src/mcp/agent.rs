@@ -708,10 +708,12 @@ pub fn symbol_context<S: GraphStore + ?Sized>(
                 .cmp(&b.file)
                 .then_with(|| a.qualified_name.cmp(&b.qualified_name))
         });
-        bucket.truncate(options.limit);
     }
 
     let total = callers.len() + callees.len() + used_by.len();
+    for bucket in [&mut callers, &mut callees, &mut used_by] {
+        bucket.truncate(options.limit);
+    }
     let answer = format!(
         "'{}' has {} caller(s), {} callee(s), {} usage site(s).",
         target.qualified_name,
