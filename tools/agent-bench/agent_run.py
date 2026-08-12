@@ -19,7 +19,6 @@ import os
 import shlex
 import subprocess
 import sys
-import time
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path

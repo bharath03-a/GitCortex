@@ -588,6 +588,49 @@ fn agent_subgraph_rejects_ambiguous_short_name() {
 }
 
 #[test]
+fn agent_symbol_context_rejects_ambiguous_short_name() {
+    use gitcortex_mcp::mcp::agent::{self, AgentQueryOptions, AgentStatus};
+
+    let (_nodes, _, store) = run_pipeline_multi(&["ambiguous_symbols.rs"]);
+    let response = agent::symbol_context(&store, "main", "validate", AgentQueryOptions::default())
+        .expect("agent symbol_context");
+
+    assert_eq!(response.status, AgentStatus::Ambiguous);
+    assert!(response.candidates.len() > 1);
+    assert!(response.callers.is_empty());
+    assert!(response.callees.is_empty());
+    assert!(response.used_by.is_empty());
+    assert_eq!(response.coverage.total, 0);
+}
+
+#[test]
+fn agent_symbol_context_returns_relations_for_exact_match() {
+    use gitcortex_mcp::mcp::agent::{self, AgentQueryOptions, AgentStatus};
+
+    let (_nodes, _, store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
+    let response = agent::symbol_context(
+        &store,
+        "main",
+        "compute_value",
+        AgentQueryOptions {
+            limit: 10,
+            budget_tokens: 400,
+        },
+    )
+    .expect("agent symbol_context");
+
+    assert_eq!(response.status, AgentStatus::Ok);
+    assert!(response.symbol.is_some());
+    assert_eq!(response.coverage.total, response.callers.len());
+    assert_eq!(response.coverage.returned, response.coverage.total);
+    assert!(!response.coverage.truncated);
+    assert!(response
+        .callers
+        .iter()
+        .any(|item| item.qualified_name.ends_with("run")));
+}
+
+#[test]
 fn cross_file_implements_edge_resolved() {
     let (nodes, edges, _store) = run_pipeline_multi(&["xfile_trait.rs", "xfile_impl.rs"]);
 

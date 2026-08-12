@@ -276,13 +276,20 @@ gcx query list-definitions src/handlers/user.ts --branch main
 #### gcx query symbol-context
 
 ```
-gcx query symbol-context <NAME> [--branch <BRANCH>]
+gcx query symbol-context <NAME> [--limit <N>] [--budget-tokens <N>] [--format <text|agent-json>] [--branch <BRANCH>]
 ```
 
-360° view: definition location + callers + callees + type usages.
+360° view: definition location + callers + callees + type usages. On an ambiguous short name, returns qualified candidates instead of relations.
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--limit` | `25` | Max callers/callees/used_by rows returned per relation |
+| `--budget-tokens` | `800` | Global response budget used by `agent-json` output |
+| `--format` | `text` | `text` (human-readable) or `agent-json` (structured, for AI clients) |
 
 ```bash
 gcx query symbol-context apply_diff
+gcx query symbol-context apply_diff --format agent-json --limit 10
 ```
 
 #### gcx query find-implementors
@@ -301,13 +308,14 @@ gcx query find-implementors Serializable --branch main
 #### gcx query trace-path
 
 ```
-gcx query trace-path <FROM> <TO> [--branch <BRANCH>]
+gcx query trace-path <FROM> <TO> [--format <text|agent-json>] [--branch <BRANCH>]
 ```
 
 Find the shortest call path between two functions (up to 6 hops).
 
 ```bash
 gcx query trace-path main apply_diff
+gcx query trace-path main apply_diff --format agent-json
 ```
 
 #### gcx query find-unused
@@ -769,12 +777,15 @@ Get a 360° view of a symbol in one call.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `definition` | `object` | `kind`, `name`, `qualified_name`, `file`, `start_line`, `end_line`, `visibility`, `is_async`, `complexity` |
+| `status` | `string` | `Ok`, `Ambiguous`, or `NotFound` |
+| `symbol` | `object \| null` | Resolved symbol (present when `status` is `Ok`) |
+| `candidates` | `array` | Qualified candidates to disambiguate, populated when `status` is `Ambiguous` |
 | `callers` | `array` | Nodes that call this symbol |
 | `callees` | `array` | Nodes this symbol calls |
 | `used_by` | `array` | Nodes that reference this symbol as a type |
+| `coverage` | `object` | `total`, `returned`, `truncated`, `confidence_mix` |
 
-`complexity` is `null` for non-function/method nodes and for languages where complexity is not computed.
+On `Ambiguous`, `callers`/`callees`/`used_by` are empty — resolve to a qualified name via `candidates` and re-query.
 
 **Example:**
 
@@ -1332,7 +1343,6 @@ Decision points by language:
 | Java | `if_statement`, `else`, `while_statement`, `for_statement`, `enhanced_for_statement`, `catch_clause`, `&&`, `\|\|`, `ternary_expression` |
 
 Complexity is exposed in:
-- `symbol_context` response as `definition.complexity`
 - `wiki_symbol` markdown header
 - `gcx query wiki <name>` terminal output
 
