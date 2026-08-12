@@ -667,6 +667,7 @@ pub fn symbol_context<S: GraphStore + ?Sized>(
     let mut callees = Vec::new();
     let mut used_by = Vec::new();
     let mut seen = HashSet::new();
+    let mut mix = ConfidenceMix::default();
 
     for edge in &graph.edges {
         let src = edge.src.as_str();
@@ -689,6 +690,11 @@ pub fn symbol_context<S: GraphStore + ?Sized>(
         };
         if !seen.insert((edge_direction, other_id)) {
             continue;
+        }
+        match edge.confidence {
+            EdgeConfidence::Extracted => mix.extracted += 1,
+            EdgeConfidence::Resolved => mix.resolved += 1,
+            EdgeConfidence::Inferred => mix.inferred += 1,
         }
         bucket.push(RelationEvidence {
             relation: relation_label(&edge.kind, edge_direction).to_owned(),
@@ -735,7 +741,7 @@ pub fn symbol_context<S: GraphStore + ?Sized>(
             total,
             returned: 0,
             truncated: false,
-            confidence_mix: ConfidenceMix::default(),
+            confidence_mix: mix,
         },
         next_action: None,
     };

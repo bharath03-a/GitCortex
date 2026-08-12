@@ -266,7 +266,7 @@ export function CosmosCanvas({
     setRendering(true);
     const timer = setTimeout(() => setRendering(false), 1200);
     return () => clearTimeout(timer);
-  }, [points, paintedLinks]);
+  }, [points]);
 
   return (
     <div ref={wrapperRef} className="absolute inset-0 overflow-hidden">
