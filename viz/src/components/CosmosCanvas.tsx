@@ -261,12 +261,16 @@ export function CosmosCanvas({
   // Without this, the canvas looks identically blank whether it's working or
   // broken. Tie the overlay to actual data changes (not a fixed mount timer) so
   // it also reappears on branch switches and investigate-mode transitions.
-  const [rendering, setRendering] = useState(true);
+  const [renderState, setRenderState] = useState({ points, rendering: true });
+  if (renderState.points !== points) {
+    setRenderState({ points, rendering: true });
+  }
+  const { rendering } = renderState;
   useEffect(() => {
-    setRendering(true);
-    const timer = setTimeout(() => setRendering(false), 1200);
+    if (!rendering) return;
+    const timer = setTimeout(() => setRenderState((prev) => ({ ...prev, rendering: false })), 1200);
     return () => clearTimeout(timer);
-  }, [points]);
+  }, [rendering, points]);
 
   return (
     <div ref={wrapperRef} className="absolute inset-0 overflow-hidden">
