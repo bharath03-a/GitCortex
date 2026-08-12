@@ -7,6 +7,36 @@ from release tags and commit history after the fact, so they summarise what
 shipped rather than what was written at release time. Dates for those entries
 are tag dates.
 
+## [0.7.0] - 2026-08-12
+
+Release driven by a full 3-client (Codex, Claude Code, Agy/Antigravity) live-agent
+benchmark against 15 new harder task types (deep blast-radius, cross-file
+architecture, refactor-safety) across 5 pinned repos. Measured token savings:
+3.27x (Codex), 3.26x (Claude Code), 1.89x (Agy), with quality held or improved
+on nearly every task.
+
+### Fixed
+- **`symbol_context` (MCP + CLI) had no ambiguity handling.** A common short
+  name (e.g. `beginArray`, matching 4 methods in one benchmark repo) could be
+  silently resolved to the wrong symbol. It now goes through the same
+  `resolve_symbol` candidate-surfacing path as `find_callers`/`get_subgraph`,
+  and its response is built from `get_subgraph_by_id` so callers/callees/
+  used_by are scoped to the exact resolved node rather than by name.
+- CLI `symbol-context`/`trace-path` gained `--format agent-json
+  --budget-tokens`, matching every other `gcx query` subcommand.
+
+### Added
+- `agy` (Antigravity CLI) MCP handshake compatibility, plus `gcx init`/
+  `deinit`/`doctor` support for its config path (shipped as #66/#67, first
+  release to include it).
+- `docs/benchmarks.html`: real, measured benchmark numbers on the public site.
+- Benchmark harness: a working `agy` client, 15 new task definitions (impact/
+  architecture/refactor x 5 repos), and per-arm failure isolation so one slow
+  or hung client call no longer aborts an entire run.
+- Viz: the repository name is now shown in the header instead of a generic
+  "Local code atlas" label; a loading indicator now covers Cosmograph's
+  multi-second init so a slow first paint doesn't look like a broken canvas.
+
 ## [0.6.3] - 2026-07-12
 
 Pure refactor release. No behaviour change from 0.6.2.
