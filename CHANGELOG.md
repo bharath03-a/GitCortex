@@ -7,6 +7,17 @@ from release tags and commit history after the fact, so they summarise what
 shipped rather than what was written at release time. Dates for those entries
 are tag dates.
 
+## [0.7.1] - 2026-08-12
+
+### Security
+- **`dompurify` XSS advisory** (GHSA-55q2-fjhq-7xh7, medium severity):
+  pinned via an npm override to 3.4.13 — the transitive dependency (through
+  `@cosmograph/react`) was on the vulnerable 3.4.12. Requires a non-default
+  `IN_PLACE` + element-removal-hook configuration to exploit; viz doesn't use
+  that pattern, but patched regardless.
+- Two unrelated high-severity `npm audit` findings (`brace-expansion` DoS,
+  `nanoid` DoS) resolved via `npm audit fix`.
+
 ## [0.7.0] - 2026-08-12
 
 Release driven by a full 3-client (Codex, Claude Code, Agy/Antigravity) live-agent
