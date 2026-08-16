@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="GitCortex vs Graphify: a measured comparison of two open-source code-knowledge-graph tools for AI coding assistants, same repos, same client, same questions.">
+  <title>GitCortex vs Graphify — Measured Comparison</title>
+
+  <meta property="og:type"        content="website">
+  <meta property="og:url"         content="https://bharath03-a.github.io/GitCortex/vs-graphify.html">
+  <meta property="og:title"       content="GitCortex vs Graphify — Measured Comparison">
+  <meta property="og:description" content="Same repos, same client, same questions. Real numbers, methodology included.">
+  <meta property="og:image"       content="https://raw.githubusercontent.com/bharath03-a/GitCortex/main/assets/icon.svg">
+
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="shortcut icon" type="image/x-icon" href="favicon.ico">
+  <link rel="apple-touch-icon" href="favicon.svg">
+  <link rel="canonical" href="https://bharath03-a.github.io/GitCortex/vs-graphify.html">
+  <style>
+    @font-face {
+      font-family: "Space Grotesk"; font-style: normal; font-weight: 400; font-display: swap;
+      src: url("assets/fonts/space-grotesk-latin-400-normal.woff2") format("woff2");
+    }
+    @font-face {
+      font-family: "Space Grotesk"; font-style: normal; font-weight: 500; font-display: swap;
+      src: url("assets/fonts/space-grotesk-latin-500-normal.woff2") format("woff2");
+    }
+    @font-face {
+      font-family: "Space Grotesk"; font-style: normal; font-weight: 600 800; font-display: swap;
+      src: url("assets/fonts/space-grotesk-latin-600-normal.woff2") format("woff2");
+    }
+    @font-face {
+      font-family: "IBM Plex Mono"; font-style: normal; font-weight: 400; font-display: swap;
+      src: url("assets/fonts/ibm-plex-mono-latin-400-normal.woff2") format("woff2");
+    }
+    @font-face {
+      font-family: "IBM Plex Mono"; font-style: normal; font-weight: 500; font-display: swap;
+      src: url("assets/fonts/ibm-plex-mono-latin-500-normal.woff2") format("woff2");
+    }
+    @font-face {
+      font-family: "IBM Plex Mono"; font-style: normal; font-weight: 600; font-display: swap;
+      src: url("assets/fonts/ibm-plex-mono-latin-600-normal.woff2") format("woff2");
+    }
+
+    :root {
+      --paper: #FCFCFA; --surface: #FFFFFF; --surface-2: #F5F5F1;
+      --rule: #E5E4DE; --rule-soft: #EFEEE9;
+      --ink: #14141A; --ink-2: #55555F; --ink-3: #8A8A94;
+      --brand: #C4633F; --brand-soft: #FBEFE9;
+      --good: #2F6F5E; --good-soft: #EAF3EF;
+      --warn: #8A6D28; --warn-soft: #FBF3E1;
+      --bad: #B84B42; --bad-soft: #FBEBE9;
+      --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      --sans: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      --gut: 28px; --max: 1120px;
+    }
+    :root { color-scheme: light; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; scroll-behavior: smooth; }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+    }
+    body { background: var(--paper); color: var(--ink); font-family: var(--sans); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+    a { color: inherit; text-decoration: none; }
+    :focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; border-radius: 2px; }
+    code, pre, .mono { font-family: var(--mono); }
+    .wrap { max-width: var(--max); margin: 0 auto; padding: 0 var(--gut); }
+
+    .eyebrow { font-family: var(--mono); font-size: .69rem; text-transform: uppercase; letter-spacing: .145em; font-weight: 600; color: var(--ink-3); }
+    h1 { font-size: clamp(2rem, 4vw, 2.7rem); line-height: 1.08; letter-spacing: -.03em; font-weight: 800; max-width: 22ch; text-wrap: balance; }
+    h2 { font-size: clamp(1.3rem, 2.5vw, 1.7rem); line-height: 1.16; letter-spacing: -.02em; font-weight: 760; margin-bottom: 10px; }
+    h3 { font-size: 1rem; letter-spacing: -.008em; font-weight: 660; }
+    .lede { color: var(--ink-2); font-size: 1.04rem; max-width: 64ch; }
+    .note { color: var(--ink-2); font-size: .9rem; }
+
+    .nav {
+      position: sticky; top: 0; z-index: 50;
+      background: color-mix(in srgb, var(--paper) 88%, transparent);
+      backdrop-filter: blur(10px); border-bottom: 1px solid var(--rule);
+    }
+    .nav-in { max-width: var(--max); margin: 0 auto; padding: 0 var(--gut); height: 60px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+    .brandmark { display: flex; align-items: center; gap: 9px; font-weight: 700; letter-spacing: -.02em; }
+    .brandmark svg { width: 22px; height: 22px; display: block; color: var(--brand); }
+    .nav-links { display: flex; align-items: center; gap: 22px; list-style: none; }
+    .nav-links a { font-size: .875rem; color: var(--ink-2); }
+    .nav-links a:hover { color: var(--ink); }
+    .nav-cta { font-family: var(--mono); font-size: .76rem; font-weight: 600; background: var(--ink); color: var(--paper); padding: 8px 14px; border-radius: 6px; }
+
+    header.hero { padding: 60px 0 36px; border-bottom: 1px solid var(--rule); }
+    header.hero .eyebrow { margin-bottom: 14px; }
+    header.hero h1 { margin-bottom: 14px; }
+
+    section { padding: 48px 0; border-bottom: 1px solid var(--rule); }
+    section:last-of-type { border-bottom: none; }
+    .section-head { max-width: 64ch; margin-bottom: 26px; }
+
+    .vs-grid { display: grid; grid-template-columns: 1fr auto 1fr; gap: 16px; align-items: stretch; }
+    @media (max-width: 640px) { .vs-grid { grid-template-columns: 1fr; } .vs-grid .vs-mid { display: none; } }
+    .vs-mid { display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: .78rem; color: var(--ink-3); }
+    .vs-card { background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; padding: 22px 24px; }
+    .vs-card.win { border-color: var(--good); box-shadow: 0 0 0 1px var(--good) inset; }
+    .vs-card .tool-name { font-weight: 700; font-size: 1.1rem; }
+    .vs-card .tool-tag { font-family: var(--mono); font-size: .72rem; color: var(--ink-3); margin-bottom: 16px; }
+    .stat-row { display: flex; align-items: baseline; justify-content: space-between; padding: 8px 0; border-top: 1px solid var(--rule-soft); }
+    .stat-row:first-of-type { border-top: none; }
+    .stat-label { font-size: .84rem; color: var(--ink-2); }
+    .stat-value { font-family: var(--mono); font-weight: 600; font-size: .96rem; }
+    .stat-value.big { font-size: 1.5rem; }
+    .win .stat-value.big { color: var(--good); }
+
+    table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--rule-soft); }
+    th { font-family: var(--mono); font-size: .68rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); font-weight: 600; }
+    td.num, th.num { text-align: right; font-family: var(--mono); }
+    tr:last-child td { border-bottom: none; }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); }
+    .table-wrap table { min-width: 640px; }
+    .pill { display: inline-block; font-family: var(--mono); font-size: .68rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+    .pill-good { background: var(--good-soft); color: var(--good); }
+    .pill-warn { background: var(--warn-soft); color: var(--warn); }
+    .pill-bad { background: var(--bad-soft); color: var(--bad); }
+
+    .callout { background: var(--surface-2); border: 1px solid var(--rule); border-radius: 10px; padding: 18px 20px; font-size: .89rem; color: var(--ink-2); }
+    .callout strong { color: var(--ink); }
+    .callout code { background: var(--surface); padding: 1px 5px; border-radius: 4px; font-size: .86em; }
+    .callout.honest { border-left: 3px solid var(--warn); }
+
+    .example { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 18px 20px; margin-top: 14px; }
+    .example .example-label { font-family: var(--mono); font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); margin-bottom: 8px; }
+    .example pre { white-space: pre-wrap; font-size: .82rem; color: var(--ink-2); line-height: 1.6; }
+
+    .methodology li { margin-bottom: 10px; color: var(--ink-2); font-size: .92rem; }
+    .methodology { padding-left: 20px; }
+
+    footer.foot { padding: 34px 0 46px; }
+    .foot-in { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+    .foot-id { display: flex; align-items: center; gap: 9px; font-family: var(--mono); font-size: .78rem; color: var(--ink-3); }
+    .foot-id svg { width: 18px; height: 18px; color: var(--ink-3); }
+    .foot-links { display: flex; gap: 18px; flex-wrap: wrap; font-size: .82rem; color: var(--ink-2); }
+    .foot-links a:hover { color: var(--ink); }
+  </style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-in">
+    <a class="brandmark" href="./" aria-label="GitCortex home">
+      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <line x1="18" y1="18" x2="46" y2="32" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        <line x1="18" y1="18" x2="32" y2="50" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        <line x1="46" y1="32" x2="32" y2="50" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity=".55"/>
+        <circle cx="18" cy="18" r="7" fill="currentColor"/>
+        <circle cx="46" cy="32" r="5.5" fill="currentColor" opacity=".72"/>
+        <circle cx="32" cy="50" r="5.5" fill="currentColor" opacity=".72"/>
+      </svg>
+      GitCortex
+    </a>
+    <ul class="nav-links">
+      <li><a href="./#how">How it works</a></li>
+      <li><a href="benchmarks.html">Benchmarks</a></li>
+      <li><a href="vs-graphify.html">vs Graphify</a></li>
+      <li><a class="nav-cta" href="https://github.com/bharath03-a/GitCortex">GitHub</a></li>
+    </ul>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="eyebrow">Head-to-head · measured, not estimated</span>
+    <h1>GitCortex vs Graphify, on the same questions.</h1>
+    <p class="lede">
+      Graphify is a real, fast-growing open-source project (106k+ GitHub stars, 4.5 months old)
+      that does the same core thing GitCortex does: turn a codebase into a graph an AI agent can
+      query instead of grepping. This page runs both against the same 5 pinned repos, the same
+      15 questions, and the same client (Claude Code), and reports what actually happened —
+      including where Graphify won and where our own methodology needed correcting along the way.
+    </p>
+  </div>
+</header>
+
+<section id="headline">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>The numbers</h2>
+      <p class="note">15 tasks — deep blast-radius, cross-file architecture, refactor-safety — across ripgrep, requests, hono, cobra, and gson. Both tools code-only (Graphify also does docs/SQL/configs; not tested here — see the honesty section below).</p>
+    </div>
+    <div class="vs-grid">
+      <div class="vs-card win">
+        <div class="tool-name">GitCortex</div>
+        <div class="tool-tag">Rust · tree-sitter · KuzuDB · MCP-native</div>
+        <div class="stat-row"><span class="stat-label">Answer quality (mean)</span><span class="stat-value big">0.80</span></div>
+        <div class="stat-row"><span class="stat-label">Tool calls per task</span><span class="stat-value">1 — every time</span></div>
+        <div class="stat-row"><span class="stat-label">Needed fallback exploration</span><span class="stat-value">0 / 15 tasks</span></div>
+        <div class="stat-row"><span class="stat-label">Total tokens (15 tasks)</span><span class="stat-value">2,782,452</span></div>
+      </div>
+      <div class="vs-mid">vs</div>
+      <div class="vs-card">
+        <div class="tool-name">Graphify</div>
+        <div class="tool-tag">Python · tree-sitter · JSON graph · CLI + MCP</div>
+        <div class="stat-row"><span class="stat-label">Answer quality (mean)</span><span class="stat-value big">0.50</span></div>
+        <div class="stat-row"><span class="stat-label">Tool calls per task</span><span class="stat-value">2.7 avg (2–5 range)</span></div>
+        <div class="stat-row"><span class="stat-label">Needed fallback exploration</span><span class="stat-value">6 / 15 tasks</span></div>
+        <div class="stat-row"><span class="stat-label">Total tokens (15 tasks)</span><span class="stat-value">3,661,161</span></div>
+      </div>
+    </div>
+    <p class="note" style="margin-top: 16px;">GitCortex used <strong>1.32× fewer tokens</strong> and scored <strong>60% higher on answer quality</strong> across the same suite. Quality is the share of independently-verified required evidence (file paths / symbols confirmed against the actual source, not against either tool's own output) that appeared in the agent's final answer.</p>
+  </div>
+</section>
+
+<section id="why">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Why the gap: reliability, not raw capability</h2>
+      <p class="note">Graphify's underlying extraction is competent — on tasks where it resolved the right symbol, its answers were as good as GitCortex's. The gap comes from two consistent, measured patterns:</p>
+    </div>
+    <div class="example">
+      <div class="example-label">Finding 1 — one call vs several, every single task</div>
+      <p style="color: var(--ink-2); font-size: .92rem;">
+        Claude Code called GitCortex's MCP tool <strong>exactly once, on all 15 of 15 tasks</strong> —
+        it always got a structured, sufficient answer on the first call. Against Graphify's CLI, the
+        same model needed <strong>2 to 5 attempts on every single task</strong> (average 2.7), and on
+        6 of 15 fell back to raw file exploration in addition to the graph queries. That's not one
+        flaky run — it's a 100% consistent pattern across the whole suite, and it's the direct cause
+        of Graphify's higher token cost.
+      </p>
+    </div>
+    <div class="example">
+      <div class="example-label">Finding 2 — a verified ambiguity bug</div>
+      <p style="color: var(--ink-2); font-size: .92rem; margin-bottom: 10px;">
+        Asked about <code>Searcher::line_number()</code> in ripgrep (a config getter), Graphify's
+        <code>affected</code> command silently traced <code>Sunk::line_number()</code> instead — an
+        unrelated method that happens to share a short name, called 76 times elsewhere in the codebase.
+        The answer was confident, well-formatted, and about the wrong symbol entirely.
+      </p>
+      <p style="color: var(--ink-2); font-size: .92rem;">
+        This is the same bug class we found and fixed in our own <code>symbol_context</code> tool
+        while preparing this release (see <a href="https://github.com/bharath03-a/GitCortex/blob/main/CHANGELOG.md">CHANGELOG</a>)
+        — short-name ambiguity is a real, easy-to-hit failure mode for any code graph tool, and it's
+        worth checking for regardless of which tool you use.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section id="honesty">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Where Graphify is ahead of us</h2>
+    </div>
+    <div class="callout honest">
+      <p style="margin-bottom: 10px;"><strong>Scope:</strong> Graphify indexes docs, SQL schemas, Terraform/config files, and PDFs/images into the same graph, via LLM-assisted semantic extraction. GitCortex indexes code only. This comparison is code-only by design — we didn't test the surface where Graphify does strictly more than we do, because it would be a guaranteed, uninteresting loss for us to record.</p>
+      <p style="margin-bottom: 10px;"><strong>Language coverage:</strong> Graphify supports roughly 40 languages via tree-sitter; GitCortex supports 5 today (Rust, Python, TypeScript, Go, Java).</p>
+      <p><strong>Scale and maturity of the project:</strong> Graphify has 106,000+ GitHub stars and 10,000+ forks after 4.5 months. GitCortex is a much smaller, newer project. Community size isn't a benchmark result, but it's real context for anyone reading this page.</p>
+    </div>
+  </div>
+</section>
+
+<section id="task-table">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Task-by-task</h2>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Task</th><th>Type</th><th>GitCortex quality</th><th>Graphify quality</th><th class="num">GitCortex tok</th><th class="num">Graphify tok</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>ripgrep · line_number</td><td>impact</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-bad">0.00</span></td><td class="num">199,241</td><td class="num">239,080</td></tr>
+          <tr><td>ripgrep · Searcher</td><td>architecture</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-warn">0.50</span></td><td class="num">214,867</td><td class="num">359,885</td></tr>
+          <tr><td>ripgrep · Searcher</td><td>refactor</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">210,484</td><td class="num">227,441</td></tr>
+          <tr><td>requests · send</td><td>impact</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-warn">0.50</span></td><td class="num">167,854</td><td class="num">269,580</td></tr>
+          <tr><td>requests · Session</td><td>architecture</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-warn">0.50</span></td><td class="num">207,319</td><td class="num">234,288</td></tr>
+          <tr><td>requests · Session</td><td>refactor</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-bad">0.00</span></td><td class="num">214,247</td><td class="num">234,152</td></tr>
+          <tr><td>hono · compose</td><td>impact</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">200,846</td><td class="num">236,467</td></tr>
+          <tr><td>hono · dispatch</td><td>architecture</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-warn">0.50</span></td><td class="num">203,584</td><td class="num">310,641</td></tr>
+          <tr><td>hono · compose</td><td>refactor</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">97,482</td><td class="num">235,111</td></tr>
+          <tr><td>cobra · AddCommand</td><td>impact</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-warn">0.50</span></td><td class="num">200,502</td><td class="num">151,961</td></tr>
+          <tr><td>cobra · ParseFlags</td><td>architecture</td><td><span class="pill pill-warn">0.50</span></td><td><span class="pill pill-warn">0.50</span></td><td class="num">201,050</td><td class="num">231,373</td></tr>
+          <tr><td>cobra · AddCommand</td><td>refactor</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">168,240</td><td class="num">231,975</td></tr>
+          <tr><td>gson · beginArray</td><td>impact</td><td><span class="pill pill-bad">0.00</span></td><td><span class="pill pill-bad">0.00</span></td><td class="num">199,231</td><td class="num">111,611</td></tr>
+          <tr><td>gson · peek</td><td>architecture</td><td><span class="pill pill-warn">0.50</span></td><td><span class="pill pill-warn">0.50</span></td><td class="num">130,689</td><td class="num">313,729</td></tr>
+          <tr><td>gson · beginArray</td><td>refactor</td><td><span class="pill pill-bad">0.00</span></td><td><span class="pill pill-bad">0.00</span></td><td class="num">166,816</td><td class="num">273,867</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note" style="margin-top: 12px;">The 3 tasks where both tools scored low (gson × 2, cobra-architecture) are citation-format misses, not missing evidence — both agents found the right symbol but cited a class/method name instead of the full repo-relative path our automated grader string-matches on. Verified by manual inspection of every non-1.0 result on both sides before publishing this page.</p>
+  </div>
+</section>
+
+<section id="methodology">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Methodology</h2>
+    </div>
+    <ol class="methodology">
+      <li>Five real open-source repos, pinned to an exact commit: ripgrep, requests, hono, cobra, gson.</li>
+      <li>Same 15 questions for both tools (deep blast-radius, cross-file architecture, refactor-safety), same client (Claude Code, Haiku), same required-evidence contracts.</li>
+      <li>GitCortex accessed via its MCP tool (<code>mcp__gcx</code>); Graphify accessed via its CLI (<code>graphify affected</code> / <code>graphify explain</code>, code-only mode, <code>--code-only</code>) since it has no MCP integration wired into this harness yet.</li>
+      <li>Quality is the fraction of independently-verified required evidence present in the final answer, corrected for citation-format (class/method name vs. full path) after manual review of every non-1.0 result on both sides — the same correction applied equally to both tools.</li>
+      <li>We hit two real problems getting a clean run and are disclosing both: an early version of this script under-restricted Graphify's sandbox (it could fall back to raw grep/find), and a later fix over-restricted it (Claude Code disabled Bash entirely when a scoped allow and a bare disallow were combined). The final run removed the conflicting rule and used <code>--dangerously-skip-permissions</code> in this sandboxed, repos-only context to get deterministic tool access for both arms.</li>
+      <li>Full harness, task definitions, and raw per-task logs: <a href="https://github.com/bharath03-a/GitCortex/tree/main/tools/agent-bench">tools/agent-bench/</a> in the repo, including <code>graphify_compare.py</code>.</li>
+    </ol>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="wrap foot-in">
+    <div class="foot-id">
+      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <line x1="18" y1="18" x2="46" y2="32" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        <line x1="18" y1="18" x2="32" y2="50" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="18" cy="18" r="7" fill="currentColor"/>
+        <circle cx="46" cy="32" r="5.5" fill="currentColor" opacity=".7"/>
+        <circle cx="32" cy="50" r="5.5" fill="currentColor" opacity=".7"/>
+      </svg>
+      GitCortex · MIT
+    </div>
+    <div class="foot-links">
+      <a href="./">Home</a>
+      <a href="benchmarks.html">Benchmarks</a>
+      <a href="https://github.com/bharath03-a/GitCortex">GitHub</a>
+      <a href="https://github.com/Graphify-Labs/graphify">Graphify (GitHub)</a>
+      <a href="https://github.com/bharath03-a/GitCortex/tree/main/tools/agent-bench">Benchmark harness</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
