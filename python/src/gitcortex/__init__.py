@@ -1,4 +1,4 @@
-__version__ = "0.7.1"
+__version__ = "0.7.2"
 
 import os
 import stat
@@ -21,4 +21,11 @@ def main() -> None:
     # Ensure the binary is executable (wheels may not preserve the bit)
     current = os.stat(binary).st_mode
     os.chmod(binary, current | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    sys.exit(subprocess.call([binary] + sys.argv[1:]))
+    try:
+        sys.exit(subprocess.call([binary] + sys.argv[1:]))
+    except KeyboardInterrupt:
+        # Ctrl-C (e.g. stopping `gcx viz`'s server) delivers SIGINT to this
+        # process too; the child already exits cleanly on its own, so just
+        # exit quietly at the conventional 128+SIGINT code instead of
+        # printing a Python traceback for a normal interactive stop.
+        sys.exit(130)

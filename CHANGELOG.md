@@ -7,6 +7,15 @@ from release tags and commit history after the fact, so they summarise what
 shipped rather than what was written at release time. Dates for those entries
 are tag dates.
 
+## [0.7.2] - 2026-08-20
+
+### Fixed
+- **`gcx viz` (installed via pip) threw a Python traceback on Ctrl-C** instead
+  of exiting cleanly. The PyPI wrapper's `subprocess.call` didn't catch
+  `KeyboardInterrupt`; the Rust binary itself already exits fine on SIGINT.
+  Now exits quietly at the conventional 128+SIGINT code. Reported by a user
+  hitting it in a fresh, unindexed project.
+
 ## [0.7.1] - 2026-08-12
 
 ### Security
