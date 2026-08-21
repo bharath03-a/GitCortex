@@ -1229,7 +1229,7 @@ dependencies = [
 
 [[package]]
 name = "gitcortex"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "anstyle",
  "anyhow",
@@ -1248,7 +1248,7 @@ dependencies = [
 
 [[package]]
 name = "gitcortex-core"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "serde",
  "thiserror 2.0.19",
@@ -1257,7 +1257,7 @@ dependencies = [
 
 [[package]]
 name = "gitcortex-indexer"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "git2",
  "gitcortex-core",
@@ -1275,7 +1275,7 @@ dependencies = [
 
 [[package]]
 name = "gitcortex-mcp"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "anyhow",
  "fastembed",
@@ -1294,7 +1294,7 @@ dependencies = [
 
 [[package]]
 name = "gitcortex-store"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "blake3",
  "directories",
@@ -1307,7 +1307,7 @@ dependencies = [
 
 [[package]]
 name = "gitcortex-viz"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "anyhow",
  "axum",

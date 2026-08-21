@@ -7,6 +7,23 @@ from release tags and commit history after the fact, so they summarise what
 shipped rather than what was written at release time. Dates for those entries
 are tag dates.
 
+## [0.7.3] - 2026-08-20
+
+### Fixed
+- **Every CLI command defaulted `--branch`/`--base` to the literal string
+  `"main"`**, hardcoded at the clap arg level, instead of detecting the
+  repo's actual current branch. On any repo whose default branch is named
+  something else (`master`, `trunk`, `develop`, ...) — extremely common —
+  `gcx viz`, `gcx status`, `gcx query *`, and `gcx blast-radius` all
+  silently queried a branch with zero data and reported empty results,
+  even immediately after a successful `gcx init`. The MCP server already
+  did this correctly (`detect_current_branch`); the CLI's 16 affected
+  flags now use the same git-detected default. Reported by a user who ran
+  `gcx init` in a fresh project and got "No indexed symbols on this
+  branch" in `gcx viz`; reproduced (repo on `master`, indexed fine,
+  viz's `/api/branches` reported `active: "main"` regardless) and
+  verified fixed before releasing.
+
 ## [0.7.2] - 2026-08-20
 
 ### Fixed

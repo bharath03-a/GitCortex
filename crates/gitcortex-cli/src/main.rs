@@ -7,6 +7,23 @@ use tracing_subscriber::EnvFilter;
 use cmd::blast_radius::BlastFormat;
 use gitcortex_viz::VizFormat;
 
+/// The repo's actual current branch, so commands default to indexing/querying
+/// where the user's history actually is instead of a hardcoded "main" that
+/// silently returns nothing on any repo whose default branch is named
+/// something else (master, trunk, develop, ...). Mirrors gitcortex-mcp's
+/// `detect_current_branch`.
+fn default_branch() -> String {
+    std::process::Command::new("git")
+        .args(["symbolic-ref", "--short", "HEAD"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "main".to_owned())
+}
+
 #[derive(Parser)]
 #[command(name = "gcx", version, about = "GitCortex knowledge-graph CLI")]
 struct Cli {
@@ -78,7 +95,7 @@ enum Commands {
     /// Visualise the knowledge graph in the browser or as DOT output.
     Viz {
         /// Branch to visualise.
-        #[arg(long, default_value = "main")]
+        #[arg(long, default_value_t = default_branch())]
         branch: String,
         /// Output format.
         #[arg(long, default_value = "web", value_enum)]
@@ -90,7 +107,7 @@ enum Commands {
     /// Show the blast radius of changes between two branches.
     BlastRadius {
         /// Base branch (the target you're merging into).
-        #[arg(long, default_value = "main")]
+        #[arg(long, default_value_t = default_branch())]
         base: String,
         /// Head branch (the branch with changes).
         #[arg(long, default_value = "HEAD")]
@@ -144,7 +161,7 @@ pub enum QueryCmd {
     /// Look up all nodes with the given name.
     LookupSymbol {
         name: String,
-        #[arg(long, default_value = "main")]
+        #[arg(long, default_value_t = default_branch())]
         branch: String,
     },
     /// Find all callers of a function. Use --depth for multi-hop traversal (1–5).
@@ -162,13 +179,13 @@ pub enum QueryCmd {
         budget_tokens: usize,
         #[arg(long, value_enum, default_value_t = AgentOutputFormat::Text)]
         format: AgentOutputFormat,
-        #[arg(long, default_value = "main")]
+        #[arg(long, default_value_t = default_branch())]
         branch: String,
     },
     /// List all definitions in a source file.
     ListDefinitions {
         file: String,
-        #[arg(long, default_value = "main")]
+        #[arg(long, default_value_t = default_branch())]
         branch: String,
     },
     /// 360° view of a symbol: definition, callers, callees, and type usages.
@@ -182,7 +199,7 @@ pub enum QueryCmd {
         budget_tokens: usize,
         #[arg(long, value_enum, default_value_t = AgentOutputFormat::Text)]
         format: AgentOutputFormat,
-        #[arg(long, default_value = "main")]
+        #[arg(long, default_value_t = default_branch())]
         branch: String,
     },
     /// Find all functions/methods called by a function. Use --depth for multi-hop (1–5).
@@ -190,13 +207,13 @@ pub enum QueryCmd {
         name: String,
         #[arg(long, default_value_t = 1)]
         depth: u8,
-        #[arg(long, default_value = "main")]
+        #[arg(long, default_value_t = default_branch())]
         branch: String,
     },
     /// Find all types that implement or inherit a trait or interface.
     FindImplementors {
         name: String,
-        #[arg(long, default_value = "main")]
+        #[arg(long, default_value_t = default_branch())]
         branch: String,
     },
     /// Find the shortest call path between two functions (max 6 hops).
@@ -205,7 +222,7 @@ pub enum QueryCmd {
         to: String,
         #[arg(long, value_enum, default_value_t = AgentOutputFormat::Text)]
         format: AgentOutputFormat,
-        #[arg(long, default_value = "main")]
+        #[arg(long, default_value_t = default_branch())]
         branch: String,
     },
     /// Find symbols with no callers or type references (dead code candidates).
@@ -213,7 +230,7 @@ pub enum QueryCmd {
         /// Optional kind filter: function, method, struct, trait, interface, enum, constant.
         #[arg(long)]
         kind: Option<String>,
-        #[arg(long, default_value = "main")]
+        #[arg(long, default_value_t = default_branch())]
         branch: String,
     },
     /// Show all nodes and edges within N hops of a seed symbol.
@@ -232,13 +249,13 @@ pub enum QueryCmd {
         budget_tokens: usize,
         #[arg(long, value_enum, default_value_t = AgentOutputFormat::Text)]
         format: AgentOutputFormat,
-        #[arg(long, default_value = "main")]
+        #[arg(long, default_value_t = default_branch())]
         branch: String,
     },
     /// Render a wiki-style markdown page for a symbol.
     Wiki {
         name: String,
-        #[arg(long, default_value = "main")]
+        #[arg(long, default_value_t = default_branch())]
         branch: String,
     },
     /// Fuzzy search over the graph by name + qualified path.
@@ -250,7 +267,7 @@ pub enum QueryCmd {
         budget_tokens: usize,
         #[arg(long, value_enum, default_value_t = AgentOutputFormat::Text)]
         format: AgentOutputFormat,
-        #[arg(long, default_value = "main")]
+        #[arg(long, default_value_t = default_branch())]
         branch: String,
     },
     /// Generate a guided tour of the codebase (omit --seed for global tour).
@@ -259,7 +276,7 @@ pub enum QueryCmd {
         seed: Option<String>,
         #[arg(long, default_value_t = 6)]
         limit: usize,
-        #[arg(long, default_value = "main")]
+        #[arg(long, default_value_t = default_branch())]
         branch: String,
     },
     /// Find high-centrality hub symbols with many inbound calls.
@@ -268,7 +285,7 @@ pub enum QueryCmd {
         min_in_degree: u32,
         #[arg(long, default_value_t = 20)]
         limit: usize,
-        #[arg(long, default_value = "main")]
+        #[arg(long, default_value_t = default_branch())]
         branch: String,
     },
     /// Detect code communities via label-propagation clustering.
@@ -277,7 +294,7 @@ pub enum QueryCmd {
         min_cluster_size: usize,
         #[arg(long, default_value_t = 20)]
         limit: usize,
-        #[arg(long, default_value = "main")]
+        #[arg(long, default_value_t = default_branch())]
         branch: String,
     },
 }
