@@ -7,14 +7,15 @@ use crate::cmd::init::helpers::write_atomic;
 pub(crate) const AGENTS_SECTION: &str = r#"<!-- >>> gitcortex codex integration >>> -->
 ## GitCortex knowledge graph
 
-This repository is indexed by GitCortex. For structural questions, prefer the
-`gcx` MCP tool before broad file scans:
+This repository is indexed by GitCortex. For structural questions, prefer these
+over broad file scans — run them directly as shell commands, or via the `gcx`
+MCP tool if `mcp_servers.gitcortex` is configured:
 
-- `lookup_symbol` locates a definition.
-- `find_callers` and `find_callees` trace call relationships.
-- `get_subgraph` maps a symbol neighbourhood.
-- `start_tour` summarizes unfamiliar areas.
-- `detect_changes` and `gcx blast-radius` assess change impact.
+- `gcx query lookup-symbol <name>` locates a definition.
+- `gcx query find-callers <name>` / `gcx query find-callees <name>` trace call relationships.
+- `gcx query get-subgraph <name>` maps a symbol neighbourhood.
+- `gcx query tour` summarizes unfamiliar areas.
+- `gcx blast-radius --base <branch> --head <branch>` assesses change impact.
 
 Treat graph output as navigation evidence and confirm behavior in source and
 tests before editing. If the index is stale, run `gcx hook`.

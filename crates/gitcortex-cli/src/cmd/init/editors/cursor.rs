@@ -6,39 +6,39 @@ use serde_json::json;
 use crate::cmd::init::helpers::{require_json_object, write_atomic};
 
 const CURSOR_RULES: &str = r#"---
-description: GitCortex knowledge graph — use these MCP tools to navigate the codebase
+description: GitCortex knowledge graph — use the gcx CLI (or its MCP tool) to navigate the codebase
 globs: ["**/*"]
 alwaysApply: true
 ---
 
 # GitCortex Agent Guide
 
-This repository is indexed by GitCortex. The `gitcortex` MCP server is registered
-in `.cursor/mcp.json`. It exposes one compact `gcx` dispatch tool; pass the
-following names as its `action` for structural questions.
+This repository is indexed by GitCortex. Run these directly in a terminal; the
+`gitcortex` MCP server in `.cursor/mcp.json` exposes the same actions through
+its one compact `gcx` dispatch tool, if you prefer that path.
 
-## Key actions
+## Key commands
 
-| Action | When to use |
-|------|-------------|
-| `lookup_symbol` | Find any function, struct, class, or trait by name |
-| `find_callers` | Who calls this function? (backward trace) |
-| `find_callees` | What does this function call? (forward trace) |
-| `list_definitions` | All symbols in a file — faster than reading the whole file |
-| `find_implementors` | All implementations of a trait or interface |
-| `trace_path` | Is there a call path from A to B? |
-| `find_unused_symbols` | Dead code candidates |
-| `get_subgraph` | Everything within N hops of a symbol |
+| CLI command | MCP action | When to use |
+|------|------|-------------|
+| `gcx query lookup-symbol <name>` | `lookup_symbol` | Find any function, struct, class, or trait by name |
+| `gcx query find-callers <name>` | `find_callers` | Who calls this function? (backward trace) |
+| `gcx query find-callees <name>` | `find_callees` | What does this function call? (forward trace) |
+| `gcx query list-definitions <file>` | `list_definitions` | All symbols in a file — faster than reading the whole file |
+| `gcx query find-implementors <name>` | `find_implementors` | All implementations of a trait or interface |
+| `gcx query trace-path <from> <to>` | `trace_path` | Is there a call path from A to B? |
+| `gcx query find-unused` | `find_unused_symbols` | Dead code candidates |
+| `gcx query get-subgraph <name>` | `get_subgraph` | Everything within N hops of a symbol |
 
 ## Workflows
 
-**Navigating unfamiliar code**: `lookup_symbol` → `list_definitions` → `get_subgraph`
+**Navigating unfamiliar code**: `lookup-symbol` → `list-definitions` → `get-subgraph`
 
-**Debugging a crash**: `lookup_symbol` on the failing function → `find_callers` upstream
+**Debugging a crash**: `lookup-symbol` on the failing function → `find-callers` upstream
 
-**Impact analysis before refactoring**: `find_callers` + `get_subgraph(direction: "in")`
+**Impact analysis before refactoring**: `find-callers` then `gcx blast-radius --base main --head HEAD`
 
-**Finding dead code**: `find_unused_symbols` filtered by kind
+**Finding dead code**: `find-unused` filtered by kind
 
 See `.gitcortex/AGENT_GUIDE.md` for the full reference.
 "#;
