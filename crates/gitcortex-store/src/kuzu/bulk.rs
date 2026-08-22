@@ -149,14 +149,14 @@ pub(super) fn bulk_load(
     // Header-less CSV; column order matches the table declaration.
     let nodes_path = nodes_csv.to_string_lossy().replace('\'', "\\'");
     conn.query(&format!(
-        "COPY {nt} FROM '{nodes_path}' (HEADER=false, PARALLEL=false)"
+        "COPY {nt} FROM '{nodes_path}' (HEADER=false, PARALLEL=false, ESCAPE='\"')"
     ))
     .map_err(|e| GitCortexError::Store(format!("COPY nodes: {e}")))?;
 
     if edge_count > 0 {
         let edges_path = edges_csv.to_string_lossy().replace('\'', "\\'");
         conn.query(&format!(
-            "COPY {et} FROM '{edges_path}' (HEADER=false, PARALLEL=false)"
+            "COPY {et} FROM '{edges_path}' (HEADER=false, PARALLEL=false, ESCAPE='\"')"
         ))
         .map_err(|e| GitCortexError::Store(format!("COPY edges: {e}")))?;
     }
