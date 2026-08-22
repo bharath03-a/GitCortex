@@ -9,3 +9,8 @@ ist = "ist"
 inh = "inh"
 # "ANDed" — valid boolean operator past-tense form
 Ded = "Ded"
+
+[files]
+# Captured real-model answer text from benchmark runs — third-party
+# symbol/class names (e.g. Gson's Excluder) aren't ours to spell-check.
+extend-exclude = ["docs/benchmarks/*.json"]
