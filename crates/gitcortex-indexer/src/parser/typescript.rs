@@ -98,6 +98,7 @@ fn parse_source(
     visitor.collect_names(tree.root_node());
     visitor.visit_program(tree.root_node(), &[]);
     visitor.collect_imports(tree.root_node());
+    visitor.collect_routes(tree.root_node());
 
     Ok(ParseResult {
         nodes: visitor.nodes,
@@ -1036,6 +1037,130 @@ impl<'src> FileVisitor<'src> {
             self.deferred_calls.push((caller_id, callee_name, line));
         }
     }
+
+    // ── Route detection (Express.js) ──────────────────────────────────────────
+
+    const HTTP_METHODS: &'static [&'static str] = &[
+        "get", "post", "put", "delete", "patch", "head", "options", "all",
+    ];
+
+    /// Walk the whole file for Express-style route registrations
+    /// (`app.get('/path', handler)`, `router.post('/path', mw, handler)`).
+    /// Route setup is typically top-level code rather than inside an already
+    /// visited function body, so this mirrors `collect_calls`'s recursive-
+    /// descent shape (walk everything, inspect each `call_expression`) rather
+    /// than piggy-backing on `collect_calls`'s caller-tracking traversal.
+    fn collect_routes(&mut self, node: TsNode<'_>) {
+        let mut cursor = node.walk();
+        let children: Vec<TsNode<'_>> = node.named_children(&mut cursor).collect();
+        for child in children {
+            if child.kind() == "call_expression" {
+                self.try_route(child);
+            }
+            self.collect_routes(child);
+        }
+    }
+
+    /// If `call_expr` matches `<obj>.<verb>('<path>', ...handlers)` for an
+    /// HTTP-verb method name, emit a `Route` node plus a `HandledBy` edge to
+    /// the resolved handler (last argument).
+    fn try_route(&mut self, call_expr: TsNode<'_>) {
+        let Some(func) = call_expr.child_by_field_name("function") else {
+            return;
+        };
+        if func.kind() != "member_expression" {
+            return;
+        }
+        let Some(method_node) = func.child_by_field_name("property") else {
+            return;
+        };
+        let method = self.text(method_node).to_ascii_lowercase();
+        if !Self::HTTP_METHODS.contains(&method.as_str()) {
+            return;
+        }
+        let Some(args) = call_expr.child_by_field_name("arguments") else {
+            return;
+        };
+        let mut cursor = args.walk();
+        let arg_nodes: Vec<TsNode<'_>> = args.named_children(&mut cursor).collect();
+        // Need at least a path and a handler.
+        if arg_nodes.len() < 2 {
+            return;
+        }
+        let path_node = arg_nodes[0];
+        if path_node.kind() != "string" {
+            // Only string-literal paths are modeled; template/regex routes are out of scope.
+            return;
+        }
+        let path = self.string_literal_value(path_node);
+        let handler_node = *arg_nodes.last().expect("len checked above");
+
+        let route_id = NodeId::new();
+        let route_name = format!("{} {}", method.to_ascii_uppercase(), path);
+        let route_node = self.make_node(
+            route_id.clone(),
+            NodeKind::Route,
+            route_name,
+            &[],
+            call_expr,
+        );
+        self.nodes.push(route_node);
+
+        if let Some(handler_id) = self.resolve_handler(handler_node) {
+            self.edges.push(Edge {
+                src: route_id,
+                dst: handler_id,
+                kind: EdgeKind::HandledBy,
+                line: None,
+                confidence: EdgeConfidence::Extracted,
+            });
+        }
+    }
+
+    /// Resolve a route handler argument to a `NodeId`. Named handlers
+    /// (`app.get('/x', listUsers)`, `router.get('/x', ctrl.list)`) resolve
+    /// against `fn_index`, which `collect_names` has already fully populated
+    /// by the time this pass 3 runs. Inline handlers
+    /// (`app.get('/x', (req, res) => {...})`) get a synthetic anonymous
+    /// `Function` node so the `HandledBy` edge always lands on a real symbol.
+    fn resolve_handler(&mut self, handler: TsNode<'_>) -> Option<NodeId> {
+        match handler.kind() {
+            "identifier" => {
+                let name = self.text(handler).to_owned();
+                self.fn_index.get(&name).cloned()
+            }
+            "member_expression" => {
+                let name = handler
+                    .child_by_field_name("property")
+                    .map(|n| self.text(n).to_owned())?;
+                self.fn_index.get(&name).cloned()
+            }
+            "arrow_function" | "function_expression" | "function" => {
+                let id = NodeId::new();
+                let node = self.make_node(
+                    id.clone(),
+                    NodeKind::Function,
+                    "<route handler>".to_owned(),
+                    &[],
+                    handler,
+                );
+                self.nodes.push(node);
+                if let Some(body) = handler.child_by_field_name("body") {
+                    self.collect_calls(body, &id);
+                }
+                Some(id)
+            }
+            _ => None,
+        }
+    }
+
+    /// Extract the literal text of a `string` node, stripping the surrounding
+    /// quote characters.
+    fn string_literal_value(&self, node: TsNode<'_>) -> String {
+        let raw = self.text(node);
+        raw.trim_matches(|c| c == '\'' || c == '"' || c == '`')
+            .to_owned()
+    }
 }
 
 /// Returns true for TypeScript/JavaScript built-in type names.
@@ -1297,5 +1422,77 @@ mod tests {
             .collect();
         assert_eq!(modules.len(), 1);
         assert_eq!(modules[0].name, "test");
+    }
+
+    #[test]
+    fn detects_express_routes_with_named_handlers() {
+        let src = "\
+            const express = require('express');\n\
+            const app = express();\n\
+            function listUsers(req, res) { res.send([]); }\n\
+            function createUser(req, res) { res.send({}); }\n\
+            function getUser(req, res) { res.send({}); }\n\
+            app.get('/users', listUsers);\n\
+            app.post('/users', createUser);\n\
+            app.get('/users/:id', getUser);\n\
+            ";
+        let (nodes, edges) = parse_js(src);
+
+        let routes: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Route).collect();
+        assert_eq!(routes.len(), 3, "expected 3 routes, got {routes:?}");
+        assert!(routes.iter().any(|r| r.name == "GET /users"));
+        assert!(routes.iter().any(|r| r.name == "POST /users"));
+        assert!(routes.iter().any(|r| r.name == "GET /users/:id"));
+
+        let handled_by: Vec<_> = edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::HandledBy)
+            .collect();
+        assert_eq!(
+            handled_by.len(),
+            3,
+            "expected each route linked to its handler, got {handled_by:?}"
+        );
+
+        let list_users = nodes
+            .iter()
+            .find(|n| n.name == "listUsers")
+            .expect("listUsers fn node");
+        let get_users_route = routes
+            .iter()
+            .find(|r| r.name == "GET /users")
+            .expect("GET /users route");
+        assert!(
+            handled_by
+                .iter()
+                .any(|e| e.src == get_users_route.id && e.dst == list_users.id),
+            "expected GET /users route HandledBy listUsers"
+        );
+    }
+
+    #[test]
+    fn detects_express_router_with_middleware_and_inline_handler() {
+        let src = "\
+            const router = require('express').Router();\n\
+            function auth(req, res, next) { next(); }\n\
+            router.put('/users/:id', auth, (req, res) => { res.send({}); });\n\
+            ";
+        let (nodes, edges) = parse_js(src);
+
+        let routes: Vec<_> = nodes.iter().filter(|n| n.kind == NodeKind::Route).collect();
+        assert_eq!(routes.len(), 1, "expected 1 route, got {routes:?}");
+        assert_eq!(routes[0].name, "PUT /users/:id");
+
+        // Middleware args are ignored; the last argument (inline arrow) is the
+        // handler and gets a synthetic Function node linked via HandledBy.
+        let handled = edges
+            .iter()
+            .find(|e| e.kind == EdgeKind::HandledBy && e.src == routes[0].id)
+            .expect("route linked to a handler");
+        let handler_node = nodes
+            .iter()
+            .find(|n| n.id == handled.dst)
+            .expect("handler node exists");
+        assert_eq!(handler_node.kind, NodeKind::Function);
     }
 }

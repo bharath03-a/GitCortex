@@ -981,6 +981,7 @@ fn parse_node_kind(s: &str) -> Option<NodeKind> {
         "annotation" => NodeKind::Annotation,
         "enum_member" => NodeKind::EnumMember,
         "section" => NodeKind::Section,
+        "route" => NodeKind::Route,
         _ => return None,
     })
 }
@@ -1327,6 +1328,7 @@ fn kind_dot_color(k: &NodeKind) -> &'static str {
         NodeKind::Annotation => "#eba0ac",
         NodeKind::EnumMember => "#a6d189",
         NodeKind::Section => "#f5c2e7",
+        NodeKind::Route => "#f2cdcd",
     }
 }
 
