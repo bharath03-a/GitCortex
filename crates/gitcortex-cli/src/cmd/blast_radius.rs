@@ -69,7 +69,7 @@ pub fn run(base: String, head: String, depth: u8, format: BlastFormat) -> Result
         queue.push_back((id.clone(), 0));
     }
 
-    let mut affected: Vec<(Node, u8)> = Vec::new();
+    let mut affected: Vec<(Node, u8, &'static str)> = Vec::new();
 
     while let Some((node_id, hop)) = queue.pop_front() {
         if hop >= depth {
@@ -80,7 +80,12 @@ pub fn run(base: String, head: String, depth: u8, format: BlastFormat) -> Result
                 if !changed_ids.contains(caller_id) && !visited.contains(caller_id) {
                     visited.insert(caller_id.clone());
                     if let Some(&node) = node_map.get(caller_id) {
-                        affected.push((node.clone(), hop + 1));
+                        // This affected node's own direct-caller fan-in: a
+                        // hub that's itself widely called makes the cascade
+                        // through it riskier than a leaf caller, independent
+                        // of how far it sits from the actual change.
+                        let own_callers = reverse_calls.get(caller_id).map_or(0, Vec::len);
+                        affected.push((node.clone(), hop + 1, risk_band(own_callers)));
                     }
                     queue.push_back((caller_id.clone(), hop + 1));
                 }
@@ -88,7 +93,11 @@ pub fn run(base: String, head: String, depth: u8, format: BlastFormat) -> Result
         }
     }
 
-    let risk = risk_label(changed_nodes.len(), affected.len());
+    // Same bucketing pre_edit_impact uses for a symbol's own caller count,
+    // applied here to the whole PR's affected-caller count, so a "HIGH risk"
+    // PR-level report and a "HIGH risk" single-symbol MCP answer mean the
+    // same thing.
+    let risk = risk_band(affected.len());
 
     match format {
         BlastFormat::Text => print_text(&changed_nodes, &affected, &base, &head, risk),
@@ -101,16 +110,19 @@ pub fn run(base: String, head: String, depth: u8, format: BlastFormat) -> Result
     Ok(())
 }
 
-fn risk_label(changed: usize, affected: usize) -> &'static str {
-    match changed + affected {
-        0..=5 => "LOW",
-        6..=20 => "MEDIUM",
-        21..=50 => "HIGH",
+/// Shared with `gitcortex_mcp::mcp::agent::find_callers`'s risk_level bucketing
+/// (0-2 LOW / 3-10 MEDIUM / 11-30 HIGH / 31+ CRITICAL) so a risk label means
+/// the same thing everywhere GitCortex reports one, CLI or MCP.
+fn risk_band(caller_count: usize) -> &'static str {
+    match caller_count {
+        0..=2 => "LOW",
+        3..=10 => "MEDIUM",
+        11..=30 => "HIGH",
         _ => "CRITICAL",
     }
 }
 
-fn print_text(changed: &[Node], affected: &[(Node, u8)], base: &str, head: &str, risk: &str) {
+fn print_text(changed: &[Node], affected: &[(Node, u8, &str)], base: &str, head: &str, risk: &str) {
     let sep = "─".repeat(52);
     println!("Blast Radius Report");
     println!("{sep}");
@@ -137,9 +149,9 @@ fn print_text(changed: &[Node], affected: &[(Node, u8)], base: &str, head: &str,
 
     if !affected.is_empty() {
         println!("\nAffected callers:");
-        for (n, hop) in affected {
+        for (n, hop, item_risk) in affected {
             println!(
-                "  [hop {}]  {:10}  {:<30}  {}:{}",
+                "  [hop {}] [{item_risk:8}]  {:10}  {:<30}  {}:{}",
                 hop,
                 n.kind,
                 n.name,
@@ -152,7 +164,7 @@ fn print_text(changed: &[Node], affected: &[(Node, u8)], base: &str, head: &str,
 
 fn print_github_comment(
     changed: &[Node],
-    affected: &[(Node, u8)],
+    affected: &[(Node, u8, &str)],
     base: &str,
     head: &str,
     risk: &str,
@@ -191,12 +203,13 @@ fn print_github_comment(
 
     if !affected.is_empty() {
         println!("### Affected callers");
-        println!("| Hop | Kind | Name | File |");
-        println!("|-----|------|------|------|");
-        for (n, hop) in affected {
+        println!("| Hop | Item risk | Kind | Name | File |");
+        println!("|-----|-----------|------|------|------|");
+        for (n, hop, item_risk) in affected {
             println!(
-                "| {} | `{}` | `{}` | `{}:{}` |",
+                "| {} | {} | `{}` | `{}` | `{}:{}` |",
                 hop,
+                item_risk,
                 n.kind,
                 n.name,
                 n.file.display(),
@@ -212,7 +225,7 @@ fn print_github_comment(
 
 fn print_json(
     changed: &[Node],
-    affected: &[(Node, u8)],
+    affected: &[(Node, u8, &str)],
     base: &str,
     head: &str,
     risk: &str,
@@ -220,9 +233,10 @@ fn print_json(
     let changed_json: Vec<Value> = changed.iter().map(node_to_json).collect();
     let affected_json: Vec<Value> = affected
         .iter()
-        .map(|(n, hop)| {
+        .map(|(n, hop, item_risk)| {
             let mut v = node_to_json(n);
             v["hop"] = json!(hop);
+            v["risk"] = json!(item_risk);
             v
         })
         .collect();
@@ -263,4 +277,21 @@ fn repo_root() -> Result<PathBuf> {
     Ok(PathBuf::from(
         String::from_utf8(out.stdout)?.trim().to_owned(),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn risk_band_matches_pre_edit_impact_thresholds() {
+        assert_eq!(risk_band(0), "LOW");
+        assert_eq!(risk_band(2), "LOW");
+        assert_eq!(risk_band(3), "MEDIUM");
+        assert_eq!(risk_band(10), "MEDIUM");
+        assert_eq!(risk_band(11), "HIGH");
+        assert_eq!(risk_band(30), "HIGH");
+        assert_eq!(risk_band(31), "CRITICAL");
+        assert_eq!(risk_band(1000), "CRITICAL");
+    }
 }
