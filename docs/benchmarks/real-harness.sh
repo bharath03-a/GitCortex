@@ -83,16 +83,41 @@ PICK_TERM="parse"
 grep -qrI --include='*.rs' --include='*.go' --include='*.py' --include='*.ts' --include='*.java' \
   -e 'auth' . 2>/dev/null && PICK_TERM="auth"
 
-# 4 developer questions chosen for a balanced story:
-#   Q1 search  — gcx consistently wins (graph beats grep on discovery)
-#   Q2 tour    — gcx wins (structured summary vs. raw file list)
-#   Q3 refactor — marginal / honest (shows limits on high-fan-out symbols)
-#   Q4 subgraph — sometimes loses (honest: dumping a big neighbourhood)
-Q_LABELS=(search_concept tour_onboarding refactor_impact subgraph_around)
+# route_discovery only makes sense on repos with detected HTTP routes (JS/TS
+# Express repos, currently GitCortex's only route-aware language). Probe for
+# a real route before committing to the question; fall back to a generic
+# entrypoint-tracing question everywhere else so the suite still runs on
+# Rust/Go/Python/Java repos without faking a route that doesn't exist.
+HAS_ROUTE=0
+if "$GCX" query search route --format agent-json --limit 30 --branch "$BRANCH" 2>/dev/null \
+    | python3 -c 'import json,sys
+try:
+    d = json.load(sys.stdin)
+    sys.exit(0 if any(e.get("kind")=="route" for e in d.get("evidence",[])) else 1)
+except Exception:
+    sys.exit(1)' 2>/dev/null; then
+  HAS_ROUTE=1
+fi
+
+# 6 developer questions, each modelled on a realistic dev task rather than a
+# tool-capability probe. Q1/Q2 are gcx's strongest lane (discovery/summary);
+# Q3/Q4/Q5 map onto capabilities CodeGraph and Graphify specifically market
+# as their strengths (framework route detection, PR impact review, call-path
+# tracing — see docs/CODEGRAPH-COMPARISON.md and Graphify's `affected`/`path`
+# CLI verbs), so a loss here is informative, not cherry-picked. Q6 is the
+# honest one: a big-neighbourhood dump where gcx sometimes loses.
+if [ "$HAS_ROUTE" = "1" ]; then
+  ROUTE_Q="A request is timing out. Based on the routes registered in this codebase, which handler is most likely involved for something touching '$PICK_TERM', and what does that handler call?"
+else
+  ROUTE_Q="A request/command touching '$PICK_TERM' is failing in production. Trace the entrypoint that would handle it and list what it calls, so I know where to add logging."
+fi
+Q_LABELS=(search_concept tour_onboarding route_or_entrypoint pr_impact_review path_trace subgraph_around)
 Q_TEXT=(
   "Where in this codebase is '$PICK_TERM' handled? List the relevant files and symbols."
   "Give me a concise tour of this codebase: what are the main components and how do they fit together?"
-  "If I change '$SYM_FN', what breaks? List the direct callers and any important indirect callers."
+  "$ROUTE_Q"
+  "I'm reviewing a PR that changes '$SYM_FN'. What breaks — list direct callers and any important indirect callers — and what should I specifically re-test before approving?"
+  "Is there a call path from '$SYM_FN' to '$SYM_OTHER'? If so, trace it step by step; if not, say so explicitly."
   "Show everything directly connected to '$SYM_TYPE' — what calls it, what it calls, what it uses."
 )
 
@@ -130,12 +155,13 @@ try:
     answer = d.get('result','')
     print(json.dumps({'input':inp,'output':out,'total':inp+out,
                       'cache_read':cache_read,
+                      'latency_ms':d.get('duration_ms',0),
                       'cost':round(d.get('total_cost_usd',0),5),
                       'turns':d.get('num_turns',0),
                       'error':bool(d.get('is_error')),
                       'answer':answer}))
 except Exception as e:
-    print(json.dumps({'input':0,'output':0,'total':0,'cost':0,'turns':0,'error':True,'parse_error':str(e),'answer':''}))
+    print(json.dumps({'input':0,'output':0,'total':0,'latency_ms':0,'cost':0,'turns':0,'error':True,'parse_error':str(e),'answer':''}))
 "
 }
 
@@ -153,6 +179,10 @@ judge_quality() {
 - Correctness (no false claims about the codebase)
 - Completeness (covers what was asked)
 Combined score = floor((correctness + completeness) / 2).
+Also flag whether an answer cites a specific file path, symbol name, or
+call relationship that looks fabricated rather than grounded in real code
+(e.g. a plausible-sounding file/function that likely doesn't exist, or a
+caller/callee relationship stated with unwarranted confidence).
 
 Question: $q_esc
 
@@ -162,7 +192,7 @@ $a_esc
 Answer B:
 $b_esc
 
-Reply with ONLY valid JSON on one line: {\"score_a\": <int>, \"score_b\": <int>}"
+Reply with ONLY valid JSON on one line: {\"score_a\": <int>, \"score_b\": <int>, \"fabricated_a\": <bool>, \"fabricated_b\": <bool>}"
 
   local raw
   raw=$(env -u CLAUDECODE -u CLAUDE_CODE_SSE_PORT claude \
@@ -181,9 +211,11 @@ try:
     d = json.loads('$raw'.strip() or '{}')
     sa = max(0, min(10, int(d.get('score_a', 5))))
     sb = max(0, min(10, int(d.get('score_b', 5))))
-    print(json.dumps({'score_a': sa, 'score_b': sb}))
+    fa = bool(d.get('fabricated_a', False))
+    fb = bool(d.get('fabricated_b', False))
+    print(json.dumps({'score_a': sa, 'score_b': sb, 'fabricated_a': fa, 'fabricated_b': fb}))
 except Exception:
-    print('{\"score_a\":5,\"score_b\":5}')
+    print('{\"score_a\":5,\"score_b\":5,\"fabricated_a\":false,\"fabricated_b\":false}')
 " 2>/dev/null || echo '{"score_a":5,"score_b":5}'
 }
 
@@ -228,9 +260,12 @@ for ((i=0; i<N; i++)); do
   judge=$(judge_quality "$text" "$base_ans" "$gcx_ans")
   score_base=$(printf '%s' "$judge" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("score_a",5))' 2>/dev/null || echo 5)
   score_gcx=$(printf '%s'  "$judge" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("score_b",5))' 2>/dev/null || echo 5)
+  fab_base=$(printf '%s' "$judge" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("fabricated_a",False))' 2>/dev/null || echo False)
+  fab_gcx=$(printf '%s'  "$judge" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("fabricated_b",False))' 2>/dev/null || echo False)
 
   q=$(BASE_JSON="$base" GCX_JSON="$gcx" Q_LABEL="$label" Q_TEXT="$text" \
-      SCORE_BASE="$score_base" SCORE_GCX="$score_gcx" python3 -c "
+      SCORE_BASE="$score_base" SCORE_GCX="$score_gcx" \
+      FAB_BASE="$fab_base" FAB_GCX="$fab_gcx" python3 -c "
 import json, os
 b = json.loads(os.environ['BASE_JSON'])
 g = json.loads(os.environ['GCX_JSON'])
@@ -238,12 +273,15 @@ label = os.environ['Q_LABEL']
 text  = os.environ['Q_TEXT']
 sb = int(os.environ['SCORE_BASE'])
 sg = int(os.environ['SCORE_GCX'])
+fb = os.environ['FAB_BASE'] == 'True'
+fg = os.environ['FAB_GCX'] == 'True'
 ratio = round(b['total']/g['total'],2) if g['total'] else 0
 saved = b['total']-g['total']
 qr = round(sg/sb,2) if sb else 1.0
 print(json.dumps({'q':label,'question':text,'baseline':b,'gcx':g,
                   'token_ratio':ratio,'tokens_saved':saved,
-                  'quality':{'score_baseline':sb,'score_gcx':sg,'quality_ratio':qr}}))
+                  'quality':{'score_baseline':sb,'score_gcx':sg,'quality_ratio':qr,
+                             'fabricated_baseline':fb,'fabricated_gcx':fg}}))
 ")
   QUESTIONS_JSON="${QUESTIONS_JSON:+$QUESTIONS_JSON,}$q"
   echo "      base=$(printf '%s' "$base" | python3 -c 'import json,sys;print(json.load(sys.stdin)["total"])') tok  gcx=$(printf '%s' "$gcx" | python3 -c 'import json,sys;print(json.load(sys.stdin)["total"])') tok  quality=${score_base}→${score_gcx}" >&2
@@ -279,6 +317,16 @@ qratios = [q['quality']['quality_ratio'] for q in valid if q.get('quality',{}).g
 geo_q = round(math.exp(sum(math.log(r) for r in qratios)/len(qratios)),2) if qratios else None
 avg_base_q = round(sum(q['quality']['score_baseline'] for q in valid if q.get('quality'))/len(valid),1) if valid and valid[0].get('quality') else None
 avg_gcx_q  = round(sum(q['quality']['score_gcx']      for q in valid if q.get('quality'))/len(valid),1) if valid and valid[0].get('quality') else None
+# Hallucination rate: fraction of valid questions where the judge flagged
+# that arm's answer as citing something that looks fabricated (a name-
+# collision-style false claim is exactly the failure mode CodeGraph's own
+# issue tracker documents — see docs/CODEGRAPH-COMPARISON.md).
+hall_base = round(sum(1 for q in valid if q.get('quality',{}).get('fabricated_baseline'))/len(valid),2) if valid else None
+hall_gcx  = round(sum(1 for q in valid if q.get('quality',{}).get('fabricated_gcx'))/len(valid),2) if valid else None
+lat_base = [q['baseline'].get('latency_ms',0) for q in valid if q['baseline'].get('latency_ms',0)>0]
+lat_gcx  = [q['gcx'].get('latency_ms',0) for q in valid if q['gcx'].get('latency_ms',0)>0]
+avg_lat_base = round(sum(lat_base)/len(lat_base)) if lat_base else None
+avg_lat_gcx  = round(sum(lat_gcx)/len(lat_gcx)) if lat_gcx else None
 out = {
   "repo": "$REPO_NAME", "url": "$REPO_URL", "branch": "$BRANCH",
   "model": "$MODEL", "measured": "real_claude_usage", "compact": ${COMPACT:-0},
@@ -293,6 +341,10 @@ out = {
     "geomean_quality_ratio": geo_q,
     "avg_quality_baseline": avg_base_q,
     "avg_quality_gcx": avg_gcx_q,
+    "hallucination_rate_baseline": hall_base,
+    "hallucination_rate_gcx": hall_gcx,
+    "avg_latency_ms_baseline": avg_lat_base,
+    "avg_latency_ms_gcx": avg_lat_gcx,
     "valid_questions": len(valid),
     "errored_questions": errored,
   },
