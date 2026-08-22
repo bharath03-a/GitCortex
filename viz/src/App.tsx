@@ -31,11 +31,12 @@ import { Inspector } from "./components/Inspector";
 import { StatusBar } from "./components/StatusBar";
 import { SearchPalette } from "./components/SearchPalette";
 import { KeyboardHelp } from "./components/KeyboardHelp";
-import { applyDensity, type DensityMode } from "./graph/density";
+import { type DensityMode } from "./graph/density";
 import { graphClusterForFile } from "./graph/semantics";
-import type { ViewMode } from "./graph/view";
+import type { ViewInput, ViewMode } from "./graph/view";
 import { useBranchDiff } from "./hooks/useBranchDiff";
 import { useComplexityScores } from "./hooks/useComplexityScores";
+import { useFilteredGraph } from "./hooks/useFilteredGraph";
 import type { ProductTheme } from "./theme/colors";
 
 type RendererMode = "auto" | "webgl" | "compatibility";
@@ -340,52 +341,23 @@ export default function App() {
     return { nodeIds, edgeKeys };
   }, [rawData, insightLens]);
 
-  const data = useMemo(() => {
+  const viewInput = useMemo<ViewInput | null>(() => {
     if (!rawData) return null;
-    let source =
-      viewMode === "investigate"
-        ? (focusedData ?? { nodes: selected ? [selected] : [], edges: [] })
-        : rawData;
-    if (diffOverlay && viewMode === "atlas") {
-      const nodesById = new Map(rawData.nodes.map((node) => [node.id, node]));
-      for (const node of diffOverlay.addedNodes) nodesById.set(node.id, node);
-      const edgeKeys = new Set(
-        rawData.edges.map((edge) => `${edge.src}\u0000${edge.dst}\u0000${edge.kind}`),
-      );
-      const edges = rawData.edges.slice();
-      for (const edge of diffOverlay.addedEdges) {
-        const key = `${edge.src}\u0000${edge.dst}\u0000${edge.kind}`;
-        if (!edgeKeys.has(key)) {
-          edgeKeys.add(key);
-          edges.push(edge);
-        }
-      }
-      source = { nodes: [...nodesById.values()], edges };
-    }
-    let d = applyDensity(source, density);
-    const keep = new Set(
-      d.nodes
-        .filter(
-          (node) =>
-            !hiddenKinds.has(node.kind) &&
-            !hiddenVisibility.has(node.visibility as Visibility) &&
-            (flagFilter.size === 0 ||
-              (flagFilter.has("async") && node.is_async) ||
-              (flagFilter.has("unsafe") && node.is_unsafe)),
-        )
-        .map((node) => node.id),
-    );
-    d = {
-      nodes: d.nodes.filter((node) => keep.has(node.id)),
-      edges: d.edges.filter(
-        (edge) =>
-          keep.has(edge.src) &&
-          keep.has(edge.dst) &&
-          !hiddenEdgeKinds.has(edge.kind) &&
-          !hiddenConfidence.has(edge.confidence ?? "extracted"),
-      ),
+    return {
+      rawData,
+      viewMode,
+      focusedData,
+      selectedFallback: selected,
+      diffOverlay: diffOverlay
+        ? { addedNodes: diffOverlay.addedNodes, addedEdges: diffOverlay.addedEdges }
+        : null,
+      density,
+      hiddenKinds,
+      hiddenVisibility,
+      flagFilter,
+      hiddenEdgeKinds,
+      hiddenConfidence,
     };
-    return d;
   }, [
     rawData,
     focusedData,
@@ -399,6 +371,11 @@ export default function App() {
     flagFilter,
     diffOverlay,
   ]);
+
+  // Runs off the main thread (viewWorker.ts via useFilteredGraph) — density
+  // reduction and node/edge filtering are O(nodes + edges), real work at
+  // repository scale.
+  const data = useFilteredGraph(viewInput);
 
   const showSemanticOverview =
     rendererMode === "auto" && viewMode === "atlas" && data !== null && data.nodes.length > 1_000;
