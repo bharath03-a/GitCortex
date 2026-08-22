@@ -348,7 +348,7 @@ impl<'src> FileVisitor<'src> {
                         }
                     }
                     "field_declaration" => {
-                        self.extract_field_uses(child, &id);
+                        self.visit_field_declaration(child, &id, &class_scope);
                     }
                     _ => {}
                 }
@@ -408,7 +408,7 @@ impl<'src> FileVisitor<'src> {
                         });
                     }
                 } else if child.kind() == "field_declaration" {
-                    self.extract_field_uses(child, &id);
+                    self.visit_field_declaration(child, &id, &nested_scope);
                 }
             }
         }
@@ -526,6 +526,10 @@ impl<'src> FileVisitor<'src> {
             }
         }
 
+        // Annotations on the enum itself → Annotated edges (mirrors the
+        // class/interface/method treatment; enums were previously skipped).
+        self.extract_annotation_uses(node, &id);
+
         let mut enum_scope = scope.to_vec();
         enum_scope.push(name.clone());
 
@@ -554,6 +558,9 @@ impl<'src> FileVisitor<'src> {
         let graph_node = self.make_node(id.clone(), NodeKind::Struct, name.clone(), scope, node);
         self.nodes.push(graph_node);
 
+        // Annotations on the record itself → Annotated edges.
+        self.extract_annotation_uses(node, &id);
+
         let mut record_scope = scope.to_vec();
         record_scope.push(name);
 
@@ -579,6 +586,7 @@ impl<'src> FileVisitor<'src> {
             .unwrap_or_else(NodeId::new);
         let graph_node = self.make_node(id.clone(), NodeKind::Struct, name.clone(), scope, node);
         self.nodes.push(graph_node);
+        self.extract_annotation_uses(node, &id);
 
         let mut record_scope = scope.to_vec();
         record_scope.push(name);
@@ -749,12 +757,54 @@ impl<'src> FileVisitor<'src> {
         false
     }
 
-    /// Extract Uses edges from a field declaration's type.
-    fn extract_field_uses(&mut self, field_decl: TsNode<'_>, container_id: &NodeId) {
+    /// Visit a field declaration: always emit Uses edges from the declared
+    /// type back to the container (pre-existing behavior), and additionally,
+    /// for `static final` fields, emit a `Constant` Def node per declarator
+    /// with a `Contains` edge from the container plus its own annotations —
+    /// closing the "static final fields not modeled" gap noted in the
+    /// coverage matrix. Non-static-final fields intentionally still get no
+    /// Def node — same scope the coverage matrix called out, not a new gap.
+    fn visit_field_declaration(
+        &mut self,
+        field_decl: TsNode<'_>,
+        container_id: &NodeId,
+        scope: &[String],
+    ) {
         if let Some(type_node) = field_decl.child_by_field_name("type") {
             for tname in self.collect_type_names(type_node) {
                 self.deferred_uses.push((container_id.clone(), tname));
             }
+        }
+
+        let mods = Self::modifiers_text(field_decl, self.source);
+        if !(mods.contains("static") && mods.contains("final")) {
+            return;
+        }
+
+        let mut cursor = field_decl.walk();
+        let declarators: Vec<TsNode<'_>> = field_decl
+            .children_by_field_name("declarator", &mut cursor)
+            .collect();
+        for decl in declarators {
+            let Some(name_node) = decl.child_by_field_name("name") else {
+                continue;
+            };
+            let name = self.text(name_node).to_owned();
+            let id = NodeId::new();
+            let graph_node =
+                self.make_node(id.clone(), NodeKind::Constant, name, scope, field_decl);
+            self.nodes.push(graph_node);
+            self.edges.push(Edge {
+                src: container_id.clone(),
+                dst: id.clone(),
+                kind: EdgeKind::Contains,
+                line: None,
+                confidence: EdgeConfidence::Extracted,
+            });
+            // Annotations on the field (`@Deprecated`, `@SerializedName`, …)
+            // → Annotated edges + node.metadata.annotations (mirrored by the
+            // indexer regardless of edge resolution).
+            self.extract_annotation_uses(field_decl, &id);
         }
     }
 
@@ -1069,5 +1119,106 @@ mod tests {
             .collect();
         assert_eq!(modules.len(), 1);
         assert_eq!(modules[0].name, "Test"); // from "Test.java"
+    }
+
+    // ── Track C: annotations (Increment 1) ──────────────────────────────────
+
+    #[test]
+    fn detects_method_annotation() {
+        let src = "class Base { void greet() {} }\nclass Child extends Base {\n    @Override\n    void greet() {}\n}";
+        let (_, _, _, _, _, _, _, _, annotated) = parse_full(src);
+        assert!(
+            annotated.iter().any(|(_, n)| n == "Override"),
+            "expected @Override annotation captured on method, got: {annotated:?}"
+        );
+    }
+
+    #[test]
+    fn detects_class_level_annotation() {
+        let src = "@Deprecated\nclass Legacy {}";
+        let (_, _, _, _, _, _, _, _, annotated) = parse_full(src);
+        assert!(
+            annotated.iter().any(|(_, n)| n == "Deprecated"),
+            "expected @Deprecated annotation captured on class, got: {annotated:?}"
+        );
+    }
+
+    #[test]
+    fn detects_enum_level_annotation() {
+        let src = "@Deprecated\npublic enum Direction { NORTH, SOUTH }";
+        let (_, _, _, _, _, _, _, _, annotated) = parse_full(src);
+        assert!(
+            annotated.iter().any(|(_, n)| n == "Deprecated"),
+            "expected @Deprecated annotation captured on enum, got: {annotated:?}"
+        );
+    }
+
+    #[test]
+    fn detects_record_level_annotation() {
+        let src = "@Deprecated\npublic record Point(int x, int y) {}";
+        let (_, _, _, _, _, _, _, _, annotated) = parse_full(src);
+        assert!(
+            annotated.iter().any(|(_, n)| n == "Deprecated"),
+            "expected @Deprecated annotation captured on record, got: {annotated:?}"
+        );
+    }
+
+    // ── Track C: static final fields as Defs (Increment 2) ─────────────────
+
+    #[test]
+    fn static_final_field_becomes_constant_node() {
+        let src = "class Config {\n    public static final int MAX_RETRIES = 3;\n    private int instanceCounter;\n}";
+        let (nodes, edges) = parse(src);
+        let consts: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Constant)
+            .collect();
+        assert_eq!(consts.len(), 1, "expected 1 constant node, got: {consts:?}");
+        assert_eq!(consts[0].name, "MAX_RETRIES");
+        assert!(
+            consts[0].metadata.is_static && consts[0].metadata.is_final,
+            "expected MAX_RETRIES to be marked static+final"
+        );
+
+        let contains_to_const: Vec<_> = edges
+            .iter()
+            .filter(|e| e.kind == EdgeKind::Contains && e.dst == consts[0].id)
+            .collect();
+        assert_eq!(
+            contains_to_const.len(),
+            1,
+            "expected a Contains edge from the class to the constant"
+        );
+
+        // Plain instance fields still get no Def node — unchanged scope.
+        let non_const_field_nodes = nodes.iter().filter(|n| n.name == "instanceCounter").count();
+        assert_eq!(non_const_field_nodes, 0);
+    }
+
+    #[test]
+    fn static_final_field_multi_declarator() {
+        let src = "class Config {\n    static final int A = 1, B = 2;\n}";
+        let (nodes, _) = parse(src);
+        let names: Vec<&str> = nodes
+            .iter()
+            .filter(|n| n.kind == NodeKind::Constant)
+            .map(|n| n.name.as_str())
+            .collect();
+        assert_eq!(
+            names,
+            vec!["A", "B"],
+            "expected both declarators as constants: {names:?}"
+        );
+    }
+
+    #[test]
+    fn static_final_field_annotation_captured() {
+        let src =
+            "class Config {\n    @Deprecated\n    public static final int MAX_RETRIES = 3;\n}";
+        let (_, _, _, _, _, _, _, _, annotated) = parse_full(src);
+        assert!(
+            annotated.iter().any(|(_, n)| n == "Deprecated"),
+            "expected @Deprecated annotation captured on static final field, got: {annotated:?}"
+        );
     }
 }
