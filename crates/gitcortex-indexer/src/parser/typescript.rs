@@ -74,6 +74,24 @@ impl LanguageParser for JavaScriptParser {
     }
 }
 
+/// Cheap textual pre-check so `collect_routes`'s full-tree walk is skipped
+/// for the common case of files with no Express-style route registrations.
+/// Necessary condition, not sufficient: any real `<obj>.get('/x', ...)` call
+/// must contain one of these `.<verb>(` substrings, so a miss here is safe.
+fn might_have_routes(source: &str) -> bool {
+    const VERB_PATTERNS: &[&str] = &[
+        ".get(",
+        ".post(",
+        ".put(",
+        ".delete(",
+        ".patch(",
+        ".head(",
+        ".options(",
+        ".all(",
+    ];
+    VERB_PATTERNS.iter().any(|p| source.contains(p))
+}
+
 fn parse_source(
     language: &tree_sitter::Language,
     path: &Path,
@@ -98,7 +116,9 @@ fn parse_source(
     visitor.collect_names(tree.root_node());
     visitor.visit_program(tree.root_node(), &[]);
     visitor.collect_imports(tree.root_node());
-    visitor.collect_routes(tree.root_node());
+    if might_have_routes(source) {
+        visitor.collect_routes(tree.root_node());
+    }
 
     Ok(ParseResult {
         nodes: visitor.nodes,
