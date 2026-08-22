@@ -604,10 +604,13 @@ async fn callers_by_id_handler(
         Err(error) => return error,
     };
     let total_affected: usize = hops.iter().map(Vec::len).sum();
+    // Matches gitcortex_mcp::mcp::agent::find_callers and
+    // gitcortex_cli::cmd::blast_radius::risk_band so a risk label means the
+    // same thing everywhere GitCortex reports one.
     let risk_level = match total_affected {
         0..=2 => "LOW",
-        3..=9 => "MEDIUM",
-        10..=29 => "HIGH",
+        3..=10 => "MEDIUM",
+        11..=30 => "HIGH",
         _ => "CRITICAL",
     };
     let hop_json = hops

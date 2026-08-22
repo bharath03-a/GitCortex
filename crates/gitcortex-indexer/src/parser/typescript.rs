@@ -1146,6 +1146,15 @@ impl<'src> FileVisitor<'src> {
                 );
                 self.nodes.push(node);
                 if let Some(body) = handler.child_by_field_name("body") {
+                    // If this inline handler sits inside an already-visited
+                    // named function, that function's own collect_calls pass
+                    // doesn't stop at nested function boundaries and already
+                    // misattributed calls in this body to itself. Drop those
+                    // before re-collecting them under the handler's own scope.
+                    let start = handler.start_position().row as u32 + 1;
+                    let end = handler.end_position().row as u32 + 1;
+                    self.edges
+                        .retain(|e| e.line.map_or(true, |l| !(start..=end).contains(&l)));
                     self.collect_calls(body, &id);
                 }
                 Some(id)
