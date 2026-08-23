@@ -12,7 +12,7 @@ use axum::{
 };
 use gitcortex_core::{
     graph::{in_degree_by_calls, Node},
-    schema::NodeKind,
+    schema::{EdgeConfidence, NodeKind},
     store::GraphStore,
 };
 use gitcortex_store::kuzu::KuzuGraphStore;
@@ -566,16 +566,22 @@ async fn callers_by_id_handler(
             let mut frontier = vec![id_for_query];
             let mut hops = Vec::new();
             let mut truncated = false;
+            let mut mix = (0usize, 0usize, 0usize);
 
             for _ in 0..depth {
                 let mut hop = Vec::new();
                 let mut next = Vec::new();
                 for target_id in &frontier {
-                    for (caller, _) in
+                    for (caller, confidence) in
                         store.find_callers_by_id_with_confidence(&branch, target_id)?
                     {
                         let caller_id = caller.id.as_str();
                         if seen.insert(caller_id.clone()) {
+                            match confidence {
+                                EdgeConfidence::Extracted => mix.0 += 1,
+                                EdgeConfidence::Resolved => mix.1 += 1,
+                                EdgeConfidence::Inferred => mix.2 += 1,
+                            }
                             next.push(caller_id);
                             hop.push(caller);
                             if seen.len().saturating_sub(1) >= MAX_AFFECTED {
@@ -594,25 +600,19 @@ async fn callers_by_id_handler(
                 }
                 frontier = next;
             }
-            Ok((hops, truncated))
+            Ok((hops, truncated, mix))
         })
     })
     .await;
 
-    let (hops, truncated) = match result {
+    let (hops, truncated, mix) = match result {
         Ok(value) => value,
         Err(error) => return error,
     };
-    let total_affected: usize = hops.iter().map(Vec::len).sum();
-    // Matches gitcortex_mcp::mcp::agent::find_callers and
-    // gitcortex_cli::cmd::blast_radius::risk_band so a risk label means the
-    // same thing everywhere GitCortex reports one.
-    let risk_level = match total_affected {
-        0..=2 => "LOW",
-        3..=10 => "MEDIUM",
-        11..=30 => "HIGH",
-        _ => "CRITICAL",
-    };
+    // Matches gitcortex_mcp::mcp::agent::weighted_risk_band and
+    // gitcortex_cli::cmd::blast_radius::weighted_risk_band so a risk label
+    // means the same thing everywhere GitCortex reports one.
+    let (_, risk_level) = weighted_risk_band(mix.0, mix.1, mix.2);
     let hop_json = hops
         .iter()
         .enumerate()
@@ -630,6 +630,33 @@ async fn callers_by_id_handler(
         "truncated": truncated,
         "hops": hop_json,
     }))
+}
+
+/// Confidence-weighted risk band. Kept in sync with
+/// `gitcortex_mcp::mcp::agent::weighted_risk_band` and
+/// `gitcortex_cli::cmd::blast_radius::weighted_risk_band` — all three must
+/// move together so a risk label means the same thing everywhere GitCortex
+/// reports one.
+///
+/// Score = extracted*1.0 + resolved*0.6 + inferred*0.3. Thresholds:
+/// LOW < 3.0, MEDIUM < 11.0, HIGH < 350.0, else CRITICAL. See
+/// `gitcortex_mcp::mcp::agent::weighted_risk_band`'s doc comment for the
+/// full reasoning: this preserves today's LOW/MEDIUM boundary for
+/// confidence-uniform extracted evidence, and widens HIGH/CRITICAL so a
+/// huge low-confidence-only caller set (e.g. the spike's 1085-caller
+/// Django `QuerySet.filter` example) no longer alone reads CRITICAL.
+fn weighted_risk_band(extracted: usize, resolved: usize, inferred: usize) -> (f64, &'static str) {
+    let score = extracted as f64 + resolved as f64 * 0.6 + inferred as f64 * 0.3;
+    let band = if score < 3.0 {
+        "LOW"
+    } else if score < 11.0 {
+        "MEDIUM"
+    } else if score < 350.0 {
+        "HIGH"
+    } else {
+        "CRITICAL"
+    };
+    (score, band)
 }
 
 #[derive(Debug, Deserialize)]
@@ -1348,6 +1375,30 @@ fn repo_root() -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn weighted_risk_band_preserves_uniform_extracted_bands() {
+        assert_eq!(weighted_risk_band(0, 0, 0).1, "LOW");
+        assert_eq!(weighted_risk_band(2, 0, 0).1, "LOW");
+        assert_eq!(weighted_risk_band(3, 0, 0).1, "MEDIUM");
+        assert_eq!(weighted_risk_band(10, 0, 0).1, "MEDIUM");
+        assert_eq!(weighted_risk_band(11, 0, 0).1, "HIGH");
+    }
+
+    #[test]
+    fn weighted_risk_band_uniform_inferred_needs_far_more_evidence() {
+        assert_eq!(weighted_risk_band(0, 0, 2).1, "LOW");
+        assert_eq!(weighted_risk_band(0, 0, 10).1, "MEDIUM");
+        assert_eq!(weighted_risk_band(0, 0, 40).1, "HIGH");
+        assert_eq!(weighted_risk_band(0, 0, 1200).1, "CRITICAL");
+    }
+
+    #[test]
+    fn weighted_risk_band_mixed_django_worked_example_is_not_critical() {
+        let (score, band) = weighted_risk_band(4, 0, 1081);
+        assert!((score - 328.3).abs() < 0.01, "score was {score}");
+        assert_eq!(band, "HIGH");
+    }
 
     #[test]
     fn embedded_viz_uses_the_canonical_gitcortex_favicon() {

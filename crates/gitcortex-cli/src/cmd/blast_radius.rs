@@ -2,7 +2,11 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use gitcortex_core::{graph::Node, schema::EdgeKind, store::GraphStore};
+use gitcortex_core::{
+    graph::Node,
+    schema::{EdgeConfidence, EdgeKind},
+    store::GraphStore,
+};
 use gitcortex_store::kuzu::KuzuGraphStore;
 use serde_json::{json, Value};
 
@@ -49,14 +53,14 @@ pub fn run(base: String, head: String, depth: u8, format: BlastFormat) -> Result
     // node_id → Node lookup
     let node_map: HashMap<NodeId, &Node> = all_nodes.iter().map(|n| (n.id.clone(), n)).collect();
 
-    // Reverse call graph: callee → [callers] (Calls edges only)
-    let mut reverse_calls: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
+    // Reverse call graph: callee → [(caller, edge confidence)] (Calls edges only)
+    let mut reverse_calls: HashMap<NodeId, Vec<(NodeId, EdgeConfidence)>> = HashMap::new();
     for edge in &all_edges {
         if edge.kind == EdgeKind::Calls {
             reverse_calls
                 .entry(edge.dst.clone())
                 .or_default()
-                .push(edge.src.clone());
+                .push((edge.src.clone(), edge.confidence));
         }
     }
 
@@ -70,22 +74,31 @@ pub fn run(base: String, head: String, depth: u8, format: BlastFormat) -> Result
     }
 
     let mut affected: Vec<(Node, u8, &'static str)> = Vec::new();
+    // Confidence mix of the edges that pulled each affected node into the
+    // blast radius, accumulated for the PR-level risk band below.
+    let mut overall_mix = (0usize, 0usize, 0usize);
 
     while let Some((node_id, hop)) = queue.pop_front() {
         if hop >= depth {
             continue;
         }
         if let Some(callers) = reverse_calls.get(&node_id) {
-            for caller_id in callers {
+            for (caller_id, confidence) in callers {
                 if !changed_ids.contains(caller_id) && !visited.contains(caller_id) {
                     visited.insert(caller_id.clone());
+                    match confidence {
+                        EdgeConfidence::Extracted => overall_mix.0 += 1,
+                        EdgeConfidence::Resolved => overall_mix.1 += 1,
+                        EdgeConfidence::Inferred => overall_mix.2 += 1,
+                    }
                     if let Some(&node) = node_map.get(caller_id) {
                         // This affected node's own direct-caller fan-in: a
                         // hub that's itself widely called makes the cascade
                         // through it riskier than a leaf caller, independent
                         // of how far it sits from the actual change.
-                        let own_callers = reverse_calls.get(caller_id).map_or(0, Vec::len);
-                        affected.push((node.clone(), hop + 1, risk_band(own_callers)));
+                        let own_mix = confidence_mix(reverse_calls.get(caller_id));
+                        let (_, item_risk) = weighted_risk_band(own_mix.0, own_mix.1, own_mix.2);
+                        affected.push((node.clone(), hop + 1, item_risk));
                     }
                     queue.push_back((caller_id.clone(), hop + 1));
                 }
@@ -97,7 +110,7 @@ pub fn run(base: String, head: String, depth: u8, format: BlastFormat) -> Result
     // applied here to the whole PR's affected-caller count, so a "HIGH risk"
     // PR-level report and a "HIGH risk" single-symbol MCP answer mean the
     // same thing.
-    let risk = risk_band(affected.len());
+    let (_, risk) = weighted_risk_band(overall_mix.0, overall_mix.1, overall_mix.2);
 
     match format {
         BlastFormat::Text => print_text(&changed_nodes, &affected, &base, &head, risk),
@@ -110,16 +123,46 @@ pub fn run(base: String, head: String, depth: u8, format: BlastFormat) -> Result
     Ok(())
 }
 
-/// Shared with `gitcortex_mcp::mcp::agent::find_callers`'s risk_level bucketing
-/// (0-2 LOW / 3-10 MEDIUM / 11-30 HIGH / 31+ CRITICAL) so a risk label means
-/// the same thing everywhere GitCortex reports one, CLI or MCP.
-fn risk_band(caller_count: usize) -> &'static str {
-    match caller_count {
-        0..=2 => "LOW",
-        3..=10 => "MEDIUM",
-        11..=30 => "HIGH",
-        _ => "CRITICAL",
+/// Sums the `EdgeConfidence` mix of a caller list into (extracted, resolved,
+/// inferred) counts, for feeding into `weighted_risk_band`.
+fn confidence_mix(callers: Option<&Vec<(NodeId, EdgeConfidence)>>) -> (usize, usize, usize) {
+    let mut mix = (0usize, 0usize, 0usize);
+    if let Some(callers) = callers {
+        for (_, confidence) in callers {
+            match confidence {
+                EdgeConfidence::Extracted => mix.0 += 1,
+                EdgeConfidence::Resolved => mix.1 += 1,
+                EdgeConfidence::Inferred => mix.2 += 1,
+            }
+        }
     }
+    mix
+}
+
+/// Confidence-weighted risk band. Kept in sync with
+/// `gitcortex_mcp::mcp::agent::weighted_risk_band` and `gitcortex_viz`'s
+/// inline copy — all three must move together so a risk label means the
+/// same thing everywhere GitCortex reports one.
+///
+/// Score = extracted*1.0 + resolved*0.6 + inferred*0.3. Thresholds:
+/// LOW < 3.0, MEDIUM < 11.0, HIGH < 350.0, else CRITICAL. See
+/// `gitcortex_mcp::mcp::agent::weighted_risk_band`'s doc comment for the
+/// full reasoning behind these numbers (preserves today's LOW/MEDIUM
+/// boundary for confidence-uniform extracted evidence; widens HIGH/CRITICAL
+/// so a huge low-confidence-only caller set, like the spike's 1085-caller
+/// Django `QuerySet.filter` example, no longer alone reads CRITICAL).
+fn weighted_risk_band(extracted: usize, resolved: usize, inferred: usize) -> (f64, &'static str) {
+    let score = extracted as f64 + resolved as f64 * 0.6 + inferred as f64 * 0.3;
+    let band = if score < 3.0 {
+        "LOW"
+    } else if score < 11.0 {
+        "MEDIUM"
+    } else if score < 350.0 {
+        "HIGH"
+    } else {
+        "CRITICAL"
+    };
+    (score, band)
 }
 
 fn print_text(changed: &[Node], affected: &[(Node, u8, &str)], base: &str, head: &str, risk: &str) {
@@ -284,14 +327,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn risk_band_matches_pre_edit_impact_thresholds() {
-        assert_eq!(risk_band(0), "LOW");
-        assert_eq!(risk_band(2), "LOW");
-        assert_eq!(risk_band(3), "MEDIUM");
-        assert_eq!(risk_band(10), "MEDIUM");
-        assert_eq!(risk_band(11), "HIGH");
-        assert_eq!(risk_band(30), "HIGH");
-        assert_eq!(risk_band(31), "CRITICAL");
-        assert_eq!(risk_band(1000), "CRITICAL");
+    fn weighted_risk_band_preserves_uniform_extracted_bands() {
+        assert_eq!(weighted_risk_band(0, 0, 0).1, "LOW");
+        assert_eq!(weighted_risk_band(2, 0, 0).1, "LOW");
+        assert_eq!(weighted_risk_band(3, 0, 0).1, "MEDIUM");
+        assert_eq!(weighted_risk_band(10, 0, 0).1, "MEDIUM");
+        assert_eq!(weighted_risk_band(11, 0, 0).1, "HIGH");
+        assert_eq!(weighted_risk_band(31, 0, 0).1, "HIGH");
+    }
+
+    #[test]
+    fn weighted_risk_band_uniform_inferred_needs_far_more_evidence() {
+        assert_eq!(weighted_risk_band(0, 0, 2).1, "LOW");
+        assert_eq!(weighted_risk_band(0, 0, 10).1, "MEDIUM");
+        assert_eq!(weighted_risk_band(0, 0, 40).1, "HIGH");
+        assert_eq!(weighted_risk_band(0, 0, 1200).1, "CRITICAL");
+    }
+
+    #[test]
+    fn weighted_risk_band_mixed_django_worked_example_is_not_critical() {
+        let (score, band) = weighted_risk_band(4, 0, 1081);
+        assert!((score - 328.3).abs() < 0.01, "score was {score}");
+        assert_eq!(band, "HIGH");
     }
 }
