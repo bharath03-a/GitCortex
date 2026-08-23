@@ -44,6 +44,7 @@ from agent_run import (  # noqa: E402
     question,
     parse_claude_events,
     parse_codex_events,
+    parse_agy_events,
     error_arm_result,
 )
 
@@ -58,6 +59,7 @@ DEFAULT_GCX = HERE.parent.parent / "target" / "release" / "gcx"
 BASELINE_LABEL_BY_CLIENT = {
     "claude": "big-repos-claude-fixed",
     "codex": "big-repos-codex",
+    "agy": "big-repos-agy-fixed",
 }
 
 TASK_IDS = [
@@ -186,7 +188,113 @@ def count_bash_tool_calls(stdout: str) -> tuple[int, int]:
 def run_codegraph_arm(client: str, task, repo_dir: Path, log_path: Path) -> ArmResult:
     if client == "codex":
         return run_codegraph_arm_codex(task, repo_dir, log_path)
+    if client == "agy":
+        return run_codegraph_arm_agy(task, repo_dir, log_path)
     return run_codegraph_arm_claude(task, repo_dir, log_path)
+
+
+def count_run_command_calls(stdout: str) -> tuple[int, int]:
+    """Count agy `run_command` tool calls in its stream-json event log,
+    split into (codegraph_calls, other_command_calls). Unlike
+    count_bash_tool_calls, no dedup is needed here: agy's run_command is its
+    own subprocess's internal tool, not intercepted by this session's own
+    Claude Code hooks the way a child `claude -p` process's Bash calls are."""
+    commands: list[str] = []
+    for line in stdout.splitlines():
+        if not line.startswith("{"):
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("event") != "step_update":
+            continue
+        step = event.get("step_update") or {}
+        if step.get("step_type") != "tool" or step.get("state") not in {"DONE", "ERROR"}:
+            continue
+        if step.get("tool_name") != "run_command":
+            continue
+        params = (step.get("tool_info") or {}).get("parameters") or {}
+        commands.append(str(params.get("CommandLine", "")))
+
+    codegraph_calls = sum(1 for cmd in commands if "codegraph" in cmd)
+    other_calls = sum(1 for cmd in commands if "codegraph" not in cmd)
+    return codegraph_calls, other_calls
+
+
+def run_codegraph_arm_agy(task, repo_dir: Path, log_path: Path) -> ArmResult:
+    cmd = codegraph_command(task)
+    exact = shlex.join(cmd)
+    q = question(task)
+    repo_note = (
+        f"The repository you are exploring is at the absolute path {repo_dir} — "
+        "always scope file reads and searches to this path, never elsewhere "
+        "(e.g. never your home directory)."
+    )
+    prompt = f"""You are evaluating a graph-first code exploration workflow using the
+open-source tool CodeGraph (https://github.com/colbymchenry/codegraph).
+
+{repo_note}
+
+Before any ordinary source search, run this exact command once:
+{exact}
+
+Rules:
+- Run exactly one codegraph command and do not retry it.
+- If it fails, state that failure and stop; do not fall back to grep.
+- Use its output as your primary evidence.
+- You may make at most three focused file reads to verify details.
+- Do not edit files. Keep the final answer concise and cite repository-relative files.
+
+Question: {q}"""
+    command = [
+        "agy",
+        "-p",
+        prompt,
+        "--output-format",
+        "stream-json",
+        "--model",
+        "Gemini 3.6 Flash (Low)",
+        "--mode",
+        "accept-edits",
+        # Same rationale as agent_run.py's run_agy_arm: read_file only
+        # accepts an exact literal path grant, not a wildcard, so the
+        # verification-read step's target files can't be pre-scoped.
+        "--dangerously-skip-permissions",
+        "--print-timeout",
+        "300s",
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            cwd=repo_dir,
+            text=True,
+            input="",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=330,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return error_arm_result(str(exc))
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.write_text(result.stdout, encoding="utf-8")
+
+    parsed = parse_agy_events(result.stdout, task, expect_gcx=False)
+    codegraph_calls, other_calls = count_run_command_calls(result.stdout)
+    if codegraph_calls == 0:
+        parsed.error = True
+        parsed.error_messages.append("codegraph command was never invoked")
+    elif codegraph_calls > 1:
+        parsed.error = True
+        parsed.error_messages.append(f"codegraph command invoked {codegraph_calls} times, expected 1")
+    if other_calls:
+        parsed.error = True
+        parsed.error_messages.append(f"{other_calls} non-codegraph run_command call(s) beyond the allowed reads")
+    if result.returncode != 0:
+        parsed.error = True
+        parsed.error_messages.append(f"agy exited {result.returncode}")
+    return parsed
 
 
 def run_codegraph_arm_codex(task, repo_dir: Path, log_path: Path) -> ArmResult:
@@ -331,7 +439,7 @@ Question: {q}"""
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--client", choices=["claude", "codex"], default="claude")
+    parser.add_argument("--client", choices=["claude", "codex", "agy"], default="claude")
     parser.add_argument("--gcx", type=Path, default=DEFAULT_GCX)
     args = parser.parse_args()
 

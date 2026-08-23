@@ -175,5 +175,49 @@ class CheckBaselineFreshnessTest(unittest.TestCase):
             check_baseline_freshness(baseline, missing_gcx)
 
 
+def run_command_event(command_line: str) -> str:
+    return json.dumps(
+        {
+            "event": "step_update",
+            "step_update": {
+                "step_type": "tool",
+                "state": "DONE",
+                "tool_name": "run_command",
+                "tool_info": {"parameters": {"CommandLine": command_line}},
+            },
+        }
+    )
+
+
+class CountRunCommandCallsTest(unittest.TestCase):
+    def test_single_codegraph_call_counts_once(self) -> None:
+        from codegraph_compare import count_run_command_calls
+
+        stream = "\n".join([run_command_event("codegraph query filter")])
+        codegraph_calls, other_calls = count_run_command_calls(stream)
+        self.assertEqual(codegraph_calls, 1)
+        self.assertEqual(other_calls, 0)
+
+    def test_non_codegraph_call_counted_separately(self) -> None:
+        from codegraph_compare import count_run_command_calls
+
+        stream = "\n".join([run_command_event("pwd")])
+        codegraph_calls, other_calls = count_run_command_calls(stream)
+        self.assertEqual(codegraph_calls, 0)
+        self.assertEqual(other_calls, 1)
+
+    def test_ignores_non_tool_events(self) -> None:
+        from codegraph_compare import count_run_command_calls
+
+        stream = "\n".join(
+            [
+                json.dumps({"event": "init"}),
+                run_command_event("codegraph query filter"),
+            ]
+        )
+        codegraph_calls, _ = count_run_command_calls(stream)
+        self.assertEqual(codegraph_calls, 1)
+
+
 if __name__ == "__main__":
     unittest.main()
