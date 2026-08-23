@@ -818,6 +818,15 @@ fn resolve_symbol<S: GraphStore + ?Sized>(
     // short-name based. Search a bounded candidate set and compare exactly.
     let mut searched = store.search_nodes(branch, query, 50)?;
     searched.retain(is_code_node);
+    // Tried before the exact-name fallback below because `exact` (from
+    // `lookup_symbol`) can never satisfy a qualified query: it matches on
+    // bare `node.name`, and a qualified string like `Foo::bar` never equals
+    // a node's short name. Without this branch, a qualified query would fall
+    // straight through to `exact.len() == 0` and wrongly report NotFound
+    // even when the symbol exists. A qualified query is also unambiguous
+    // intent (the caller is disambiguating on purpose), so an exact
+    // qualified-name match here should win outright rather than being
+    // treated as one candidate among short-name matches.
     if query.contains("::") || query.contains('.') {
         let qualified: Vec<Node> = searched
             .iter()
@@ -832,6 +841,11 @@ fn resolve_symbol<S: GraphStore + ?Sized>(
         }
     }
 
+    // Falls through here for unqualified queries (or a qualified query with
+    // zero exact qualified-name matches, e.g. it doesn't match this branch's
+    // case-sensitivity/whitespace assumptions): resolve by bare short name
+    // instead, deduping so the same symbol isn't reported as ambiguous
+    // against itself.
     dedup_nodes(&mut exact);
     match exact.len() {
         1 => Ok(Resolution::Exact(Box::new(exact.remove(0)))),
