@@ -143,7 +143,12 @@ jobs:
 
   rust-build-test:
     name: rust · ubuntu-latest · ${{ matrix.toolchain }}
-    needs: [rust-fmt-clippy]
+    # Runs in parallel with rust-fmt-clippy (not gated behind it) — nothing
+    # here technically needs lint to pass first, and clippy alone takes
+    # ~16min (mostly KuzuDB's C++ build), so serializing this after it used
+    # to roughly double the PR's wall-clock time for no correctness benefit.
+    # Both still gate the merge check individually.
+    needs: [viz-bundle]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -179,7 +184,7 @@ jobs:
   # `matrix`, so this cannot be expressed as a conditionally-skipped matrix entry.
   rust-build-test-macos:
     name: rust · macos-latest · stable
-    needs: [rust-fmt-clippy]
+    needs: [viz-bundle]
     runs-on: macos-latest
     if: github.event_name == 'push'
     steps:
@@ -206,7 +211,7 @@ jobs:
   coverage:
     name: rust · coverage
     runs-on: ubuntu-latest
-    needs: [rust-fmt-clippy]
+    needs: [viz-bundle]
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
