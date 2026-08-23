@@ -176,32 +176,39 @@ def parse_codex_events(raw: str, task: Task, gcx_marker: str, expect_gcx: bool) 
 
 
 def claude_dispatch(task: Task) -> dict[str, Any]:
+    # Explicit branch, not MCP-server auto-detection: when Claude Code spawns
+    # the gcx MCP server via an inline --mcp-config (as this harness does,
+    # rather than a project .mcp.json), the server's cwd-based branch
+    # detection does not reliably land on the repo_dir checked out by
+    # prepare_repo, silently resolving to "main" instead of "gcx-bench" and
+    # returning zero results for a real, indexed symbol.
+    branch = "gcx-bench"
     if task.action == "search":
-        return {"action": "search_code", "params": {"query": task.query, "limit": 10}}
+        return {"action": "search_code", "params": {"query": task.query, "limit": 10, "branch": branch}}
     if task.action == "tour":
-        return {"action": "start_tour", "params": {"limit": 10}}
+        return {"action": "start_tour", "params": {"limit": 10, "branch": branch}}
     if task.action == "callers":
         return {
             "action": "find_callers",
-            "params": {"function_name": task.query or "", "depth": 1},
+            "params": {"function_name": task.query or "", "depth": 1, "branch": branch},
         }
     if task.action == "subgraph":
         return {
             "action": "get_subgraph",
-            "params": {"seed_name": task.query or "", "depth": 1, "limit": 30},
+            "params": {"seed_name": task.query or "", "depth": 1, "limit": 30, "branch": branch},
         }
     if task.action == "impact":
         return {
             "action": "pre_edit_impact",
-            "params": {"function_name": task.query or "", "depth": 2},
+            "params": {"function_name": task.query or "", "depth": 2, "branch": branch},
         }
     if task.action == "architecture":
         return {
             "action": "get_subgraph",
-            "params": {"seed_name": task.query or "", "depth": 2, "limit": 30},
+            "params": {"seed_name": task.query or "", "depth": 2, "limit": 30, "branch": branch},
         }
     if task.action == "refactor":
-        return {"action": "symbol_context", "params": {"name": task.query or ""}}
+        return {"action": "symbol_context", "params": {"name": task.query or "", "branch": branch}}
     raise BenchError(f"unsupported task action: {task.action}")
 
 
