@@ -148,6 +148,13 @@ pub(super) fn bulk_load(
     // ── COPY ───────────────────────────────────────────────────────────────────
     // Header-less CSV; column order matches the table declaration.
     let nodes_path = nodes_csv.to_string_lossy().replace('\'', "\\'");
+    // PARALLEL=false is load-bearing, not just conservative: Kuzu's parallel
+    // CSV importer doesn't support quoted fields containing newlines
+    // (kuzudb/kuzu#5778), and our node CSVs routinely have them — docstrings
+    // and multi-line signatures survive into `csv_quote()`'s RFC-4180
+    // doubled-quote escaping. Flipping this risks reintroducing a crash class
+    // adjacent to the one fixed in 361cbbf, on a now-archived dependency with
+    // no upstream to report a regression to.
     conn.query(&format!(
         "COPY {nt} FROM '{nodes_path}' (HEADER=false, PARALLEL=false, ESCAPE='\"')"
     ))
@@ -155,6 +162,8 @@ pub(super) fn bulk_load(
 
     if edge_count > 0 {
         let edges_path = edges_csv.to_string_lossy().replace('\'', "\\'");
+        // Same reasoning as the nodes COPY above — edge CSVs can also carry
+        // multiline confidence/kind strings via csv_quote(); keep PARALLEL=false.
         conn.query(&format!(
             "COPY {et} FROM '{edges_path}' (HEADER=false, PARALLEL=false, ESCAPE='\"')"
         ))
