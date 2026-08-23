@@ -40,12 +40,15 @@ command -v gcx >/dev/null 2>&1 || exit 0
 gcx query context "$file_path" 2>/dev/null || true
 "#;
 
-const SKILLS: &[(&str, &str)] = &[
+/// (skill name, one-line description for frontmatter, body). Claude Code
+/// discovers skills at `.claude/skills/<name>/SKILL.md` with YAML
+/// frontmatter — a bare `.claude/skills/gcx/<name>.md` file (the previous
+/// shape here) is not a recognized skill location and was never discovered.
+pub(crate) const SKILLS: &[(&str, &str, &str)] = &[
     (
-        "exploring.md",
-        r#"# Exploring Unfamiliar Code
-
-Use the GitCortex knowledge graph to navigate unfamiliar parts of the codebase fast.
+        "exploring",
+        "Navigate unfamiliar code fast using the GitCortex knowledge graph",
+        r#"Use the GitCortex knowledge graph to navigate unfamiliar parts of the codebase fast.
 
 ## Workflow
 
@@ -61,10 +64,9 @@ Use the GitCortex knowledge graph to navigate unfamiliar parts of the codebase f
 "#,
     ),
     (
-        "debugging.md",
-        r#"# Debugging with the Call Graph
-
-Trace bugs backward through the call chain using the knowledge graph.
+        "debugging",
+        "Trace bugs backward through the call chain using the GitCortex knowledge graph",
+        r#"Trace bugs backward through the call chain using the knowledge graph.
 
 ## Workflow
 
@@ -75,10 +77,9 @@ Trace bugs backward through the call chain using the knowledge graph.
 "#,
     ),
     (
-        "impact-analysis.md",
-        r#"# Impact Analysis Before Making Changes
-
-Before modifying a function, struct, or trait — understand everything that depends on it.
+        "impact-analysis",
+        "Understand everything that depends on a symbol before changing it",
+        r#"Before modifying a function, struct, or trait — understand everything that depends on it.
 
 ## Workflow
 
@@ -89,10 +90,9 @@ Before modifying a function, struct, or trait — understand everything that dep
 "#,
     ),
     (
-        "refactoring.md",
-        r#"# Safe Refactoring with Dependency Mapping
-
-Use the knowledge graph to plan refactors in the right order and avoid breaking changes.
+        "refactoring",
+        "Plan refactors in the right order using the dependency graph",
+        r#"Use the knowledge graph to plan refactors in the right order and avoid breaking changes.
 
 ## Workflow
 
@@ -193,13 +193,15 @@ fn write_slash_commands(repo_root: &Path) -> Result<usize> {
 }
 
 fn write_skills(repo_root: &Path) -> Result<usize> {
-    let dir = repo_root.join(".claude").join("skills").join("gcx");
-    fs::create_dir_all(&dir)?;
+    let skills_dir = repo_root.join(".claude").join("skills");
     let mut written = 0;
-    for (filename, content) in SKILLS {
-        let path = dir.join(filename);
+    for (name, description, body) in SKILLS {
+        let dir = skills_dir.join(name);
+        fs::create_dir_all(&dir)?;
+        let path = dir.join("SKILL.md");
         if !path.exists() {
-            fs::write(&path, content).with_context(|| format!("write skill {filename}"))?;
+            let content = format!("---\nname: {name}\ndescription: {description}\n---\n\n{body}");
+            fs::write(&path, content).with_context(|| format!("write skill {name}"))?;
             written += 1;
         }
     }
@@ -270,5 +272,29 @@ fn add_gcx_hook_entry(root: &mut Value) {
     });
     if arr.is_none() {
         root["hooks"]["PreToolUse"] = json!([hook]);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::write_skills;
+
+    #[test]
+    fn writes_skills_as_skill_md_per_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let written = write_skills(dir.path()).unwrap();
+        assert_eq!(written, 4);
+        let path = dir.path().join(".claude/skills/exploring/SKILL.md");
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.starts_with("---\nname: exploring\n"));
+        assert!(content.contains("description:"));
+    }
+
+    #[test]
+    fn skills_are_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        write_skills(dir.path()).unwrap();
+        let second = write_skills(dir.path()).unwrap();
+        assert_eq!(second, 0);
     }
 }
