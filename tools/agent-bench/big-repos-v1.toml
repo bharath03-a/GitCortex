@@ -1,0 +1,146 @@
+suite = "big-repos-v1"
+version = 1
+
+[[repos]]
+name = "tokio"
+url = "https://github.com/tokio-rs/tokio"
+commit = "ea91b33ca57ff0581b38e735cc108f831bccbdaa"
+
+[[repos]]
+name = "django"
+url = "https://github.com/django/django"
+commit = "03988c5a5ba248c3b9b11ea96fd4fda5e98849aa"
+
+[[repos]]
+name = "nextjs"
+url = "https://github.com/vercel/next.js"
+commit = "d898c8f590819fb54cdfa374c9181ade59eb7533"
+
+[[repos]]
+name = "moby"
+url = "https://github.com/moby/moby"
+commit = "a22b0afeee12a9a5b23634b17e873b285fc6fa5e"
+
+[[repos]]
+name = "spring-boot"
+url = "https://github.com/spring-projects/spring-boot"
+commit = "c329ffa25dc160a90ebe5e4b006ad4cdf89d8683"
+
+# Targets and expected evidence are verified directly against the pinned
+# commit source (grep/read), never guessed and never read back from gcx.
+
+[[tasks]]
+id = "tokio-search-notify"
+repo = "tokio"
+action = "search"
+query = "Notify"
+required = ["tokio/src/sync/notify.rs", "Notify"]
+max_bytes = 5000
+# Notify is defined once, at tokio/src/sync/notify.rs:199.
+relevant_files = ["tokio/src/sync/notify.rs"]
+relevant_symbols = ["Notify"]
+
+[[tasks]]
+id = "tokio-callers-notify-waiters"
+repo = "tokio"
+action = "callers"
+query = "crate::Notify::notify_waiters"
+# watch.rs's BigNotify::notify_waiters (line 406) loops over an array of
+# Notify and calls notify.notify_waiters() on each — a real call site.
+required = ["tokio/src/sync/watch.rs"]
+max_bytes = 4000
+min_evidence = 1
+
+[[tasks]]
+id = "django-search-queryset"
+repo = "django"
+action = "search"
+query = "QuerySet"
+required = ["django/db/models/query.py", "QuerySet"]
+max_bytes = 5000
+# QuerySet is defined once, at django/db/models/query.py:374.
+relevant_files = ["django/db/models/query.py"]
+relevant_symbols = ["QuerySet"]
+
+[[tasks]]
+id = "django-callers-filter"
+repo = "django"
+action = "callers"
+query = "QuerySet.filter"
+# ModelAdmin.get_search_results (options.py:1301) calls queryset.filter(...) at line 1383.
+required = ["django/contrib/admin/options.py"]
+max_bytes = 4000
+min_evidence = 1
+
+[[tasks]]
+id = "nextjs-search-use-router"
+repo = "nextjs"
+action = "search"
+query = "useRouter"
+required = ["packages/next/src/client/router.ts", "useRouter"]
+max_bytes = 5000
+# useRouter has both a pages-router definition (client/router.ts:138) and an
+# app-router definition (client/components/navigation.ts:166).
+relevant_files = [
+  "packages/next/src/client/router.ts",
+  "packages/next/src/client/components/navigation.ts",
+]
+relevant_symbols = ["useRouter"]
+
+[[tasks]]
+id = "nextjs-callers-normalize-page-path"
+repo = "nextjs"
+action = "callers"
+query = "normalizePagePath"
+required = ["packages/next/src/build/index.ts"]
+max_bytes = 4000
+min_evidence = 1
+
+[[tasks]]
+id = "moby-search-container-create"
+repo = "moby"
+action = "search"
+query = "ContainerCreate"
+required = ["daemon/create.go", "ContainerCreate"]
+max_bytes = 5000
+# Daemon.ContainerCreate is defined once, at daemon/create.go:52.
+relevant_files = ["daemon/create.go"]
+relevant_symbols = ["ContainerCreate"]
+
+[[tasks]]
+id = "moby-callers-container-kill"
+repo = "moby"
+action = "callers"
+query = "Daemon.ContainerKill"
+# containerRouter.postContainersKill (container_routes.go:339) calls
+# c.backend.ContainerKill(...) at line 344.
+required = ["daemon/server/router/container/container_routes.go"]
+max_bytes = 4000
+min_evidence = 1
+
+[[tasks]]
+id = "springboot-search-spring-application"
+repo = "spring-boot"
+action = "search"
+query = "SpringApplication"
+required = [
+  "core/spring-boot/src/main/java/org/springframework/boot/SpringApplication.java",
+  "SpringApplication",
+]
+max_bytes = 5000
+# SpringApplication is defined once, in core/spring-boot/.../SpringApplication.java.
+relevant_files = ["core/spring-boot/src/main/java/org/springframework/boot/SpringApplication.java"]
+relevant_symbols = ["SpringApplication"]
+
+[[tasks]]
+id = "springboot-callers-get-main-application-class"
+repo = "spring-boot"
+action = "callers"
+query = "SpringApplication.getMainApplicationClass"
+# StartupTimeMetricsListener.createTagsFrom calls springApplication.getMainApplicationClass()
+# at line 128.
+required = [
+  "module/spring-boot-micrometer-metrics/src/main/java/org/springframework/boot/micrometer/metrics/startup/StartupTimeMetricsListener.java",
+]
+max_bytes = 4000
+min_evidence = 1
