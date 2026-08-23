@@ -440,6 +440,7 @@ Question: {q}"""
 
 AGY_MCP_CONFIG = Path.home() / ".gemini" / "config" / "mcp_config.json"
 AGY_SERVER_NAME = "gitcortex"
+AGY_SETTINGS = Path.home() / ".gemini" / "antigravity-cli" / "settings.json"
 
 
 @contextlib.contextmanager
@@ -459,6 +460,41 @@ def agy_mcp_config(gcx: Path, enabled: bool):
             AGY_MCP_CONFIG.write_text(previous, encoding="utf-8")
         else:
             AGY_MCP_CONFIG.unlink(missing_ok=True)
+
+
+@contextlib.contextmanager
+def agy_permissions_config(enabled: bool):
+    """agy has no per-invocation permissions flag either; headless mode
+    auto-denies any tool call needing a permission prompt (it does not hang,
+    unlike --sandbox) unless the target is pre-approved. The scoped grant is
+    `mcp(<server>/<tool>)` under `permissions.allow` in the CLI's
+    settings.json -- confirmed by testing directly against the agy binary:
+    without this key, a headless call_mcp_tool step fails with "user denied
+    permission for mcp(gitcortex/gcx)"; with it, the call succeeds and
+    returns real gcx evidence. This merges into the user's existing
+    settings.json and restores the original content afterward, mirroring
+    agy_mcp_config's swap-and-restore pattern so a benchmark run never
+    leaves the user's own agy setup altered."""
+    AGY_SETTINGS.parent.mkdir(parents=True, exist_ok=True)
+    previous = AGY_SETTINGS.read_text(encoding="utf-8") if AGY_SETTINGS.exists() else None
+    settings = json.loads(previous) if previous else {}
+    # command(pwd) is here because agy orients itself with a `pwd` run_command
+    # call on nearly every task before touching gcx or any file tool; without
+    # this grant that first orientation step gets auto-denied in headless
+    # mode and the whole run fails before the MCP call is ever reached --
+    # observed directly via agent_run.py --client agy runs during testing.
+    allow = ["command(pwd)"]
+    if enabled:
+        allow.insert(0, f"mcp({AGY_SERVER_NAME}/gcx)")
+    settings["permissions"] = {"allow": allow}
+    AGY_SETTINGS.write_text(json.dumps(settings), encoding="utf-8")
+    try:
+        yield
+    finally:
+        if previous is not None:
+            AGY_SETTINGS.write_text(previous, encoding="utf-8")
+        else:
+            AGY_SETTINGS.unlink(missing_ok=True)
 
 
 def parse_agy_events(raw: str, task: Task, expect_gcx: bool) -> ArmResult:
@@ -563,11 +599,12 @@ Question: {q}"""
         "stream-json",
         "--model",
         model,
-        "--dangerously-skip-permissions",
+        "--mode",
+        "accept-edits",
         "--print-timeout",
         "300s",
     ]
-    with agy_mcp_config(gcx, enabled=(arm == "gcx")):
+    with agy_mcp_config(gcx, enabled=(arm == "gcx")), agy_permissions_config(enabled=(arm == "gcx")):
         result = subprocess.run(
             command,
             cwd=repo_dir,
