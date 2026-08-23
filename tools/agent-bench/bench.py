@@ -16,6 +16,7 @@ import subprocess
 import sys
 import time
 import tomllib
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -142,6 +143,44 @@ def load_suite(path: Path) -> tuple[dict[str, Any], dict[str, Repo], list[Task]]
     return raw, repos, tasks
 
 
+# Substring of serve_lock.rs's RepositoryLock::try_acquire failure message
+# (crates/gitcortex-cli/src/cmd/serve_lock.rs:21-28). Transient: a prior
+# bench run's `gcx serve`/`gcx viz` can still be releasing the OS-level
+# flock when the next run's prepare_repo starts.
+LOCK_ERROR_TEXT = "repository graph is active"
+LOCK_RETRY_BACKOFFS_S: tuple[float, ...] = (2, 4, 8)
+
+
+def run_with_lock_retry(
+    command: list[str],
+    cwd: Path | None,
+    context: str,
+    run_fn: Callable[[list[str], Path | None], subprocess.CompletedProcess[str]] = run,
+    sleep: Callable[[float], None] = time.sleep,
+) -> str:
+    """Run `command`, retrying on RepositoryLock's transient "repository
+    graph is active" error before giving up.
+
+    The OS-level flock (`RepositoryLock`) itself is correct — it's released
+    automatically on process exit or crash. The failure this retries is a
+    genuine contention race: a previous run's `gcx serve`/`gcx viz` process
+    can still be tearing down and holding the lock when a fresh
+    `prepare_repo` starts its mutating `gcx clean`/`gcx hook` calls. A
+    bounded retry with backoff lets that teardown finish instead of hard-
+    failing the whole task on the first `WouldBlock`.
+    """
+    last_result: subprocess.CompletedProcess[str] | None = None
+    for attempt, backoff in enumerate((*LOCK_RETRY_BACKOFFS_S, None)):
+        last_result = run_fn(command, cwd)
+        if last_result.returncode == 0:
+            return last_result.stdout
+        if LOCK_ERROR_TEXT not in last_result.stdout and LOCK_ERROR_TEXT not in last_result.stderr:
+            break
+        if backoff is not None:
+            sleep(backoff)
+    return require_ok(last_result, context)  # type: ignore[arg-type]
+
+
 def prepare_repo(repo: Repo, work: Path, gcx: Path, reuse_index: bool) -> tuple[Path, float]:
     repo_dir = work / "repos" / repo.name
     repo_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -162,8 +201,8 @@ def prepare_repo(repo: Repo, work: Path, gcx: Path, reuse_index: bool) -> tuple[
     )
     started = time.perf_counter()
     if not reuse_index:
-        require_ok(run([str(gcx), "clean"], repo_dir), f"clean {repo.name}")
-        require_ok(run([str(gcx), "hook"], repo_dir), f"index {repo.name}")
+        run_with_lock_retry([str(gcx), "clean"], repo_dir, f"clean {repo.name}")
+        run_with_lock_retry([str(gcx), "hook"], repo_dir, f"index {repo.name}")
     status = require_ok(run([str(gcx), "status", "--branch", "gcx-bench"], repo_dir), f"status {repo.name}")
     if "nodes:      0" in status or "nodes: 0" in status:
         raise BenchError(f"{repo.name}: index contains zero nodes")
