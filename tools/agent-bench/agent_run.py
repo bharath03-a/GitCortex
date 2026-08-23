@@ -474,7 +474,12 @@ def agy_permissions_config(enabled: bool):
     returns real gcx evidence. This merges into the user's existing
     settings.json and restores the original content afterward, mirroring
     agy_mcp_config's swap-and-restore pattern so a benchmark run never
-    leaves the user's own agy setup altered."""
+    leaves the user's own agy setup altered.
+
+    Note: `run_agy_arm` also passes --dangerously-skip-permissions, which
+    supersedes these scoped grants -- kept anyway so the mcp()/pwd grants
+    stay documented and this function still does something useful if that
+    flag is ever dropped for a future run that doesn't need read_file."""
     AGY_SETTINGS.parent.mkdir(parents=True, exist_ok=True)
     previous = AGY_SETTINGS.read_text(encoding="utf-8") if AGY_SETTINGS.exists() else None
     settings = json.loads(previous) if previous else {}
@@ -568,9 +573,17 @@ def run_agy_arm(
     log_path: Path,
 ) -> ArmResult:
     q = question(task)
+    # agy's file-search/read tools do not reliably infer the repo root from
+    # the process cwd — traced runs showed SearchDirectory defaulting to
+    # $HOME, triggering an unbounded find/mdfind/ps scavenger hunt (10-20
+    # commands per task instead of 1) instead of a focused read scoped to
+    # the actual checkout. Stating the absolute path explicitly avoids that.
+    repo_note = f"The repository you are exploring is at the absolute path {repo_dir} — always scope file reads and searches to this path, never elsewhere (e.g. never your home directory)."
     if arm == "gcx":
         dispatch = json.dumps(claude_dispatch(task), separators=(",", ":"))
         prompt = f"""You are evaluating a graph-first code exploration workflow.
+
+{repo_note}
 
 Before any ordinary source search, call the gitcortex MCP tool named exactly "gcx" exactly once with this payload:
 {dispatch}
@@ -587,6 +600,8 @@ Question: {q}"""
     else:
         prompt = f"""You are evaluating ordinary codebase exploration.
 
+{repo_note}
+
 Do not use gitcortex, gcx, MCP, or any graph database. Use normal source search and focused reads. Do not edit files. Keep the final answer concise and cite repository-relative files.
 
 Question: {q}"""
@@ -601,6 +616,15 @@ Question: {q}"""
         model,
         "--mode",
         "accept-edits",
+        # agy's read_file permission only accepts an exact literal path grant
+        # ("read_file(/abs/path/to/file.py)") — no directory wildcard, no
+        # bare unscoped form (both tested live and confirmed denied). Since
+        # the verification-read files aren't known ahead of a run, they
+        # can't be pre-granted; --dangerously-skip-permissions is the only
+        # viable non-interactive path for this specific tool. mcp()/pwd
+        # grants in agy_permissions_config are kept for the gcx call itself
+        # (narrower than a full skip) even though this flag supersedes them.
+        "--dangerously-skip-permissions",
         "--print-timeout",
         "300s",
     ]
