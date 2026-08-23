@@ -1,11 +1,19 @@
-"""Tests for codegraph_compare.py's exactly-once Bash-call check."""
+"""Tests for codegraph_compare.py's exactly-once Bash-call check, the
+per-client baseline lookup, and the gcx/suite staleness gate."""
 
 from __future__ import annotations
 
 import json
+import tempfile
 import unittest
+from pathlib import Path
 
-from codegraph_compare import count_bash_tool_calls
+from codegraph_compare import (
+    count_bash_tool_calls,
+    check_baseline_freshness,
+    codegraph_command,
+    BASELINE_LABEL_BY_CLIENT,
+)
 
 
 def bash_event(command: str) -> str:
@@ -88,6 +96,83 @@ class CountBashToolCallsTest(unittest.TestCase):
         )
         codegraph_calls, _ = count_bash_tool_calls(stream)
         self.assertEqual(codegraph_calls, 1)
+
+
+class SimpleTask:
+    def __init__(self, action: str, query: str) -> None:
+        self.action = action
+        self.query = query
+
+
+class CodegraphCommandTest(unittest.TestCase):
+    def test_search_action_maps_to_query(self) -> None:
+        self.assertEqual(codegraph_command(SimpleTask("search", "Notify")), ["codegraph", "query", "Notify"])
+
+    def test_callers_action_maps_to_callers(self) -> None:
+        self.assertEqual(codegraph_command(SimpleTask("callers", "QuerySet.filter")), ["codegraph", "callers", "filter"])
+
+
+class BaselineLabelByClientTest(unittest.TestCase):
+    def test_claude_and_codex_have_distinct_baseline_labels(self) -> None:
+        self.assertEqual(BASELINE_LABEL_BY_CLIENT["claude"], "big-repos-claude-fixed")
+        self.assertEqual(BASELINE_LABEL_BY_CLIENT["codex"], "big-repos-codex")
+        self.assertNotEqual(BASELINE_LABEL_BY_CLIENT["claude"], BASELINE_LABEL_BY_CLIENT["codex"])
+
+
+def meta_line(gcx_sha256: str, suite_sha256: str) -> str:
+    return json.dumps({"type": "meta", "gcx_sha256": gcx_sha256, "suite_sha256": suite_sha256})
+
+
+class CheckBaselineFreshnessTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.gcx_path = Path(self.tmpdir.name) / "gcx"
+        self.gcx_path.write_bytes(b"fake binary contents")
+
+    def tearDown(self) -> None:
+        self.tmpdir.cleanup()
+
+    def _real_gcx_sha(self) -> str:
+        import hashlib
+
+        return hashlib.sha256(self.gcx_path.read_bytes()).hexdigest()
+
+    def _real_suite_sha(self) -> str:
+        import hashlib
+
+        from codegraph_compare import SUITE_PATH
+
+        return hashlib.sha256(SUITE_PATH.read_bytes()).hexdigest()
+
+    def test_matching_hashes_pass_silently(self) -> None:
+        baseline = Path(self.tmpdir.name) / "baseline.jsonl"
+        baseline.write_text(meta_line(self._real_gcx_sha(), self._real_suite_sha()) + "\n")
+        check_baseline_freshness(baseline, self.gcx_path)  # must not raise
+
+    def test_mismatched_gcx_hash_raises(self) -> None:
+        baseline = Path(self.tmpdir.name) / "baseline.jsonl"
+        baseline.write_text(meta_line("stale-hash", self._real_suite_sha()) + "\n")
+        with self.assertRaises(SystemExit):
+            check_baseline_freshness(baseline, self.gcx_path)
+
+    def test_mismatched_suite_hash_raises(self) -> None:
+        baseline = Path(self.tmpdir.name) / "baseline.jsonl"
+        baseline.write_text(meta_line(self._real_gcx_sha(), "stale-suite-hash") + "\n")
+        with self.assertRaises(SystemExit):
+            check_baseline_freshness(baseline, self.gcx_path)
+
+    def test_missing_meta_line_raises(self) -> None:
+        baseline = Path(self.tmpdir.name) / "baseline.jsonl"
+        baseline.write_text(json.dumps({"type": "sample"}) + "\n")
+        with self.assertRaises(SystemExit):
+            check_baseline_freshness(baseline, self.gcx_path)
+
+    def test_missing_gcx_binary_raises(self) -> None:
+        baseline = Path(self.tmpdir.name) / "baseline.jsonl"
+        baseline.write_text(meta_line(self._real_gcx_sha(), self._real_suite_sha()) + "\n")
+        missing_gcx = Path(self.tmpdir.name) / "does-not-exist"
+        with self.assertRaises(SystemExit):
+            check_baseline_freshness(baseline, missing_gcx)
 
 
 if __name__ == "__main__":

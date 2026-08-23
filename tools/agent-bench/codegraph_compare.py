@@ -1,27 +1,35 @@
 #!/usr/bin/env python3
 """GitCortex vs CodeGraph (https://github.com/colbymchenry/codegraph) comparison.
 
-Reuses baseline (grep) and gcx numbers already collected in
-big-repos-claude-fixed-*.agent.jsonl (the completed run against
-big-repos-v1.toml: 5 big repos — tokio, django, nextjs, moby, spring-boot —
-10 tasks total). Only the codegraph arm is run fresh here, against the same
-tasks, same questions, same required-evidence contracts, same client
-(Claude Code).
+Reuses baseline (grep) and gcx numbers already collected against
+big-repos-v1.toml (5 big repos — tokio, django, nextjs, moby, spring-boot —
+10 tasks total) by agent_run.py. Only the codegraph arm is run fresh here,
+against the same tasks/questions/evidence contracts, on the SAME client the
+baseline was captured with (--client claude|codex) — the comparison must
+hold the LLM constant and only swap the retrieval tool, so each client reuses
+its own baseline file (see BASELINE_LABEL_BY_CLIENT), never another client's.
+Before comparing, check_baseline_freshness() refuses to mix a baseline
+captured against a different gcx build or suite version with a fresh run.
+
+agy is not wired in yet — its cwd-vs-home-directory tool-call bug (see
+docs/CROSS-AGENT-BENCHMARK-DESIGN.md) needs its own fix first.
 
 CodeGraph has no MCP mode wired into this harness (yet) — it's driven via
 its own CLI (`codegraph query`/`codegraph callers`), mirroring how
-graphify_compare.py drives Graphify and how the existing harness drives
-Codex through gcx's CLI. This is a code-only comparison: CodeGraph also
-indexes docs/SQL/configs (it parses far more file types than GitCortex's
-tree-sitter-only Rust/Go/Python/TS/Java scope), and that gap is reported
-explicitly rather than tested around.
+graphify_compare.py drives Graphify and how agent_run.py's codex lane drives
+gcx through its own CLI rather than MCP. This is a code-only comparison:
+CodeGraph also indexes docs/SQL/configs (it parses far more file types than
+GitCortex's tree-sitter-only Rust/Go/Python/TS/Java scope), and that gap is
+reported explicitly rather than tested around.
 """
 
 from __future__ import annotations
 
+import argparse
 import glob
 import json
 import os
+import shlex
 import subprocess
 import sys
 from dataclasses import asdict
@@ -30,13 +38,27 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from bench import load_suite  # noqa: E402
-from agent_run import ArmResult, question, parse_claude_events, error_arm_result  # noqa: E402
+from bench import load_suite, sha256  # noqa: E402
+from agent_run import (  # noqa: E402
+    ArmResult,
+    question,
+    parse_claude_events,
+    parse_codex_events,
+    error_arm_result,
+)
 
 REPOS_DIR = Path("/private/tmp/gcx-agent-bench/repos")
 RESULTS_DIR = HERE / "results"
 SUITE_PATH = HERE / "big-repos-v1.toml"
-BASELINE_LABEL = "big-repos-claude-fixed"
+DEFAULT_GCX = HERE.parent.parent / "target" / "release" / "gcx"
+
+# Baseline (grep-only) answers are client-specific — the comparison must hold
+# the LLM constant and only swap the retrieval tool, so codex's CodeGraph arm
+# must reuse codex's own baseline, not claude's.
+BASELINE_LABEL_BY_CLIENT = {
+    "claude": "big-repos-claude-fixed",
+    "codex": "big-repos-codex",
+}
 
 TASK_IDS = [
     "tokio-search-notify",
@@ -52,16 +74,47 @@ TASK_IDS = [
 ]
 
 
-def find_baseline_source() -> Path:
-    candidates = sorted(RESULTS_DIR.glob(f"{BASELINE_LABEL}-*.agent.jsonl"))
+def find_baseline_source(client: str) -> Path:
+    label = BASELINE_LABEL_BY_CLIENT[client]
+    candidates = sorted(RESULTS_DIR.glob(f"{label}-*.agent.jsonl"))
     if not candidates:
-        raise SystemExit(f"no completed baseline file matching {BASELINE_LABEL}-*.agent.jsonl in {RESULTS_DIR}")
+        raise SystemExit(f"no completed baseline file matching {label}-*.agent.jsonl in {RESULTS_DIR}")
     # Prefer the most recently written, complete (has a summary line) file.
     for path in reversed(candidates):
         lines = path.read_text(encoding="utf-8").splitlines()
         if any(json.loads(line).get("type") == "summary" for line in lines if line.strip()):
             return path
     raise SystemExit(f"no complete (summary-terminated) baseline file found among {candidates}")
+
+
+def check_baseline_freshness(baseline_path: Path, gcx_path: Path) -> None:
+    """Refuse to mix a baseline captured against a different gcx build or a
+    different suite version with a fresh CodeGraph comparison run — a silent
+    mismatch here would compare CodeGraph against a gcx/suite pair that may
+    no longer exist."""
+    lines = baseline_path.read_text(encoding="utf-8").splitlines()
+    meta = next((json.loads(line) for line in lines if line.strip() and json.loads(line).get("type") == "meta"), None)
+    if meta is None:
+        raise SystemExit(f"{baseline_path} has no meta line — cannot verify freshness, refusing to proceed")
+
+    if not gcx_path.exists():
+        raise SystemExit(f"gcx binary not found at {gcx_path} — build it first (cargo build --release -p gitcortex)")
+    current_gcx_sha = sha256(gcx_path)
+    if meta.get("gcx_sha256") != current_gcx_sha:
+        raise SystemExit(
+            f"baseline {baseline_path} was captured against gcx_sha256={meta.get('gcx_sha256')}, "
+            f"but the current binary at {gcx_path} hashes to {current_gcx_sha}. "
+            "Rebuild the baseline (agent_run.py) against the current binary before comparing, "
+            "or point --gcx at the binary the baseline actually used."
+        )
+
+    current_suite_sha = sha256(SUITE_PATH)
+    if meta.get("suite_sha256") != current_suite_sha:
+        raise SystemExit(
+            f"baseline {baseline_path} was captured against suite_sha256={meta.get('suite_sha256')}, "
+            f"but {SUITE_PATH} currently hashes to {current_suite_sha}. "
+            "The task suite changed since the baseline was captured — rerun the baseline first."
+        )
 
 
 def short_name(query: str) -> str:
@@ -130,7 +183,77 @@ def count_bash_tool_calls(stdout: str) -> tuple[int, int]:
     return codegraph_calls, other_bash_calls
 
 
-def run_codegraph_arm(task, repo_dir: Path, log_path: Path) -> ArmResult:
+def run_codegraph_arm(client: str, task, repo_dir: Path, log_path: Path) -> ArmResult:
+    if client == "codex":
+        return run_codegraph_arm_codex(task, repo_dir, log_path)
+    return run_codegraph_arm_claude(task, repo_dir, log_path)
+
+
+def run_codegraph_arm_codex(task, repo_dir: Path, log_path: Path) -> ArmResult:
+    cmd = codegraph_command(task)
+    exact = shlex.join(cmd)
+    q = question(task)
+    prompt = f"""You are evaluating a graph-first code exploration workflow using the
+open-source tool CodeGraph (https://github.com/colbymchenry/codegraph).
+
+Before any ordinary source search, run this exact command once:
+{exact}
+
+Rules:
+- Run exactly one codegraph command and do not retry it.
+- If it fails, state that failure and stop; do not fall back to grep.
+- Use its output as your primary evidence.
+- You may run at most three focused source-reading commands to verify details.
+- Do not edit files. Keep the final answer concise and cite repository-relative files.
+
+Question: {q}"""
+    command = [
+        "codex",
+        "exec",
+        "--json",
+        "--ephemeral",
+        "--ignore-rules",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-m",
+        "gpt-5.4-mini",
+        "-c",
+        'model_reasoning_effort="low"',
+        "-C",
+        str(repo_dir),
+        prompt,
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            text=True,
+            input="",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=900,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return error_arm_result(str(exc))
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.write_text(result.stdout, encoding="utf-8")
+
+    # parse_codex_events counts command_execution items whose command
+    # contains gcx_marker as "gcx_calls" — repurposed here to count
+    # codegraph invocations instead (same field, different tool).
+    parsed = parse_codex_events(result.stdout, task, "codegraph", expect_gcx=True)
+    if parsed.gcx_calls == 0:
+        parsed.error = True
+        parsed.error_messages.append("codegraph command was never invoked")
+    elif parsed.gcx_calls > 1:
+        parsed.error = True
+        parsed.error_messages.append(f"codegraph command invoked {parsed.gcx_calls} times, expected 1")
+    if result.returncode != 0:
+        parsed.error = True
+        parsed.error_messages.append(f"codex exited {result.returncode}")
+    return parsed
+
+
+def run_codegraph_arm_claude(task, repo_dir: Path, log_path: Path) -> ArmResult:
     cmd = codegraph_command(task)
     exact = " ".join(cmd)
     q = question(task)
@@ -207,16 +330,22 @@ Question: {q}"""
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--client", choices=["claude", "codex"], default="claude")
+    parser.add_argument("--gcx", type=Path, default=DEFAULT_GCX)
+    args = parser.parse_args()
+
     _, repos, tasks = load_suite(SUITE_PATH)
     by_id = {t.id: t for t in tasks}
-    baseline_source = find_baseline_source()
+    baseline_source = find_baseline_source(args.client)
+    check_baseline_freshness(baseline_source, args.gcx)
     existing = load_existing_arms(baseline_source)
     missing = [tid for tid in TASK_IDS if tid not in existing]
     if missing:
         raise SystemExit(f"baseline file {baseline_source} is missing task ids: {missing}")
 
-    output = RESULTS_DIR / "codegraph-compare.jsonl"
-    logs = RESULTS_DIR / "codegraph-compare-logs"
+    output = RESULTS_DIR / f"codegraph-compare-{args.client}.jsonl"
+    logs = RESULTS_DIR / f"codegraph-compare-{args.client}-logs"
     logs.mkdir(parents=True, exist_ok=True)
 
     results = []
@@ -224,7 +353,7 @@ def main() -> int:
         task = by_id[task_id]
         repo_dir = REPOS_DIR / task.repo
         print(f"[{index}/{len(TASK_IDS)}] {task_id}", file=sys.stderr)
-        codegraph_arm = run_codegraph_arm(task, repo_dir, logs / f"{task_id}-codegraph.jsonl")
+        codegraph_arm = run_codegraph_arm(args.client, task, repo_dir, logs / f"{task_id}-codegraph.jsonl")
         baseline_arm = existing[task_id]["baseline"]
         gcx_arm = existing[task_id]["gcx"]
         print(
@@ -247,7 +376,10 @@ def main() -> int:
     with output.open("w", encoding="utf-8") as handle:
         for row in results:
             handle.write(json.dumps(row, sort_keys=True) + "\n")
-    print(json.dumps({"output": str(output), "baseline_source": str(baseline_source), "tasks": len(results)}, indent=2))
+    print(json.dumps(
+        {"output": str(output), "client": args.client, "baseline_source": str(baseline_source), "tasks": len(results)},
+        indent=2,
+    ))
     return 0
 
 
