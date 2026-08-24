@@ -3,19 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="How GitCortex compares to Graphify, another open-source code knowledge graph for AI agents. Same repos, same client, same questions — including where Graphify wins.">
-  <title>Compare — GitCortex</title>
+  <meta name="description" content="How GitCortex compares to CodeGraph across three real AI clients — Claude Code, Codex, and Antigravity. Same 10 questions, fresh baselines each time, including where CodeGraph wins.">
+  <title>Compare vs CodeGraph — GitCortex</title>
 
   <meta property="og:type"        content="website">
-  <meta property="og:url"         content="https://bharath03-a.github.io/GitCortex/compare.html">
-  <meta property="og:title"       content="How GitCortex compares — GitCortex">
-  <meta property="og:description" content="Same repos, same client, same questions. Real numbers, including where the other tool wins.">
+  <meta property="og:url"         content="https://bharath03-a.github.io/GitCortex/compare-codegraph.html">
+  <meta property="og:title"       content="How GitCortex compares to CodeGraph — GitCortex">
+  <meta property="og:description" content="Same repos, same questions, three real AI clients. Real numbers, including where CodeGraph wins.">
   <meta property="og:image"       content="https://raw.githubusercontent.com/bharath03-a/GitCortex/main/assets/icon.svg">
 
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="shortcut icon" type="image/x-icon" href="favicon.ico">
   <link rel="apple-touch-icon" href="favicon.svg">
-  <link rel="canonical" href="https://bharath03-a.github.io/GitCortex/compare.html">
+  <link rel="canonical" href="https://bharath03-a.github.io/GitCortex/compare-codegraph.html">
   <style>
     @font-face {
       font-family: "Space Grotesk"; font-style: normal; font-weight: 400; font-display: swap;
@@ -107,7 +107,7 @@
     .bar-track { height: 10px; border-radius: 6px; background: var(--rule-soft); overflow: hidden; }
     .bar-fill { height: 100%; border-radius: 6px; }
     .bar-fill.gitcortex { background: var(--good); }
-    .bar-fill.graphify { background: var(--ink-3); }
+    .bar-fill.codegraph { background: var(--ink-3); }
     .bar-metric-name { font-family: var(--mono); font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); margin-bottom: 10px; }
 
     .card-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
@@ -184,58 +184,50 @@
 
 <header class="hero">
   <div class="wrap">
-    <span class="eyebrow">Compare · measured, not estimated</span>
-    <h1>How GitCortex compares to Graphify.</h1>
+    <span class="eyebrow">Compare · measured across 3 real AI clients</span>
+    <h1>How GitCortex compares to CodeGraph.</h1>
     <p class="lede">
-      Graphify is a real, fast-growing open-source project — 106,000+ GitHub stars in 4.5 months —
-      that does the same core thing GitCortex does: turn a codebase into a graph an AI agent can
-      query instead of grepping. We ran both against the same repos and questions to see, honestly,
-      where each one is actually stronger.
+      CodeGraph is another local code-knowledge-graph tool built for AI coding agents. Rather than
+      run it once through one client, we ran the same 10 questions against five real repos through
+      three independent AI clients — Claude Code, Codex, and Antigravity — with a fresh baseline
+      captured for each, so nothing stale got compared.
     </p>
     <div class="tldr">
       <div class="tldr-label">In short</div>
-      <p>On the same 15 code-navigation questions, GitCortex answered more accurately and used about a third fewer tokens doing it. Graphify pulled ahead on questions its own broader feature set is built for — more languages, and reading docs/config alongside code.</p>
-      <p>Neither result is the whole story. Read on for the numbers, or skip straight to <a href="#graphify-strengths">what Graphify does better</a>.</p>
+      <p>GitCortex answered with complete evidence accuracy (10/10) in every single run, across all three clients. CodeGraph scored 8/10 in each client — and missed the <em>same</em> call-tracing question independently, every time. Token efficiency was closer and client-dependent: CodeGraph was actually cheaper via two of the three clients.</p>
+      <p>We're posting the losses along with the wins — see <a href="#by-client">the per-client breakdown</a> for exactly where CodeGraph came out ahead.</p>
     </div>
   </div>
 </header>
 
-<section id="headline">
+<section id="by-client">
   <div class="wrap">
     <div class="section-head">
-      <h2>Code navigation: the numbers</h2>
-      <p class="note">15 questions — deep blast-radius, cross-file architecture, refactor-safety — across five real repos (ripgrep, requests, hono, cobra, gson), same AI client (Claude Code) for both tools.</p>
+      <h2>Accuracy and tokens, by client</h2>
+      <p class="note">10 tasks (search + callers, 5 repos: tokio, django, next.js, moby, spring-boot) run through each client independently, fresh baseline captured per client so nothing stale got reused across runs.</p>
     </div>
-    <div class="bar-compare">
-      <div class="bar-row">
-        <div class="bar-metric-name">Answer quality (mean, 0–1)</div>
-        <div class="bar-labels"><span class="who">GitCortex</span><span class="val">0.80</span></div>
-        <div class="bar-track"><div class="bar-fill gitcortex" style="width: 80%"></div></div>
-      </div>
-      <div class="bar-row">
-        <div class="bar-labels"><span class="who">Graphify</span><span class="val">0.50</span></div>
-        <div class="bar-track"><div class="bar-fill graphify" style="width: 50%"></div></div>
-      </div>
-      <div class="bar-row" style="margin-top: 8px;">
-        <div class="bar-metric-name">Tokens used per task (lower is better) — max 359,885</div>
-        <div class="bar-labels"><span class="who">GitCortex</span><span class="val">185,497 avg</span></div>
-        <div class="bar-track"><div class="bar-fill gitcortex" style="width: 51%"></div></div>
-      </div>
-      <div class="bar-row">
-        <div class="bar-labels"><span class="who">Graphify</span><span class="val">244,077 avg</span></div>
-        <div class="bar-track"><div class="bar-fill graphify" style="width: 68%"></div></div>
-      </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Client</th><th>GitCortex evidence</th><th>CodeGraph evidence</th><th class="num">GitCortex tokens</th><th class="num">CodeGraph tokens</th><th>Token winner</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Claude Code</td><td><span class="pill pill-good">10/10</span></td><td><span class="pill pill-warn">8/10</span></td><td class="num">1,867,650</td><td class="num">2,091,507</td><td>GitCortex (−11%)</td></tr>
+          <tr><td>Codex</td><td><span class="pill pill-good">10/10</span></td><td><span class="pill pill-warn">8/10</span></td><td class="num">595,651</td><td class="num">507,114</td><td>CodeGraph (−15%)</td></tr>
+          <tr><td>Antigravity</td><td><span class="pill pill-good">10/10</span></td><td><span class="pill pill-warn">8/10</span></td><td class="num">256,092</td><td class="num">248,211</td><td>CodeGraph (−3%)</td></tr>
+        </tbody>
+      </table>
     </div>
     <div class="card-grid" style="margin-top: 28px;">
       <div class="info-card">
         <div class="tool-name">GitCortex</div>
         <div class="tool-tag">Rust · tree-sitter · KuzuDB · MCP-native</div>
-        <p class="note">Called its MCP tool exactly once, on all 15 of 15 tasks. Never needed a fallback search.</p>
+        <p class="note">Perfect evidence accuracy in every client, every run — 30/30 tasks correct across the full sweep.</p>
       </div>
       <div class="info-card">
-        <div class="tool-name">Graphify</div>
-        <div class="tool-tag">Python · tree-sitter · JSON graph · CLI + MCP</div>
-        <p class="note">Needed 2–5 CLI calls per task (avg 2.7) to land an answer, and fell back to raw file search on 6 of 15 tasks.</p>
+        <div class="tool-name">CodeGraph</div>
+        <div class="tool-tag">Node.js · tree-sitter · CLI + MCP</div>
+        <p class="note">24/30 correct — missed the same <code>callers</code>-type task independently in all three clients (see below).</p>
       </div>
     </div>
   </div>
@@ -244,64 +236,23 @@
 <section id="why">
   <div class="wrap">
     <div class="section-head">
-      <h2>Why the gap</h2>
-      <p class="note">Graphify's underlying extraction is competent — on tasks where it resolved the right symbol, its answers were as good as GitCortex's. Two specific, repeatable patterns explain most of the difference:</p>
+      <h2>The repeatable miss</h2>
+      <p class="note">One task — tracing callers of Next.js's <code>normalizePagePath</code> — is where CodeGraph lost evidence accuracy in all three independent client runs. Not a one-off across a single flaky run: three separate clients, three separate LLM providers, same result.</p>
     </div>
     <div class="example">
-      <div class="example-label">One call vs. several, every single task</div>
+      <div class="example-label">Consistent across Claude Code, Codex, and Antigravity</div>
       <p>
-        Claude Code called GitCortex's MCP tool exactly once on every task — one structured call,
-        one sufficient answer. Against Graphify's CLI, the same model needed 2 to 5 attempts on
-        <em>every</em> task, and on 6 of 15 also fell back to raw file exploration. This wasn't a
-        one-off — it happened consistently across the whole suite, and it's the direct driver of
-        Graphify's higher token cost.
-      </p>
-    </div>
-    <div class="example">
-      <div class="example-label">A verified ambiguity bug</div>
-      <p>
-        Asked about <code>Searcher::line_number()</code> in ripgrep (a config getter), Graphify's
-        <code>affected</code> command silently traced <code>Sunk::line_number()</code> instead — an
-        unrelated method that happens to share a short name and gets called 76 times elsewhere in
-        the codebase. The answer was confident, well-formatted, and about the wrong symbol entirely.
+        A second task — tracing callers of Moby's <code>ContainerKill</code> — was also missed by CodeGraph
+        in 2 of the 3 client runs. Both are <code>callers</code>-style tasks (tracing who calls a symbol,
+        not just where it's defined) — CodeGraph's <code>search</code> results were correct on all 15 attempts
+        across the three clients; the gap is specifically in call-tracing.
       </p>
       <p>
-        This is the same bug class we found and fixed in our own <code>symbol_context</code> tool
-        while preparing this release (see the <a href="https://github.com/bharath03-a/GitCortex/blob/main/CHANGELOG.md">CHANGELOG</a>).
-        Short-name ambiguity is an easy trap for any code-graph tool — worth checking for regardless
-        of which one you use.
+        This lines up with a known weakness documented in CodeGraph's own GitHub issue tracker: cross-file
+        edges can conflate same-named symbols, producing a confident-sounding but wrong call attribution
+        rather than declining to answer. GitCortex's syntactic, no-type-inference design deliberately leaves
+        ambiguous same-named calls unlinked instead of guessing — the tradeoff shows up directly in this result.
       </p>
-    </div>
-  </div>
-</section>
-
-<section id="graphify-strengths">
-  <div class="wrap">
-    <div class="section-head">
-      <h2>What Graphify does better</h2>
-      <p class="note">We went and tested this rather than just describing it — here's what we found.</p>
-    </div>
-    <div class="callout positive">
-      <p><strong>Language coverage.</strong> Graphify supports roughly 40 languages via tree-sitter; GitCortex supports 5 today (Rust, Python, TypeScript, Go, Java). We tested this directly rather than taking it on faith: pointed Graphify's code-only extractor at <a href="https://github.com/rails/thor">Thor</a>, a real Ruby project GitCortex can't index at all. It worked cleanly — 743 nodes, 1,027 edges, no LLM call, and correctly flagged an ambiguous symbol (<code>Thor</code> matching 34 nodes) instead of silently guessing, which is exactly the right behavior.</p>
-    </div>
-    <div class="example">
-      <div class="example-label">Real output — graphify explain "CoreExt" (Ruby, thor)</div>
-      <pre>Node: Thor::CoreExt
-  Source:    lib/thor/core_ext/hash_with_indifferent_access.rb L2
-  Connections (2):
-  --&gt; Thor::CoreExt::HashWithIndifferentAccess [contains]
-  &lt;-- Thor [contains]</pre>
-    </div>
-    <div class="callout positive" style="margin-top: 14px;">
-      <p><strong>Docs, SQL schemas, and config files in the same graph.</strong> Graphify's semantic
-      extraction mode (LLM-backed, not code-only) reads Markdown docs, Postgres schemas, and
-      Terraform/HCL into the same graph as your code — a real, useful capability GitCortex doesn't
-      attempt. We don't have an LLM backend configured in the environment this comparison ran in, so
-      we're not claiming a tested result here — only reporting Graphify's documented capability
-      honestly instead of guessing at numbers we don't have.</p>
-    </div>
-    <div class="callout" style="margin-top: 14px;">
-      <p><strong>Community and maturity.</strong> Graphify has 106,000+ GitHub stars and 10,000+ forks after 4.5 months. GitCortex is a much smaller, newer project. That's not a benchmark result, but it's real context worth knowing.</p>
     </div>
   </div>
 </section>
@@ -309,33 +260,28 @@
 <section id="task-table">
   <div class="wrap">
     <div class="section-head">
-      <h2>Task-by-task detail</h2>
+      <h2>Task-by-task detail (Codex client)</h2>
+      <p class="note">Showing the Codex-driven run in full — cleanest single-client trace, zero tooling artifacts. Claude Code and Antigravity runs are in the repo (see methodology below).</p>
     </div>
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Task</th><th>Type</th><th>GitCortex</th><th>Graphify</th><th class="num">GitCortex tok</th><th class="num">Graphify tok</th></tr>
+          <tr><th>Task</th><th>Type</th><th>GitCortex</th><th>CodeGraph</th><th class="num">GitCortex tok</th><th class="num">CodeGraph tok</th></tr>
         </thead>
         <tbody>
-          <tr><td>ripgrep · line_number</td><td>impact</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-bad">0.00</span></td><td class="num">199,241</td><td class="num">239,080</td></tr>
-          <tr><td>ripgrep · Searcher</td><td>architecture</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-warn">0.50</span></td><td class="num">214,867</td><td class="num">359,885</td></tr>
-          <tr><td>ripgrep · Searcher</td><td>refactor</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">210,484</td><td class="num">227,441</td></tr>
-          <tr><td>requests · send</td><td>impact</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-warn">0.50</span></td><td class="num">167,854</td><td class="num">269,580</td></tr>
-          <tr><td>requests · Session</td><td>architecture</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-warn">0.50</span></td><td class="num">207,319</td><td class="num">234,288</td></tr>
-          <tr><td>requests · Session</td><td>refactor</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-bad">0.00</span></td><td class="num">214,247</td><td class="num">234,152</td></tr>
-          <tr><td>hono · compose</td><td>impact</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">200,846</td><td class="num">236,467</td></tr>
-          <tr><td>hono · dispatch</td><td>architecture</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-warn">0.50</span></td><td class="num">203,584</td><td class="num">310,641</td></tr>
-          <tr><td>hono · compose</td><td>refactor</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">97,482</td><td class="num">235,111</td></tr>
-          <tr><td>cobra · AddCommand</td><td>impact</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-warn">0.50</span></td><td class="num">200,502</td><td class="num">151,961</td></tr>
-          <tr><td>cobra · ParseFlags</td><td>architecture</td><td><span class="pill pill-warn">0.50</span></td><td><span class="pill pill-warn">0.50</span></td><td class="num">201,050</td><td class="num">231,373</td></tr>
-          <tr><td>cobra · AddCommand</td><td>refactor</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">168,240</td><td class="num">231,975</td></tr>
-          <tr><td>gson · beginArray</td><td>impact</td><td><span class="pill pill-bad">0.00</span></td><td><span class="pill pill-bad">0.00</span></td><td class="num">199,231</td><td class="num">111,611</td></tr>
-          <tr><td>gson · peek</td><td>architecture</td><td><span class="pill pill-warn">0.50</span></td><td><span class="pill pill-warn">0.50</span></td><td class="num">130,689</td><td class="num">313,729</td></tr>
-          <tr><td>gson · beginArray</td><td>refactor</td><td><span class="pill pill-bad">0.00</span></td><td><span class="pill pill-bad">0.00</span></td><td class="num">166,816</td><td class="num">273,867</td></tr>
+          <tr><td>tokio · Notify</td><td>search</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">56,794</td><td class="num">39,368</td></tr>
+          <tr><td>tokio · notify_waiters</td><td>callers</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">57,329</td><td class="num">55,294</td></tr>
+          <tr><td>django · QuerySet</td><td>search</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">40,184</td><td class="num">38,156</td></tr>
+          <tr><td>django · filter</td><td>callers</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">55,931</td><td class="num">74,169</td></tr>
+          <tr><td>next.js · useRouter</td><td>search</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">67,537</td><td class="num">68,309</td></tr>
+          <tr><td>next.js · normalizePagePath</td><td>callers</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-bad">0.00</span></td><td class="num">118,275</td><td class="num">69,077</td></tr>
+          <tr><td>moby · ContainerCreate</td><td>search</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">42,438</td><td class="num">41,899</td></tr>
+          <tr><td>moby · ContainerKill</td><td>callers</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-bad">0.00</span></td><td class="num">61,043</td><td class="num">42,246</td></tr>
+          <tr><td>spring-boot · SpringApplication</td><td>search</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">56,108</td><td class="num">39,588</td></tr>
+          <tr><td>spring-boot · getMainApplicationClass</td><td>callers</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">40,012</td><td class="num">39,008</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="note" style="margin-top: 12px;">The 3 tasks where both tools scored low (gson × 2, cobra-architecture) are citation-format misses, not missing evidence — both agents found the right symbol but cited a class/method name instead of the full repo-relative path our automated grader string-matches on. Verified by manual inspection of every non-1.0 result on both sides before publishing this page.</p>
   </div>
 </section>
 
@@ -344,13 +290,12 @@
     <details class="methodology-details">
       <summary>Methodology and how this page was built</summary>
       <ol class="methodology">
-        <li>Five real open-source repos, pinned to an exact commit: ripgrep, requests, hono, cobra, gson.</li>
-        <li>Same 15 questions for both tools (deep blast-radius, cross-file architecture, refactor-safety), same client (Claude Code, Haiku), same required-evidence contracts.</li>
-        <li>GitCortex accessed via its MCP tool (<code>mcp__gcx</code>); Graphify accessed via its CLI (<code>graphify affected</code> / <code>graphify explain</code>, code-only mode, <code>--code-only</code>) since it has no MCP integration wired into this harness yet.</li>
-        <li>Quality is the fraction of independently-verified required evidence present in the final answer, corrected for citation-format (class/method name vs. full path) after manual review of every non-1.0 result on both sides — the same correction applied equally to both tools.</li>
-        <li>We hit two real problems getting a clean run and are disclosing both: an early version of this script under-restricted Graphify's sandbox (it could fall back to raw grep/find), and a later fix over-restricted it (Claude Code disabled Bash entirely when a scoped allow and a bare disallow were combined in that CLI version). The final run removed the conflicting rule and used <code>--dangerously-skip-permissions</code> in this sandboxed, repos-only context to get deterministic tool access for both arms.</li>
-        <li>The Ruby (Thor) test in the "what Graphify does better" section was run the same way — real clone, pinned to a commit, real extraction, output quoted verbatim.</li>
-        <li>Full harness, task definitions, and raw per-task logs: <a href="https://github.com/bharath03-a/GitCortex/tree/main/tools/agent-bench">tools/agent-bench/</a> in the repo, including <code>graphify_compare.py</code>.</li>
+        <li>Five real open-source repos, pinned to an exact commit: tokio, django, next.js, moby, spring-boot — chosen as large, real-world codebases rather than the smaller canonical set used for other benchmarks on this site.</li>
+        <li>10 tasks (5 search + 5 callers, one pair per repo), run independently through three real AI clients: Claude Code, Codex, and Antigravity — each with its own freshly-captured baseline (grep-only arm), so no client's numbers were reused or extrapolated from another's run.</li>
+        <li>GitCortex accessed via its MCP tool in Claude Code/Antigravity, and via its own CLI in Codex (matching how each client is actually used in practice). CodeGraph accessed via its CLI (<code>codegraph query</code> / <code>codegraph callers</code>) in all three, since it has no MCP integration wired into this harness.</li>
+        <li>Quality is the fraction of independently-verified required evidence (a specific repo-relative file path) present in the final answer — same grading rule applied identically to both tools.</li>
+        <li>A staleness gate compares each run's recorded <code>gcx_sha256</code>/suite hash against the binary and task suite in use, refusing to mix a stale baseline with a fresh comparison run.</li>
+        <li>Full harness, task definitions, and raw per-client logs: <a href="https://github.com/bharath03-a/GitCortex/tree/main/tools/agent-bench">tools/agent-bench/</a> in the repo, including <code>codegraph_compare.py</code> and <code>big-repos-v1.toml</code>.</li>
       </ol>
     </details>
   </div>
@@ -371,8 +316,9 @@
     <div class="foot-links">
       <a href="./">Home</a>
       <a href="benchmarks.html">Benchmarks</a>
+      <a href="compare.html">vs Graphify</a>
       <a href="https://github.com/bharath03-a/GitCortex">GitHub</a>
-      <a href="https://github.com/Graphify-Labs/graphify">Graphify (GitHub)</a>
+      <a href="https://github.com/colbymchenry/codegraph">CodeGraph (GitHub)</a>
       <a href="https://github.com/bharath03-a/GitCortex/tree/main/tools/agent-bench">Benchmark harness</a>
     </div>
   </div>
