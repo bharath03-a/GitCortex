@@ -38,6 +38,7 @@ fn kind_color(k: &NodeKind) -> Option<Color> {
         // Structural nodes are dim — they're scaffolding, not the answer.
         NodeKind::File | NodeKind::Folder => AnsiColor::BrightBlack,
         NodeKind::Section => AnsiColor::BrightYellow,
+        NodeKind::Route => AnsiColor::BrightMagenta,
     }))
 }
 

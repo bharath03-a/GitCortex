@@ -33,6 +33,9 @@ pub enum NodeKind {
     /// A Markdown heading section (`## Installation`). File-level prose lives
     /// directly on the synthesized `File` node; this kind only covers headings.
     Section,
+    /// An HTTP route registered by a web framework (Express `app.get(...)`,
+    /// FastAPI `@app.get(...)`, etc). `name` holds `"METHOD /path"`.
+    Route,
 }
 
 impl std::fmt::Display for NodeKind {
@@ -54,6 +57,7 @@ impl std::fmt::Display for NodeKind {
             NodeKind::Annotation => "annotation",
             NodeKind::EnumMember => "enum_member",
             NodeKind::Section => "section",
+            NodeKind::Route => "route",
         };
         f.write_str(s)
     }
@@ -79,6 +83,7 @@ impl std::str::FromStr for NodeKind {
             "annotation" => Ok(NodeKind::Annotation),
             "enum_member" | "enum-member" => Ok(NodeKind::EnumMember),
             "section" => Ok(NodeKind::Section),
+            "route" => Ok(NodeKind::Route),
             _ => Err(()),
         }
     }
@@ -111,6 +116,10 @@ pub enum EdgeKind {
     /// an inline code-span or link text matching a known identifier.
     /// Source can be cross-language by design (docs reference any language).
     References,
+    /// A route is dispatched to its handler function: Route→Function/Method.
+    /// Directional like `Calls`/`Implements` (source is the "declaration",
+    /// target is what satisfies it).
+    HandledBy,
 }
 
 impl std::fmt::Display for EdgeKind {
@@ -125,6 +134,7 @@ impl std::fmt::Display for EdgeKind {
             EdgeKind::Annotated => "annotated",
             EdgeKind::Throws => "throws",
             EdgeKind::References => "references",
+            EdgeKind::HandledBy => "handled_by",
         };
         f.write_str(s)
     }

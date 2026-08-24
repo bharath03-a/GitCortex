@@ -1,1 +1,81 @@
+import type { GraphData, RawEdge, RawNode } from "../api";
+import { applyDensity, type DensityMode } from "./density";
+
 export type ViewMode = "atlas" | "investigate";
+
+export interface DiffOverlayInput {
+  addedNodes: RawNode[];
+  addedEdges: RawEdge[];
+}
+
+export interface ViewInput {
+  rawData: GraphData;
+  viewMode: ViewMode;
+  focusedData: GraphData | null;
+  selectedFallback: RawNode | null;
+  diffOverlay: DiffOverlayInput | null;
+  density: DensityMode;
+  hiddenKinds: Set<string>;
+  hiddenVisibility: Set<string>;
+  flagFilter: Set<string>;
+  hiddenEdgeKinds: Set<string>;
+  hiddenConfidence: Set<string>;
+}
+
+/**
+ * Derives the graph actually painted: view-mode source selection, diff
+ * overlay merge, density reduction, and node/edge filter passes. Runs off
+ * the main thread via viewWorker.ts — at repository scale (10k+ nodes) this
+ * pipeline is real work, not a cheap useMemo.
+ */
+export function computeView(input: ViewInput): GraphData {
+  let source: GraphData =
+    input.viewMode === "investigate"
+      ? (input.focusedData ?? {
+          nodes: input.selectedFallback ? [input.selectedFallback] : [],
+          edges: [],
+        })
+      : input.rawData;
+
+  if (input.diffOverlay && input.viewMode === "atlas") {
+    const nodesById = new Map(input.rawData.nodes.map((node) => [node.id, node]));
+    for (const node of input.diffOverlay.addedNodes) nodesById.set(node.id, node);
+    const edgeKeys = new Set(
+      input.rawData.edges.map((edge) => `${edge.src}\u0000${edge.dst}\u0000${edge.kind}`),
+    );
+    const edges = input.rawData.edges.slice();
+    for (const edge of input.diffOverlay.addedEdges) {
+      const key = `${edge.src}\u0000${edge.dst}\u0000${edge.kind}`;
+      if (!edgeKeys.has(key)) {
+        edgeKeys.add(key);
+        edges.push(edge);
+      }
+    }
+    source = { nodes: [...nodesById.values()], edges };
+  }
+
+  let view = applyDensity(source, input.density);
+  const keep = new Set(
+    view.nodes
+      .filter(
+        (node) =>
+          !input.hiddenKinds.has(node.kind) &&
+          !input.hiddenVisibility.has(node.visibility) &&
+          (input.flagFilter.size === 0 ||
+            (input.flagFilter.has("async") && node.is_async) ||
+            (input.flagFilter.has("unsafe") && node.is_unsafe)),
+      )
+      .map((node) => node.id),
+  );
+  view = {
+    nodes: view.nodes.filter((node) => keep.has(node.id)),
+    edges: view.edges.filter(
+      (edge) =>
+        keep.has(edge.src) &&
+        keep.has(edge.dst) &&
+        !input.hiddenEdgeKinds.has(edge.kind) &&
+        !input.hiddenConfidence.has(edge.confidence ?? "extracted"),
+    ),
+  };
+  return view;
+}

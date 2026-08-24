@@ -176,32 +176,39 @@ def parse_codex_events(raw: str, task: Task, gcx_marker: str, expect_gcx: bool) 
 
 
 def claude_dispatch(task: Task) -> dict[str, Any]:
+    # Explicit branch, not MCP-server auto-detection: when Claude Code spawns
+    # the gcx MCP server via an inline --mcp-config (as this harness does,
+    # rather than a project .mcp.json), the server's cwd-based branch
+    # detection does not reliably land on the repo_dir checked out by
+    # prepare_repo, silently resolving to "main" instead of "gcx-bench" and
+    # returning zero results for a real, indexed symbol.
+    branch = "gcx-bench"
     if task.action == "search":
-        return {"action": "search_code", "params": {"query": task.query, "limit": 10}}
+        return {"action": "search_code", "params": {"query": task.query, "limit": 10, "branch": branch}}
     if task.action == "tour":
-        return {"action": "start_tour", "params": {"limit": 10}}
+        return {"action": "start_tour", "params": {"limit": 10, "branch": branch}}
     if task.action == "callers":
         return {
             "action": "find_callers",
-            "params": {"function_name": task.query or "", "depth": 1},
+            "params": {"function_name": task.query or "", "depth": 1, "branch": branch},
         }
     if task.action == "subgraph":
         return {
             "action": "get_subgraph",
-            "params": {"seed_name": task.query or "", "depth": 1, "limit": 30},
+            "params": {"seed_name": task.query or "", "depth": 1, "limit": 30, "branch": branch},
         }
     if task.action == "impact":
         return {
             "action": "pre_edit_impact",
-            "params": {"function_name": task.query or "", "depth": 2},
+            "params": {"function_name": task.query or "", "depth": 2, "branch": branch},
         }
     if task.action == "architecture":
         return {
             "action": "get_subgraph",
-            "params": {"seed_name": task.query or "", "depth": 2, "limit": 30},
+            "params": {"seed_name": task.query or "", "depth": 2, "limit": 30, "branch": branch},
         }
     if task.action == "refactor":
-        return {"action": "symbol_context", "params": {"name": task.query or ""}}
+        return {"action": "symbol_context", "params": {"name": task.query or "", "branch": branch}}
     raise BenchError(f"unsupported task action: {task.action}")
 
 
@@ -433,6 +440,7 @@ Question: {q}"""
 
 AGY_MCP_CONFIG = Path.home() / ".gemini" / "config" / "mcp_config.json"
 AGY_SERVER_NAME = "gitcortex"
+AGY_SETTINGS = Path.home() / ".gemini" / "antigravity-cli" / "settings.json"
 
 
 @contextlib.contextmanager
@@ -452,6 +460,46 @@ def agy_mcp_config(gcx: Path, enabled: bool):
             AGY_MCP_CONFIG.write_text(previous, encoding="utf-8")
         else:
             AGY_MCP_CONFIG.unlink(missing_ok=True)
+
+
+@contextlib.contextmanager
+def agy_permissions_config(enabled: bool):
+    """agy has no per-invocation permissions flag either; headless mode
+    auto-denies any tool call needing a permission prompt (it does not hang,
+    unlike --sandbox) unless the target is pre-approved. The scoped grant is
+    `mcp(<server>/<tool>)` under `permissions.allow` in the CLI's
+    settings.json -- confirmed by testing directly against the agy binary:
+    without this key, a headless call_mcp_tool step fails with "user denied
+    permission for mcp(gitcortex/gcx)"; with it, the call succeeds and
+    returns real gcx evidence. This merges into the user's existing
+    settings.json and restores the original content afterward, mirroring
+    agy_mcp_config's swap-and-restore pattern so a benchmark run never
+    leaves the user's own agy setup altered.
+
+    Note: `run_agy_arm` also passes --dangerously-skip-permissions, which
+    supersedes these scoped grants -- kept anyway so the mcp()/pwd grants
+    stay documented and this function still does something useful if that
+    flag is ever dropped for a future run that doesn't need read_file."""
+    AGY_SETTINGS.parent.mkdir(parents=True, exist_ok=True)
+    previous = AGY_SETTINGS.read_text(encoding="utf-8") if AGY_SETTINGS.exists() else None
+    settings = json.loads(previous) if previous else {}
+    # command(pwd) is here because agy orients itself with a `pwd` run_command
+    # call on nearly every task before touching gcx or any file tool; without
+    # this grant that first orientation step gets auto-denied in headless
+    # mode and the whole run fails before the MCP call is ever reached --
+    # observed directly via agent_run.py --client agy runs during testing.
+    allow = ["command(pwd)"]
+    if enabled:
+        allow.insert(0, f"mcp({AGY_SERVER_NAME}/gcx)")
+    settings["permissions"] = {"allow": allow}
+    AGY_SETTINGS.write_text(json.dumps(settings), encoding="utf-8")
+    try:
+        yield
+    finally:
+        if previous is not None:
+            AGY_SETTINGS.write_text(previous, encoding="utf-8")
+        else:
+            AGY_SETTINGS.unlink(missing_ok=True)
 
 
 def parse_agy_events(raw: str, task: Task, expect_gcx: bool) -> ArmResult:
@@ -525,9 +573,17 @@ def run_agy_arm(
     log_path: Path,
 ) -> ArmResult:
     q = question(task)
+    # agy's file-search/read tools do not reliably infer the repo root from
+    # the process cwd — traced runs showed SearchDirectory defaulting to
+    # $HOME, triggering an unbounded find/mdfind/ps scavenger hunt (10-20
+    # commands per task instead of 1) instead of a focused read scoped to
+    # the actual checkout. Stating the absolute path explicitly avoids that.
+    repo_note = f"The repository you are exploring is at the absolute path {repo_dir} — always scope file reads and searches to this path, never elsewhere (e.g. never your home directory)."
     if arm == "gcx":
         dispatch = json.dumps(claude_dispatch(task), separators=(",", ":"))
         prompt = f"""You are evaluating a graph-first code exploration workflow.
+
+{repo_note}
 
 Before any ordinary source search, call the gitcortex MCP tool named exactly "gcx" exactly once with this payload:
 {dispatch}
@@ -544,6 +600,8 @@ Question: {q}"""
     else:
         prompt = f"""You are evaluating ordinary codebase exploration.
 
+{repo_note}
+
 Do not use gitcortex, gcx, MCP, or any graph database. Use normal source search and focused reads. Do not edit files. Keep the final answer concise and cite repository-relative files.
 
 Question: {q}"""
@@ -556,11 +614,21 @@ Question: {q}"""
         "stream-json",
         "--model",
         model,
+        "--mode",
+        "accept-edits",
+        # agy's read_file permission only accepts an exact literal path grant
+        # ("read_file(/abs/path/to/file.py)") — no directory wildcard, no
+        # bare unscoped form (both tested live and confirmed denied). Since
+        # the verification-read files aren't known ahead of a run, they
+        # can't be pre-granted; --dangerously-skip-permissions is the only
+        # viable non-interactive path for this specific tool. mcp()/pwd
+        # grants in agy_permissions_config are kept for the gcx call itself
+        # (narrower than a full skip) even though this flag supersedes them.
         "--dangerously-skip-permissions",
         "--print-timeout",
         "300s",
     ]
-    with agy_mcp_config(gcx, enabled=(arm == "gcx")):
+    with agy_mcp_config(gcx, enabled=(arm == "gcx")), agy_permissions_config(enabled=(arm == "gcx")):
         result = subprocess.run(
             command,
             cwd=repo_dir,

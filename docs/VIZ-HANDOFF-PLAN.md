@@ -8,11 +8,14 @@ up cold.
 
 ## Where things stand
 
-`feat/viz-investigation-foundation` shipped Phase 0's correctness work and
-is rebased onto `main`, green on build/test/fmt/clippy, pushed to origin.
-**Not yet a PR.** Opening that PR is step 0 below — do it before anything
-else in this doc, because every later step needs a stable base to branch
-from and CI's read on the rebase.
+Correction (2026-08-21): the branch name `feat/viz-investigation-foundation`
+referenced below does not exist locally, on `origin`, or on any other known
+remote. The actual branch carrying this work is `feat/viz-perf-and-architecture`
+(PR #63, "perf(viz): move complexity scoring off main thread via Web Worker"),
+which **merged into `main` on 2026-08-06**. Step 0 ("open the PR") is
+therefore already done — there is nothing pending to open. Treat every
+"pushed to origin, not yet a PR" statement below as stale; it describes a
+state that predates the merge.
 
 Frontend lives in `viz/src/` (Vite + React + TypeScript, Cosmograph
 renderer). Backend lives in `crates/gitcortex-viz/src/lib.rs` (single file,
@@ -31,15 +34,24 @@ Roadmap's own "Remaining foundation work" list. This is the highest-leverage
 work: Atlas mode is currently correct but will stall the main thread on
 anything past a few thousand nodes.
 
-1. **Move decode/adjacency/filter transforms off the main thread.**
-   Web Worker boundary around `viz/src/graph/view.ts` and `density.ts`.
-   Acceptance: loading a 10k-node fixture produces no long task
-   (>50ms) on the main thread, verified with Chrome DevTools performance trace.
-   `complexity` insight-lens scoring (degree map + LOC/coupling pass, was an
-   inline `useMemo` in `App.tsx`) has already moved to a Web Worker
-   (`viz/src/graph/complexityWorker.ts`, wired via
-   `viz/src/hooks/useComplexityScores.ts`) — `view.ts`/`density.ts` transforms
-   are still on the main thread.
+1. **Move decode/adjacency/filter transforms off the main thread.** Done
+   (2026-08-21). `viz/src/graph/view.ts` now holds a pure `computeView()`
+   that does view-mode source selection, diff-overlay merge, `applyDensity`
+   reduction, and node/edge filtering — this is the logic that used to live
+   inline in `App.tsx`'s `data` useMemo. It runs in
+   `viz/src/graph/viewWorker.ts` via the new `viz/src/hooks/useFilteredGraph.ts`
+   hook (same pattern as `complexityWorker.ts`/`useComplexityScores.ts`).
+   The hook holds the previous result while a new one computes, so filter
+   toggles don't flash the canvas to empty during the round trip.
+   Acceptance not yet independently re-verified with a Chrome DevTools trace
+   against the 10k fixture — typecheck/lint/tests/build all pass and the
+   build output confirms `viewWorker.js` is emitted as its own chunk
+   alongside `complexityWorker.js`, but nobody has profiled it yet. Do that
+   before calling this fully closed.
+
+   `complexity` insight-lens scoring (degree map + LOC/coupling pass) was
+   already on a separate Web Worker (`viz/src/graph/complexityWorker.ts`,
+   wired via `viz/src/hooks/useComplexityScores.ts`) before this step.
 
 2. **Typed-array/columnar chunk format** for graph transport, replacing
    whatever JSON shape `crates/gitcortex-viz/src/lib.rs`'s paged endpoints
@@ -131,8 +143,12 @@ measure-before/measure-after discipline as Workstream A.
 
 ## Suggested order
 
-1. Open the PR for `feat/viz-investigation-foundation` (blocking everything else)
-2. Workstream A: sub-step 6 (fixtures) is done; remaining sub-steps 1–5 in listed order
+1. ~~Open the PR for `feat/viz-investigation-foundation`~~ — already merged
+   as PR #63 under the actual branch name `feat/viz-perf-and-architecture`;
+   nothing to do here.
+2. Workstream A: sub-steps 1 (worker boundary) and 6 (fixtures) are done;
+   remaining sub-steps 2–5 in listed order, starting with the typed-array/
+   columnar transport format (sub-step 2).
 3. Workstream B design note, then implementation
 4. Workstream C, feature by feature, lowest priority
 

@@ -487,7 +487,7 @@ impl GitCortexServer {
 
     /// Structural search over node attributes (no name needed).
     #[tool(
-        description = "Find symbols by structural attributes rather than name: kind (function/method/struct/...), is_async, visibility (pub/pub_crate/private), cyclomatic complexity range, and annotation/decorator (e.g. annotation='Test' finds @Test methods, 'route' finds @app.route handlers, 'derive' finds #[derive(...)]). Combine filters to answer 'all async methods', 'public structs', 'functions with complexity ≥ 10', or 'all test functions'. Optional name_contains narrows further. Default limit=30."
+        description = "Find symbols by structural attributes rather than name: kind (function/method/struct/route/...), is_async, visibility (pub/pub_crate/private), cyclomatic complexity range, and annotation/decorator (e.g. annotation='Test' finds @Test methods, 'route' finds @app.route handlers, 'derive' finds #[derive(...)]). Use kind='route' to list HTTP routes detected in the codebase (currently Express.js) — each result's 'name' is 'METHOD /path' (e.g. 'GET /users/:id'). Combine filters to answer 'all async methods', 'public structs', 'functions with complexity ≥ 10', 'all test functions', or 'all HTTP routes'. Optional name_contains narrows further (e.g. name_contains='/users' to find routes under a path prefix). Default limit=30."
     )]
     fn ast_search(&self, Parameters(p): Parameters<AstSearchParams>) -> CallToolResult {
         let branch = self.resolve_branch(p.branch.as_deref());
@@ -499,7 +499,7 @@ impl GitCortexServer {
             return CallToolResult::error(vec![Content::text(format!(
                 "unknown kind '{}'. Valid: function, method, struct, enum, trait, \
                  interface, type_alias, property, constant, macro, annotation, \
-                 enum_member, module, file, folder",
+                 enum_member, module, file, folder, route",
                 p.kind.as_deref().unwrap_or("")
             ))]);
         }

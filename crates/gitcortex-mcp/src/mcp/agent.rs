@@ -358,12 +358,7 @@ pub fn find_callers<S: GraphStore + ?Sized>(
     }
 
     let total = evidence.len();
-    let risk_level = match total {
-        0..=2 => "LOW",
-        3..=10 => "MEDIUM",
-        11..=30 => "HIGH",
-        _ => "CRITICAL",
-    };
+    let (_, risk_level) = weighted_risk_band(mix.extracted, mix.resolved, mix.inferred);
     evidence.truncate(options.limit);
 
     let answer = if total == 0 {
@@ -823,6 +818,15 @@ fn resolve_symbol<S: GraphStore + ?Sized>(
     // short-name based. Search a bounded candidate set and compare exactly.
     let mut searched = store.search_nodes(branch, query, 50)?;
     searched.retain(is_code_node);
+    // Tried before the exact-name fallback below because `exact` (from
+    // `lookup_symbol`) can never satisfy a qualified query: it matches on
+    // bare `node.name`, and a qualified string like `Foo::bar` never equals
+    // a node's short name. Without this branch, a qualified query would fall
+    // straight through to `exact.len() == 0` and wrongly report NotFound
+    // even when the symbol exists. A qualified query is also unambiguous
+    // intent (the caller is disambiguating on purpose), so an exact
+    // qualified-name match here should win outright rather than being
+    // treated as one candidate among short-name matches.
     if query.contains("::") || query.contains('.') {
         let qualified: Vec<Node> = searched
             .iter()
@@ -837,6 +841,11 @@ fn resolve_symbol<S: GraphStore + ?Sized>(
         }
     }
 
+    // Falls through here for unqualified queries (or a qualified query with
+    // zero exact qualified-name matches, e.g. it doesn't match this branch's
+    // case-sensitivity/whitespace assumptions): resolve by bare short name
+    // instead, deduping so the same symbol isn't reported as ambiguous
+    // against itself.
     dedup_nodes(&mut exact);
     match exact.len() {
         1 => Ok(Resolution::Exact(Box::new(exact.remove(0)))),
@@ -896,6 +905,47 @@ fn rank_callers(
         .then_with(|| candidate_rank(a).cmp(&candidate_rank(b)))
         .then_with(|| a.file.cmp(&b.file))
         .then_with(|| a.qualified_name.cmp(&b.qualified_name))
+}
+
+/// Confidence-weighted risk band for a caller set, given its `EdgeConfidence`
+/// mix. Kept in sync with `gitcortex_cli::cmd::blast_radius::weighted_risk_band`
+/// and `gitcortex_viz`'s inline copy — all three must move together so a risk
+/// label means the same thing everywhere GitCortex reports one.
+///
+/// Score = extracted*1.0 + resolved*0.6 + inferred*0.3 — an `Inferred` edge
+/// (unqualified name match only) counts for less than a `Resolved` edge
+/// (import-verified), which counts for less than an `Extracted` edge
+/// (directly observed). This replaces bucketing on raw `evidence.len()`,
+/// which weighted a heuristic guess the same as an AST-certain call.
+///
+/// Threshold reasoning:
+/// - LOW/MEDIUM boundary (score < 3.0 / < 11.0) is unchanged from the old
+///   raw-count thresholds (0-2 / 3-10). Extracted weight is 1.0, so an
+///   all-extracted mix scores exactly its raw count — today's behavior for
+///   small, high-confidence findings (e.g. 3 extracted callers is still
+///   MEDIUM) is preserved exactly.
+/// - HIGH/CRITICAL boundary is widened from the old 31 to 350. The old
+///   threshold was calibrated for raw counts, where every caller counted
+///   equally; it's too low once `Inferred` (weight 0.3) callers are
+///   discounted. The spike's worked example — Django's `QuerySet.filter`,
+///   1085 total callers (4 `Extracted`, 1081 `Inferred`) — scores 328.3
+///   under this formula. 350 was chosen so this real-world, evidence-poor
+///   case lands HIGH rather than CRITICAL, while a similarly large finding
+///   backed by materially more confident evidence (e.g. 50+ `Extracted`/
+///   `Resolved` callers on top of a large `Inferred` tail) still clears
+///   into CRITICAL.
+fn weighted_risk_band(extracted: usize, resolved: usize, inferred: usize) -> (f64, &'static str) {
+    let score = extracted as f64 + resolved as f64 * 0.6 + inferred as f64 * 0.3;
+    let band = if score < 3.0 {
+        "LOW"
+    } else if score < 11.0 {
+        "MEDIUM"
+    } else if score < 350.0 {
+        "HIGH"
+    } else {
+        "CRITICAL"
+    };
+    (score, band)
 }
 
 fn to_candidate(node: &Node) -> SymbolCandidate {
@@ -993,5 +1043,48 @@ mod tests {
         assert!(
             confidence_rank(&EdgeConfidence::Resolved) < confidence_rank(&EdgeConfidence::Inferred)
         );
+    }
+
+    #[test]
+    fn weighted_risk_band_preserves_uniform_extracted_bands() {
+        // extracted weight is 1.0, so an all-extracted mix scores exactly the
+        // raw count — today's LOW/MEDIUM boundary at count 3 must not move.
+        assert_eq!(weighted_risk_band(0, 0, 0).1, "LOW");
+        assert_eq!(weighted_risk_band(2, 0, 0).1, "LOW");
+        assert_eq!(weighted_risk_band(3, 0, 0), (3.0, "MEDIUM"));
+        assert_eq!(weighted_risk_band(10, 0, 0).1, "MEDIUM");
+        assert_eq!(weighted_risk_band(11, 0, 0).1, "HIGH");
+    }
+
+    #[test]
+    fn weighted_risk_band_uniform_inferred_needs_far_more_evidence() {
+        // inferred weight is 0.3, so it takes ~3.3x the raw count of an
+        // all-extracted mix to reach the same band.
+        assert_eq!(weighted_risk_band(0, 0, 3).1, "LOW"); // score 0.9
+        assert_eq!(weighted_risk_band(0, 0, 10).1, "MEDIUM"); // score 3.0
+        assert_eq!(weighted_risk_band(0, 0, 40).1, "HIGH"); // score 12.0
+        assert_eq!(weighted_risk_band(0, 0, 1200).1, "CRITICAL"); // score 360.0
+    }
+
+    #[test]
+    fn weighted_risk_band_mixed_django_worked_example_is_not_critical() {
+        // Spike's worked example: 1085 total callers (4 extracted, 0
+        // resolved, 1081 inferred) for Django's QuerySet.filter. Raw-count
+        // bucketing put this at CRITICAL (31+); weighted, the confident
+        // evidence is only 4 callers and the score lands at HIGH, not
+        // CRITICAL.
+        let (score, band) = weighted_risk_band(4, 0, 1081);
+        assert!((score - 328.3).abs() < 0.01, "score was {score}");
+        assert_eq!(band, "HIGH");
+        assert_ne!(band, "CRITICAL");
+    }
+
+    #[test]
+    fn weighted_risk_band_mixed_case_medium() {
+        // 3 extracted + 3 inferred = 3.0 + 0.9 = 3.9 -> MEDIUM, distinct from
+        // an all-extracted 3 which also lands MEDIUM but with a lower score.
+        let (score, band) = weighted_risk_band(3, 0, 3);
+        assert!((score - 3.9).abs() < 0.001);
+        assert_eq!(band, "MEDIUM");
     }
 }

@@ -3,11 +3,20 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 
-from bench import compare_traces, load_suite, score_task, summarize, write_trace
+from bench import (
+    BenchError,
+    compare_traces,
+    load_suite,
+    run_with_lock_retry,
+    score_task,
+    summarize,
+    write_trace,
+)
 
 SUITE = """
 suite = "test-suite"
@@ -221,6 +230,69 @@ class CompareRelevanceTest(unittest.TestCase):
         head = self.trace("head", "src/requests/models.py", "src/requests/sessions.py")
         report = compare_traces(base, head)
         self.assertFalse(report["relevance_non_inferior"])
+
+
+class RunWithLockRetryTest(unittest.TestCase):
+    def test_retries_transient_lock_error_then_succeeds(self) -> None:
+        calls: list[list[str]] = []
+        results = [
+            subprocess.CompletedProcess(["gcx", "clean"], 1, "", "repository graph is active (pid 123)"),
+            subprocess.CompletedProcess(["gcx", "clean"], 1, "", "repository graph is active (pid 123)"),
+            subprocess.CompletedProcess(["gcx", "clean"], 0, "ok", ""),
+        ]
+
+        def fake_run(command: list[str], cwd: Path | None) -> subprocess.CompletedProcess[str]:
+            calls.append(command)
+            return results.pop(0)
+
+        sleeps: list[float] = []
+        out = run_with_lock_retry(
+            ["gcx", "clean"],
+            None,
+            "clean test",
+            run_fn=fake_run,
+            sleep=sleeps.append,
+        )
+
+        self.assertEqual(out, "ok")
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(sleeps, [2, 4])
+
+    def test_non_lock_error_fails_immediately_without_retry(self) -> None:
+        calls: list[list[str]] = []
+
+        def fake_run(command: list[str], cwd: Path | None) -> subprocess.CompletedProcess[str]:
+            calls.append(command)
+            return subprocess.CompletedProcess(command, 1, "", "some other error")
+
+        with self.assertRaises(BenchError):
+            run_with_lock_retry(
+                ["gcx", "clean"],
+                None,
+                "clean test",
+                run_fn=fake_run,
+                sleep=lambda _: None,
+            )
+        self.assertEqual(len(calls), 1)
+
+    def test_gives_up_after_exhausting_retries(self) -> None:
+        calls: list[list[str]] = []
+
+        def fake_run(command: list[str], cwd: Path | None) -> subprocess.CompletedProcess[str]:
+            calls.append(command)
+            return subprocess.CompletedProcess(command, 1, "", "repository graph is active")
+
+        sleeps: list[float] = []
+        with self.assertRaises(BenchError):
+            run_with_lock_retry(
+                ["gcx", "clean"],
+                None,
+                "clean test",
+                run_fn=fake_run,
+                sleep=sleeps.append,
+            )
+        self.assertEqual(len(calls), 4)
+        self.assertEqual(sleeps, [2, 4, 8])
 
 
 if __name__ == "__main__":

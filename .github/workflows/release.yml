@@ -17,6 +17,9 @@ name: Release
 permissions:
   "contents": "write"
   "actions": "write"
+  # id-token: write is required at the job level (not just here) for cosign's
+  # keyless OIDC signing in the sign-artifacts job below.
+  "id-token": "write"
 
 # This task will run whenever you push a git tag that looks like a version
 # like "1.0.0", "v0.1.0-prerelease.1", "my-app/0.1.0", "releases/v1.0.0", etc.
@@ -282,6 +285,63 @@ jobs:
           echo "$ANNOUNCEMENT_BODY" > $RUNNER_TEMP/notes.txt
 
           gh release create "${{ needs.plan.outputs.tag }}" --target "$RELEASE_COMMIT" $PRERELEASE_FLAG --title "$ANNOUNCEMENT_TITLE" --notes-file "$RUNNER_TEMP/notes.txt" artifacts/*
+
+  # Signs every released binary artifact with cosign's keyless OIDC flow: no
+  # signing key is stored anywhere, the GitHub Actions OIDC token is exchanged
+  # for a short-lived Fulcio cert at sign time. Produces a .sig + .pem per
+  # artifact, uploaded alongside the release so `cosign verify-blob` (see
+  # README's "Verified releases" section) can check them after the fact.
+  sign-artifacts:
+    name: Sign release artifacts (cosign keyless)
+    needs:
+      - plan
+      - host
+    runs-on: "ubuntu-22.04"
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: artifacts-*
+          path: artifacts
+          merge-multiple: true
+
+      - name: Drop manifest files from the signing set
+        run: rm -f artifacts/*dist-manifest.json
+
+      - name: Sign each artifact
+        working-directory: artifacts
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for f in *; do
+            [ -f "$f" ] || continue
+            cosign sign-blob --yes \
+              --output-signature "${f}.sig" \
+              --output-certificate "${f}.pem" \
+              "$f"
+          done
+
+      - name: Upload signatures to the GitHub Release
+        working-directory: artifacts
+        run: |
+          gh release upload "${{ needs.plan.outputs.tag }}" *.sig *.pem --clobber --repo "${{ github.repository }}"
+
+  # SLSA provenance (slsa-framework/slsa-github-generator's generic
+  # generator) is a documented follow-up, not implemented here: it expects
+  # the build job to emit a single job output of base64-encoded sha256
+  # digests for all artifacts, but this workflow's build matrix is
+  # cargo-dist's dynamically generated multi-job structure (build-local-
+  # artifacts × N targets + build-global-artifacts), so wiring that output
+  # correctly needs its own change, verified against a real tag, rather than
+  # being bolted on here unconfirmed.
 
   publish-homebrew-formula:
     needs:

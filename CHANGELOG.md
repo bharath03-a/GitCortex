@@ -7,6 +7,25 @@ from release tags and commit history after the fact, so they summarise what
 shipped rather than what was written at release time. Dates for those entries
 are tag dates.
 
+## [0.7.5] - 2026-08-23
+
+### Fixed
+- **Claude Code skills were never actually discoverable.** `gcx init --editor claude` wrote them to `.claude/skills/gcx/<name>.md`, but Claude Code only discovers skills at `.claude/skills/<name>/SKILL.md` with YAML frontmatter — none of the four shipped skills (exploring, debugging, impact-analysis, refactoring) were ever picked up. Fixed, and the same corrected skill set is now shared with Antigravity's onboarding (see Added).
+- **Bulk indexing crashed on files containing multiline quoted string literals** (e.g. TypeScript template literals, multi-line docstrings) — KuzuDB's `COPY` doesn't default its CSV `ESCAPE` character to match our RFC-4180 quoting, so `csv_quote()`'s doubled-quote escaping was rejected on the first full index of any repo with this kind of source.
+- **Risk labels (`find_callers`, `blast-radius`, and the viz UI) didn't distinguish call-graph confidence.** A symbol with 1000+ low-confidence "inferred" callers (common on generic method names like `filter` or `get` in large repos) and one with the same count of high-confidence "extracted" callers both reported the same risk band — misleadingly inflating risk on exactly the kind of common, overloaded names most likely to trip it. Risk is now confidence-weighted (extracted × 1.0, resolved × 0.6, inferred × 0.3) at all three call sites, kept in sync.
+
+### Added
+- **Antigravity now gets full onboarding**, not just an MCP config entry: `.agents/rules/AGENTS.md`, four `.agents/skills/<name>/SKILL.md` skills, and a `.agents/hooks.json` PreToolUse hook that injects call-graph context on file reads — matching what Claude Code already had.
+- **Codex gets a PreToolUse hook** (`.codex/hooks.json`) doing the same file-read context injection, alongside its existing `AGENTS.md` and MCP config.
+- **`gcx blast-radius` reports per-item risk** for every affected caller, not just one aggregate risk band for the whole change.
+- **Express.js route detection**: `app.get()`/`app.post()`-style registrations are now indexed as `Route` nodes linked to their handlers via a `HandledBy` edge, surfaced through `ast_search`.
+- **Java**: enum and record annotations are now extracted; `static final` fields are indexed as `Constant` nodes (previously invisible to the graph).
+- Release artifacts are now signed with cosign (keyless).
+
+### Performance
+- The viz UI's graph filter/decode pipeline moved off the main thread into a Web Worker, reusing one worker instance for the component's lifetime instead of re-instantiating per filter toggle.
+- Route detection's AST walk is now skipped entirely for files with no Express-style verb-call patterns, avoiding a redundant full-file traversal on non-route files.
+
 ## [0.7.3] - 2026-08-20
 
 ### Fixed

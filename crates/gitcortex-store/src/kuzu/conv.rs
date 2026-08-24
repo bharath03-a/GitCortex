@@ -18,6 +18,7 @@ pub(super) fn edge_kind_from_str(s: &str) -> EdgeKind {
         "annotated" => EdgeKind::Annotated,
         "throws" => EdgeKind::Throws,
         "references" => EdgeKind::References,
+        "handled_by" => EdgeKind::HandledBy,
         _ => EdgeKind::Contains,
     }
 }

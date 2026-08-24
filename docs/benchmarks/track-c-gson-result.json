@@ -1,0 +1,156 @@
+{
+  "repo": "gson",
+  "url": "https://github.com/google/gson",
+  "branch": "main",
+  "model": "claude-haiku-4-5-20251001",
+  "measured": "real_claude_usage",
+  "compact": 0,
+  "symbols": {
+    "type": "JsonArray",
+    "fn": "JsonTreeWriter",
+    "other": "ConstructorConstructor",
+    "concept": "auth"
+  },
+  "nodes": 4497,
+  "edges": 21514,
+  "totals": {
+    "baseline_tokens": 130064,
+    "gcx_tokens": 87655,
+    "saved_tokens": 42409,
+    "saved_pct": 32.61,
+    "baseline_cost_usd": 0.3603,
+    "gcx_cost_usd": 0.45584,
+    "geomean_ratio": 2.01,
+    "geomean_quality_ratio": 0.94,
+    "avg_quality_baseline": 6.0,
+    "avg_quality_gcx": 5.5,
+    "valid_questions": 4,
+    "errored_questions": []
+  },
+  "questions": [
+    {
+      "q": "search_concept",
+      "question": "Where in this codebase is 'auth' handled? List the relevant files and symbols.",
+      "baseline": {
+        "input": 43128,
+        "output": 1079,
+        "total": 44207,
+        "cache_read": 156234,
+        "cost": 0.10723,
+        "turns": 5,
+        "error": false,
+        "answer": "**GSON has no authentication handling.** It's a JSON serialization/deserialization library.\n\nThe \"auth\" matches are:\n- `@author` javadoc tags (code attribution)\n- License text mentioning \"authorized\"\n- One security-related test: `SecurityTest.java` (handles JSON injection prevention, not auth)\n\n**Result:** No authentication, login, tokens, credentials, or authorization code in this codebase."
+      },
+      "gcx": {
+        "input": 2305,
+        "output": 440,
+        "total": 2745,
+        "cache_read": 31927,
+        "cost": 0.19094,
+        "turns": 1,
+        "error": false,
+        "answer": "Gson doesn't have traditional auth (login/tokens/roles). Instead has **reflection-based access control** for security:\n\n## Main Files & Symbols\n\n| File | Key Symbols |\n|------|-------------|\n| `ReflectionAccessFilter.java` | Interface `FilterResult check()`, constants: `BLOCK_INACCESSIBLE_JAVA`, `BLOCK_ALL_JAVA`, `BLOCK_ALL_ANDROID`, `BLOCK_ALL_PLATFORM` |\n| `ReflectionAccessFilterHelper.java` | `isJavaType()`, `isAndroidType()`, `getFilterResult()`, `canAccess()` |\n| `GsonBuilder.java` | `addReflectionAccessFilter()`, `generateNonExecutableJson()`, `excludeFieldsWithModifiers()`, `setExclusionStrategies()` |\n| `Gson.java` | `JSON_NON_EXECUTABLE_PREFIX`, `reflectionFilters`, `generateNonExecutableJson` |\n| `ExclusionStrategy.java` | `shouldSkipField()`, `shouldSkipClass()` |\n| `Excluder.java` | `excludeClass()`, `excludeField()`, `withExclusionStrategy()` |\n\n## Security Tests\n- `SecurityTest.java` \u2014 XSS attack prevention tests\n- `ReflectionAccessTest.java` \u2014 Java SecurityManager + JPMS module restrictions\n\n**Core purpose:** Prevent XSS attacks + control field visibility during JSON serialization/deserialization."
+      },
+      "token_ratio": 16.1,
+      "tokens_saved": 41462,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "tour_onboarding",
+      "question": "Give me a concise tour of this codebase: what are the main components and how do they fit together?",
+      "baseline": {
+        "input": 25462,
+        "output": 1805,
+        "total": 27267,
+        "cache_read": 279598,
+        "cost": 0.08784,
+        "turns": 9,
+        "error": false,
+        "answer": "**Gson Architecture**\n\n**Core Entry Points**\n- `Gson` \u2014 Main class. Thread-safe converter: `toJson()` (serialize) / `fromJson()` (deserialize)\n- `GsonBuilder` \u2014 Factory for creating custom `Gson` instances with config (pretty-print, version support, custom adapters, etc.)\n\n**Type Handling**\n- `TypeAdapter<T>` \u2014 Handles serialization/deserialization for a specific type. Cached for performance.\n- `TypeAdapterFactory` \u2014 Creates adapters dynamically by inspecting types at runtime. Built-in factories handle standard Java types + reflection-based fallback for custom objects.\n- `TypeToken<T>` \u2014 Captures generic type info at runtime (works around Java's type erasure).\n\n**JSON Model (Tree Structure)**\n- `JsonElement` \u2014 Base class for JSON values\n  - `JsonObject` \u2014 Represents JSON objects (maps)\n  - `JsonArray` \u2014 Represents JSON arrays\n  - `JsonPrimitive` \u2014 Represents JSON primitives (string, number, boolean, null)\n\n**Interfaces for Custom Serialization**\n- `JsonSerializer<T>` / `JsonDeserializer<T>` \u2014 Process JSON as trees (higher-level, less efficient)\n- `@JsonAdapter` \u2014 Annotation to attach custom adapters to classes\n\n**Stream I/O**\n- `JsonReader` / `JsonWriter` \u2014 Low-level streaming parsers/writers (efficient, incremental)\n- `JsonToken` / `JsonScope` \u2014 State machine for JSON parsing\n- `MalformedJsonException` \u2014 Parse errors\n\n**Internals**\n- `Excluder` \u2014 Field filtering logic (version, access modifiers)\n- `ConstructorConstructor` \u2014 Instantiates objects (reflection + `Unsafe` fallback)\n- `Streams` \u2014 Utilities for tree\u2190\u2192stream conversion\n- `ReflectionAccessFilter` \u2014 Security filter for field access\n\n**Test Modules** (separate pom.xml)\n- `test-jpms` \u2014 Java Platform Module System compatibility\n- `test-graal-native-image` \u2014 GraalVM native compilation support\n- `test-shrinker` \u2014 ProGuard/R8 optimization compatibility\n- `proto` \u2014 Protobuf integration\n- `metrics` \u2014 Benchmarking\n\n**Flow**: User calls `gson.toJson(obj)` \u2192 routes through `TypeAdapterFactory` chain \u2192 finds/caches `TypeAdapter` \u2192 serializes via low-level `JsonWriter` or tree model."
+      },
+      "gcx": {
+        "input": 21229,
+        "output": 1433,
+        "total": 22662,
+        "cache_read": 76045,
+        "cost": 0.0572,
+        "turns": 4,
+        "error": false,
+        "answer": "**Gson Codebase Architecture**\n\nGson is JSON serialization library. Three-layer stack:\n\n1. **Core API** (`com/google/gson/`)\n   - Entry point: `Gson` class orchestrates serialization/deserialization\n   - `Json*` types (JsonArray, JsonObject, JsonElement) represent JSON tree\n   - `TypeAdapter` framework plugs in custom serializers\n\n2. **Binding Layer** (`com/google/gson/internal/bind/`)\n   - `JsonTreeReader`/`JsonTreeWriter` bridge JSON trees \u2194 Java objects\n   - Adapter factories match types to serialization strategies\n   - Handles reflection, constructors, field mapping\n\n3. **I/O Foundation** (`com/google/gson/stream/`)\n   - `JsonReader`/`JsonWriter` \u2014 low-level token streaming\n   - Used by binding layer for efficient read/write\n\n**Utilities** (`com/google/gson/internal/`)\n- `ConstructorConstructor` \u2014 instantiates objects via reflection\n- `LazilyParsedNumber` \u2014 defers number parsing\n- Type resolution, annotation processing\n\n**Extensions**\n- `extras/typeadapters/` \u2014 RuntimeTypeAdapterFactory, PostConstructAdapterFactory\n- `proto/` \u2014 Protocol Buffers adapter\n- `metrics/` \u2014 Benchmarking utilities\n\n**Stats:** 628 classes, 2,498 methods across 280 files. ~10k method calls, heavy internal interconnect.\n\n**Data flow:** User calls `Gson.toJson(obj)` \u2192 binding layer picks adapter \u2192 adapter writes via JsonWriter \u2192 stream output."
+      },
+      "token_ratio": 1.2,
+      "tokens_saved": 4605,
+      "quality": {
+        "score_baseline": 9,
+        "score_gcx": 7,
+        "quality_ratio": 0.78
+      }
+    },
+    {
+      "q": "refactor_impact",
+      "question": "If I change 'JsonTreeWriter', what breaks? List the direct callers and any important indirect callers.",
+      "baseline": {
+        "input": 21595,
+        "output": 1206,
+        "total": 22801,
+        "cache_read": 160724,
+        "cost": 0.06525,
+        "turns": 6,
+        "error": false,
+        "answer": "**Direct callers:**\n\n1. **`TypeAdapter.toJsonTree(T value)`** \u2013 Creates JsonTreeWriter, calls `write()`, returns `writer.get()`\n2. **`Gson.toJsonTree(Object src, Type typeOfSrc)`** \u2013 Creates JsonTreeWriter, calls `toJson()`, returns `writer.get()`\n\n**Key surface area:**\n- Constructor: `new JsonTreeWriter()`\n- Method: `get()` \u2013 returns the constructed `JsonElement`\n- Inherited methods from `JsonWriter` (used by serialization path): `beginArray()`, `endArray()`, `beginObject()`, `endObject()`, `name()`, `value()`, etc.\n\n**Impact of changes:**\n\nChanging JsonTreeWriter's constructor signature, get() method, or inherited JsonWriter methods would break both `toJsonTree()` APIs, which are part of public Gson/TypeAdapter interfaces. Any code calling `toJsonTree()` indirectly depends on it.\n\nIf changing internal behavior (stack management, null handling), affects all serialization that goes through these two paths."
+      },
+      "gcx": {
+        "input": 28130,
+        "output": 2320,
+        "total": 30450,
+        "cache_read": 396577,
+        "cost": 0.10742,
+        "turns": 14,
+        "error": false,
+        "answer": "**Direct callers:**\n\n1. **`Gson.toJsonTree(Object src, Type typeOfSrc)`** (line 545 in Gson.java)\n   - Creates `new JsonTreeWriter()` and calls `toJson()` to write, then returns `writer.get()`\n\n2. **`TypeAdapter.toJsonTree(T value)`** (line 181 in TypeAdapter.java)\n   - Creates `new JsonTreeWriter()`, calls `write()`, then returns `jsonWriter.get()`\n\n**Important indirect callers:**\n\n- **`Gson.toJsonTree(Object src)`** (line 519 in Gson.java)  \n  Delegates to `toJsonTree(Object, Type)` \u2192 hits `#1`\n\n- **Any `TypeAdapter` subclass calling `toJsonTree()`**  \n  Custom adapters throughout the codebase could call this public method \u2192 hits `#2`\n\n- **`TypeAdapter.fromJsonTree()`** may indirectly interact with serialization that used JsonTreeWriter output\n\n**If you change JsonTreeWriter, these will break:**\n- Any signature changes to the constructor, `get()` method, or overridden JsonWriter methods (`write()`, `beginArray()`, `endArray()`, `beginObject()`, `endObject()`, `name()`, `value()`, etc.)\n- Any removal of the public no-arg constructor\n- Changes to exception handling behavior\n\nTest coverage likely exists in `*TreeWriterTest.java` files."
+      },
+      "token_ratio": 0.75,
+      "tokens_saved": -7649,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    },
+    {
+      "q": "subgraph_around",
+      "question": "Show everything directly connected to 'JsonArray' \u2014 what calls it, what it calls, what it uses.",
+      "baseline": {
+        "input": 33780,
+        "output": 2009,
+        "total": 35789,
+        "cache_read": 224259,
+        "cost": 0.09998,
+        "turns": 9,
+        "error": false,
+        "answer": "## JsonArray Connection Map\n\n### **WHAT JsonArray IS**\n- Extends `JsonElement` (parent class for JSON tree)\n- Implements `Iterable<JsonElement>`\n- Final class, wraps `ArrayList<JsonElement>`\n\n---\n\n### **WHAT CALLS JsonArray (Callers)**\n\n| File | Usage |\n|------|-------|\n| **JsonTreeWriter** | Creates arrays: `new JsonArray()` at line 102 |\n| | Adds elements to array: `((JsonArray) element).add(value)` at line 92 |\n| **JsonTreeReader** | Casts to array: `JsonArray array = (JsonArray) peekStack()` at line 84 |\n| | Iterates: `push(array.iterator())` at line 85 |\n| | Type checks: `instanceof JsonArray` at line 150 |\n| **JsonElementTypeAdapter** | Creates arrays: `new JsonArray()` at line 48 |\n| | Adds to array: `((JsonArray) current).add(value)` at line 111 |\n| | Iterates: `for (JsonElement e : value.getAsJsonArray())` at line 154 |\n| **JsonElement** (parent) | Type check: `public boolean isJsonArray()` \u2014 returns `this instanceof JsonArray` |\n| | Getter: `public JsonArray getAsJsonArray()` \u2014 casts `this` to JsonArray |\n| **JsonObject** | Getter: `getAsJsonArray(memberName)` \u2014 retrieves array from object members |\n| **ProtoTypeAdapter** | Converts proto arrays to JsonArray |\n| **StructTypeAdapter** | Works with JsonArray structures |\n| Test files | 27 files reference JsonArray directly |\n\n---\n\n### **WHAT JsonArray CALLS (Dependencies)**\n\n| Target | Usage | Purpose |\n|--------|-------|---------|\n| **JsonElement** | Parent class | Type hierarchy |\n| **ArrayList<JsonElement>** | Internal field `elements` | Data storage for array items |\n| **JsonNull.INSTANCE** | Substitutes `null` \u2192 JsonNull | Null-safety (converts null args to JsonNull) |\n| **JsonPrimitive** | Created in `add(Boolean/Number/String/Character)` | Wraps primitives in JSON |\n| **NonNullElementWrapperList** | Wrapped in `asList()` | Provides List view with null-checking |\n| **Iterator<JsonElement>** | Returns from `iterator()` | Enables traversal |\n| **BigDecimal, BigInteger** | Used in getters | Type conversions for single-element arrays |\n\n---\n\n### **KEY PATTERNS**\n\n- **Null Handling**: All `add()` methods convert `null` \u2192 `JsonNull.INSTANCE` \n- **Type Casting**: Code frequently checks `instanceof JsonArray` before casting\n- **Single-Element Convenience**: Methods like `getAsNumber()`, `getAsString()` work only on 1-element arrays\n- **Deep Copy**: `deepCopy()` recursively copies all elements\n- **List View**: `asList()` wraps internal ArrayList to provide List interface without null support\n\n---\n\n### **CREATION PATHS**\n1. **Direct**: `new JsonArray()` or `new JsonArray(capacity)`\n2. **Via JsonTreeWriter**: Writing arrays to JSON tree\n3. **Via JsonElementTypeAdapter**: Deserializing JSON\n4. **Via JsonObject**: Retrieving array members"
+      },
+      "gcx": {
+        "input": 28980,
+        "output": 2818,
+        "total": 31798,
+        "cache_read": 283084,
+        "cost": 0.10028,
+        "turns": 13,
+        "error": false,
+        "answer": "## JsonArray \u2014 Complete Connection Map\n\n**Definition:** `gson/src/main/java/com/google/gson/JsonArray.java:42`\n- Extends `JsonElement`\n- Implements `Iterable<JsonElement>`\n- Wraps `ArrayList<JsonElement> elements`\n\n---\n\n### **CALLERS** (what constructs JsonArray)\n**57 total** \u2014 top 6:\n\n| Caller | File | Purpose |\n|--------|------|---------|\n| `JsonArray.deepCopy()` | JsonArray.java:68 | Creates deep copy, instantiates new JsonArray |\n| `JsonTreeWriter.beginArray()` | JsonTreeWriter.java:99 | Constructs array during JSON writing |\n| `ProtoTypeAdapter.serialize()` | ProtoTypeAdapter.java:254 | Serializes proto messages to JsonArray |\n| `JsonElementTypeAdapter.tryBeginNesting()` | JsonElementTypeAdapter.java:44 | Parses nested arrays |\n| `StructTypeAdapter.fromListValue()` | StructTypeAdapter.java:88 | Converts proto ListValue \u2192 JsonArray |\n| `DefaultTypeAdaptersTest.testJsonArrayDeserialization()` | DefaultTypeAdaptersTest.java:731 | Unit test |\n\n+ 51 more (inferred)\n\n---\n\n### **TYPE USAGES** (methods using JsonArray as param/return)\n\n| Method | File | Signature |\n|--------|------|-----------|\n| `JsonArray.deepCopy()` | JsonArray.java:68 | `JsonArray deepCopy()` |\n| `StructTypeAdapter.fromListValue()` | StructTypeAdapter.java:88 | `static JsonArray fromListValue(ListValue)` |\n| `JsonArray.addAll()` | JsonArray.java:137 | `void addAll(JsonArray array)` |\n| `JsonElement.getAsJsonArray()` | JsonElement.java:174 | `JsonArray getAsJsonArray()` |\n| `JsonObject.getAsJsonArray()` | JsonObject.java:210 | `JsonArray getAsJsonArray()` |\n| `LegacyProtoTypeAdapterFactoryTest.rewriteJsonArray()` | LegacyProtoTypeAdapterFactoryTest.java:225 | test helper |\n\n---\n\n### **WHAT JsonArray CALLS** (internal operations)\n\n**Elements storage:**\n- `ArrayList<JsonElement>.add()`, `addAll()`, `get()`, `iterator()`, `size()`, `isEmpty()`, `contains()`, `remove()`, `set()`\n\n**Child handling:**\n- `JsonElement.deepCopy()` \u2014 on each child element (line 73)\n- `JsonNull.INSTANCE` \u2014 null conversion\n- `JsonPrimitive` constructor \u2014 for primitives (lines 87, 97, 107, 117)\n\n**List wrapper:**\n- `NonNullElementWrapperList<>` \u2014 for `asList()` view (line 416)\n\n---\n\n### **PUBLIC API**\n\n**Constructors:**\n- `JsonArray()` \u2014 empty\n- `JsonArray(int capacity)` \u2014 with capacity\n\n**Mutators:**\n- `add(Boolean|Character|Number|String|JsonElement)` \u2014 5 overloads\n- `addAll(JsonArray)` \u2014 bulk add\n- `set(int, JsonElement)` \u2014 replace at index\n- `remove(JsonElement|int)` \u2014 by value or index\n\n**Accessors:**\n- `get(int i)` \u2192 `JsonElement`\n- `size()`, `isEmpty()`, `contains()`\n- `iterator()` \u2192 `Iterator<JsonElement>`\n- `asList()` \u2192 `List<JsonElement>` view\n- `getAs*()` \u2014 11 type coercions (Number, String, double, BigDecimal, float, int, long, byte, boolean, short, char\u2014deprecated)\n\n**Override:**\n- `deepCopy()` \u2192 new JsonArray with deep copies of children\n- `equals()`, `hashCode()`"
+      },
+      "token_ratio": 1.13,
+      "tokens_saved": 3991,
+      "quality": {
+        "score_baseline": 5,
+        "score_gcx": 5,
+        "quality_ratio": 1.0
+      }
+    }
+  ]
+}
