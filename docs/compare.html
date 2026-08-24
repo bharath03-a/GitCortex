@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="How GitCortex compares to Graphify, another open-source code knowledge graph for AI agents. Same repos, same client, same questions — including where Graphify wins.">
+  <meta name="description" content="How GitCortex compares to Graphify and CodeGraph, two other open-source code knowledge graphs for AI agents. Real, same-questions benchmarks — including where each one wins.">
   <title>Compare — GitCortex</title>
 
   <meta property="og:type"        content="website">
   <meta property="og:url"         content="https://bharath03-a.github.io/GitCortex/compare.html">
   <meta property="og:title"       content="How GitCortex compares — GitCortex">
-  <meta property="og:description" content="Same repos, same client, same questions. Real numbers, including where the other tool wins.">
+  <meta property="og:description" content="Real, same-questions benchmarks against Graphify and CodeGraph. Including where each one wins.">
   <meta property="og:image"       content="https://raw.githubusercontent.com/bharath03-a/GitCortex/main/assets/icon.svg">
 
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
@@ -68,9 +68,8 @@
     .wrap { max-width: var(--max); margin: 0 auto; padding: 0 var(--gut); }
 
     .eyebrow { font-family: var(--mono); font-size: .69rem; text-transform: uppercase; letter-spacing: .145em; font-weight: 600; color: var(--ink-3); }
-    h1 { font-size: clamp(1.9rem, 3.8vw, 2.5rem); line-height: 1.1; letter-spacing: -.03em; font-weight: 800; max-width: 22ch; text-wrap: balance; }
-    h2 { font-size: clamp(1.25rem, 2.3vw, 1.55rem); line-height: 1.2; letter-spacing: -.02em; font-weight: 760; margin-bottom: 10px; }
-    h3 { font-size: 1rem; letter-spacing: -.008em; font-weight: 660; }
+    h1 { font-size: clamp(1.9rem, 3.8vw, 2.5rem); line-height: 1.1; letter-spacing: -.03em; font-weight: 800; max-width: 24ch; text-wrap: balance; }
+    h2 { font-size: clamp(1.15rem, 2vw, 1.35rem); line-height: 1.2; letter-spacing: -.02em; font-weight: 760; }
     .lede { color: var(--ink-2); font-size: 1.02rem; max-width: 66ch; }
     .note { color: var(--ink-2); font-size: .9rem; }
 
@@ -87,69 +86,49 @@
     .nav-links a:hover { color: var(--ink); }
     .nav-cta { font-family: var(--mono); font-size: .76rem; font-weight: 600; background: var(--ink); color: var(--paper); padding: 8px 14px; border-radius: 6px; }
 
-    header.hero { padding: 52px 0 32px; border-bottom: 1px solid var(--rule); }
+    header.hero { padding: 52px 0 40px; border-bottom: 1px solid var(--rule); }
     header.hero .eyebrow { margin-bottom: 12px; }
     header.hero h1 { margin-bottom: 12px; }
 
-    .tldr { background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; padding: 22px 24px; margin-top: 22px; }
-    .tldr-label { font-family: var(--mono); font-size: .68rem; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); margin-bottom: 8px; }
-    .tldr p { font-size: 1rem; color: var(--ink); }
-    .tldr p + p { margin-top: 8px; color: var(--ink-2); font-size: .92rem; }
+    section { padding: 48px 0; }
 
-    section { padding: 44px 0; border-bottom: 1px solid var(--rule); }
-    section:last-of-type { border-bottom: none; }
-    .section-head { max-width: 66ch; margin-bottom: 24px; }
+    /* Picker cards */
+    .picker-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+    @media (max-width: 720px) { .picker-grid { grid-template-columns: 1fr; } }
 
-    .bar-compare { display: flex; flex-direction: column; gap: 22px; }
-    .bar-row .bar-labels { display: flex; justify-content: space-between; font-size: .86rem; margin-bottom: 6px; }
-    .bar-row .bar-labels .who { font-weight: 600; }
-    .bar-row .bar-labels .val { font-family: var(--mono); font-weight: 600; }
-    .bar-track { height: 10px; border-radius: 6px; background: var(--rule-soft); overflow: hidden; }
-    .bar-fill { height: 100%; border-radius: 6px; }
-    .bar-fill.gitcortex { background: var(--good); }
-    .bar-fill.graphify { background: var(--ink-3); }
-    .bar-metric-name { font-family: var(--mono); font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); margin-bottom: 10px; }
+    .picker-card {
+      display: block; background: var(--surface); border: 1px solid var(--rule); border-radius: 16px;
+      padding: 26px 26px 24px; transition: border-color .15s, transform .15s, box-shadow .15s;
+      position: relative; overflow: hidden;
+    }
+    .picker-card:hover { border-color: var(--brand); transform: translateY(-2px); box-shadow: 0 8px 24px -12px rgba(20,20,26,.18); }
+    .picker-card .versus { font-family: var(--mono); font-size: .68rem; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); margin-bottom: 6px; }
+    .picker-card .versus-name { font-size: 1.28rem; font-weight: 800; letter-spacing: -.02em; margin-bottom: 12px; }
+    .picker-card .teaser { color: var(--ink-2); font-size: .92rem; margin-bottom: 20px; min-height: 3.2em; }
 
-    .card-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
-    @media (max-width: 640px) { .card-grid { grid-template-columns: 1fr; } }
-    .info-card { background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; padding: 20px 22px; }
-    .info-card .tool-name { font-weight: 700; font-size: 1.02rem; margin-bottom: 3px; }
-    .info-card .tool-tag { font-family: var(--mono); font-size: .72rem; color: var(--ink-3); margin-bottom: 14px; }
+    /* Mini bar visualization inside each card */
+    .mini-bars { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+    .mini-bar-row { display: flex; align-items: center; gap: 10px; }
+    .mini-bar-label { font-family: var(--mono); font-size: .72rem; color: var(--ink-3); width: 68px; flex-shrink: 0; }
+    .mini-bar-track { flex: 1; height: 8px; border-radius: 5px; background: var(--rule-soft); overflow: hidden; }
+    .mini-bar-fill { height: 100%; border-radius: 5px; }
+    .mini-bar-fill.gitcortex { background: var(--good); }
+    .mini-bar-fill.other { background: var(--ink-3); }
+    .mini-bar-val { font-family: var(--mono); font-size: .74rem; font-weight: 600; width: 34px; text-align: right; flex-shrink: 0; }
 
-    table { width: 100%; border-collapse: collapse; font-size: .86rem; }
-    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--rule-soft); }
-    th { font-family: var(--mono); font-size: .68rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); font-weight: 600; }
-    td.num, th.num { text-align: right; font-family: var(--mono); }
-    tr:last-child td { border-bottom: none; }
-    .table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); }
-    .table-wrap table { min-width: 640px; }
-    .pill { display: inline-block; font-family: var(--mono); font-size: .68rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
-    .pill-good { background: var(--good-soft); color: var(--good); }
-    .pill-warn { background: var(--warn-soft); color: var(--warn); }
-    .pill-bad { background: var(--bad-soft); color: var(--bad); }
+    .picker-card .cta { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: .82rem; font-weight: 600; color: var(--brand); }
+    .picker-card .cta .arrow { transition: transform .15s; }
+    .picker-card:hover .cta .arrow { transform: translateX(3px); }
 
-    .callout { background: var(--surface-2); border: 1px solid var(--rule); border-radius: 10px; padding: 18px 20px; font-size: .89rem; color: var(--ink-2); }
-    .callout strong { color: var(--ink); }
-    .callout code { background: var(--surface); padding: 1px 5px; border-radius: 4px; font-size: .86em; }
-    .callout.positive { border-left: 3px solid var(--good); }
-    .callout.honest { border-left: 3px solid var(--warn); }
-    .callout p + p { margin-top: 10px; }
+    .picker-card .stat-row { display: flex; gap: 18px; margin-bottom: 18px; flex-wrap: wrap; }
+    .picker-card .stat { }
+    .picker-card .stat .stat-num { font-family: var(--mono); font-weight: 700; font-size: 1.1rem; color: var(--ink); }
+    .picker-card .stat .stat-label { font-size: .72rem; color: var(--ink-3); }
 
-    .example { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 18px 20px; margin-top: 14px; }
-    .example .example-label { font-family: var(--mono); font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); margin-bottom: 8px; }
-    .example p { color: var(--ink-2); font-size: .92rem; }
-    .example p + p { margin-top: 10px; }
-    .example pre { white-space: pre-wrap; font-size: .78rem; color: var(--ink-2); line-height: 1.6; background: var(--surface-2); padding: 12px 14px; border-radius: 8px; margin-top: 10px; overflow-x: auto; }
+    .curious { margin-top: 32px; text-align: center; }
+    .curious p { font-size: .92rem; color: var(--ink-2); }
 
-    details.methodology-details { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 4px 20px; }
-    details.methodology-details summary { padding: 14px 0; cursor: pointer; font-weight: 660; font-size: .95rem; list-style: none; display: flex; align-items: center; justify-content: space-between; }
-    details.methodology-details summary::-webkit-details-marker { display: none; }
-    details.methodology-details summary::after { content: "+"; font-family: var(--mono); color: var(--ink-3); font-size: 1.2rem; }
-    details.methodology-details[open] summary::after { content: "–"; }
-    .methodology li { margin-bottom: 10px; color: var(--ink-2); font-size: .9rem; }
-    .methodology { padding: 4px 0 18px 20px; }
-
-    footer.foot { padding: 34px 0 46px; }
+    footer.foot { padding: 34px 0 46px; border-top: 1px solid var(--rule); }
     .foot-in { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
     .foot-id { display: flex; align-items: center; gap: 9px; font-family: var(--mono); font-size: .78rem; color: var(--ink-3); }
     .foot-id svg { width: 18px; height: 18px; color: var(--ink-3); }
@@ -175,8 +154,7 @@
     <ul class="nav-links">
       <li><a href="./#how">How it works</a></li>
       <li><a href="benchmarks.html">Benchmarks</a></li>
-      <li><a href="compare.html">vs Graphify</a></li>
-      <li><a href="compare-codegraph.html">vs CodeGraph</a></li>
+      <li><a href="compare.html">Compare</a></li>
       <li><a class="nav-cta" href="https://github.com/bharath03-a/GitCortex">GitHub</a></li>
     </ul>
   </div>
@@ -185,174 +163,60 @@
 <header class="hero">
   <div class="wrap">
     <span class="eyebrow">Compare · measured, not estimated</span>
-    <h1>How GitCortex compares to Graphify.</h1>
+    <h1>How GitCortex compares to the other code-graph tools.</h1>
     <p class="lede">
-      Graphify is a real, fast-growing open-source project — 106,000+ GitHub stars in 4.5 months —
-      that does the same core thing GitCortex does: turn a codebase into a graph an AI agent can
-      query instead of grepping. We ran both against the same repos and questions to see, honestly,
-      where each one is actually stronger.
+      We don't just claim GitCortex is good — we ran it against real competitors on the same repos,
+      same questions, and published the results including the losses. Pick a comparison below.
     </p>
-    <div class="tldr">
-      <div class="tldr-label">In short</div>
-      <p>On the same 15 code-navigation questions, GitCortex answered more accurately and used about a third fewer tokens doing it. Graphify pulled ahead on questions its own broader feature set is built for — more languages, and reading docs/config alongside code.</p>
-      <p>Neither result is the whole story. Read on for the numbers, or skip straight to <a href="#graphify-strengths">what Graphify does better</a>.</p>
-    </div>
   </div>
 </header>
 
-<section id="headline">
+<section id="picker">
   <div class="wrap">
-    <div class="section-head">
-      <h2>Code navigation: the numbers</h2>
-      <p class="note">15 questions — deep blast-radius, cross-file architecture, refactor-safety — across five real repos (ripgrep, requests, hono, cobra, gson), same AI client (Claude Code) for both tools.</p>
-    </div>
-    <div class="bar-compare">
-      <div class="bar-row">
-        <div class="bar-metric-name">Answer quality (mean, 0–1)</div>
-        <div class="bar-labels"><span class="who">GitCortex</span><span class="val">0.80</span></div>
-        <div class="bar-track"><div class="bar-fill gitcortex" style="width: 80%"></div></div>
-      </div>
-      <div class="bar-row">
-        <div class="bar-labels"><span class="who">Graphify</span><span class="val">0.50</span></div>
-        <div class="bar-track"><div class="bar-fill graphify" style="width: 50%"></div></div>
-      </div>
-      <div class="bar-row" style="margin-top: 8px;">
-        <div class="bar-metric-name">Tokens used per task (lower is better) — max 359,885</div>
-        <div class="bar-labels"><span class="who">GitCortex</span><span class="val">185,497 avg</span></div>
-        <div class="bar-track"><div class="bar-fill gitcortex" style="width: 51%"></div></div>
-      </div>
-      <div class="bar-row">
-        <div class="bar-labels"><span class="who">Graphify</span><span class="val">244,077 avg</span></div>
-        <div class="bar-track"><div class="bar-fill graphify" style="width: 68%"></div></div>
-      </div>
-    </div>
-    <div class="card-grid" style="margin-top: 28px;">
-      <div class="info-card">
-        <div class="tool-name">GitCortex</div>
-        <div class="tool-tag">Rust · tree-sitter · KuzuDB · MCP-native</div>
-        <p class="note">Called its MCP tool exactly once, on all 15 of 15 tasks. Never needed a fallback search.</p>
-      </div>
-      <div class="info-card">
-        <div class="tool-name">Graphify</div>
-        <div class="tool-tag">Python · tree-sitter · JSON graph · CLI + MCP</div>
-        <p class="note">Needed 2–5 CLI calls per task (avg 2.7) to land an answer, and fell back to raw file search on 6 of 15 tasks.</p>
-      </div>
-    </div>
-  </div>
-</section>
+    <div class="picker-grid">
 
-<section id="why">
-  <div class="wrap">
-    <div class="section-head">
-      <h2>Why the gap</h2>
-      <p class="note">Graphify's underlying extraction is competent — on tasks where it resolved the right symbol, its answers were as good as GitCortex's. Two specific, repeatable patterns explain most of the difference:</p>
-    </div>
-    <div class="example">
-      <div class="example-label">One call vs. several, every single task</div>
-      <p>
-        Claude Code called GitCortex's MCP tool exactly once on every task — one structured call,
-        one sufficient answer. Against Graphify's CLI, the same model needed 2 to 5 attempts on
-        <em>every</em> task, and on 6 of 15 also fell back to raw file exploration. This wasn't a
-        one-off — it happened consistently across the whole suite, and it's the direct driver of
-        Graphify's higher token cost.
-      </p>
-    </div>
-    <div class="example">
-      <div class="example-label">A verified ambiguity bug</div>
-      <p>
-        Asked about <code>Searcher::line_number()</code> in ripgrep (a config getter), Graphify's
-        <code>affected</code> command silently traced <code>Sunk::line_number()</code> instead — an
-        unrelated method that happens to share a short name and gets called 76 times elsewhere in
-        the codebase. The answer was confident, well-formatted, and about the wrong symbol entirely.
-      </p>
-      <p>
-        This is the same bug class we found and fixed in our own <code>symbol_context</code> tool
-        while preparing this release (see the <a href="https://github.com/bharath03-a/GitCortex/blob/main/CHANGELOG.md">CHANGELOG</a>).
-        Short-name ambiguity is an easy trap for any code-graph tool — worth checking for regardless
-        of which one you use.
-      </p>
-    </div>
-  </div>
-</section>
+      <a class="picker-card" href="compare-codegraph.html">
+        <div class="versus">Compare · 3 real AI clients</div>
+        <div class="versus-name">vs CodeGraph</div>
+        <p class="teaser">Same 10 questions, run through Claude Code, Codex, and Antigravity independently — fresh baselines each time, no cherry-picking. Want to see how it holds up across clients?</p>
+        <div class="mini-bars">
+          <div class="mini-bar-row">
+            <span class="mini-bar-label">GitCortex</span>
+            <div class="mini-bar-track"><div class="mini-bar-fill gitcortex" style="width: 100%"></div></div>
+            <span class="mini-bar-val">10/10</span>
+          </div>
+          <div class="mini-bar-row">
+            <span class="mini-bar-label">CodeGraph</span>
+            <div class="mini-bar-track"><div class="mini-bar-fill other" style="width: 80%"></div></div>
+            <span class="mini-bar-val">8/10</span>
+          </div>
+        </div>
+        <span class="cta">See the full comparison <span class="arrow">→</span></span>
+      </a>
 
-<section id="graphify-strengths">
-  <div class="wrap">
-    <div class="section-head">
-      <h2>What Graphify does better</h2>
-      <p class="note">We went and tested this rather than just describing it — here's what we found.</p>
-    </div>
-    <div class="callout positive">
-      <p><strong>Language coverage.</strong> Graphify supports roughly 40 languages via tree-sitter; GitCortex supports 5 today (Rust, Python, TypeScript, Go, Java). We tested this directly rather than taking it on faith: pointed Graphify's code-only extractor at <a href="https://github.com/rails/thor">Thor</a>, a real Ruby project GitCortex can't index at all. It worked cleanly — 743 nodes, 1,027 edges, no LLM call, and correctly flagged an ambiguous symbol (<code>Thor</code> matching 34 nodes) instead of silently guessing, which is exactly the right behavior.</p>
-    </div>
-    <div class="example">
-      <div class="example-label">Real output — graphify explain "CoreExt" (Ruby, thor)</div>
-      <pre>Node: Thor::CoreExt
-  Source:    lib/thor/core_ext/hash_with_indifferent_access.rb L2
-  Connections (2):
-  --&gt; Thor::CoreExt::HashWithIndifferentAccess [contains]
-  &lt;-- Thor [contains]</pre>
-    </div>
-    <div class="callout positive" style="margin-top: 14px;">
-      <p><strong>Docs, SQL schemas, and config files in the same graph.</strong> Graphify's semantic
-      extraction mode (LLM-backed, not code-only) reads Markdown docs, Postgres schemas, and
-      Terraform/HCL into the same graph as your code — a real, useful capability GitCortex doesn't
-      attempt. We don't have an LLM backend configured in the environment this comparison ran in, so
-      we're not claiming a tested result here — only reporting Graphify's documented capability
-      honestly instead of guessing at numbers we don't have.</p>
-    </div>
-    <div class="callout" style="margin-top: 14px;">
-      <p><strong>Community and maturity.</strong> Graphify has 106,000+ GitHub stars and 10,000+ forks after 4.5 months. GitCortex is a much smaller, newer project. That's not a benchmark result, but it's real context worth knowing.</p>
-    </div>
-  </div>
-</section>
+      <a class="picker-card" href="compare-graphify.html">
+        <div class="versus">Compare · 106,000+ star project</div>
+        <div class="versus-name">vs Graphify</div>
+        <p class="teaser">Our first head-to-head, against a much bigger, faster-growing project. Same 15 questions, same client, including a verified bug we found in their ambiguity handling. Curious?</p>
+        <div class="mini-bars">
+          <div class="mini-bar-row">
+            <span class="mini-bar-label">GitCortex</span>
+            <div class="mini-bar-track"><div class="mini-bar-fill gitcortex" style="width: 80%"></div></div>
+            <span class="mini-bar-val">0.80</span>
+          </div>
+          <div class="mini-bar-row">
+            <span class="mini-bar-label">Graphify</span>
+            <div class="mini-bar-track"><div class="mini-bar-fill other" style="width: 50%"></div></div>
+            <span class="mini-bar-val">0.50</span>
+          </div>
+        </div>
+        <span class="cta">See the full comparison <span class="arrow">→</span></span>
+      </a>
 
-<section id="task-table">
-  <div class="wrap">
-    <div class="section-head">
-      <h2>Task-by-task detail</h2>
     </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Task</th><th>Type</th><th>GitCortex</th><th>Graphify</th><th class="num">GitCortex tok</th><th class="num">Graphify tok</th></tr>
-        </thead>
-        <tbody>
-          <tr><td>ripgrep · line_number</td><td>impact</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-bad">0.00</span></td><td class="num">199,241</td><td class="num">239,080</td></tr>
-          <tr><td>ripgrep · Searcher</td><td>architecture</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-warn">0.50</span></td><td class="num">214,867</td><td class="num">359,885</td></tr>
-          <tr><td>ripgrep · Searcher</td><td>refactor</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">210,484</td><td class="num">227,441</td></tr>
-          <tr><td>requests · send</td><td>impact</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-warn">0.50</span></td><td class="num">167,854</td><td class="num">269,580</td></tr>
-          <tr><td>requests · Session</td><td>architecture</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-warn">0.50</span></td><td class="num">207,319</td><td class="num">234,288</td></tr>
-          <tr><td>requests · Session</td><td>refactor</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-bad">0.00</span></td><td class="num">214,247</td><td class="num">234,152</td></tr>
-          <tr><td>hono · compose</td><td>impact</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">200,846</td><td class="num">236,467</td></tr>
-          <tr><td>hono · dispatch</td><td>architecture</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-warn">0.50</span></td><td class="num">203,584</td><td class="num">310,641</td></tr>
-          <tr><td>hono · compose</td><td>refactor</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">97,482</td><td class="num">235,111</td></tr>
-          <tr><td>cobra · AddCommand</td><td>impact</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-warn">0.50</span></td><td class="num">200,502</td><td class="num">151,961</td></tr>
-          <tr><td>cobra · ParseFlags</td><td>architecture</td><td><span class="pill pill-warn">0.50</span></td><td><span class="pill pill-warn">0.50</span></td><td class="num">201,050</td><td class="num">231,373</td></tr>
-          <tr><td>cobra · AddCommand</td><td>refactor</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">168,240</td><td class="num">231,975</td></tr>
-          <tr><td>gson · beginArray</td><td>impact</td><td><span class="pill pill-bad">0.00</span></td><td><span class="pill pill-bad">0.00</span></td><td class="num">199,231</td><td class="num">111,611</td></tr>
-          <tr><td>gson · peek</td><td>architecture</td><td><span class="pill pill-warn">0.50</span></td><td><span class="pill pill-warn">0.50</span></td><td class="num">130,689</td><td class="num">313,729</td></tr>
-          <tr><td>gson · beginArray</td><td>refactor</td><td><span class="pill pill-bad">0.00</span></td><td><span class="pill pill-bad">0.00</span></td><td class="num">166,816</td><td class="num">273,867</td></tr>
-        </tbody>
-      </table>
+    <div class="curious">
+      <p>Both comparisons are real: pinned repos, real API usage, methodology disclosed on each page — including where we lose.</p>
     </div>
-    <p class="note" style="margin-top: 12px;">The 3 tasks where both tools scored low (gson × 2, cobra-architecture) are citation-format misses, not missing evidence — both agents found the right symbol but cited a class/method name instead of the full repo-relative path our automated grader string-matches on. Verified by manual inspection of every non-1.0 result on both sides before publishing this page.</p>
-  </div>
-</section>
-
-<section id="methodology">
-  <div class="wrap">
-    <details class="methodology-details">
-      <summary>Methodology and how this page was built</summary>
-      <ol class="methodology">
-        <li>Five real open-source repos, pinned to an exact commit: ripgrep, requests, hono, cobra, gson.</li>
-        <li>Same 15 questions for both tools (deep blast-radius, cross-file architecture, refactor-safety), same client (Claude Code, Haiku), same required-evidence contracts.</li>
-        <li>GitCortex accessed via its MCP tool (<code>mcp__gcx</code>); Graphify accessed via its CLI (<code>graphify affected</code> / <code>graphify explain</code>, code-only mode, <code>--code-only</code>) since it has no MCP integration wired into this harness yet.</li>
-        <li>Quality is the fraction of independently-verified required evidence present in the final answer, corrected for citation-format (class/method name vs. full path) after manual review of every non-1.0 result on both sides — the same correction applied equally to both tools.</li>
-        <li>We hit two real problems getting a clean run and are disclosing both: an early version of this script under-restricted Graphify's sandbox (it could fall back to raw grep/find), and a later fix over-restricted it (Claude Code disabled Bash entirely when a scoped allow and a bare disallow were combined in that CLI version). The final run removed the conflicting rule and used <code>--dangerously-skip-permissions</code> in this sandboxed, repos-only context to get deterministic tool access for both arms.</li>
-        <li>The Ruby (Thor) test in the "what Graphify does better" section was run the same way — real clone, pinned to a commit, real extraction, output quoted verbatim.</li>
-        <li>Full harness, task definitions, and raw per-task logs: <a href="https://github.com/bharath03-a/GitCortex/tree/main/tools/agent-bench">tools/agent-bench/</a> in the repo, including <code>graphify_compare.py</code>.</li>
-      </ol>
-    </details>
   </div>
 </section>
 
@@ -371,9 +235,9 @@
     <div class="foot-links">
       <a href="./">Home</a>
       <a href="benchmarks.html">Benchmarks</a>
+      <a href="compare-codegraph.html">vs CodeGraph</a>
+      <a href="compare-graphify.html">vs Graphify</a>
       <a href="https://github.com/bharath03-a/GitCortex">GitHub</a>
-      <a href="https://github.com/Graphify-Labs/graphify">Graphify (GitHub)</a>
-      <a href="https://github.com/bharath03-a/GitCortex/tree/main/tools/agent-bench">Benchmark harness</a>
     </div>
   </div>
 </footer>
