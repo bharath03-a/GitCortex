@@ -8,6 +8,6 @@
     <circle cx="26" cy="72" r="7" fill="#D88B62"/>
     <text x="64" y="66"
           font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif"
-          font-size="38" font-weight="700" fill="#ffffff" letter-spacing="-1">GitCortex</text>
+          font-size="38" font-weight="700" fill="#C4633F" letter-spacing="-1">GitCortex</text>
   </g>
 </svg>

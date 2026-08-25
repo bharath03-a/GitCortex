@@ -11,6 +11,6 @@
     <!-- text starts at x=64 (52px icon + 12px gap) -->
     <text x="64" y="66"
           font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif"
-          font-size="38" font-weight="700" fill="#1a1a1a" letter-spacing="-1">GitCortex</text>
+          font-size="38" font-weight="700" fill="#C4633F" letter-spacing="-1">GitCortex</text>
   </g>
 </svg>
