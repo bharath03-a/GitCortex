@@ -131,21 +131,22 @@ const GLYPH_C: [&str; 7] = [
 const GLYPH_X: [&str; 7] = [
     "#   #", "#   #", " # # ", "  #  ", " # # ", "#   #", "#   #",
 ];
-// Solid block per lit pixel — bolder and more filled-in than a round dot,
-// closer to how neofetch-style splash logos (Ubuntu, R, Moonshot) render
-// block-letter wordmarks.
-const BLOCK: &str = "█";
-const BLANK: &str = " ";
+// Double-width solid block per lit pixel — bolder and wider than a round
+// dot or a single block, closer to how neofetch-style splash logos
+// (Ubuntu, R, Moonshot) render block-letter wordmarks.
+const BLOCK: &str = "██";
+const BLANK: &str = "  ";
 
 // Unicode bracket-extension pieces, stacked to build a tall `[` / `]` that
 // matches the glyph height — mirrors the project's [GCX] wordmark.
 const LEFT_BRACKET: [&str; 7] = ["⎡", "⎢", "⎢", "⎢", "⎢", "⎢", "⎣"];
 const RIGHT_BRACKET: [&str; 7] = ["⎤", "⎥", "⎥", "⎥", "⎥", "⎥", "⎦"];
 
-/// Prints the `[GCX]` wordmark — green left bracket, white letters, orange
-/// right bracket, matching the project's logo. Falls back to a single
-/// compact line outside a real terminal so piped output and CI logs stay
-/// quiet.
+/// Prints the `[GCX]` wordmark using the GitHub Pages palette — the site's
+/// `--good` teal-green for the left bracket, white letters, the site's
+/// `--brand` burnt-orange for the right bracket — so the CLI and the web
+/// presence read as one identity. Falls back to a single compact line
+/// outside a real terminal so piped output and CI logs stay quiet.
 fn print_banner() {
     if !std::io::stdout().is_terminal() {
         println!(
@@ -157,7 +158,9 @@ fn print_banner() {
     }
 
     let bracket_left = anstyle::Style::new()
-        .fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::Green)))
+        .fg_color(Some(anstyle::Color::Rgb(anstyle::RgbColor(
+            0x2F, 0x6F, 0x5E,
+        ))))
         .bold();
     let bracket_right = style::brand_style();
     let letter_style = anstyle::Style::new()
@@ -171,11 +174,11 @@ fn print_banner() {
         let c = render_glyph_row(GLYPH_C[row], letter_style);
         let x = render_glyph_row(GLYPH_X[row], letter_style);
         let r = style::paint(bracket_right, RIGHT_BRACKET[row]);
-        println!("   {l}  {g}  {c}  {x}  {r}");
+        println!("      {l}    {g}    {c}    {x}    {r}");
     }
     println!();
     println!(
-        "     {}",
+        "        {}",
         style::paint(style::hint_style(), "GitCortex knowledge graph")
     );
     println!();
