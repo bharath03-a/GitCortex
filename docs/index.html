@@ -650,7 +650,9 @@
       <h2>Five ways in. All of them ship a binary.</h2>
       <p class="lede">
         Pre-built binaries cover macOS on arm64 and x86_64, and Linux on x86_64 and arm64.
-        On Windows, use WSL2.
+        On Windows, use WSL2. Every path ends the same way: <code>gcx init</code> &mdash;
+        in a real terminal it indexes the repo, installs the git hooks, and asks which AI
+        assistant to wire in (Claude Code, Cursor, Windsurf, Copilot, Antigravity, Codex).
       </p>
     </div>
 
@@ -667,7 +669,7 @@
 <pre><code><span class="cmt"># macOS or Linux</span>
 <span class="kw">brew</span> install bharath03-a/tap/gitcortex
 
-<span class="cmt"># Index a repository; add --editor &lt;name&gt; for opt-in MCP setup</span>
+<span class="cmt"># Index the repo, install git hooks, and interactively wire in your AI assistant</span>
 <span class="kw">gcx</span> init</code></pre>
         <p class="install-note">The official tap installs the matching pre-built binary. No Rust, Python, or Node.js runtime required.</p>
       </div>
@@ -680,7 +682,7 @@
 <span class="kw">pipx</span> install gitcortex
 <span class="kw">uv</span> tool install gitcortex
 
-<span class="cmt"># Install the git hooks in your repository</span>
+<span class="cmt"># Index, install git hooks, and interactively wire in your AI assistant</span>
 <span class="kw">gcx</span> init</code></pre>
         <p class="install-note">Wheels bundle pre-built binaries for macOS arm64 and x86_64 and Linux x86_64 and arm64. No Rust toolchain required.</p>
       </div>
@@ -689,7 +691,7 @@
 <pre><code><span class="cmt"># Install from crates.io</span>
 <span class="kw">cargo</span> install gitcortex --locked
 
-<span class="cmt"># Install the git hooks</span>
+<span class="cmt"># Index, install git hooks, and interactively wire in your AI assistant</span>
 <span class="kw">gcx</span> init
 
 <span class="cmt"># Start the MCP server</span>
@@ -705,7 +707,7 @@
 <span class="kw">pnpm</span> add -g gitcortex
 <span class="kw">bun</span> add -g gitcortex
 
-<span class="cmt"># Install the git hooks</span>
+<span class="cmt"># Index, install git hooks, and interactively wire in your AI assistant</span>
 <span class="kw">gcx</span> init</code></pre>
         <p class="install-note">The npm package bundles the same pre-built binaries as the Python wheel.</p>
       </div>
@@ -881,8 +883,8 @@
   <div class="wrap">
     <h2>Index your first repository in about a minute.</h2>
     <p class="lede">
-      Install the binary, run <code>gcx init</code> to wire up the hooks, and the graph
-      maintains itself from then on.
+      Install the binary, run <code>gcx init</code>, pick your AI assistant when asked,
+      and the graph maintains itself from then on.
     </p>
     <div class="actions">
       <a class="btn btn--solid" href="#install">Install GitCortex</a>

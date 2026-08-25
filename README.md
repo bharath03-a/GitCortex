@@ -285,15 +285,23 @@ cargo build --release
 
 ## Quick start
 
-Two steps. The first indexes your repo; the second is what actually connects an AI assistant to it — skip it and your assistant has no idea GitCortex exists.
-
 ```bash
 cd your-repo
-gcx init                      # 1. index the repo, install git hooks
-gcx init --editor claude      # 2. wire it into your AI assistant (see table below for other editors)
+gcx init
 ```
 
-Step 1 installs four git hooks and runs the initial index — every subsequent commit updates the graph automatically. Step 2 is what makes it usable: it writes the MCP config, hooks, and skills your specific editor needs. Not sure which one you use? `--editor auto` detects it, or `--editor all` wires every supported editor at once. Run `gcx init --help` to see the full list.
+That's it in a real terminal — `gcx init` indexes the repo, installs four git hooks, and then asks which AI assistant you use (`claude`/`cursor`/`windsurf`/`copilot`/`antigravity`/`codex`/`all`/`none`) and wires it in for you. Every subsequent commit updates the graph automatically.
+
+Scripting it, or running in CI? Skip the prompt with an explicit flag:
+
+```bash
+gcx init --editor claude      # or cursor / windsurf / copilot / antigravity / codex
+gcx init --editor auto        # detect which editor you use
+gcx init --editor all         # wire every supported editor at once
+gcx init --editor none        # index only, no AI assistant wiring — same as a piped/non-interactive `gcx init`
+```
+
+Skipping editor setup entirely (`none`, or a non-interactive shell with no `--editor`) leaves the assistant with no idea GitCortex exists — only the index and git hooks are set up. Run `gcx init --help` to see the full list.
 
 Confirm it worked:
 
@@ -319,10 +327,11 @@ gcx --color never   query symbol-context baz  # plain text, for scripts and CI
 
 ### `gcx init`
 
-Installs four non-blocking Git hooks, runs the initial full index, and writes `.gitcortex/AGENT_GUIDE.md`. Editor configuration is opt-in through `--editor`; use `--editor auto` only when you explicitly want environment-based detection.
+Installs four non-blocking Git hooks, runs the initial full index, and writes `.gitcortex/AGENT_GUIDE.md`. Editor configuration is controlled by `--editor`; omit it in a real terminal and `gcx init` asks interactively which assistant to configure. Omit it in a non-interactive shell (CI, a pipe) and no editor is configured, same as `--editor none`.
 
 ```bash
-gcx init                                # no editor configuration
+gcx init                                # interactive prompt in a terminal; no-op in CI/pipes
+gcx init --editor none                  # explicitly skip editor configuration
 gcx init --editor codex                 # repository-local Codex setup
 gcx init --editor claude                # repository-local Claude setup
 gcx init --editor auto                  # explicitly request environment detection
