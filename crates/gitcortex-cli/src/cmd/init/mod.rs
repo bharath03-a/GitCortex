@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use dialoguer::{
     theme::{ColorfulTheme, SimpleTheme, Theme},
-    Select,
+    MultiSelect,
 };
 use gitcortex_store::branch;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -226,10 +226,12 @@ fn finish_spinner(bar: Option<ProgressBar>, message: &str) {
 }
 
 /// Interactive fallback when `gcx init` runs with no `--editor` flag in a
-/// real terminal: an arrow-key selectable menu, not a typed free-text
-/// prompt. Esc/Ctrl-C or a read error falls back to no editor configured,
-/// matching the pre-existing non-interactive default rather than failing
-/// `init` outright.
+/// real terminal: a checkbox menu (space to toggle, enter to confirm) since
+/// people commonly use more than one assistant (e.g. Claude Code and
+/// Antigravity together) — a single-choice picker couldn't express that.
+/// Nothing toggled, Esc/Ctrl-C, or a read error all fall back to no editor
+/// configured, matching the pre-existing non-interactive default rather
+/// than failing `init` outright.
 fn prompt_editor_choice() -> Result<Vec<EditorKind>> {
     const CHOICES: &[(&str, &str)] = &[
         ("Claude Code", "claude"),
@@ -238,8 +240,6 @@ fn prompt_editor_choice() -> Result<Vec<EditorKind>> {
         ("GitHub Copilot", "copilot"),
         ("Antigravity", "antigravity"),
         ("Codex", "codex"),
-        ("All of the above", "all"),
-        ("None — skip AI assistant setup", "none"),
     ];
     let labels: Vec<&str> = CHOICES.iter().map(|(label, _)| *label).collect();
 
@@ -249,15 +249,19 @@ fn prompt_editor_choice() -> Result<Vec<EditorKind>> {
     let plain = SimpleTheme;
     let theme: &dyn Theme = if style::enabled() { &colorful } else { &plain };
 
-    let selection = Select::with_theme(theme)
-        .with_prompt("Which AI assistant do you use?")
+    let selection = MultiSelect::with_theme(theme)
+        .with_prompt("Which AI assistant(s) do you use? (space to toggle, enter to confirm)")
         .items(&labels)
-        .default(CHOICES.len() - 1)
         .interact_opt();
 
-    match selection {
-        Ok(Some(index)) => parse_editor_flag(CHOICES[index].1),
-        Ok(None) => Ok(Vec::new()),
-        Err(_) => Ok(Vec::new()),
+    let indices = match selection {
+        Ok(Some(indices)) => indices,
+        Ok(None) | Err(_) => return Ok(Vec::new()),
+    };
+
+    let mut editors = Vec::new();
+    for index in indices {
+        editors.extend(parse_editor_flag(CHOICES[index].1)?);
     }
+    Ok(editors)
 }
