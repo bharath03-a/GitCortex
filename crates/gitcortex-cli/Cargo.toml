@@ -19,6 +19,7 @@ path = "src/main.rs"
 anstyle = "1"
 anyhow.workspace = true
 clap.workspace = true
+dialoguer = { version = "0.12", default-features = false }
 gitcortex-core.workspace = true
 gitcortex-indexer.workspace = true
 gitcortex-mcp.workspace = true

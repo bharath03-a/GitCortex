@@ -1,7 +1,8 @@
-use std::io::{IsTerminal, Write};
+use std::io::IsTerminal;
 use std::time::Instant;
 
 use anyhow::Result;
+use dialoguer::{theme::ColorfulTheme, Select};
 
 mod detect;
 pub mod editors;
@@ -90,28 +91,32 @@ pub fn run(
 }
 
 /// Interactive fallback when `gcx init` runs with no `--editor` flag in a
-/// real terminal. Invalid input or a read error (e.g. stdin closed mid-read)
-/// falls back to no editor configured, matching the pre-existing
-/// non-interactive default rather than failing `init` outright.
+/// real terminal: an arrow-key selectable menu, not a typed free-text
+/// prompt. Esc/Ctrl-C or a read error falls back to no editor configured,
+/// matching the pre-existing non-interactive default rather than failing
+/// `init` outright.
 fn prompt_editor_choice() -> Result<Vec<EditorKind>> {
-    print!(
-        "\nWhich AI assistant do you use? [claude/cursor/windsurf/copilot/antigravity/codex/all/none] (none): "
-    );
-    std::io::stdout().flush().ok();
+    const CHOICES: &[(&str, &str)] = &[
+        ("Claude Code", "claude"),
+        ("Cursor", "cursor"),
+        ("Windsurf", "windsurf"),
+        ("GitHub Copilot", "copilot"),
+        ("Antigravity", "antigravity"),
+        ("Codex", "codex"),
+        ("All of the above", "all"),
+        ("None — skip AI assistant setup", "none"),
+    ];
+    let labels: Vec<&str> = CHOICES.iter().map(|(label, _)| *label).collect();
 
-    let mut input = String::new();
-    if std::io::stdin().read_line(&mut input).is_err() {
-        return Ok(Vec::new());
-    }
-    let choice = input.trim();
-    if choice.is_empty() {
-        return Ok(Vec::new());
-    }
-    match parse_editor_flag(choice) {
-        Ok(editors) => Ok(editors),
-        Err(e) => {
-            eprintln!("  {e} — skipping editor setup; run `gcx init --editor <name>` later.");
-            Ok(Vec::new())
-        }
+    let selection = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt("Which AI assistant do you use?")
+        .items(&labels)
+        .default(CHOICES.len() - 1)
+        .interact_opt();
+
+    match selection {
+        Ok(Some(index)) => parse_editor_flag(CHOICES[index].1),
+        Ok(None) => Ok(Vec::new()),
+        Err(_) => Ok(Vec::new()),
     }
 }

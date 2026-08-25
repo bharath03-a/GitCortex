@@ -290,7 +290,7 @@ cd your-repo
 gcx init
 ```
 
-That's it in a real terminal — `gcx init` indexes the repo, installs four git hooks, and then asks which AI assistant you use (`claude`/`cursor`/`windsurf`/`copilot`/`antigravity`/`codex`/`all`/`none`) and wires it in for you. Every subsequent commit updates the graph automatically.
+That's it in a real terminal — `gcx init` indexes the repo, installs four git hooks, then shows an arrow-key menu (Claude Code, Cursor, Windsurf, Copilot, Antigravity, Codex, all, none) so you can pick your AI assistant with the keyboard and wire it in. Every subsequent commit updates the graph automatically.
 
 Scripting it, or running in CI? Skip the prompt with an explicit flag:
 
