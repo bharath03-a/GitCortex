@@ -6,12 +6,20 @@ use serde_json::json;
 use super::claude::SKILLS;
 use crate::cmd::init::helpers::{home_dir, require_json_object, write_atomic};
 
+/// Antigravity's recommended packaging unit is a "plugin": a namespaced
+/// bundle under `<customization-root>/plugins/<name>/` combining rules,
+/// skills, hooks, and MCP servers into one deployable unit (confirmed from
+/// the `agy` binary's own embedded docs, `strings $(which agy)`, section
+/// "Plugins" / "Directory Structure"). Project customization root is
+/// `.agents/`, so the plugin lives at `.agents/plugins/gitcortex/`.
+const PLUGIN_DIR: &str = "gitcortex";
+
 pub(crate) const AGENTS_MD_SECTION: &str = r#"<!-- >>> gitcortex antigravity integration >>> -->
 ## GitCortex knowledge graph
 
 This repository is indexed by GitCortex. Run these directly in a terminal,
-or via the `gitcortex` MCP server's compact `gcx` dispatch tool if that's
-configured (`~/.gemini/config/mcp_config.json`):
+or via the `gitcortex` MCP server's compact `gcx` dispatch tool, registered
+automatically by this plugin:
 
 - `gcx query lookup-symbol <name>` locates a definition.
 - `gcx query find-callers <name>` / `gcx query find-callees <name>` trace call relationships.
@@ -24,6 +32,11 @@ tests before editing. If the index is stale, run `gcx hook`.
 <!-- <<< gitcortex antigravity integration <<< -->
 "#;
 
+const PLUGIN_MANIFEST: &str = r#"{
+  "name": "gitcortex"
+}
+"#;
+
 const HOOKS_JSON_TEMPLATE: &str = r#"{
   "hooks": {
     "PreToolUse": [
@@ -32,7 +45,7 @@ const HOOKS_JSON_TEMPLATE: &str = r#"{
         "hooks": [
           {
             "type": "command",
-            "command": "COMMAND_PLACEHOLDER"
+            "command": "gcx-context.sh"
           }
         ]
       }
@@ -58,13 +71,18 @@ gcx query context "$file_path" 2>/dev/null || true
 "#;
 
 pub fn install(repo_root: &Path, global_editor_config: bool) -> Result<()> {
-    write_agents_md(repo_root)?;
-    write_skills(repo_root)?;
-    write_hooks_json(repo_root)?;
+    let plugin_dir = repo_root.join(".agents").join("plugins").join(PLUGIN_DIR);
+    write_plugin_manifest(&plugin_dir)?;
+    write_agents_md(&plugin_dir)?;
+    write_skills(&plugin_dir)?;
+    write_hooks_json(&plugin_dir)?;
+    // Project-local, via the plugin's own mcp_config.json — not gated behind
+    // --global-editor-config, since it only touches files inside this repo.
+    write_mcp_config(&plugin_dir.join("mcp_config.json"))?;
     if global_editor_config {
         write_mcp_config(&home_dir().join(".antigravity").join("mcp.json"))?;
         // The `agy` CLI is a separate product from the Antigravity IDE and
-        // reads its own config, not ~/.antigravity/mcp.json.
+        // reads its own global config, not the plugin's project-local one.
         write_mcp_config(
             &home_dir()
                 .join(".gemini")
@@ -75,12 +93,17 @@ pub fn install(repo_root: &Path, global_editor_config: bool) -> Result<()> {
     Ok(())
 }
 
-/// Antigravity's project customization root is `.agents/`; rules live under
-/// `.agents/rules/` as `AGENTS.md` (or standalone `GEMINI.md`/`AGENTS.md` at
-/// the root — the binary's own docs recommend consolidating into
-/// `rules/AGENTS.md`, matched here).
-fn write_agents_md(repo_root: &Path) -> Result<()> {
-    let dir = repo_root.join(".agents").join("rules");
+fn write_plugin_manifest(plugin_dir: &Path) -> Result<()> {
+    fs::create_dir_all(plugin_dir)?;
+    let path = plugin_dir.join("plugin.json");
+    if !path.exists() {
+        fs::write(&path, PLUGIN_MANIFEST).context("write plugin.json")?;
+    }
+    Ok(())
+}
+
+fn write_agents_md(plugin_dir: &Path) -> Result<()> {
+    let dir = plugin_dir.join("rules");
     fs::create_dir_all(&dir)?;
     let path = dir.join("AGENTS.md");
 
@@ -90,18 +113,17 @@ fn write_agents_md(repo_root: &Path) -> Result<()> {
             return Ok(());
         }
         write_atomic(&path, &format!("{existing}{AGENTS_MD_SECTION}"))
-            .context("update .agents/rules/AGENTS.md")?;
+            .context("update plugin rules/AGENTS.md")?;
     } else {
-        fs::write(&path, AGENTS_MD_SECTION.trim_start())
-            .context("write .agents/rules/AGENTS.md")?;
+        fs::write(&path, AGENTS_MD_SECTION.trim_start()).context("write plugin rules/AGENTS.md")?;
     }
     Ok(())
 }
 
 /// Antigravity skills share Claude Code's `SKILL.md` shape — same content,
-/// different root (`.agents/skills/<name>/SKILL.md` vs `.claude/skills/...`).
-fn write_skills(repo_root: &Path) -> Result<usize> {
-    let skills_dir = repo_root.join(".agents").join("skills");
+/// different root (`skills/<name>/SKILL.md` inside the plugin).
+fn write_skills(plugin_dir: &Path) -> Result<usize> {
+    let skills_dir = plugin_dir.join("skills");
     let mut written = 0;
     for (name, description, body) in SKILLS {
         let dir = skills_dir.join(name);
@@ -116,10 +138,8 @@ fn write_skills(repo_root: &Path) -> Result<usize> {
     Ok(written)
 }
 
-fn write_hooks_json(repo_root: &Path) -> Result<()> {
-    let hook_dir = repo_root.join(".agents").join("hooks");
-    fs::create_dir_all(&hook_dir)?;
-    let hook_path = hook_dir.join("gcx-context.sh");
+fn write_hooks_json(plugin_dir: &Path) -> Result<()> {
+    let hook_path = plugin_dir.join("gcx-context.sh");
     if !hook_path.exists() {
         fs::write(&hook_path, PRE_TOOL_USE_HOOK).context("write gcx-context.sh")?;
         #[cfg(unix)]
@@ -131,16 +151,14 @@ fn write_hooks_json(repo_root: &Path) -> Result<()> {
         }
     }
 
-    let path = repo_root.join(".agents").join("hooks.json");
+    let path = plugin_dir.join("hooks.json");
     if path.exists() {
         // A hooks.json already exists — don't clobber it; leave it for the
         // user to merge manually rather than guess at preserving arbitrary
         // existing hook structure.
         return Ok(());
     }
-    let content =
-        HOOKS_JSON_TEMPLATE.replace("COMMAND_PLACEHOLDER", ".agents/hooks/gcx-context.sh");
-    fs::write(&path, content).context("write .agents/hooks.json")?;
+    fs::write(&path, HOOKS_JSON_TEMPLATE).context("write plugin hooks.json")?;
     Ok(())
 }
 
@@ -175,13 +193,25 @@ fn write_mcp_config(path: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{write_agents_md, write_hooks_json, write_mcp_config, write_skills};
+    use super::{
+        install, write_agents_md, write_hooks_json, write_mcp_config, write_plugin_manifest,
+        write_skills,
+    };
 
     #[test]
-    fn writes_agents_md_under_agents_rules() {
+    fn writes_plugin_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+        let plugin_dir = dir.path().join("plugin");
+        write_plugin_manifest(&plugin_dir).unwrap();
+        let content = std::fs::read_to_string(plugin_dir.join("plugin.json")).unwrap();
+        assert!(content.contains("\"name\": \"gitcortex\""));
+    }
+
+    #[test]
+    fn writes_agents_md_under_plugin_rules() {
         let dir = tempfile::tempdir().unwrap();
         write_agents_md(dir.path()).unwrap();
-        let content = std::fs::read_to_string(dir.path().join(".agents/rules/AGENTS.md")).unwrap();
+        let content = std::fs::read_to_string(dir.path().join("rules/AGENTS.md")).unwrap();
         assert!(content.contains("GitCortex knowledge graph"));
     }
 
@@ -189,9 +219,9 @@ mod tests {
     fn agents_md_is_idempotent() {
         let dir = tempfile::tempdir().unwrap();
         write_agents_md(dir.path()).unwrap();
-        let first = std::fs::read_to_string(dir.path().join(".agents/rules/AGENTS.md")).unwrap();
+        let first = std::fs::read_to_string(dir.path().join("rules/AGENTS.md")).unwrap();
         write_agents_md(dir.path()).unwrap();
-        let second = std::fs::read_to_string(dir.path().join(".agents/rules/AGENTS.md")).unwrap();
+        let second = std::fs::read_to_string(dir.path().join("rules/AGENTS.md")).unwrap();
         assert_eq!(first, second);
     }
 
@@ -200,7 +230,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let written = write_skills(dir.path()).unwrap();
         assert_eq!(written, 4);
-        let path = dir.path().join(".agents/skills/exploring/SKILL.md");
+        let path = dir.path().join("skills/exploring/SKILL.md");
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.starts_with("---\nname: exploring\n"));
         assert!(content.contains("description:"));
@@ -219,30 +249,24 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         write_hooks_json(dir.path()).unwrap();
 
-        let hooks_json: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(dir.path().join(".agents/hooks.json")).unwrap(),
-        )
-        .unwrap();
+        let hooks_json: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.path().join("hooks.json")).unwrap())
+                .unwrap();
         assert_eq!(
             hooks_json["hooks"]["PreToolUse"][0]["hooks"][0]["command"],
-            ".agents/hooks/gcx-context.sh"
+            "gcx-context.sh"
         );
-        assert!(dir.path().join(".agents/hooks/gcx-context.sh").exists());
+        assert!(dir.path().join("gcx-context.sh").exists());
     }
 
     #[test]
     fn does_not_clobber_existing_hooks_json() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(dir.path().join(".agents")).unwrap();
-        std::fs::write(
-            dir.path().join(".agents/hooks.json"),
-            r#"{"hooks":{"other":true}}"#,
-        )
-        .unwrap();
+        std::fs::write(dir.path().join("hooks.json"), r#"{"hooks":{"other":true}}"#).unwrap();
 
         write_hooks_json(dir.path()).unwrap();
 
-        let content = std::fs::read_to_string(dir.path().join(".agents/hooks.json")).unwrap();
+        let content = std::fs::read_to_string(dir.path().join("hooks.json")).unwrap();
         assert!(content.contains("other"));
     }
 
@@ -288,5 +312,15 @@ mod tests {
         let written: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(written["mcpServers"]["gitcortex"]["command"], "custom");
+    }
+
+    #[test]
+    fn install_writes_project_local_mcp_config_without_global_flag() {
+        let dir = tempfile::tempdir().unwrap();
+        install(dir.path(), false).unwrap();
+        let path = dir.path().join(".agents/plugins/gitcortex/mcp_config.json");
+        let written: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(written["mcpServers"]["gitcortex"]["command"], "gcx");
     }
 }

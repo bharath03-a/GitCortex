@@ -1,3 +1,4 @@
+use std::io::{IsTerminal, Write};
 use std::time::Instant;
 
 use anyhow::Result;
@@ -33,6 +34,12 @@ pub fn run(
 
     let editors: Vec<EditorKind> = match editor {
         Some(flag) => parse_editor_flag(flag)?,
+        // No --editor given: ask interactively rather than silently skipping
+        // AI-assistant setup, but only when there's a human to ask — CI and
+        // piped invocations must stay non-interactive and behave as before.
+        None if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() => {
+            prompt_editor_choice().unwrap_or_default()
+        }
         None => Vec::new(),
     };
 
@@ -67,7 +74,7 @@ pub fn run(
     if !global_editor_config
         && editors
             .iter()
-            .any(|editor| matches!(editor, EditorKind::Windsurf | EditorKind::Antigravity))
+            .any(|editor| matches!(editor, EditorKind::Windsurf))
     {
         println!(
             "  Note:      global MCP registration skipped; rerun with --global-editor-config to enable it"
@@ -80,4 +87,31 @@ pub fn run(
     println!();
 
     Ok(())
+}
+
+/// Interactive fallback when `gcx init` runs with no `--editor` flag in a
+/// real terminal. Invalid input or a read error (e.g. stdin closed mid-read)
+/// falls back to no editor configured, matching the pre-existing
+/// non-interactive default rather than failing `init` outright.
+fn prompt_editor_choice() -> Result<Vec<EditorKind>> {
+    print!(
+        "\nWhich AI assistant do you use? [claude/cursor/windsurf/copilot/antigravity/codex/all/none] (none): "
+    );
+    std::io::stdout().flush().ok();
+
+    let mut input = String::new();
+    if std::io::stdin().read_line(&mut input).is_err() {
+        return Ok(Vec::new());
+    }
+    let choice = input.trim();
+    if choice.is_empty() {
+        return Ok(Vec::new());
+    }
+    match parse_editor_flag(choice) {
+        Ok(editors) => Ok(editors),
+        Err(e) => {
+            eprintln!("  {e} — skipping editor setup; run `gcx init --editor <name>` later.");
+            Ok(Vec::new())
+        }
+    }
 }

@@ -36,7 +36,11 @@ pub fn run(
     ] {
         changes += remove_file(&repo_root.join(path), dry_run)?;
     }
-    for path in [".claude/commands/gcx", ".claude/skills/gcx"] {
+    for path in [
+        ".claude/commands/gcx",
+        ".claude/skills/gcx",
+        ".agents/plugins/gitcortex",
+    ] {
         changes += remove_dir(&repo_root.join(path), dry_run)?;
     }
 
@@ -382,6 +386,8 @@ fn prune_known_dirs(repo_root: &Path) {
         ".cursor",
         ".codex",
         ".vscode",
+        ".agents/plugins",
+        ".agents",
     ] {
         let _ = fs::remove_dir(repo_root.join(path));
     }

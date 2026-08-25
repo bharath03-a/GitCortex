@@ -285,12 +285,23 @@ cargo build --release
 
 ## Quick start
 
+Two steps. The first indexes your repo; the second is what actually connects an AI assistant to it — skip it and your assistant has no idea GitCortex exists.
+
 ```bash
 cd your-repo
-gcx init
+gcx init                      # 1. index the repo, install git hooks
+gcx init --editor claude      # 2. wire it into your AI assistant (see table below for other editors)
 ```
 
-That installs the git hooks and indexes the current branch. Every subsequent commit updates the graph automatically.
+Step 1 installs four git hooks and runs the initial index — every subsequent commit updates the graph automatically. Step 2 is what makes it usable: it writes the MCP config, hooks, and skills your specific editor needs. Not sure which one you use? `--editor auto` detects it, or `--editor all` wires every supported editor at once. Run `gcx init --help` to see the full list.
+
+Confirm it worked:
+
+```bash
+gcx doctor
+```
+
+`[ok] assistant configured  (Claude Code)` (or whichever editor you picked) means the AI assistant side is actually connected — not just the index.
 
 ---
 
@@ -334,11 +345,11 @@ GitCortex initialised  (820ms)
 | Editor      | Files written                                                                                       |
 | ----------- | --------------------------------------------------------------------------------------------------- |
 | Claude Code | `.mcp.json`, `.claude/hooks/`, `.claude/settings.json`, `.claude/skills/`, `.claude/commands/`; optionally `~/.claude.json` |
-| Codex       | `AGENTS.md`, `.codex/config.toml` |
+| Codex       | `AGENTS.md`, `.codex/config.toml`, `.codex/hooks/`, `.codex/hooks.json` |
 | Cursor      | `.cursor/rules/gitcortex.mdc`, `.cursor/mcp.json` |
 | Windsurf    | `.windsurfrules`; optionally `~/.codeium/windsurf/mcp_config.json` |
 | Copilot     | `.vscode/mcp.json`, `.github/copilot-instructions.md` |
-| Antigravity | `~/.antigravity/mcp.json`, `~/.gemini/config/mcp_config.json` (for the `agy` CLI); only with `--global-editor-config` |
+| Antigravity | `.agents/plugins/gitcortex/` (`plugin.json`, `mcp_config.json`, `hooks.json`, `rules/AGENTS.md`, `skills/`) — a self-contained plugin bundle, MCP included by default; optionally also `~/.antigravity/mcp.json` and `~/.gemini/config/mcp_config.json` (for the `agy` CLI) with `--global-editor-config` |
 
 Global files are never changed unless `--global-editor-config` is supplied.
 
