@@ -131,7 +131,11 @@ const GLYPH_C: [&str; 7] = [
 const GLYPH_X: [&str; 7] = [
     "#   #", "#   #", " # # ", "  #  ", " # # ", "#   #", "#   #",
 ];
-const DOT: &str = "●";
+// Solid block per lit pixel — bolder and more filled-in than a round dot,
+// closer to how neofetch-style splash logos (Ubuntu, R, Moonshot) render
+// block-letter wordmarks.
+const BLOCK: &str = "█";
+const BLANK: &str = " ";
 
 // Unicode bracket-extension pieces, stacked to build a tall `[` / `]` that
 // matches the glyph height — mirrors the project's [GCX] wordmark.
@@ -180,7 +184,7 @@ fn print_banner() {
 fn render_glyph_row(row: &str, glyph_style: anstyle::Style) -> String {
     let painted: String = row
         .chars()
-        .map(|c| if c == '#' { DOT } else { " " })
+        .map(|c| if c == '#' { BLOCK } else { BLANK })
         .collect();
     style::paint(glyph_style, &painted)
 }
