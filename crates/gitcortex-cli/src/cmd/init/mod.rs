@@ -119,16 +119,23 @@ pub fn run(
     Ok(())
 }
 
-// 5×5 dot-matrix glyphs, one letter per row group ('#' = lit, ' ' = off).
-const GLYPH_G: [&str; 5] = [" ####", "#    ", "#  ##", "#   #", " ####"];
-const GLYPH_C: [&str; 5] = [" ####", "#    ", "#    ", "#    ", " ####"];
-const GLYPH_X: [&str; 5] = ["#   #", " # # ", "  #  ", " # # ", "#   #"];
+// Classic 5×7 LED dot-matrix glyphs, one letter per row group
+// ('#' = lit, ' ' = off) — enough resolution for the X's diagonals to
+// actually read as an X instead of a scatter of dots.
+const GLYPH_G: [&str; 7] = [
+    " ### ", "#   #", "#    ", "#  ##", "#   #", "#   #", " ### ",
+];
+const GLYPH_C: [&str; 7] = [
+    " ####", "#    ", "#    ", "#    ", "#    ", "#    ", " ####",
+];
+const GLYPH_X: [&str; 7] = [
+    "#   #", "#   #", " # # ", "  #  ", " # # ", "#   #", "#   #",
+];
 const DOT: &str = "●";
 
-/// Prints a small dot-matrix "GCX" wordmark, one letter tinted per its
-/// matching NodeKind accent (green/cyan/magenta) so the splash and the
-/// query output read as the same product. Falls back to a single compact
-/// line outside a real terminal so piped output and CI logs stay quiet.
+/// Prints a small dot-matrix "GCX" wordmark in the brand accent colour.
+/// Falls back to a single compact line outside a real terminal so piped
+/// output and CI logs stay quiet.
 fn print_banner() {
     if !std::io::stdout().is_terminal() {
         println!(
@@ -139,25 +146,18 @@ fn print_banner() {
         return;
     }
 
-    let g_style = anstyle::Style::new()
-        .fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::Green)))
-        .bold();
-    let c_style = anstyle::Style::new()
-        .fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::Cyan)))
-        .bold();
-    let x_style = anstyle::Style::new()
-        .fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::Magenta)))
-        .bold();
+    let glyph_style = style::brand_style();
 
     println!();
-    for row in 0..5 {
-        let g = render_glyph_row(GLYPH_G[row], g_style);
-        let c = render_glyph_row(GLYPH_C[row], c_style);
-        let x = render_glyph_row(GLYPH_X[row], x_style);
-        println!("  {g}  {c}  {x}");
+    for row in 0..7 {
+        let g = render_glyph_row(GLYPH_G[row], glyph_style);
+        let c = render_glyph_row(GLYPH_C[row], glyph_style);
+        let x = render_glyph_row(GLYPH_X[row], glyph_style);
+        println!("   {g}   {c}   {x}");
     }
+    println!();
     println!(
-        "  {}",
+        "   {}",
         style::paint(style::hint_style(), "GitCortex knowledge graph")
     );
     println!();

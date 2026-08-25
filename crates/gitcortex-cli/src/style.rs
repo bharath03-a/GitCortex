@@ -110,11 +110,13 @@ pub fn score_style() -> Style {
 }
 
 /// Brand accent — the `gcx` wordmark and other one-off "this is GitCortex
-/// talking" moments (not used for node kinds, so it never collides with the
-/// per-kind palette above).
+/// talking" moments. True RGB, matching the burnt-orange `--brand: #C4633F`
+/// used across the GitHub Pages site, so the CLI and the web presence read
+/// as one identity. Not used for node kinds, so it never collides with the
+/// per-kind palette above.
 pub fn brand_style() -> Style {
     Style::new()
-        .fg_color(Some(Color::Ansi(AnsiColor::Cyan)))
+        .fg_color(Some(Color::Rgb(anstyle::RgbColor(0xC4, 0x63, 0x3F))))
         .bold()
 }
 
