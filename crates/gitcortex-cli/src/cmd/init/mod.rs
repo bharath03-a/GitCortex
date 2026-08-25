@@ -157,23 +157,17 @@ fn print_banner() {
         return;
     }
 
-    let bracket_left = anstyle::Style::new()
-        .fg_color(Some(anstyle::Color::Rgb(anstyle::RgbColor(
-            0x2F, 0x6F, 0x5E,
-        ))))
-        .bold();
-    let bracket_right = style::brand_style();
-    let letter_style = anstyle::Style::new()
-        .fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::BrightWhite)))
-        .bold();
+    // Whole mark is one brand orange — matching the README logo, which is
+    // also uniformly #C4633F (icon and text), not a mix of colors.
+    let brand = style::brand_style();
 
     println!();
     for row in 0..7 {
-        let l = style::paint(bracket_left, LEFT_BRACKET[row]);
-        let g = render_glyph_row(GLYPH_G[row], letter_style);
-        let c = render_glyph_row(GLYPH_C[row], letter_style);
-        let x = render_glyph_row(GLYPH_X[row], letter_style);
-        let r = style::paint(bracket_right, RIGHT_BRACKET[row]);
+        let l = style::paint(brand, LEFT_BRACKET[row]);
+        let g = render_glyph_row(GLYPH_G[row], brand);
+        let c = render_glyph_row(GLYPH_C[row], brand);
+        let x = render_glyph_row(GLYPH_X[row], brand);
+        let r = style::paint(brand, RIGHT_BRACKET[row]);
         println!("      {l}    {g}    {c}    {x}    {r}");
     }
     println!();
