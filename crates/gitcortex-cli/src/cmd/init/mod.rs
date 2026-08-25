@@ -133,9 +133,15 @@ const GLYPH_X: [&str; 7] = [
 ];
 const DOT: &str = "●";
 
-/// Prints a small dot-matrix "GCX" wordmark in the brand accent colour.
-/// Falls back to a single compact line outside a real terminal so piped
-/// output and CI logs stay quiet.
+// Unicode bracket-extension pieces, stacked to build a tall `[` / `]` that
+// matches the glyph height — mirrors the project's [GCX] wordmark.
+const LEFT_BRACKET: [&str; 7] = ["⎡", "⎢", "⎢", "⎢", "⎢", "⎢", "⎣"];
+const RIGHT_BRACKET: [&str; 7] = ["⎤", "⎥", "⎥", "⎥", "⎥", "⎥", "⎦"];
+
+/// Prints the `[GCX]` wordmark — green left bracket, white letters, orange
+/// right bracket, matching the project's logo. Falls back to a single
+/// compact line outside a real terminal so piped output and CI logs stay
+/// quiet.
 fn print_banner() {
     if !std::io::stdout().is_terminal() {
         println!(
@@ -146,18 +152,26 @@ fn print_banner() {
         return;
     }
 
-    let glyph_style = style::brand_style();
+    let bracket_left = anstyle::Style::new()
+        .fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::Green)))
+        .bold();
+    let bracket_right = style::brand_style();
+    let letter_style = anstyle::Style::new()
+        .fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::BrightWhite)))
+        .bold();
 
     println!();
     for row in 0..7 {
-        let g = render_glyph_row(GLYPH_G[row], glyph_style);
-        let c = render_glyph_row(GLYPH_C[row], glyph_style);
-        let x = render_glyph_row(GLYPH_X[row], glyph_style);
-        println!("   {g}   {c}   {x}");
+        let l = style::paint(bracket_left, LEFT_BRACKET[row]);
+        let g = render_glyph_row(GLYPH_G[row], letter_style);
+        let c = render_glyph_row(GLYPH_C[row], letter_style);
+        let x = render_glyph_row(GLYPH_X[row], letter_style);
+        let r = style::paint(bracket_right, RIGHT_BRACKET[row]);
+        println!("   {l}  {g}  {c}  {x}  {r}");
     }
     println!();
     println!(
-        "   {}",
+        "     {}",
         style::paint(style::hint_style(), "GitCortex knowledge graph")
     );
     println!();
