@@ -1262,6 +1262,7 @@ dependencies = [
  "gitcortex-mcp",
  "gitcortex-store",
  "gitcortex-viz",
+ "indicatif",
  "serde_json",
  "tempfile",
  "tokio",

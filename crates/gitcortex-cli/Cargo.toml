@@ -20,6 +20,7 @@ anstyle = "1"
 anyhow.workspace = true
 clap.workspace = true
 dialoguer = { version = "0.12", default-features = false }
+indicatif = "0.17"
 gitcortex-core.workspace = true
 gitcortex-indexer.workspace = true
 gitcortex-mcp.workspace = true

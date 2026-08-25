@@ -1,8 +1,12 @@
 use std::io::IsTerminal;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use dialoguer::{theme::ColorfulTheme, Select};
+use dialoguer::{
+    theme::{ColorfulTheme, SimpleTheme, Theme},
+    Select,
+};
+use indicatif::{ProgressBar, ProgressStyle};
 
 mod detect;
 pub mod editors;
@@ -10,6 +14,7 @@ pub(crate) mod helpers;
 pub(crate) mod universal;
 
 use super::serve_lock;
+use crate::style;
 use detect::parse_editor_flag;
 use editors::{install_for_editor, EditorKind};
 use helpers::repo_root;
@@ -17,6 +22,8 @@ use universal::{
     ensure_hooks_scope, initial_index, install_hooks, write_agent_guide, write_ci_workflow,
     write_gitcortex_ignore,
 };
+
+const BANNER: &str = "gcx";
 
 pub fn run(
     ci: bool,
@@ -33,6 +40,12 @@ pub fn run(
     ensure_hooks_scope(&repo_root, shared_git_hooks)?;
     let start = Instant::now();
 
+    println!(
+        "{} {}",
+        style::paint(style::brand_style(), BANNER),
+        style::paint(style::hint_style(), "GitCortex knowledge graph")
+    );
+
     let editors: Vec<EditorKind> = match editor {
         Some(flag) => parse_editor_flag(flag)?,
         // No --editor given: ask interactively rather than silently skipping
@@ -46,7 +59,9 @@ pub fn run(
 
     // Write exclusions before the first index so build output is never scanned.
     write_gitcortex_ignore(&repo_root)?;
+    let spinner = start_spinner("Indexing repository…");
     let (nodes, edges) = initial_index(&repo_root)?;
+    finish_spinner(spinner, "Repository indexed");
     write_agent_guide(&repo_root)?;
 
     for ed in &editors {
@@ -64,30 +79,77 @@ pub fn run(
     let ms = start.elapsed().as_millis();
 
     println!();
-    println!("GitCortex initialised  ({ms}ms)");
-    println!("  Graph:     {nodes} nodes | {edges} edges");
-    println!("  Hooks:     {hooks} git hooks installed");
+    println!(
+        "{} GitCortex initialised  {}",
+        style::paint(style::success_style(), "✔"),
+        style::paint(style::hint_style(), &format!("({ms}ms)"))
+    );
+    print_field("Graph", &format!("{nodes} nodes | {edges} edges"));
+    print_field("Hooks", &format!("{hooks} git hooks installed"));
     if editor_names.is_empty() {
-        println!("  Editors:   none (use `gcx init --editor <name>` to configure one)");
+        print_field(
+            "Editors",
+            "none (use `gcx init --editor <name>` to configure one)",
+        );
     } else {
-        println!("  Editors:   {}", editor_names.join(", "));
+        print_field("Editors", &editor_names.join(", "));
     }
     if !global_editor_config
         && editors
             .iter()
             .any(|editor| matches!(editor, EditorKind::Windsurf))
     {
-        println!(
-            "  Note:      global MCP registration skipped; rerun with --global-editor-config to enable it"
+        print_field(
+            "Note",
+            "global MCP registration skipped; rerun with --global-editor-config to enable it",
         );
     }
-    println!("  Universal: .gitcortex/AGENT_GUIDE.md, .gitcortex/ignore");
+    print_field("Universal", ".gitcortex/AGENT_GUIDE.md, .gitcortex/ignore");
     if ci {
-        println!("  CI:        .github/workflows/gcx-blast-radius.yml");
+        print_field("CI", ".github/workflows/gcx-blast-radius.yml");
     }
     println!();
 
     Ok(())
+}
+
+fn print_field(label: &str, value: &str) {
+    println!(
+        "  {}{}",
+        style::paint(style::label_style(), &format!("{label:<10} ")),
+        value
+    );
+}
+
+/// A spinner while the initial index runs — this step alone can take
+/// several seconds on a large repository, and a silent terminal during
+/// that time reads as a hang. Suppressed outside a real terminal (CI logs,
+/// piped output) so it never leaves stray control codes in captured text.
+fn start_spinner(message: &str) -> Option<ProgressBar> {
+    if !std::io::stderr().is_terminal() {
+        return None;
+    }
+    let bar = ProgressBar::new_spinner();
+    bar.enable_steady_tick(Duration::from_millis(80));
+    // Match the CLI's own --color/NO_COLOR policy — indicatif has no idea
+    // about it otherwise and would colour the spinner unconditionally.
+    let template = if style::enabled() {
+        "{spinner:.cyan} {msg}"
+    } else {
+        "{spinner} {msg}"
+    };
+    bar.set_style(
+        ProgressStyle::with_template(template).unwrap_or_else(|_| ProgressStyle::default_spinner()),
+    );
+    bar.set_message(message.to_owned());
+    Some(bar)
+}
+
+fn finish_spinner(bar: Option<ProgressBar>, message: &str) {
+    if let Some(bar) = bar {
+        bar.finish_and_clear();
+        println!("{} {message}", style::paint(style::success_style(), "✔"));
+    }
 }
 
 /// Interactive fallback when `gcx init` runs with no `--editor` flag in a
@@ -108,7 +170,13 @@ fn prompt_editor_choice() -> Result<Vec<EditorKind>> {
     ];
     let labels: Vec<&str> = CHOICES.iter().map(|(label, _)| *label).collect();
 
-    let selection = Select::with_theme(&ColorfulTheme::default())
+    // Respect the same --color/NO_COLOR policy as the rest of the CLI
+    // instead of always emitting dialoguer's default bright theme.
+    let colorful = ColorfulTheme::default();
+    let plain = SimpleTheme;
+    let theme: &dyn Theme = if style::enabled() { &colorful } else { &plain };
+
+    let selection = Select::with_theme(theme)
         .with_prompt("Which AI assistant do you use?")
         .items(&labels)
         .default(CHOICES.len() - 1)

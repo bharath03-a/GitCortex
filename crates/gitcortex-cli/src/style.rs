@@ -109,6 +109,28 @@ pub fn score_style() -> Style {
     Style::new().fg_color(Some(Color::Ansi(AnsiColor::BrightYellow)))
 }
 
+/// Brand accent — the `gcx` wordmark and other one-off "this is GitCortex
+/// talking" moments (not used for node kinds, so it never collides with the
+/// per-kind palette above).
+pub fn brand_style() -> Style {
+    Style::new()
+        .fg_color(Some(Color::Ansi(AnsiColor::Cyan)))
+        .bold()
+}
+
+pub fn success_style() -> Style {
+    Style::new()
+        .fg_color(Some(Color::Ansi(AnsiColor::Green)))
+        .bold()
+}
+
+/// Dim field label in a `label: value` summary line (e.g. `gcx init`'s
+/// closing report). Reuses the same dim tone as file paths so summary
+/// output and query output read as one consistent voice.
+pub fn label_style() -> Style {
+    path_style()
+}
+
 // ─── Global enable/disable policy ─────────────────────────────────────────────
 
 #[derive(Clone, Copy, Debug, clap::ValueEnum)]
