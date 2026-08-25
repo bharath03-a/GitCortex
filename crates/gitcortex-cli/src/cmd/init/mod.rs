@@ -6,6 +6,7 @@ use dialoguer::{
     theme::{ColorfulTheme, SimpleTheme, Theme},
     Select,
 };
+use gitcortex_store::branch;
 use indicatif::{ProgressBar, ProgressStyle};
 
 mod detect;
@@ -23,8 +24,6 @@ use universal::{
     write_gitcortex_ignore,
 };
 
-const BANNER: &str = "gcx";
-
 pub fn run(
     ci: bool,
     editor: Option<&str>,
@@ -38,23 +37,24 @@ pub fn run(
         );
     }
     ensure_hooks_scope(&repo_root, shared_git_hooks)?;
+    let repo_id = branch::storage_repo_id(&repo_root);
     let start = Instant::now();
 
-    println!(
-        "{} {}",
-        style::paint(style::brand_style(), BANNER),
-        style::paint(style::hint_style(), "GitCortex knowledge graph")
-    );
+    print_banner();
 
-    let editors: Vec<EditorKind> = match editor {
-        Some(flag) => parse_editor_flag(flag)?,
-        // No --editor given: ask interactively rather than silently skipping
-        // AI-assistant setup, but only when there's a human to ask — CI and
-        // piped invocations must stay non-interactive and behave as before.
-        None if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() => {
-            prompt_editor_choice().unwrap_or_default()
+    let already_prompted = branch::has_prompted_for_editor(&repo_id);
+    let (editors, should_mark_prompted): (Vec<EditorKind>, bool) = match editor {
+        Some(flag) => (parse_editor_flag(flag)?, false),
+        // No --editor given: ask interactively, but only once ever per repo
+        // (the choice — including "none" — is remembered) and only when
+        // there's a human to ask; CI and piped invocations stay non-interactive.
+        None if !already_prompted
+            && std::io::stdin().is_terminal()
+            && std::io::stdout().is_terminal() =>
+        {
+            (prompt_editor_choice().unwrap_or_default(), true)
         }
-        None => Vec::new(),
+        None => (Vec::new(), false),
     };
 
     // Write exclusions before the first index so build output is never scanned.
@@ -62,6 +62,12 @@ pub fn run(
     let spinner = start_spinner("Indexing repository…");
     let (nodes, edges) = initial_index(&repo_root)?;
     finish_spinner(spinner, "Repository indexed");
+    // Marked after indexing, not before: an incompatible on-disk schema
+    // makes indexing wipe this repo's whole data directory, which would
+    // silently erase an earlier mark and defeat the "only ask once" guarantee.
+    if should_mark_prompted {
+        branch::mark_editor_prompted(&repo_id)?;
+    }
     write_agent_guide(&repo_root)?;
 
     for ed in &editors {
@@ -111,6 +117,58 @@ pub fn run(
     println!();
 
     Ok(())
+}
+
+// 5×5 dot-matrix glyphs, one letter per row group ('#' = lit, ' ' = off).
+const GLYPH_G: [&str; 5] = [" ####", "#    ", "#  ##", "#   #", " ####"];
+const GLYPH_C: [&str; 5] = [" ####", "#    ", "#    ", "#    ", " ####"];
+const GLYPH_X: [&str; 5] = ["#   #", " # # ", "  #  ", " # # ", "#   #"];
+const DOT: &str = "●";
+
+/// Prints a small dot-matrix "GCX" wordmark, one letter tinted per its
+/// matching NodeKind accent (green/cyan/magenta) so the splash and the
+/// query output read as the same product. Falls back to a single compact
+/// line outside a real terminal so piped output and CI logs stay quiet.
+fn print_banner() {
+    if !std::io::stdout().is_terminal() {
+        println!(
+            "{} {}",
+            style::paint(style::brand_style(), "gcx"),
+            style::paint(style::hint_style(), "GitCortex knowledge graph")
+        );
+        return;
+    }
+
+    let g_style = anstyle::Style::new()
+        .fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::Green)))
+        .bold();
+    let c_style = anstyle::Style::new()
+        .fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::Cyan)))
+        .bold();
+    let x_style = anstyle::Style::new()
+        .fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::Magenta)))
+        .bold();
+
+    println!();
+    for row in 0..5 {
+        let g = render_glyph_row(GLYPH_G[row], g_style);
+        let c = render_glyph_row(GLYPH_C[row], c_style);
+        let x = render_glyph_row(GLYPH_X[row], x_style);
+        println!("  {g}  {c}  {x}");
+    }
+    println!(
+        "  {}",
+        style::paint(style::hint_style(), "GitCortex knowledge graph")
+    );
+    println!();
+}
+
+fn render_glyph_row(row: &str, glyph_style: anstyle::Style) -> String {
+    let painted: String = row
+        .chars()
+        .map(|c| if c == '#' { DOT } else { " " })
+        .collect();
+    style::paint(glyph_style, &painted)
 }
 
 fn print_field(label: &str, value: &str) {

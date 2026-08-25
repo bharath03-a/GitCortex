@@ -290,7 +290,7 @@ cd your-repo
 gcx init
 ```
 
-That's it in a real terminal — `gcx init` indexes the repo, installs four git hooks, then shows an arrow-key menu (Claude Code, Cursor, Windsurf, Copilot, Antigravity, Codex, all, none) so you can pick your AI assistant with the keyboard and wire it in. Every subsequent commit updates the graph automatically.
+That's it in a real terminal — `gcx init` indexes the repo, installs four git hooks, then shows an arrow-key menu (Claude Code, Cursor, Windsurf, Copilot, Antigravity, Codex, all, none) so you can pick your AI assistant with the keyboard and wire it in. This only happens once per repo per machine — rerunning `gcx init` later won't ask again. Every subsequent commit updates the graph automatically.
 
 Scripting it, or running in CI? Skip the prompt with an explicit flag:
 
@@ -327,7 +327,7 @@ gcx --color never   query symbol-context baz  # plain text, for scripts and CI
 
 ### `gcx init`
 
-Installs four non-blocking Git hooks, runs the initial full index, and writes `.gitcortex/AGENT_GUIDE.md`. Editor configuration is controlled by `--editor`; omit it in a real terminal and `gcx init` asks interactively which assistant to configure. Omit it in a non-interactive shell (CI, a pipe) and no editor is configured, same as `--editor none`.
+Installs four non-blocking Git hooks, runs the initial full index, and writes `.gitcortex/AGENT_GUIDE.md`. Editor configuration is controlled by `--editor`; omit it in a real terminal and `gcx init` asks interactively which assistant to configure — but only the first time per repo per machine. Whatever you pick (including "none") is remembered, so later `gcx init` runs never ask again; add an assistant afterward with `gcx init --editor <name>`. Omit it in a non-interactive shell (CI, a pipe) and no editor is configured, same as `--editor none`.
 
 ```bash
 gcx init                                # interactive prompt in a terminal; no-op in CI/pipes
