@@ -344,11 +344,11 @@ gcx init --ci                           # also writes .github/workflows/gcx-blas
 Output:
 
 ```
-GitCortex initialised  (820ms)
-  Graph:     2 141 nodes | 5 328 edges
-  Hooks:     4 git hooks installed
-  Editors:   Codex
-  Universal: .gitcortex/AGENT_GUIDE.md, .gitcortex/ignore
+✔ GitCortex initialised  (820ms)
+  Graph      2 141 nodes | 5 328 edges
+  Hooks      4 git hooks installed
+  Editors    Codex
+  Universal  .gitcortex/AGENT_GUIDE.md, .gitcortex/ignore
 ```
 
 | Editor      | Files written                                                                                       |

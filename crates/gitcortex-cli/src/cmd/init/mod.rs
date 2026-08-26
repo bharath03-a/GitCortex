@@ -142,11 +142,11 @@ const BLANK: &str = "  ";
 const LEFT_BRACKET: [&str; 7] = ["⎡", "⎢", "⎢", "⎢", "⎢", "⎢", "⎣"];
 const RIGHT_BRACKET: [&str; 7] = ["⎤", "⎥", "⎥", "⎥", "⎥", "⎥", "⎦"];
 
-/// Prints the `[GCX]` wordmark using the GitHub Pages palette — the site's
-/// `--good` teal-green for the left bracket, white letters, the site's
-/// `--brand` burnt-orange for the right bracket — so the CLI and the web
-/// presence read as one identity. Falls back to a single compact line
-/// outside a real terminal so piped output and CI logs stay quiet.
+/// Prints the `[GCX]` wordmark in a single brand orange (`--brand:
+/// #C4633F`, the same hex used across the GitHub Pages site and the
+/// README logo) so the CLI and the web presence read as one identity.
+/// Falls back to a single compact line outside a real terminal so piped
+/// output and CI logs stay quiet.
 fn print_banner() {
     if !std::io::stdout().is_terminal() {
         println!(
