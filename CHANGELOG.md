@@ -7,6 +7,17 @@ from release tags and commit history after the fact, so they summarise what
 shipped rather than what was written at release time. Dates for those entries
 are tag dates.
 
+## [0.7.6] - 2026-08-25
+
+### Fixed
+- **`gcx init --editor antigravity` never registered the MCP server without `--global-editor-config`**, leaving the assistant with no tool access by default even though skills, rules, and hooks were written. Antigravity's real customization format is a self-contained plugin bundle (`.agents/plugins/gitcortex/{plugin.json,mcp_config.json,hooks.json,rules/AGENTS.md,skills/}`), confirmed against the `agy` CLI's own embedded docs; MCP config is now written project-locally and unconditionally. `gcx deinit` cleans up the new bundle. Global config (`~/.antigravity/mcp.json`, `~/.gemini/config/mcp_config.json` for the standalone `agy` CLI) remains opt-in behind `--global-editor-config`.
+- **The interactive editor prompt asked every single `gcx init` run**, including runs that only rebuild the graph store after a schema bump. The choice (including "none") is now persisted per repo per machine, so it only asks once; add an assistant later with `gcx init --editor <name>`.
+- **The prompt only let you pick one assistant**, even though using more than one at once (e.g. Claude Code and Antigravity together) is common. Switched from single-select to a checkbox multi-select (space to toggle, enter to confirm).
+
+### Changed
+- `gcx init` with no `--editor` in a real terminal now shows a `[GCX]` banner and a checkbox editor picker instead of a typed free-text prompt; a spinner covers the initial index (previously a silent terminal for several seconds); the closing summary is colorized. All of it respects `--color never` / `NO_COLOR` like the rest of the CLI.
+- README and GitHub Pages install instructions updated to describe the one-time interactive setup instead of "editor config is a separate opt-in step."
+
 ## [0.7.5] - 2026-08-23
 
 ### Fixed
