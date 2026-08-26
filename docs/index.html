@@ -181,6 +181,19 @@
     }
     .nav-cta:hover { border-color: var(--brand); color: var(--brand); }
     @media (max-width: 860px) { .nav-hide { display: none; } }
+    @media (max-width: 560px) {
+      /* .nav-links had no wrap/overflow handling, so once the remaining
+         links (Benchmarks/Compare/Releases/GitHub) couldn't fit one row
+         they forced the whole page's layout viewport wider instead of
+         wrapping — every section below then inherited that overflow.
+         min-width: 0 lets a flex item shrink past its content size so
+         overflow-x: auto actually gets to scroll instead of the item
+         just refusing to shrink. */
+      .nav-in { gap: 12px; }
+      .nav-links { gap: 18px; overflow-x: auto; min-width: 0; flex: 1 1 auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+      .nav-links::-webkit-scrollbar { display: none; }
+      .brandmark { flex: none; }
+    }
 
     /* ── Section rhythm ───────────────────────────────────────────────────── */
     .band { padding: 92px 0; border-top: 1px solid var(--rule); }
@@ -192,6 +205,13 @@
     /* ── Hero ─────────────────────────────────────────────────────────────── */
     .hero { padding: 84px 0 76px; }
     .hero-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
+    /* Grid items default to min-width: auto, i.e. their content's min-content
+       size — which the .kv rows' white-space: nowrap makes wide even though
+       .exchange-body has overflow-x: auto. overflow:auto on a *descendant*
+       doesn't stop that min-content from being used to size the grid track;
+       only min-width: 0 on the item itself does, letting the demo box's
+       internal scrollbar actually do its job instead of widening the page. */
+    .hero-grid > .rise { min-width: 0; }
     @media (max-width: 940px) { .hero-grid { grid-template-columns: 1fr; gap: 44px; } h1 { max-width: 20ch; } }
 
     .version-tag {

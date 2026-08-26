@@ -85,6 +85,12 @@
     .nav-links a { font-size: .875rem; color: var(--ink-2); }
     .nav-links a:hover { color: var(--ink); }
     .nav-cta { font-family: var(--mono); font-size: .76rem; font-weight: 600; background: var(--ink); color: var(--paper); padding: 8px 14px; border-radius: 6px; }
+    @media (max-width: 560px) {
+      .nav-in { gap: 12px; }
+      .nav-links { gap: 16px; overflow-x: auto; min-width: 0; flex: 1 1 auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+      .nav-links::-webkit-scrollbar { display: none; }
+      .brandmark { flex: none; }
+    }
 
     header.hero { padding: 52px 0 40px; border-bottom: 1px solid var(--rule); }
     header.hero .eyebrow { margin-bottom: 12px; }
