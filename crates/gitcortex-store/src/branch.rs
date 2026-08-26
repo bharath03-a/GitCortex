@@ -228,6 +228,30 @@ pub fn write_schema_version(repo_id: &str, version: u32) -> Result<()> {
     std::fs::write(&path, version.to_string()).map_err(GitCortexError::Io)
 }
 
+/// Path to the marker recording that the interactive `gcx init` editor
+/// prompt has already run for this repository on this machine.
+pub fn editor_prompt_marker_path(repo_id: &str) -> PathBuf {
+    data_dir(repo_id).join("editor_prompted")
+}
+
+/// Whether the interactive editor prompt has already run for this repo.
+/// Machine-local (not repo-committed): editor choice is a per-developer
+/// preference, not a team-wide setting.
+pub fn has_prompted_for_editor(repo_id: &str) -> bool {
+    editor_prompt_marker_path(repo_id).exists()
+}
+
+/// Record that the interactive editor prompt has run, regardless of what
+/// (if anything) the user picked, so `gcx init` never asks again — use
+/// `gcx init --editor <name>` to add an assistant later.
+pub fn mark_editor_prompted(repo_id: &str) -> Result<()> {
+    let path = editor_prompt_marker_path(repo_id);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&path, "").map_err(GitCortexError::Io)
+}
+
 /// Whether a repository data directory contains anything other than its
 /// reusable ownership lock file.
 pub fn has_repo_data(repo_id: &str) -> Result<bool> {

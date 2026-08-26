@@ -290,7 +290,26 @@ cd your-repo
 gcx init
 ```
 
-That installs the git hooks and indexes the current branch. Every subsequent commit updates the graph automatically.
+That's it in a real terminal — `gcx init` indexes the repo, installs four git hooks, then shows a checkbox menu (Claude Code, Cursor, Windsurf, Copilot, Antigravity, Codex) so you can pick — space to toggle, enter to confirm, none checked means none configured — one or several assistants at once (e.g. Claude Code and Antigravity together) and wire them all in. This only happens once per repo per machine — rerunning `gcx init` later won't ask again. Every subsequent commit updates the graph automatically.
+
+Scripting it, or running in CI? Skip the prompt with an explicit flag:
+
+```bash
+gcx init --editor claude      # or cursor / windsurf / copilot / antigravity / codex
+gcx init --editor auto        # detect which editor you use
+gcx init --editor all         # wire every supported editor at once
+gcx init --editor none        # index only, no AI assistant wiring — same as a piped/non-interactive `gcx init`
+```
+
+Skipping editor setup entirely (`none`, or a non-interactive shell with no `--editor`) leaves the assistant with no idea GitCortex exists — only the index and git hooks are set up. Run `gcx init --help` to see the full list.
+
+Confirm it worked:
+
+```bash
+gcx doctor
+```
+
+`[ok] assistant configured  (Claude Code)` (or whichever editor you picked) means the AI assistant side is actually connected — not just the index.
 
 ---
 
@@ -308,10 +327,11 @@ gcx --color never   query symbol-context baz  # plain text, for scripts and CI
 
 ### `gcx init`
 
-Installs four non-blocking Git hooks, runs the initial full index, and writes `.gitcortex/AGENT_GUIDE.md`. Editor configuration is opt-in through `--editor`; use `--editor auto` only when you explicitly want environment-based detection.
+Installs four non-blocking Git hooks, runs the initial full index, and writes `.gitcortex/AGENT_GUIDE.md`. Editor configuration is controlled by `--editor`; omit it in a real terminal and `gcx init` asks interactively which assistant to configure — but only the first time per repo per machine. Whatever you pick (including "none") is remembered, so later `gcx init` runs never ask again; add an assistant afterward with `gcx init --editor <name>`. Omit it in a non-interactive shell (CI, a pipe) and no editor is configured, same as `--editor none`.
 
 ```bash
-gcx init                                # no editor configuration
+gcx init                                # interactive prompt in a terminal; no-op in CI/pipes
+gcx init --editor none                  # explicitly skip editor configuration
 gcx init --editor codex                 # repository-local Codex setup
 gcx init --editor claude                # repository-local Claude setup
 gcx init --editor auto                  # explicitly request environment detection
@@ -324,21 +344,21 @@ gcx init --ci                           # also writes .github/workflows/gcx-blas
 Output:
 
 ```
-GitCortex initialised  (820ms)
-  Graph:     2 141 nodes | 5 328 edges
-  Hooks:     4 git hooks installed
-  Editors:   Codex
-  Universal: .gitcortex/AGENT_GUIDE.md, .gitcortex/ignore
+✔ GitCortex initialised  (820ms)
+  Graph      2 141 nodes | 5 328 edges
+  Hooks      4 git hooks installed
+  Editors    Codex
+  Universal  .gitcortex/AGENT_GUIDE.md, .gitcortex/ignore
 ```
 
 | Editor      | Files written                                                                                       |
 | ----------- | --------------------------------------------------------------------------------------------------- |
 | Claude Code | `.mcp.json`, `.claude/hooks/`, `.claude/settings.json`, `.claude/skills/`, `.claude/commands/`; optionally `~/.claude.json` |
-| Codex       | `AGENTS.md`, `.codex/config.toml` |
+| Codex       | `AGENTS.md`, `.codex/config.toml`, `.codex/hooks/`, `.codex/hooks.json` |
 | Cursor      | `.cursor/rules/gitcortex.mdc`, `.cursor/mcp.json` |
 | Windsurf    | `.windsurfrules`; optionally `~/.codeium/windsurf/mcp_config.json` |
 | Copilot     | `.vscode/mcp.json`, `.github/copilot-instructions.md` |
-| Antigravity | `~/.antigravity/mcp.json`, `~/.gemini/config/mcp_config.json` (for the `agy` CLI); only with `--global-editor-config` |
+| Antigravity | `.agents/plugins/gitcortex/` (`plugin.json`, `mcp_config.json`, `hooks.json`, `rules/AGENTS.md`, `skills/`) — a self-contained plugin bundle, MCP included by default; optionally also `~/.antigravity/mcp.json` and `~/.gemini/config/mcp_config.json` (for the `agy` CLI) with `--global-editor-config` |
 
 Global files are never changed unless `--global-editor-config` is supplied.
 
