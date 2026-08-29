@@ -27,6 +27,18 @@ static VIZ_WEBGL: &[u8] = include_bytes!("../dist-viz/assets/webgl-device.js");
 static VIZ_COSMOS: &[u8] = include_bytes!("../dist-viz/assets/CosmosCanvas.js");
 static VIZ_COMPLEXITY_WORKER: &[u8] = include_bytes!("../dist-viz/assets/complexityWorker.js");
 static VIZ_FAVICON_ICO: &[u8] = include_bytes!("../dist-viz/favicon.ico");
+static VIZ_FONT_SPACE_GROTESK_400: &[u8] =
+    include_bytes!("../dist-viz/assets/space-grotesk-latin-400-normal.woff2");
+static VIZ_FONT_SPACE_GROTESK_500: &[u8] =
+    include_bytes!("../dist-viz/assets/space-grotesk-latin-500-normal.woff2");
+static VIZ_FONT_SPACE_GROTESK_600: &[u8] =
+    include_bytes!("../dist-viz/assets/space-grotesk-latin-600-normal.woff2");
+static VIZ_FONT_IBM_PLEX_MONO_400: &[u8] =
+    include_bytes!("../dist-viz/assets/ibm-plex-mono-latin-400-normal.woff2");
+static VIZ_FONT_IBM_PLEX_MONO_500: &[u8] =
+    include_bytes!("../dist-viz/assets/ibm-plex-mono-latin-500-normal.woff2");
+static VIZ_FONT_IBM_PLEX_MONO_600: &[u8] =
+    include_bytes!("../dist-viz/assets/ibm-plex-mono-latin-600-normal.woff2");
 
 /// Output format for `gcx viz`.
 #[derive(clap::ValueEnum, Clone)]
@@ -127,6 +139,30 @@ async fn serve(state: Arc<AppState>, port: u16) -> Result<()> {
             get(complexity_worker_handler),
         )
         .route("/favicon.ico", get(favicon_ico_handler))
+        .route(
+            "/assets/space-grotesk-latin-400-normal.woff2",
+            get(font_space_grotesk_400_handler),
+        )
+        .route(
+            "/assets/space-grotesk-latin-500-normal.woff2",
+            get(font_space_grotesk_500_handler),
+        )
+        .route(
+            "/assets/space-grotesk-latin-600-normal.woff2",
+            get(font_space_grotesk_600_handler),
+        )
+        .route(
+            "/assets/ibm-plex-mono-latin-400-normal.woff2",
+            get(font_ibm_plex_mono_400_handler),
+        )
+        .route(
+            "/assets/ibm-plex-mono-latin-500-normal.woff2",
+            get(font_ibm_plex_mono_500_handler),
+        )
+        .route(
+            "/assets/ibm-plex-mono-latin-600-normal.woff2",
+            get(font_ibm_plex_mono_600_handler),
+        )
         .route("/data", get(data_handler))
         .route("/api/graph/manifest", get(graph_manifest_handler))
         .route("/api/graph/nodes", get(graph_nodes_handler))
@@ -228,6 +264,30 @@ async fn complexity_worker_handler() -> Response {
         VIZ_COMPLEXITY_WORKER,
         "application/javascript; charset=utf-8",
     )
+}
+
+async fn font_space_grotesk_400_handler() -> Response {
+    static_response(VIZ_FONT_SPACE_GROTESK_400, "font/woff2")
+}
+
+async fn font_space_grotesk_500_handler() -> Response {
+    static_response(VIZ_FONT_SPACE_GROTESK_500, "font/woff2")
+}
+
+async fn font_space_grotesk_600_handler() -> Response {
+    static_response(VIZ_FONT_SPACE_GROTESK_600, "font/woff2")
+}
+
+async fn font_ibm_plex_mono_400_handler() -> Response {
+    static_response(VIZ_FONT_IBM_PLEX_MONO_400, "font/woff2")
+}
+
+async fn font_ibm_plex_mono_500_handler() -> Response {
+    static_response(VIZ_FONT_IBM_PLEX_MONO_500, "font/woff2")
+}
+
+async fn font_ibm_plex_mono_600_handler() -> Response {
+    static_response(VIZ_FONT_IBM_PLEX_MONO_600, "font/woff2")
 }
 
 async fn favicon_ico_handler() -> Response {
