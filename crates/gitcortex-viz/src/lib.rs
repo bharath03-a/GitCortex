@@ -26,6 +26,7 @@ static VIZ_CSS: &[u8] = include_bytes!("../dist-viz/assets/main.css");
 static VIZ_WEBGL: &[u8] = include_bytes!("../dist-viz/assets/webgl-device.js");
 static VIZ_COSMOS: &[u8] = include_bytes!("../dist-viz/assets/CosmosCanvas.js");
 static VIZ_COMPLEXITY_WORKER: &[u8] = include_bytes!("../dist-viz/assets/complexityWorker.js");
+static VIZ_VIEW_WORKER: &[u8] = include_bytes!("../dist-viz/assets/viewWorker.js");
 static VIZ_FAVICON_ICO: &[u8] = include_bytes!("../dist-viz/favicon.ico");
 static VIZ_FONT_SPACE_GROTESK_400: &[u8] =
     include_bytes!("../dist-viz/assets/space-grotesk-latin-400-normal.woff2");
@@ -138,6 +139,7 @@ async fn serve(state: Arc<AppState>, port: u16) -> Result<()> {
             "/assets/complexityWorker.js",
             get(complexity_worker_handler),
         )
+        .route("/assets/viewWorker.js", get(view_worker_handler))
         .route("/favicon.ico", get(favicon_ico_handler))
         .route(
             "/assets/space-grotesk-latin-400-normal.woff2",
@@ -264,6 +266,10 @@ async fn complexity_worker_handler() -> Response {
         VIZ_COMPLEXITY_WORKER,
         "application/javascript; charset=utf-8",
     )
+}
+
+async fn view_worker_handler() -> Response {
+    static_response(VIZ_VIEW_WORKER, "application/javascript; charset=utf-8")
 }
 
 async fn font_space_grotesk_400_handler() -> Response {
