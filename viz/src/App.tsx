@@ -31,7 +31,7 @@ import { Inspector } from "./components/Inspector";
 import { StatusBar } from "./components/StatusBar";
 import { SearchPalette } from "./components/SearchPalette";
 import { KeyboardHelp } from "./components/KeyboardHelp";
-import { type DensityMode } from "./graph/density";
+import { DENSITY_LABEL, type DensityMode } from "./graph/density";
 import { graphClusterForFile } from "./graph/semantics";
 import type { ViewInput, ViewMode } from "./graph/view";
 import { useBranchDiff } from "./hooks/useBranchDiff";
@@ -520,7 +520,7 @@ export default function App() {
                 </Suspense>
               </RendererBoundary>
             )}
-          {data && !error && data.nodes.length === 0 && (
+          {data && !error && data.nodes.length === 0 && rawData && rawData.nodes.length === 0 && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center text-(--color-text-muted)">
               <div className="text-[15px] font-semibold">No indexed symbols on this branch</div>
               <div className="font-mono text-xs">
@@ -528,6 +528,25 @@ export default function App() {
                 <span className="text-(--color-text-primary)"> gcx init</span>) to index this
                 repository, then refresh.
               </div>
+            </div>
+          )}
+          {data && !error && data.nodes.length === 0 && rawData && rawData.nodes.length > 0 && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center text-(--color-text-muted)">
+              <div className="text-[15px] font-semibold">
+                {rawData.nodes.length.toLocaleString()} indexed, none match "
+                {DENSITY_LABEL[density]}"
+              </div>
+              <div className="font-mono text-xs">
+                This scope only shows symbols with a semantic edge (calls, implements, inherits,
+                uses, throws). Repos with no such edges yet — e.g. docs-only — need a broader scope.
+              </div>
+              <button
+                type="button"
+                onClick={() => setDensity("all")}
+                className="mt-2 rounded-md border border-(--color-border-subtle) px-3 py-1.5 font-mono text-xs text-(--color-text-primary) hover:border-(--color-accent)"
+              >
+                Switch to All indexed
+              </button>
             </div>
           )}
           {!data && !error && (
