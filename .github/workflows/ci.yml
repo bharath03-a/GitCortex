@@ -132,7 +132,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: "ubuntu-stable-machete"
-      - uses: taiki-e/install-action@v2.85.4
+      - uses: taiki-e/install-action@v2.87.1
         with:
           tool: cargo-machete
       - run: cargo machete
@@ -160,7 +160,7 @@ jobs:
       # access to the runner. Safe to pin here because the toolchain is selected
       # by the input below rather than by the ref, which is why the @stable
       # usages elsewhere in this file cannot be pinned the same way.
-      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
         with:
           toolchain: ${{ matrix.toolchain }}
       - uses: Swatinem/rust-cache@v2
@@ -170,7 +170,7 @@ jobs:
         with:
           name: viz-dist
           path: crates/gitcortex-viz/dist-viz/
-      - uses: taiki-e/install-action@v2.85.4
+      - uses: taiki-e/install-action@v2.87.1
         with:
           tool: nextest
       - run: cargo build --workspace --all-targets
@@ -197,7 +197,7 @@ jobs:
         with:
           name: viz-dist
           path: crates/gitcortex-viz/dist-viz/
-      - uses: taiki-e/install-action@v2.85.4
+      - uses: taiki-e/install-action@v2.87.1
         with:
           tool: nextest
       - run: cargo build --workspace --all-targets
@@ -224,7 +224,7 @@ jobs:
         with:
           name: viz-dist
           path: crates/gitcortex-viz/dist-viz/
-      - uses: taiki-e/install-action@v2.85.4
+      - uses: taiki-e/install-action@v2.87.1
         with:
           tool: cargo-llvm-cov,nextest
       - name: Run tests with coverage
