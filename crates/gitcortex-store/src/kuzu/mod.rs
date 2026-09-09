@@ -33,6 +33,133 @@ use values::{i64_val, str_val};
 const NODE_INSERT_CHUNK: usize = 128;
 const EDGE_INSERT_CHUNK: usize = 1000;
 
+#[derive(Debug)]
+struct IncomingEdgeFact {
+    src_id: String,
+    target_file: String,
+    target_qualified_name: String,
+    target_kind: String,
+    edge_kind: String,
+    line: i64,
+    confidence: String,
+}
+
+/// Capture relationships originating in unchanged files before replacement
+/// nodes are detached. The target's source identity lets us reconnect the edge
+/// after the changed file has been parsed into fresh node IDs.
+fn incoming_edges_to_replaced_files(
+    conn: &Connection,
+    nt: &str,
+    et: &str,
+    removed_files: &HashSet<String>,
+) -> Result<Vec<IncomingEdgeFact>> {
+    if removed_files.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let files = removed_files
+        .iter()
+        .map(|file| format!("'{}'", esc(file)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut rows = conn
+        .query(&format!(
+            "MATCH (src:{nt})-[e:{et}]->(dst:{nt}) \
+             WHERE dst.file IN [{files}] \
+             RETURN src.id, src.file, dst.file, dst.qualified_name, dst.kind, \
+                    e.kind, e.line, e.confidence"
+        ))
+        .map_err(|e| GitCortexError::Store(format!("capture incoming edges: {e}")))?;
+
+    let mut preserved = Vec::new();
+    for row in rows.by_ref() {
+        let src_file = str_val(&row[1])?;
+        if removed_files.contains(&src_file) {
+            continue;
+        }
+        let edge_kind = str_val(&row[5])?;
+        if edge_kind == "contains" {
+            continue;
+        }
+        preserved.push(IncomingEdgeFact {
+            src_id: str_val(&row[0])?,
+            target_file: str_val(&row[2])?,
+            target_qualified_name: str_val(&row[3])?,
+            target_kind: str_val(&row[4])?,
+            edge_kind,
+            line: i64_val(&row[6])?,
+            confidence: str_val(&row[7])?,
+        });
+    }
+    Ok(preserved)
+}
+
+fn restore_incoming_edges(
+    conn: &Connection,
+    nt: &str,
+    et: &str,
+    incoming: &[IncomingEdgeFact],
+    added_nodes: &[Node],
+    seen_edges: &mut HashSet<(String, String, String)>,
+) -> Result<()> {
+    let mut target_ids: HashMap<(String, String, String), HashSet<String>> = HashMap::new();
+    for node in added_nodes {
+        target_ids
+            .entry((
+                node.file.to_string_lossy().into_owned(),
+                node.qualified_name.clone(),
+                node.kind.to_string(),
+            ))
+            .or_default()
+            .insert(node.id.as_str());
+    }
+
+    for chunk in incoming.chunks(EDGE_INSERT_CHUNK) {
+        let facts = chunk
+            .iter()
+            .filter_map(|fact| {
+                let key = (
+                    fact.target_file.clone(),
+                    fact.target_qualified_name.clone(),
+                    fact.target_kind.clone(),
+                );
+                let candidates = target_ids.get(&key)?;
+                if candidates.len() != 1 {
+                    return None;
+                }
+                let target_id = candidates.iter().next()?;
+                if !seen_edges.insert((
+                    fact.src_id.clone(),
+                    target_id.clone(),
+                    fact.edge_kind.clone(),
+                )) {
+                    return None;
+                }
+                format!(
+                    "{{s:'{}',d:'{}',ek:'{}',ln:{},cf:'{}'}}",
+                    esc(&fact.src_id),
+                    esc(target_id),
+                    esc(&fact.edge_kind),
+                    fact.line,
+                    esc(&fact.confidence),
+                )
+                .into()
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        if facts.is_empty() {
+            continue;
+        }
+        conn.query(&format!(
+            "UNWIND [{facts}] AS r \
+             MATCH (src:{nt} {{id: r.s}}), (dst:{nt} {{id: r.d}}) \
+             CREATE (src)-[:{et} {{kind: r.ek, line: r.ln, confidence: r.cf}}]->(dst)"
+        ))
+        .map_err(|e| GitCortexError::Store(format!("restore incoming edges: {e}")))?;
+    }
+    Ok(())
+}
+
 /// Render a `Node` as a Cypher struct literal `{id:'…', kind:'…', …}` for use
 /// inside an `UNWIND [...] AS r CREATE` batch. String fields are escaped and
 /// single-quoted; bools/ints are emitted bare.
@@ -494,6 +621,14 @@ impl GraphStore for KuzuGraphStore {
             return bulk_apply(&conn, &nt, &et, diff);
         }
 
+        let replaced_files: HashSet<String> = diff
+            .removed_files
+            .iter()
+            .filter(|file| file.extension().is_some())
+            .map(|file| file.to_string_lossy().into_owned())
+            .collect();
+        let incoming_edges = incoming_edges_to_replaced_files(&conn, &nt, &et, &replaced_files)?;
+
         // Transaction 1: commit all deletes first.
         // KuzuDB has a quirk where DETACH DELETE + CREATE in the same transaction
         // can produce NULL for the last STRING column in newly created nodes.
@@ -670,6 +805,15 @@ impl GraphStore for KuzuGraphStore {
             ))
             .map_err(|e| GitCortexError::Store(format!("batch insert edges: {e}")))?;
         }
+
+        restore_incoming_edges(
+            &conn,
+            &nt,
+            &et,
+            &incoming_edges,
+            &diff.added_nodes,
+            &mut seen_edges,
+        )?;
 
         // 6. Resolve cross-file deferred edges against the full store.
         //    The diff-local pass couldn't find these callees/types because they

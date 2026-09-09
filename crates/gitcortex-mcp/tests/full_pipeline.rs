@@ -455,6 +455,158 @@ fn python_comprehensive_dataclass_is_struct() {
 // callers in one file resolve to callees defined in a separate file.
 
 #[test]
+fn incremental_callee_edit_preserves_incoming_caller() {
+    let _lock = KUZU_LOCK.lock().expect("lock");
+    let tmp = tempfile::tempdir().expect("tempdir");
+    init_repo(tmp.path());
+
+    std::fs::write(
+        tmp.path().join("callee.rs"),
+        "pub fn compute_value() -> i32 { 1 }\n",
+    )
+    .expect("write callee");
+    std::fs::write(
+        tmp.path().join("caller.rs"),
+        "use crate::callee::compute_value;\npub fn run() -> i32 { compute_value() }\n",
+    )
+    .expect("write caller");
+    for args in [
+        vec!["add", "callee.rs", "caller.rs"],
+        vec!["commit", "-m", "base"],
+    ] {
+        let status = Command::new("git")
+            .args(&args)
+            .current_dir(tmp.path())
+            .status()
+            .expect("git failed");
+        assert!(status.success(), "git {args:?} failed");
+    }
+
+    let indexer = IncrementalIndexer::new(tmp.path()).expect("indexer");
+    let (base_diff, base_sha) = indexer.run(None).expect("full index");
+    let mut store = KuzuGraphStore::open(tmp.path()).expect("store");
+    store
+        .apply_diff("main", &base_diff)
+        .expect("apply full index");
+    let initial_callers = store
+        .find_callers("main", "compute_value")
+        .expect("initial callers");
+    assert!(
+        initial_callers.iter().any(|node| node.name == "run"),
+        "fixture must establish the cross-file caller before the incremental edit"
+    );
+
+    std::fs::write(
+        tmp.path().join("callee.rs"),
+        "pub fn compute_value() -> i32 { 2 }\n",
+    )
+    .expect("edit callee");
+    for args in [
+        vec!["add", "callee.rs"],
+        vec!["commit", "-m", "edit callee body"],
+    ] {
+        let status = Command::new("git")
+            .args(&args)
+            .current_dir(tmp.path())
+            .status()
+            .expect("git failed");
+        assert!(status.success(), "git {args:?} failed");
+    }
+
+    let (incremental_diff, _) = indexer.run(Some(&base_sha)).expect("incremental index");
+    store
+        .apply_diff("main", &incremental_diff)
+        .expect("apply incremental index");
+
+    let callers = store
+        .find_callers("main", "compute_value")
+        .expect("callers after edit");
+    assert!(
+        callers.iter().any(|node| node.name == "run"),
+        "editing only the callee must preserve the unchanged cross-file caller; got {:?}",
+        callers.iter().map(|node| &node.name).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn incremental_nested_file_edit_does_not_duplicate_folder_edge() {
+    let _lock = KUZU_LOCK.lock().expect("lock");
+    let tmp = tempfile::tempdir().expect("tempdir");
+    init_repo(tmp.path());
+    std::fs::create_dir(tmp.path().join("src")).expect("create src");
+    std::fs::write(
+        tmp.path().join("src/callee.rs"),
+        "pub fn compute_value() -> i32 { 1 }\n",
+    )
+    .expect("write callee");
+    for args in [vec!["add", "src/callee.rs"], vec!["commit", "-m", "base"]] {
+        let status = Command::new("git")
+            .args(&args)
+            .current_dir(tmp.path())
+            .status()
+            .expect("git failed");
+        assert!(status.success(), "git {args:?} failed");
+    }
+
+    let indexer = IncrementalIndexer::new(tmp.path()).expect("indexer");
+    let (base_diff, base_sha) = indexer.run(None).expect("full index");
+    let mut store = KuzuGraphStore::open(tmp.path()).expect("store");
+    store
+        .apply_diff("main", &base_diff)
+        .expect("apply full index");
+
+    std::fs::write(
+        tmp.path().join("src/callee.rs"),
+        "pub fn compute_value() -> i32 { 2 }\n",
+    )
+    .expect("edit callee");
+    for args in [
+        vec!["add", "src/callee.rs"],
+        vec!["commit", "-m", "edit callee body"],
+    ] {
+        let status = Command::new("git")
+            .args(&args)
+            .current_dir(tmp.path())
+            .status()
+            .expect("git failed");
+        assert!(status.success(), "git {args:?} failed");
+    }
+    let (incremental_diff, _) = indexer.run(Some(&base_sha)).expect("incremental index");
+    store
+        .apply_diff("main", &incremental_diff)
+        .expect("apply incremental index");
+
+    let nodes = store.list_all_nodes("main").expect("nodes");
+    let folder = nodes
+        .iter()
+        .find(|node| {
+            node.kind == gitcortex_core::schema::NodeKind::Folder && node.file == Path::new("src")
+        })
+        .expect("src folder");
+    let file = nodes
+        .iter()
+        .find(|node| {
+            node.kind == gitcortex_core::schema::NodeKind::File
+                && node.file == Path::new("src/callee.rs")
+        })
+        .expect("callee file");
+    let contains_count = store
+        .list_all_edges("main")
+        .expect("edges")
+        .into_iter()
+        .filter(|edge| {
+            edge.kind == gitcortex_core::schema::EdgeKind::Contains
+                && edge.src == folder.id
+                && edge.dst == file.id
+        })
+        .count();
+    assert_eq!(
+        contains_count, 1,
+        "incremental replacement must not duplicate Folder -> File containment"
+    );
+}
+
+#[test]
 fn cross_file_calls_edge_resolved() {
     let (nodes, _edges, store) = run_pipeline_multi(&["xfile_callee.rs", "xfile_caller.rs"]);
 
