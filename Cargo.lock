@@ -1288,6 +1288,7 @@ dependencies = [
  "ignore",
  "pulldown-cmark",
  "rayon",
+ "tempfile",
  "tree-sitter",
  "tree-sitter-go",
  "tree-sitter-java",
