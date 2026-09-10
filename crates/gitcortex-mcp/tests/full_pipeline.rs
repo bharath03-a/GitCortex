@@ -1316,6 +1316,46 @@ fn edge_confidence_cross_file_resolved_extracted_structural() {
 }
 
 #[test]
+fn get_call_sites_preserves_two_calls_on_the_same_line() {
+    let _lock = KUZU_LOCK.lock().expect("lock");
+    let tmp = tempfile::tempdir().expect("tempdir");
+    init_repo(tmp.path());
+    std::fs::write(
+        tmp.path().join("calls.rs"),
+        "pub fn target() {}\npub fn run() { target(); target(); }\n",
+    )
+    .expect("write calls");
+    let status = Command::new("git")
+        .args(["add", "calls.rs"])
+        .current_dir(tmp.path())
+        .status()
+        .expect("git add failed");
+    assert!(status.success());
+    let status = Command::new("git")
+        .args(["commit", "-m", "add repeated calls"])
+        .current_dir(tmp.path())
+        .status()
+        .expect("git commit failed");
+    assert!(status.success());
+
+    let indexer = IncrementalIndexer::new(tmp.path()).expect("indexer");
+    let (diff, _) = indexer.run(None).expect("index");
+    let mut store = KuzuGraphStore::open(tmp.path()).expect("store");
+    store.apply_diff("main", &diff).expect("apply graph");
+
+    let sites = store
+        .find_call_sites("main", "target")
+        .expect("find call sites");
+    assert_eq!(
+        sites.len(),
+        2,
+        "each call expression is a distinct call site"
+    );
+    assert!(sites.iter().all(|site| site.caller.name == "run"));
+    assert!(sites.iter().all(|site| site.line == Some(2)));
+}
+
+#[test]
 fn get_call_sites_records_caller_and_line() {
     // xfile_caller.rs: run() and run_with_branch() both call compute_value().
     // Each call site must report the caller and a concrete line number.

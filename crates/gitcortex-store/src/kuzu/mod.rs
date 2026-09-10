@@ -551,20 +551,26 @@ struct RawReference {
     line: i64,
 }
 
-fn raw_reference_id(src_id: &str, target_name: &str, kind: &EdgeKind, line: i64) -> String {
-    let value = format!("{src_id}\0{target_name}\0{kind}\0{line}");
+fn raw_reference_id(
+    src_id: &str,
+    target_name: &str,
+    kind: &EdgeKind,
+    line: i64,
+    occurrence: u32,
+) -> String {
+    let value = format!("{src_id}\0{target_name}\0{kind}\0{line}\0{occurrence}");
     blake3::hash(value.as_bytes()).to_hex().to_string()
 }
 
 fn reference_facts(diff: &GraphDiff, caller_file: &HashMap<String, String>) -> Vec<RawReference> {
     let mut facts = Vec::new();
-    let mut push = |src: &NodeId, target: &str, kind: EdgeKind, line: i64| {
+    let mut push = |src: &NodeId, target: &str, kind: EdgeKind, line: i64, occurrence: u32| {
         let src_id = src.as_str();
         let Some(src_file) = caller_file.get(&src_id) else {
             return;
         };
         facts.push(RawReference {
-            id: raw_reference_id(&src_id, target, &kind, line),
+            id: raw_reference_id(&src_id, target, &kind, line, occurrence),
             src_id,
             src_file: src_file.clone(),
             target_name: target.to_owned(),
@@ -572,8 +578,13 @@ fn reference_facts(diff: &GraphDiff, caller_file: &HashMap<String, String>) -> V
             line,
         });
     };
+    let mut call_occurrences: HashMap<(String, String, u32), u32> = HashMap::new();
     for (src, target, line) in &diff.deferred_calls {
-        push(src, target, EdgeKind::Calls, *line as i64);
+        let occurrence = call_occurrences
+            .entry((src.as_str(), target.clone(), *line))
+            .or_default();
+        push(src, target, EdgeKind::Calls, *line as i64, *occurrence);
+        *occurrence += 1;
     }
     for (pairs, kind) in [
         (&diff.deferred_uses, EdgeKind::Uses),
@@ -585,7 +596,7 @@ fn reference_facts(diff: &GraphDiff, caller_file: &HashMap<String, String>) -> V
         (&diff.deferred_doc_refs, EdgeKind::References),
     ] {
         for (src, target) in pairs {
-            push(src, target, kind.clone(), -1);
+            push(src, target, kind.clone(), -1, 0);
         }
     }
     facts
@@ -1120,11 +1131,17 @@ impl GraphStore for KuzuGraphStore {
             .added_edges
             .iter()
             .filter(|e| {
-                seen_edges.insert((
+                let key = (
                     e.src.as_str().to_owned(),
                     e.dst.as_str().to_owned(),
                     e.kind.to_string(),
-                ))
+                );
+                if e.kind == EdgeKind::Calls {
+                    seen_edges.insert(key);
+                    true
+                } else {
+                    seen_edges.insert(key)
+                }
             })
             .map(|edge| {
                 let src_raw = edge.src.as_str();
