@@ -2,9 +2,9 @@ use serde::{Deserialize, Serialize};
 
 /// Bumped whenever the on-disk graph schema changes.
 /// Stores compare this against the persisted version and re-index on mismatch.
-// v14 rebuilds stores created by early v13 binaries whose node/edge tables
-// predate the extended metadata and edge-line columns.
-pub const SCHEMA_VERSION: u32 = 14;
+// v15 persists raw reference facts so candidate-set changes can re-resolve
+// relationships originating in unchanged files.
+pub const SCHEMA_VERSION: u32 = 15;
 
 /// Every named, referenceable syntactic entity becomes a node of one of these kinds.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

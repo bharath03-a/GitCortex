@@ -212,6 +212,8 @@ pub struct GraphDiff {
     pub deferred_calls: Vec<(NodeId, String, u32)>,
     /// Same for parameter/return-type Uses edges.
     pub deferred_uses: Vec<(NodeId, String)>,
+    /// Same for import references.
+    pub deferred_imports: Vec<(NodeId, String)>,
     /// Same for struct→trait Implements edges.
     pub deferred_implements: Vec<(NodeId, String)>,
     /// Same for `extends` / inheritance edges.
@@ -234,6 +236,7 @@ impl GraphDiff {
             && self.removed_edges.is_empty()
             && self.deferred_calls.is_empty()
             && self.deferred_uses.is_empty()
+            && self.deferred_imports.is_empty()
             && self.deferred_implements.is_empty()
             && self.deferred_inherits.is_empty()
             && self.deferred_throws.is_empty()
@@ -252,6 +255,7 @@ impl GraphDiff {
         self.removed_edges.extend(other.removed_edges);
         self.deferred_calls.extend(other.deferred_calls);
         self.deferred_uses.extend(other.deferred_uses);
+        self.deferred_imports.extend(other.deferred_imports);
         self.deferred_implements.extend(other.deferred_implements);
         self.deferred_inherits.extend(other.deferred_inherits);
         self.deferred_throws.extend(other.deferred_throws);
