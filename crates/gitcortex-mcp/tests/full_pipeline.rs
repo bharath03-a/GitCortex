@@ -127,6 +127,41 @@ fn run_pipeline(
     (nodes, edges)
 }
 
+#[cfg(unix)]
+#[test]
+fn indexing_rejects_source_symlink_outside_repository() {
+    use std::os::unix::fs::symlink;
+
+    let repo = tempfile::tempdir().expect("repo tempdir");
+    let outside = tempfile::tempdir().expect("outside tempdir");
+    init_repo(repo.path());
+    let secret = "pub fn synthetic_secret_do_not_index() {}\n";
+    let outside_source = outside.path().join("secret.rs");
+    std::fs::write(&outside_source, secret).expect("write synthetic secret");
+    symlink(&outside_source, repo.path().join("leak.rs")).expect("create source symlink");
+    let status = Command::new("git")
+        .args(["add", "leak.rs"])
+        .current_dir(repo.path())
+        .status()
+        .expect("git add failed");
+    assert!(status.success());
+    let status = Command::new("git")
+        .args(["commit", "-m", "add source symlink"])
+        .current_dir(repo.path())
+        .status()
+        .expect("git commit failed");
+    assert!(status.success());
+
+    let indexer = IncrementalIndexer::new(repo.path()).expect("indexer");
+    let error = indexer
+        .run(None)
+        .expect_err("an external source symlink must be rejected");
+    assert!(
+        error.to_string().contains("symlink") || error.to_string().contains("outside repository"),
+        "unexpected containment error: {error}"
+    );
+}
+
 #[test]
 fn rust_fixture_indexes_nodes_and_edges() {
     let (nodes, edges) = run_pipeline("sample.rs");

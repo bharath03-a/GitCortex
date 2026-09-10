@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 
 use gitcortex_core::{
@@ -449,7 +449,6 @@ impl IncrementalIndexer {
     }
 
     fn index_file(&self, repo_relative_path: &Path) -> FileIndexResult {
-        let abs_path = self.repo_root.join(repo_relative_path);
         let empty = || {
             (
                 GraphDiff::default(),
@@ -468,6 +467,7 @@ impl IncrementalIndexer {
             return Ok(empty());
         }
 
+        let abs_path = self.validated_source_path(repo_relative_path)?;
         let source = fs::read_to_string(&abs_path).map_err(|e| GitCortexError::Parse {
             file: abs_path.clone(),
             message: e.to_string(),
@@ -525,6 +525,31 @@ impl IncrementalIndexer {
         self.ignorer
             .matched_path_or_any_parents(path, false)
             .is_ignore()
+    }
+
+    fn validated_source_path(&self, repo_relative_path: &Path) -> Result<PathBuf> {
+        let mut current = self.repo_root.clone();
+        for component in repo_relative_path.components() {
+            let Component::Normal(segment) = component else {
+                return Err(GitCortexError::Parse {
+                    file: repo_relative_path.to_owned(),
+                    message: "source path must be repository-relative without traversal".to_owned(),
+                });
+            };
+            current.push(segment);
+            let metadata =
+                fs::symlink_metadata(&current).map_err(|error| GitCortexError::Parse {
+                    file: current.clone(),
+                    message: error.to_string(),
+                })?;
+            if metadata.file_type().is_symlink() {
+                return Err(GitCortexError::Parse {
+                    file: current,
+                    message: "refusing to index a source path containing a symlink".to_owned(),
+                });
+            }
+        }
+        Ok(current)
     }
 }
 
@@ -860,4 +885,36 @@ fn build_ignorer(repo_root: &Path) -> Gitignore {
         let _ = builder.add(ignore_path);
     }
     builder.build().unwrap_or_else(|_| Gitignore::empty())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn source_path_rejects_parent_traversal() {
+        let repo = tempfile::tempdir().expect("repo");
+        let indexer = IncrementalIndexer::new(repo.path()).expect("indexer");
+        let error = indexer
+            .validated_source_path(Path::new("../secret.rs"))
+            .expect_err("parent traversal must fail");
+        assert!(error.to_string().contains("repository-relative"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn source_path_rejects_symlinked_parent() {
+        use std::os::unix::fs::symlink;
+
+        let repo = tempfile::tempdir().expect("repo");
+        let outside = tempfile::tempdir().expect("outside");
+        std::fs::write(outside.path().join("secret.rs"), "pub fn secret() {}\n")
+            .expect("write secret");
+        symlink(outside.path(), repo.path().join("src")).expect("symlink parent");
+        let indexer = IncrementalIndexer::new(repo.path()).expect("indexer");
+        let error = indexer
+            .validated_source_path(Path::new("src/secret.rs"))
+            .expect_err("symlinked parent must fail");
+        assert!(error.to_string().contains("symlink"));
+    }
 }
