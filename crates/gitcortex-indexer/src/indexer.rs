@@ -482,6 +482,8 @@ impl IncrementalIndexer {
             None => return Ok(empty()),
         };
 
+        let mut parsed = parser.parse(repo_relative_path, &source)?;
+        stabilize_parse_result(&mut parsed);
         let ParseResult {
             nodes,
             edges,
@@ -493,7 +495,7 @@ impl IncrementalIndexer {
             deferred_throws,
             deferred_annotated,
             deferred_doc_refs,
-        } = parser.parse(repo_relative_path, &source)?;
+        } = parsed;
 
         let mut diff = GraphDiff::default();
         // Remove old code nodes for this file and old structural nodes for
@@ -559,6 +561,65 @@ impl IncrementalIndexer {
 // and produces no edges. Hot names like `get`, `save`, `__init__`, and `filter`
 // can have hundreds of definitions; linking to all of them creates noise and
 // made full indexing O(call_sites × defs).
+
+fn stabilize_parse_result(parsed: &mut ParseResult) {
+    let base_key = |node: &Node| {
+        format!(
+            "{}\0{}\0{}",
+            node.file.to_string_lossy(),
+            node.kind,
+            node.qualified_name
+        )
+    };
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for node in &parsed.nodes {
+        *counts.entry(base_key(node)).or_default() += 1;
+    }
+    let mut occurrences: HashMap<(String, String), usize> = HashMap::new();
+    let mut remap: HashMap<NodeId, NodeId> = HashMap::new();
+    for node in &mut parsed.nodes {
+        let base = base_key(node);
+        let key = if counts.get(&base).copied().unwrap_or_default() > 1 {
+            let signature = node.metadata.definition.signature.clone();
+            let occurrence = occurrences
+                .entry((base.clone(), signature.clone()))
+                .or_default();
+            let key = format!("{base}\0{signature}\0{occurrence}");
+            *occurrence += 1;
+            key
+        } else {
+            base
+        };
+        let stable = NodeId::stable(&format!("gitcortex:symbol:v1\0{key}"));
+        remap.insert(node.id.clone(), stable.clone());
+        node.id = stable;
+    }
+    let remap_id = |id: &mut NodeId| {
+        if let Some(stable) = remap.get(id) {
+            *id = stable.clone();
+        }
+    };
+    for edge in &mut parsed.edges {
+        remap_id(&mut edge.src);
+        remap_id(&mut edge.dst);
+    }
+    for (src, _, _) in &mut parsed.deferred_calls {
+        remap_id(src);
+    }
+    for pairs in [
+        &mut parsed.deferred_uses,
+        &mut parsed.deferred_implements,
+        &mut parsed.deferred_imports,
+        &mut parsed.deferred_inherits,
+        &mut parsed.deferred_throws,
+        &mut parsed.deferred_annotated,
+        &mut parsed.deferred_doc_refs,
+    ] {
+        for (src, _) in pairs {
+            remap_id(src);
+        }
+    }
+}
 
 /// Resolve deferred `(src_id, target_name)` pairs against a diff-local
 /// name→NodeId map. Returns the subset that couldn't be resolved (because the
@@ -774,7 +835,10 @@ fn build_structural_nodes(diff: &GraphDiff) -> (Vec<Node>, Vec<Edge>) {
     // ── File nodes ────────────────────────────────────────────────────────────
     let mut file_ids: HashMap<&Path, NodeId> = HashMap::new();
     for (file_path, code_nodes) in &by_file {
-        let file_id = NodeId::new();
+        let file_id = NodeId::stable(&format!(
+            "gitcortex:file:v1\0{}",
+            file_path.to_string_lossy()
+        ));
         let name = file_path
             .file_name()
             .and_then(|n| n.to_str())
@@ -820,7 +884,12 @@ fn build_structural_nodes(diff: &GraphDiff) -> (Vec<Node>, Vec<Edge>) {
         .collect();
 
     for dir in &unique_dirs {
-        let dir_id = folder_ids.entry(dir.clone()).or_default().clone();
+        let dir_id = folder_ids
+            .entry(dir.clone())
+            .or_insert_with(|| {
+                NodeId::stable(&format!("gitcortex:folder:v1\0{}", dir.to_string_lossy()))
+            })
+            .clone();
         let name = dir
             .file_name()
             .and_then(|n| n.to_str())

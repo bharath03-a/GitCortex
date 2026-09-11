@@ -163,6 +163,88 @@ fn indexing_rejects_source_symlink_outside_repository() {
 }
 
 #[test]
+fn independently_indexed_branches_share_unchanged_symbol_identity() {
+    let _lock = KUZU_LOCK.lock().expect("lock");
+    let tmp = tempfile::tempdir().expect("tempdir");
+    init_repo(tmp.path());
+    std::fs::write(
+        tmp.path().join("shared.rs"),
+        "pub fn shared() -> i32 { 1 }\n",
+    )
+    .expect("write shared");
+    let status = Command::new("git")
+        .args(["add", "shared.rs"])
+        .current_dir(tmp.path())
+        .status()
+        .expect("git add failed");
+    assert!(status.success());
+    let status = Command::new("git")
+        .args(["commit", "-m", "base"])
+        .current_dir(tmp.path())
+        .status()
+        .expect("git commit failed");
+    assert!(status.success());
+
+    let indexer = IncrementalIndexer::new(tmp.path()).expect("indexer");
+    let (main_diff, _) = indexer.run(None).expect("index main");
+    let mut store = KuzuGraphStore::open(tmp.path()).expect("store");
+    store.apply_diff("main", &main_diff).expect("apply main");
+    let main_nodes = store.list_all_nodes("main").expect("main nodes");
+    let shared = main_nodes
+        .iter()
+        .find(|node| node.name == "shared")
+        .expect("shared symbol");
+
+    let status = Command::new("git")
+        .args(["checkout", "-b", "feature"])
+        .current_dir(tmp.path())
+        .status()
+        .expect("git checkout failed");
+    assert!(status.success());
+    std::fs::write(
+        tmp.path().join("shared.rs"),
+        "pub fn shared() -> i32 { 2 }\npub fn feature_only() -> i32 { 2 }\n",
+    )
+    .expect("add feature function");
+    let status = Command::new("git")
+        .args(["add", "shared.rs"])
+        .current_dir(tmp.path())
+        .status()
+        .expect("git add failed");
+    assert!(status.success());
+    let status = Command::new("git")
+        .args(["commit", "-m", "add feature function"])
+        .current_dir(tmp.path())
+        .status()
+        .expect("git commit failed");
+    assert!(status.success());
+
+    let (feature_diff, _) = indexer.run(None).expect("index feature");
+    store
+        .apply_diff("feature", &feature_diff)
+        .expect("apply feature");
+    let branch_diff = store.branch_diff("main", "feature").expect("branch diff");
+    let added_functions = branch_diff
+        .added_nodes
+        .iter()
+        .filter(|node| node.kind == gitcortex_core::schema::NodeKind::Function)
+        .map(|node| node.name.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(added_functions, vec!["feature_only"]);
+    assert!(
+        branch_diff
+            .modified_nodes
+            .iter()
+            .any(|node| node.name == "shared"),
+        "body-only changes must be reported as modified"
+    );
+    assert!(
+        !branch_diff.removed_node_ids.contains(&shared.id),
+        "unchanged shared symbol must keep its identity across branches"
+    );
+}
+
+#[test]
 fn rust_fixture_indexes_nodes_and_edges() {
     let (nodes, edges) = run_pipeline("sample.rs");
     assert!(!nodes.is_empty(), "expected nodes for sample.rs");

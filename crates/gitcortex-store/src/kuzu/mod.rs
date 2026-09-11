@@ -25,7 +25,7 @@ mod values;
 
 use conv::{edge_kind_from_str, lang_scope_clause, vis_str};
 use escape::{esc, esc_multiline};
-use queries::{collect_ids, row_to_node, rows_to_nodes, NODE_COLS, NODE_COL_COUNT, SYMBOL_RANK};
+use queries::{row_to_node, rows_to_nodes, NODE_COLS, NODE_COL_COUNT, SYMBOL_RANK};
 use values::{i64_val, str_val};
 
 // Batch sizes for `UNWIND`-based inserts. Nodes carry a (≤16 KB) def_body, so
@@ -1449,34 +1449,36 @@ impl GraphStore for KuzuGraphStore {
 
         let from_nt = db_schema::node_table(from);
         let to_nt = db_schema::node_table(to);
-        let mut conn = self.conn()?;
+        let conn = self.conn()?;
 
-        // Collect node IDs from each branch.
-        let from_ids = collect_ids(&mut conn, &from_nt)?;
-        let to_ids = collect_ids(&mut conn, &to_nt)?;
-
-        // Nodes in `to` but not in `from` → added.
-        let added_ids: Vec<&String> = to_ids.iter().filter(|id| !from_ids.contains(*id)).collect();
-
-        // Nodes in `from` but not in `to` → removed.
-        let removed_ids: Vec<&String> =
-            from_ids.iter().filter(|id| !to_ids.contains(*id)).collect();
+        let read_nodes = |node_table: &str| -> Result<Vec<Node>> {
+            let mut rows = conn
+                .query(&format!("MATCH (n:{node_table}) RETURN {NODE_COLS}"))
+                .map_err(|e| GitCortexError::Store(e.to_string()))?;
+            rows_to_nodes(&mut rows)
+        };
+        let from_nodes = read_nodes(&from_nt)?;
+        let to_nodes = read_nodes(&to_nt)?;
+        let from_by_id = from_nodes
+            .iter()
+            .map(|node| (node.id.as_str(), node))
+            .collect::<HashMap<_, _>>();
+        let to_by_id = to_nodes
+            .iter()
+            .map(|node| (node.id.as_str(), node))
+            .collect::<HashMap<_, _>>();
 
         let mut diff = GraphDiff::default();
-
-        for id in added_ids {
-            let id_esc = esc(id);
-            let mut r = conn
-                .query(&format!(
-                    "MATCH (n:{to_nt}) WHERE n.id = '{id_esc}' RETURN {NODE_COLS}"
-                ))
-                .map_err(|e| GitCortexError::Store(e.to_string()))?;
-            diff.added_nodes.extend(rows_to_nodes(&mut r)?);
+        for (id, node) in &to_by_id {
+            match from_by_id.get(id) {
+                None => diff.added_nodes.push((*node).clone()),
+                Some(previous) if *previous != *node => diff.modified_nodes.push((*node).clone()),
+                Some(_) => {}
+            }
         }
-
-        for id in removed_ids {
-            if let Ok(node_id) = NodeId::try_from(id.as_str()) {
-                diff.removed_node_ids.push(node_id);
+        for (id, node) in &from_by_id {
+            if !to_by_id.contains_key(id) {
+                diff.removed_node_ids.push(node.id.clone());
             }
         }
 
