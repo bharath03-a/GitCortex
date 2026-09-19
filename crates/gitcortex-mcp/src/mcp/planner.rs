@@ -17,6 +17,8 @@ pub enum PlannedAction {
     LookupSymbol,
     PreEditImpact,
     FindTypeUsages,
+    SymbolContext,
+    FindImplementors,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -54,6 +56,12 @@ pub fn plan_question(question: &str) -> QueryPlan {
             PlannedAction::FindTypeUsages,
             &trimmed[18..trimmed.len() - 6],
         );
+    }
+    if lower.starts_with("explain ") {
+        return ready_symbol(PlannedAction::SymbolContext, &trimmed[8..]);
+    }
+    if lower.starts_with("what implements ") {
+        return ready_symbol(PlannedAction::FindImplementors, &trimmed[16..]);
     }
     clarification()
 }
@@ -112,6 +120,17 @@ mod tests {
         let usages = plan_question("Where is the type User used?");
         assert_eq!(usages.action, Some(PlannedAction::FindTypeUsages));
         assert_eq!(usages.symbol.as_deref(), Some("User"));
+    }
+
+    #[test]
+    fn plans_symbol_context_and_implementation_questions() {
+        let context = plan_question("Explain UserService");
+        assert_eq!(context.action, Some(PlannedAction::SymbolContext));
+        assert_eq!(context.symbol.as_deref(), Some("UserService"));
+
+        let implementors = plan_question("What implements Repository?");
+        assert_eq!(implementors.action, Some(PlannedAction::FindImplementors));
+        assert_eq!(implementors.symbol.as_deref(), Some("Repository"));
     }
 
     #[test]

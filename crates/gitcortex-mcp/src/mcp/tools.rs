@@ -352,6 +352,16 @@ impl GitCortexServer {
                     branch: p.branch,
                 }))
             }
+            PlannedAction::SymbolContext => self.symbol_context(Parameters(SymbolContextParams {
+                name: symbol,
+                branch: p.branch,
+            })),
+            PlannedAction::FindImplementors => {
+                self.find_implementors(Parameters(FindImplementorsParams {
+                    trait_name: symbol,
+                    branch: p.branch,
+                }))
+            }
         }
     }
 
