@@ -1,5 +1,7 @@
 use serde::Serialize;
 
+const MAX_QUESTION_BYTES: usize = 4_096;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PlanStatus {
@@ -28,6 +30,9 @@ pub struct QueryPlan {
 
 pub fn plan_question(question: &str) -> QueryPlan {
     let trimmed = question.trim();
+    if trimmed.is_empty() || trimmed.len() > MAX_QUESTION_BYTES {
+        return clarification();
+    }
     let lower = trimmed.to_ascii_lowercase();
     if lower.starts_with("who calls ") {
         return ready_symbol(PlannedAction::FindCallers, &trimmed[10..]);
@@ -50,6 +55,10 @@ pub fn plan_question(question: &str) -> QueryPlan {
             &trimmed[18..trimmed.len() - 6],
         );
     }
+    clarification()
+}
+
+fn clarification() -> QueryPlan {
     QueryPlan {
         status: PlanStatus::NeedsClarification,
         action: None,
@@ -64,11 +73,7 @@ fn ready_symbol(action: PlannedAction, raw: &str) -> QueryPlan {
             .chars()
             .all(|c| c.is_alphanumeric() || matches!(c, '_' | ':' | '.'));
     if !valid {
-        return QueryPlan {
-            status: PlanStatus::NeedsClarification,
-            action: None,
-            symbol: None,
-        };
+        return clarification();
     }
     QueryPlan {
         status: PlanStatus::Ready,
@@ -120,6 +125,24 @@ mod tests {
             assert_eq!(plan.status, PlanStatus::NeedsClarification);
             assert_eq!(plan.action, None);
             assert_eq!(plan.symbol, None);
+        }
+    }
+
+    #[test]
+    fn planning_is_case_insensitive_and_preserves_qualified_symbol_case() {
+        let plan = plan_question("WHO CALLS `Auth::ValidateToken`???");
+        assert_eq!(plan.status, PlanStatus::Ready);
+        assert_eq!(plan.action, Some(PlannedAction::FindCallers));
+        assert_eq!(plan.symbol.as_deref(), Some("Auth::ValidateToken"));
+    }
+
+    #[test]
+    fn empty_and_oversized_questions_fail_closed() {
+        let oversized = format!("Who calls {}?", "x".repeat(4_097));
+        for question in [String::new(), oversized] {
+            let plan = plan_question(&question);
+            assert_eq!(plan.status, PlanStatus::NeedsClarification);
+            assert_eq!(plan.action, None);
         }
     }
 }
