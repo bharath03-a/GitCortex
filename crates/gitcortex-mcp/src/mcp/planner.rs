@@ -33,8 +33,11 @@ pub struct QueryPlan {
 }
 
 pub fn plan_question(question: &str) -> QueryPlan {
+    if question.len() > MAX_QUESTION_BYTES {
+        return clarification();
+    }
     let trimmed = question.trim();
-    if trimmed.is_empty() || trimmed.len() > MAX_QUESTION_BYTES {
+    if trimmed.is_empty() {
         return clarification();
     }
     let lower = trimmed.to_ascii_lowercase();
@@ -197,7 +200,8 @@ mod tests {
     #[test]
     fn empty_and_oversized_questions_fail_closed() {
         let oversized = format!("Who calls {}?", "x".repeat(4_097));
-        for question in [String::new(), oversized] {
+        let whitespace_padded = format!("{}Who calls x?", " ".repeat(4_097));
+        for question in [String::new(), oversized, whitespace_padded] {
             let plan = plan_question(&question);
             assert_eq!(plan.status, PlanStatus::NeedsClarification);
             assert_eq!(plan.action, None);
