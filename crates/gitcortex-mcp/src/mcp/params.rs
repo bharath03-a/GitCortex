@@ -24,6 +24,15 @@ pub struct PlanQueryParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct AnswerQueryParams {
+    /// Natural-language repository question to plan and execute.
+    pub question: String,
+    /// Optional call-graph traversal depth for caller/callee/impact questions.
+    pub depth: Option<u8>,
+    pub branch: Option<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct LookupSymbolParams {
     /// Symbol name to search for (unqualified).
     pub name: String,

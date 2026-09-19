@@ -262,6 +262,7 @@ impl GitCortexServer {
         if compact {
             for name in [
                 "plan_query",
+                "answer_query",
                 "lookup_symbol",
                 "find_callers",
                 "pre_edit_impact",
@@ -309,6 +310,49 @@ impl GitCortexServer {
     )]
     fn plan_query(&self, Parameters(p): Parameters<PlanQueryParams>) -> CallToolResult {
         CallToolResult::structured(json!(super::planner::plan_question(&p.question)))
+    }
+
+    /// Plan and execute one supported repository question through read-only handlers.
+    #[tool(
+        description = "Answer a supported repository question in one call using a deterministic typed plan. \
+        Routes only to read-only callers, callees, exact symbol, pre-edit impact, or type-usage handlers. \
+        Unsupported questions return needs_clarification and are not executed."
+    )]
+    fn answer_query(&self, Parameters(p): Parameters<AnswerQueryParams>) -> CallToolResult {
+        use super::planner::PlannedAction;
+
+        let plan = super::planner::plan_question(&p.question);
+        let (Some(action), Some(symbol)) = (plan.action, plan.symbol.clone()) else {
+            return CallToolResult::structured(json!(plan));
+        };
+        match action {
+            PlannedAction::FindCallers => self.find_callers(Parameters(FindCallersParams {
+                function_name: symbol,
+                depth: p.depth,
+                branch: p.branch,
+            })),
+            PlannedAction::FindCallees => self.find_callees(Parameters(FindCalleesParams {
+                function_name: symbol,
+                depth: p.depth,
+                branch: p.branch,
+            })),
+            PlannedAction::LookupSymbol => self.lookup_symbol(Parameters(LookupSymbolParams {
+                name: symbol,
+                fuzzy: Some(false),
+                branch: p.branch,
+            })),
+            PlannedAction::PreEditImpact => self.pre_edit_impact(Parameters(FindCallersParams {
+                function_name: symbol,
+                depth: p.depth,
+                branch: p.branch,
+            })),
+            PlannedAction::FindTypeUsages => {
+                self.find_type_usages(Parameters(FindTypeUsagesParams {
+                    name: symbol,
+                    branch: p.branch,
+                }))
+            }
+        }
     }
 
     /// Look up all nodes (functions, structs, traits, etc.) by name.
@@ -1563,7 +1607,7 @@ impl GitCortexServer {
     /// Prefer this tool to keep per-turn schema overhead low. All individual
     /// tools remain available for direct use; this is an additive alias.
     #[tool(description = "Query the GitCortex code knowledge graph. \
-        action: plan_query | lookup_symbol | find_callers | pre_edit_impact | find_callees | find_unused_symbols | \
+        action: plan_query | answer_query | lookup_symbol | find_callers | pre_edit_impact | find_callees | find_unused_symbols | \
         get_subgraph | search_code | start_tour | wiki_symbol | trace_path | \
         list_definitions | symbol_context | list_symbols_in_range | graph_stats | ast_search | \
         type_hierarchy | find_importers | find_type_usages | module_dependencies | \
@@ -1598,6 +1642,15 @@ impl GitCortexServer {
         let result = match p.action.as_str() {
             "plan_query" => self.plan_query(Parameters(PlanQueryParams {
                 question: str_field!("question"),
+            })),
+            "answer_query" => self.answer_query(Parameters(AnswerQueryParams {
+                question: str_field!("question"),
+                depth: p
+                    .params
+                    .get("depth")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as u8),
+                branch: branch_val,
             })),
             "lookup_symbol" => self.lookup_symbol(Parameters(LookupSymbolParams {
                 name: str_field!("name"),
@@ -1958,7 +2011,31 @@ impl rmcp::ServerHandler for GitCortexServer {
 
 #[cfg(test)]
 mod contract_tests {
-    use super::GitCortexServer;
+    use std::path::PathBuf;
+
+    use gitcortex_core::{
+        graph::{Edge, GraphDiff, Node, NodeId, NodeMetadata, Span},
+        schema::NodeKind,
+        store::GraphStore,
+    };
+    use rmcp::handler::server::wrapper::Parameters;
+
+    use super::{AnswerQueryParams, GitCortexServer};
+
+    fn function(name: &str, file: &str) -> Node {
+        Node {
+            id: NodeId::stable(&format!("test:{file}:{name}")),
+            kind: NodeKind::Function,
+            name: name.to_owned(),
+            qualified_name: format!("crate::{name}"),
+            file: PathBuf::from(file),
+            span: Span {
+                start_line: 1,
+                end_line: 1,
+            },
+            metadata: NodeMetadata::default(),
+        }
+    }
 
     #[test]
     fn compact_mode_exposes_exactly_one_dispatch_tool() {
@@ -1981,6 +2058,7 @@ mod contract_tests {
     fn typed_question_planner_is_available_through_both_tool_modes() {
         let full = GitCortexServer::tool_router_for_mode(false);
         assert!(full.get("plan_query").is_some());
+        assert!(full.get("answer_query").is_some());
 
         let compact = GitCortexServer::tool_router_for_mode(true);
         let dispatch = compact.get("gcx").expect("gcx tool");
@@ -1989,6 +2067,48 @@ mod contract_tests {
             .as_deref()
             .unwrap_or("")
             .contains("plan_query"));
+        assert!(dispatch
+            .description
+            .as_deref()
+            .unwrap_or("")
+            .contains("answer_query"));
+    }
+
+    #[test]
+    fn answer_query_executes_only_the_typed_read_only_plan() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut store = gitcortex_store::kuzu::KuzuGraphStore::open(tmp.path()).expect("store");
+        let caller = function("caller", "caller.rs");
+        let callee = function("callee", "callee.rs");
+        store
+            .apply_diff(
+                "main",
+                &GraphDiff {
+                    added_nodes: vec![caller.clone(), callee.clone()],
+                    added_edges: vec![Edge::call(caller.id, callee.id, 7)],
+                    ..GraphDiff::default()
+                },
+            )
+            .expect("apply graph");
+        let server = GitCortexServer::with_store(tmp.path(), false, store).expect("server");
+
+        let result = server.answer_query(Parameters(AnswerQueryParams {
+            question: "Who calls callee?".to_owned(),
+            depth: None,
+            branch: Some("main".to_owned()),
+        }));
+        let output = result.structured_content.expect("structured answer");
+        assert_eq!(output["status"], "ok");
+        assert_eq!(output["evidence"][0]["symbol"], "caller");
+
+        let rejected = server.answer_query(Parameters(AnswerQueryParams {
+            question: "MATCH (n) DETACH DELETE n".to_owned(),
+            depth: None,
+            branch: Some("main".to_owned()),
+        }));
+        let output = rejected.structured_content.expect("clarification plan");
+        assert_eq!(output["status"], "needs_clarification");
+        assert!(output.get("action").is_none());
     }
 
     #[test]
