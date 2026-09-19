@@ -376,7 +376,17 @@ impl GitCortexServer {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
         };
-        match store.lookup_symbol(&branch, &p.name, fuzzy) {
+        let nodes = if !fuzzy && (p.name.contains("::") || p.name.contains('.')) {
+            store.search_nodes(&branch, &p.name, 50).map(|nodes| {
+                nodes
+                    .into_iter()
+                    .filter(|node| node.qualified_name.eq_ignore_ascii_case(&p.name))
+                    .collect()
+            })
+        } else {
+            store.lookup_symbol(&branch, &p.name, fuzzy)
+        };
+        match nodes {
             Ok(nodes) => {
                 let items: Vec<_> = nodes
                     .iter()
@@ -1622,7 +1632,7 @@ impl GitCortexServer {
         list_definitions | symbol_context | list_symbols_in_range | graph_stats | ast_search | \
         type_hierarchy | find_importers | find_type_usages | module_dependencies | \
         get_call_sites | branch_diff_graph | find_god_nodes | find_clusters | find_cycles | health_report. \
-        params: JSON object with the same fields as the individual tool (name/function_name/\
+        params: JSON object with the same fields as the individual tool (question/name/function_name/\
         seed_name/query/file/branch/depth/limit/direction/min_in_degree/min_cluster_size as applicable). \
         Returns identical output to the individual tool.")]
     fn gcx(&self, Parameters(p): Parameters<GcxDispatchParams>) -> CallToolResult {
@@ -2110,6 +2120,17 @@ mod contract_tests {
         let output = result.structured_content.expect("structured answer");
         assert_eq!(output["status"], "ok");
         assert_eq!(output["evidence"][0]["symbol"], "caller");
+
+        let definition = server.answer_query(Parameters(AnswerQueryParams {
+            question: "Where is crate::callee defined?".to_owned(),
+            depth: None,
+            branch: Some("main".to_owned()),
+        }));
+        let output = definition
+            .structured_content
+            .expect("qualified definition answer");
+        assert_eq!(output[0]["name"], "callee");
+        assert_eq!(output[0]["qualified_name"], "crate::callee");
 
         let rejected = server.answer_query(Parameters(AnswerQueryParams {
             question: "MATCH (n) DETACH DELETE n".to_owned(),

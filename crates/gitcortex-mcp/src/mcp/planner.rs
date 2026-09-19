@@ -36,8 +36,8 @@ pub fn plan_question(question: &str) -> QueryPlan {
         return clarification();
     }
     let lower = trimmed.to_ascii_lowercase();
-    if lower.starts_with("who calls ") {
-        return ready_symbol(PlannedAction::FindCallers, &trimmed[10..]);
+    if lower.starts_with("who calls ") && lower.ends_with('?') {
+        return ready_symbol(PlannedAction::FindCallers, &trimmed[10..trimmed.len() - 1]);
     }
     if lower.starts_with("what does ") && lower.ends_with(" call?") {
         return ready_symbol(PlannedAction::FindCallees, &trimmed[10..trimmed.len() - 6]);
@@ -60,8 +60,11 @@ pub fn plan_question(question: &str) -> QueryPlan {
     if lower.starts_with("explain ") {
         return ready_symbol(PlannedAction::SymbolContext, &trimmed[8..]);
     }
-    if lower.starts_with("what implements ") {
-        return ready_symbol(PlannedAction::FindImplementors, &trimmed[16..]);
+    if lower.starts_with("what implements ") && lower.ends_with('?') {
+        return ready_symbol(
+            PlannedAction::FindImplementors,
+            &trimmed[16..trimmed.len() - 1],
+        );
     }
     clarification()
 }
@@ -75,12 +78,22 @@ fn clarification() -> QueryPlan {
 }
 
 fn ready_symbol(action: PlannedAction, raw: &str) -> QueryPlan {
-    let symbol = raw.trim().trim_matches(['`', '?', '.', ' ']);
+    let raw = raw.trim();
+    let symbol = match (raw.starts_with('`'), raw.ends_with('`')) {
+        (true, true) if raw.len() >= 2 => &raw[1..raw.len() - 1],
+        (false, false) => raw,
+        _ => return clarification(),
+    };
+    let normalized = symbol.replace("::", ".");
     let valid = !symbol.is_empty()
-        && symbol
-            .chars()
-            .all(|c| c.is_alphanumeric() || matches!(c, '_' | ':' | '.'));
-    if !valid {
+        && normalized.split('.').all(|segment| {
+            let mut chars = segment.chars();
+            chars
+                .next()
+                .is_some_and(|first| first == '_' || first.is_alphabetic())
+                && chars.all(|c| c == '_' || c.is_alphanumeric())
+        });
+    if !valid || symbol.contains(":::") {
         return clarification();
     }
     QueryPlan {
@@ -149,10 +162,24 @@ mod tests {
 
     #[test]
     fn planning_is_case_insensitive_and_preserves_qualified_symbol_case() {
-        let plan = plan_question("WHO CALLS `Auth::ValidateToken`???");
+        let plan = plan_question("WHO CALLS `Auth::ValidateToken`?");
         assert_eq!(plan.status, PlanStatus::Ready);
         assert_eq!(plan.action, Some(PlannedAction::FindCallers));
         assert_eq!(plan.symbol.as_deref(), Some("Auth::ValidateToken"));
+    }
+
+    #[test]
+    fn malformed_caller_questions_fail_closed() {
+        for question in [
+            "Who calls foo",
+            "Who calls foo???",
+            "Who calls .foo...?",
+            "Who calls `foo?",
+        ] {
+            let plan = plan_question(question);
+            assert_eq!(plan.status, PlanStatus::NeedsClarification);
+            assert_eq!(plan.action, None);
+        }
     }
 
     #[test]

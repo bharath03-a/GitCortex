@@ -5,14 +5,15 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GcxDispatchParams {
-    /// Which graph operation to run. One of: lookup_symbol, find_callers, pre_edit_impact,
+    /// Which graph operation to run. One of: plan_query, answer_query, lookup_symbol,
+    /// find_callers, pre_edit_impact,
     /// find_callees, find_unused_symbols, get_subgraph, search_code, start_tour, wiki_symbol,
     /// trace_path, list_definitions, symbol_context, list_symbols_in_range, graph_stats,
     /// ast_search, type_hierarchy, find_importers, find_type_usages, module_dependencies,
     /// get_call_sites, find_god_nodes, find_clusters, find_cycles, health_report.
     pub action: String,
     /// Parameters for the chosen action as a JSON object (same fields as the
-    /// individual tool: name, function_name, seed_name, query, file, branch,
+    /// individual tool: question, name, function_name, seed_name, query, file, branch,
     /// depth, limit, direction, src, dst, start_line, end_line).
     pub params: serde_json::Map<String, serde_json::Value>,
 }
