@@ -16,6 +16,7 @@ use gitcortex_core::error::{GitCortexError, Result};
 /// - `/`  → `__`  (preserves branch hierarchy visibility)
 /// - any remaining non-alphanumeric char → `_`
 /// - leading digit → prefix with `b_` (table names can't start with a digit)
+/// - transformed refs receive a short digest suffix to prevent collisions
 ///
 /// Examples:
 /// - `main`           → `main`
@@ -37,6 +38,11 @@ pub fn sanitize(branch: &str) -> String {
 
     if s.starts_with(|c: char| c.is_ascii_digit()) {
         s.insert_str(0, "b_");
+    }
+    if s != branch {
+        let digest = blake3::hash(branch.as_bytes());
+        s.push_str("__");
+        s.push_str(&digest.to_hex()[..8]);
     }
     s
 }
@@ -325,17 +331,22 @@ mod tests {
 
     #[test]
     fn sanitize_slash_becomes_double_underscore() {
-        assert_eq!(sanitize("feat/auth"), "feat__auth");
+        assert!(sanitize("feat/auth").starts_with("feat__auth__"));
     }
 
     #[test]
     fn sanitize_dash_and_dot() {
-        assert_eq!(sanitize("release/v1.0-rc"), "release__v1_0_rc");
+        assert!(sanitize("release/v1.0-rc").starts_with("release__v1_0_rc__"));
     }
 
     #[test]
     fn sanitize_leading_digit() {
-        assert_eq!(sanitize("1-hotfix"), "b_1_hotfix");
+        assert!(sanitize("1-hotfix").starts_with("b_1_hotfix__"));
+    }
+
+    #[test]
+    fn sanitized_storage_keys_do_not_collide() {
+        assert_ne!(sanitize("feat/a-b"), sanitize("feat/a.b"));
     }
 
     #[test]

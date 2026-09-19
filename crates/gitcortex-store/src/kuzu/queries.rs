@@ -7,7 +7,7 @@ use gitcortex_core::{
     error::{GitCortexError, Result},
     graph::{DefinitionText, Node, NodeId, NodeMetadata, Span},
 };
-use kuzu::{Connection, Value};
+use kuzu::Value;
 
 use super::{
     conv::{kind_from_str, vis_from_str},
@@ -140,16 +140,4 @@ pub(super) fn row_to_node(row: Vec<Value>) -> Result<Node> {
             },
         },
     })
-}
-
-pub(super) fn collect_ids(conn: &mut Connection, table: &str) -> Result<Vec<String>> {
-    let result = conn
-        .query(&format!("MATCH (n:{table}) RETURN n.id"))
-        .map_err(|e| GitCortexError::Store(e.to_string()))?;
-
-    let mut ids = Vec::new();
-    for row in result {
-        ids.push(str_val(&row[0])?);
-    }
-    Ok(ids)
 }

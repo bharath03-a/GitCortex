@@ -20,6 +20,11 @@ impl NodeId {
         Self(Uuid::new_v4())
     }
 
+    /// Deterministic identity for a versioned semantic or structural key.
+    pub fn stable(key: &str) -> Self {
+        Self(Uuid::new_v5(&Uuid::NAMESPACE_URL, key.as_bytes()))
+    }
+
     pub fn as_str(&self) -> String {
         self.0.to_string()
     }
@@ -196,6 +201,9 @@ impl Edge {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct GraphDiff {
     pub added_nodes: Vec<Node>,
+    /// Nodes with stable identity present in both snapshots but changed content
+    /// or metadata. Values are the destination-snapshot versions.
+    pub modified_nodes: Vec<Node>,
     /// Explicit node IDs to remove (e.g. from a targeted replacement).
     pub removed_node_ids: Vec<NodeId>,
     /// Files that were deleted. The store removes all nodes whose `file`
@@ -212,6 +220,8 @@ pub struct GraphDiff {
     pub deferred_calls: Vec<(NodeId, String, u32)>,
     /// Same for parameter/return-type Uses edges.
     pub deferred_uses: Vec<(NodeId, String)>,
+    /// Same for import references.
+    pub deferred_imports: Vec<(NodeId, String)>,
     /// Same for struct→trait Implements edges.
     pub deferred_implements: Vec<(NodeId, String)>,
     /// Same for `extends` / inheritance edges.
@@ -228,12 +238,14 @@ pub struct GraphDiff {
 impl GraphDiff {
     pub fn is_empty(&self) -> bool {
         self.added_nodes.is_empty()
+            && self.modified_nodes.is_empty()
             && self.removed_node_ids.is_empty()
             && self.removed_files.is_empty()
             && self.added_edges.is_empty()
             && self.removed_edges.is_empty()
             && self.deferred_calls.is_empty()
             && self.deferred_uses.is_empty()
+            && self.deferred_imports.is_empty()
             && self.deferred_implements.is_empty()
             && self.deferred_inherits.is_empty()
             && self.deferred_throws.is_empty()
@@ -246,12 +258,14 @@ impl GraphDiff {
     /// store write.
     pub fn merge(&mut self, other: GraphDiff) {
         self.added_nodes.extend(other.added_nodes);
+        self.modified_nodes.extend(other.modified_nodes);
         self.removed_node_ids.extend(other.removed_node_ids);
         self.removed_files.extend(other.removed_files);
         self.added_edges.extend(other.added_edges);
         self.removed_edges.extend(other.removed_edges);
         self.deferred_calls.extend(other.deferred_calls);
         self.deferred_uses.extend(other.deferred_uses);
+        self.deferred_imports.extend(other.deferred_imports);
         self.deferred_implements.extend(other.deferred_implements);
         self.deferred_inherits.extend(other.deferred_inherits);
         self.deferred_throws.extend(other.deferred_throws);
@@ -374,6 +388,18 @@ mod tests {
         let a = NodeId::new();
         let b = NodeId::new();
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn stable_node_id_is_repeatable() {
+        assert_eq!(
+            NodeId::stable("symbol:v1:shared"),
+            NodeId::stable("symbol:v1:shared")
+        );
+        assert_ne!(
+            NodeId::stable("symbol:v1:shared"),
+            NodeId::stable("symbol:v1:other")
+        );
     }
 
     #[test]

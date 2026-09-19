@@ -6,7 +6,8 @@ use std::{
 use gitcortex_core::{
     error::{GitCortexError, Result},
     graph::{Edge, GraphDiff, Node, NodeId},
-    schema::{EdgeConfidence, NodeKind, SCHEMA_VERSION},
+    resolution::{database_candidate_count_is_resolvable, target_kind_labels},
+    schema::{EdgeConfidence, EdgeKind, NodeKind, SCHEMA_VERSION},
     store::{
         AttributeFilter, CallSite, CallersDeep, GraphStats, GraphStore, SubGraph, SymbolContext,
         TypeHierarchy,
@@ -24,7 +25,7 @@ mod values;
 
 use conv::{edge_kind_from_str, lang_scope_clause, vis_str};
 use escape::{esc, esc_multiline};
-use queries::{collect_ids, row_to_node, rows_to_nodes, NODE_COLS, NODE_COL_COUNT, SYMBOL_RANK};
+use queries::{row_to_node, rows_to_nodes, NODE_COLS, NODE_COL_COUNT, SYMBOL_RANK};
 use values::{i64_val, str_val};
 
 // Batch sizes for `UNWIND`-based inserts. Nodes carry a (≤16 KB) def_body, so
@@ -32,6 +33,133 @@ use values::{i64_val, str_val};
 // each, so they batch much larger.
 const NODE_INSERT_CHUNK: usize = 128;
 const EDGE_INSERT_CHUNK: usize = 1000;
+
+#[derive(Debug)]
+struct IncomingEdgeFact {
+    src_id: String,
+    target_file: String,
+    target_qualified_name: String,
+    target_kind: String,
+    edge_kind: String,
+    line: i64,
+    confidence: String,
+}
+
+/// Capture relationships originating in unchanged files before replacement
+/// nodes are detached. The target's source identity lets us reconnect the edge
+/// after the changed file has been parsed into fresh node IDs.
+fn incoming_edges_to_replaced_files(
+    conn: &Connection,
+    nt: &str,
+    et: &str,
+    removed_files: &HashSet<String>,
+) -> Result<Vec<IncomingEdgeFact>> {
+    if removed_files.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let files = removed_files
+        .iter()
+        .map(|file| format!("'{}'", esc(file)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut rows = conn
+        .query(&format!(
+            "MATCH (src:{nt})-[e:{et}]->(dst:{nt}) \
+             WHERE dst.file IN [{files}] \
+             RETURN src.id, src.file, dst.file, dst.qualified_name, dst.kind, \
+                    e.kind, e.line, e.confidence"
+        ))
+        .map_err(|e| GitCortexError::Store(format!("capture incoming edges: {e}")))?;
+
+    let mut preserved = Vec::new();
+    for row in rows.by_ref() {
+        let src_file = str_val(&row[1])?;
+        if removed_files.contains(&src_file) {
+            continue;
+        }
+        let edge_kind = str_val(&row[5])?;
+        if edge_kind == "contains" {
+            continue;
+        }
+        preserved.push(IncomingEdgeFact {
+            src_id: str_val(&row[0])?,
+            target_file: str_val(&row[2])?,
+            target_qualified_name: str_val(&row[3])?,
+            target_kind: str_val(&row[4])?,
+            edge_kind,
+            line: i64_val(&row[6])?,
+            confidence: str_val(&row[7])?,
+        });
+    }
+    Ok(preserved)
+}
+
+fn restore_incoming_edges(
+    conn: &Connection,
+    nt: &str,
+    et: &str,
+    incoming: &[IncomingEdgeFact],
+    added_nodes: &[Node],
+    seen_edges: &mut HashSet<(String, String, String)>,
+) -> Result<()> {
+    let mut target_ids: HashMap<(String, String, String), HashSet<String>> = HashMap::new();
+    for node in added_nodes {
+        target_ids
+            .entry((
+                node.file.to_string_lossy().into_owned(),
+                node.qualified_name.clone(),
+                node.kind.to_string(),
+            ))
+            .or_default()
+            .insert(node.id.as_str());
+    }
+
+    for chunk in incoming.chunks(EDGE_INSERT_CHUNK) {
+        let facts = chunk
+            .iter()
+            .filter_map(|fact| {
+                let key = (
+                    fact.target_file.clone(),
+                    fact.target_qualified_name.clone(),
+                    fact.target_kind.clone(),
+                );
+                let candidates = target_ids.get(&key)?;
+                if candidates.len() != 1 {
+                    return None;
+                }
+                let target_id = candidates.iter().next()?;
+                if !seen_edges.insert((
+                    fact.src_id.clone(),
+                    target_id.clone(),
+                    fact.edge_kind.clone(),
+                )) {
+                    return None;
+                }
+                format!(
+                    "{{s:'{}',d:'{}',ek:'{}',ln:{},cf:'{}'}}",
+                    esc(&fact.src_id),
+                    esc(target_id),
+                    esc(&fact.edge_kind),
+                    fact.line,
+                    esc(&fact.confidence),
+                )
+                .into()
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        if facts.is_empty() {
+            continue;
+        }
+        conn.query(&format!(
+            "UNWIND [{facts}] AS r \
+             MATCH (src:{nt} {{id: r.s}}), (dst:{nt} {{id: r.d}}) \
+             CREATE (src)-[:{et} {{kind: r.ek, line: r.ln, confidence: r.cf}}]->(dst)"
+        ))
+        .map_err(|e| GitCortexError::Store(format!("restore incoming edges: {e}")))?;
+    }
+    Ok(())
+}
 
 /// Render a `Node` as a Cypher struct literal `{id:'…', kind:'…', …}` for use
 /// inside an `UNWIND [...] AS r CREATE` batch. String fields are escaped and
@@ -146,6 +274,49 @@ fn bulk_apply(conn: &Connection, nt: &str, et: &str, diff: &GraphDiff) -> Result
 
 const DEFERRED_CHUNK: usize = 500;
 
+fn resolvable_target_names(
+    conn: &Connection,
+    nt: &str,
+    names: &HashSet<String>,
+    edge_kind: &EdgeKind,
+    scope_clause: &str,
+) -> Result<HashSet<String>> {
+    if names.is_empty() {
+        return Ok(HashSet::new());
+    }
+    let name_list = names
+        .iter()
+        .map(|name| format!("'{}'", esc(name)))
+        .collect::<Vec<_>>()
+        .join(",");
+    let kind_and = target_kind_labels(edge_kind)
+        .map(|labels| {
+            let predicates = labels
+                .iter()
+                .map(|label| format!("tgt.kind = '{}'", esc(label)))
+                .collect::<Vec<_>>()
+                .join(" OR ");
+            format!(" AND ({predicates})")
+        })
+        .unwrap_or_default();
+    let mut rows = conn
+        .query(&format!(
+            "UNWIND [{name_list}] AS candidate \
+             MATCH (tgt:{nt}) \
+             WHERE tgt.name = candidate{kind_and}{scope_clause} \
+             RETURN candidate, count(tgt)"
+        ))
+        .map_err(|e| GitCortexError::Store(format!("count deferred candidates: {e}")))?;
+    let mut resolvable = HashSet::new();
+    for row in rows.by_ref() {
+        let count = i64_val(&row[1])?;
+        if database_candidate_count_is_resolvable(count) {
+            resolvable.insert(str_val(&row[0])?);
+        }
+    }
+    Ok(resolvable)
+}
+
 /// Resolve a batch of deferred cross-file edges via one UNWIND query per
 /// language-scope group instead of one query per pair.
 ///
@@ -158,12 +329,12 @@ fn resolve_deferred_batch(
     et: &str,
     pairs: &[(NodeId, String)],
     caller_file: &HashMap<String, String>,
-    edge_kind: &str,
-    kind_filter: &str,
+    edge_kind: EdgeKind,
 ) -> Result<()> {
     if pairs.is_empty() {
         return Ok(());
     }
+    let edge_label = edge_kind.to_string();
     let mut by_scope: HashMap<String, Vec<(String, String)>> = HashMap::new();
     for (src_id, tgt_name) in pairs {
         let src_str = src_id.as_str();
@@ -178,15 +349,33 @@ fn resolve_deferred_batch(
     }
     for (scope_clause, group) in &by_scope {
         for chunk in group.chunks(DEFERRED_CHUNK) {
-            let kind_and = if kind_filter.is_empty() {
-                String::new()
-            } else {
-                format!(" AND ({kind_filter})")
-            };
+            let kind_and = target_kind_labels(&edge_kind)
+                .map(|labels| {
+                    let predicates = labels
+                        .iter()
+                        .map(|label| format!("tgt.kind = '{}'", esc(label)))
+                        .collect::<Vec<_>>()
+                        .join(" OR ");
+                    format!(" AND ({predicates})")
+                })
+                .unwrap_or_default();
+            let names = chunk
+                .iter()
+                .map(|(_, name)| name.clone())
+                .collect::<HashSet<_>>();
+            let resolvable = resolvable_target_names(conn, nt, &names, &edge_kind, scope_clause)?;
+            let eligible = chunk
+                .iter()
+                .filter(|(_, name)| resolvable.contains(name))
+                .cloned()
+                .collect::<Vec<_>>();
+            if eligible.is_empty() {
+                continue;
+            }
 
             // Pass 1: find which (src, tgt_name) pairs have an Imports edge
             // backing in the DB → those become Resolved.
-            let pair_list = chunk
+            let pair_list = eligible
                 .iter()
                 .map(|(src, tgt)| format!("{{s:'{}',t:'{}'}}", esc(src), esc(tgt)))
                 .collect::<Vec<_>>()
@@ -198,7 +387,7 @@ fn resolve_deferred_batch(
                      WHERE tgt.name = r.t AND imp.file = src.file \
                      RETURN DISTINCT r.s AS s, r.t AS t"
                 ))
-                .map_err(|e| GitCortexError::Store(format!("find import-verified {edge_kind}: {e}")))?;
+                .map_err(|e| GitCortexError::Store(format!("find import-verified {edge_label}: {e}")))?;
             let mut verified: HashSet<(String, String)> = HashSet::new();
             for row in qr.by_ref() {
                 if let (Value::String(s), Value::String(t)) = (&row[0], &row[1]) {
@@ -207,7 +396,7 @@ fn resolve_deferred_batch(
             }
 
             // Pass 2a: create Resolved edges for import-verified pairs.
-            let resolved_list = chunk
+            let resolved_list = eligible
                 .iter()
                 .filter(|(s, t)| verified.contains(&(s.clone(), t.clone())))
                 .map(|(src, tgt)| format!("{{s:'{}',t:'{}'}}", esc(src), esc(tgt)))
@@ -218,13 +407,13 @@ fn resolve_deferred_batch(
                     "UNWIND [{resolved_list}] AS r \
                      MATCH (src:{nt} {{id: r.s}}), (tgt:{nt}) \
                      WHERE tgt.name = r.t{kind_and}{scope_clause} \
-                     CREATE (src)-[:{et} {{kind: '{edge_kind}', line: -1, confidence: 'resolved'}}]->(tgt)"
+                     CREATE (src)-[:{et} {{kind: '{edge_label}', line: -1, confidence: 'resolved'}}]->(tgt)"
                 ))
-                .map_err(|e| GitCortexError::Store(format!("batch resolved {edge_kind}: {e}")))?;
+                .map_err(|e| GitCortexError::Store(format!("batch resolved {edge_label}: {e}")))?;
             }
 
             // Pass 2b: create Inferred edges for the remaining pairs.
-            let inferred_list = chunk
+            let inferred_list = eligible
                 .iter()
                 .filter(|(s, t)| !verified.contains(&(s.clone(), t.clone())))
                 .map(|(src, tgt)| format!("{{s:'{}',t:'{}'}}", esc(src), esc(tgt)))
@@ -235,9 +424,9 @@ fn resolve_deferred_batch(
                     "UNWIND [{inferred_list}] AS r \
                      MATCH (src:{nt} {{id: r.s}}), (tgt:{nt}) \
                      WHERE tgt.name = r.t{kind_and}{scope_clause} \
-                     CREATE (src)-[:{et} {{kind: '{edge_kind}', line: -1, confidence: 'inferred'}}]->(tgt)"
+                     CREATE (src)-[:{et} {{kind: '{edge_label}', line: -1, confidence: 'inferred'}}]->(tgt)"
                 ))
-                .map_err(|e| GitCortexError::Store(format!("batch inferred {edge_kind}: {e}")))?;
+                .map_err(|e| GitCortexError::Store(format!("batch inferred {edge_label}: {e}")))?;
             }
         }
     }
@@ -275,8 +464,22 @@ fn resolve_calls_batch(
     }
     for (scope_clause, group) in &by_scope {
         for chunk in group.chunks(DEFERRED_CHUNK) {
+            let names = chunk
+                .iter()
+                .map(|(_, name, _)| name.clone())
+                .collect::<HashSet<_>>();
+            let resolvable =
+                resolvable_target_names(conn, nt, &names, &EdgeKind::Calls, scope_clause)?;
+            let eligible = chunk
+                .iter()
+                .filter(|(_, name, _)| resolvable.contains(name))
+                .cloned()
+                .collect::<Vec<_>>();
+            if eligible.is_empty() {
+                continue;
+            }
             // Pass 1: discover which (src, tgt_name) pairs are import-verified.
-            let pair_list = chunk
+            let pair_list = eligible
                 .iter()
                 .map(|(src, tgt, _)| format!("{{s:'{}',t:'{}'}}", esc(src), esc(tgt)))
                 .collect::<Vec<_>>()
@@ -297,7 +500,7 @@ fn resolve_calls_batch(
             }
 
             // Pass 2a: Resolved edges for import-verified call pairs.
-            let resolved_list = chunk
+            let resolved_list = eligible
                 .iter()
                 .filter(|(s, t, _)| verified.contains(&(s.clone(), t.clone())))
                 .map(|(src, tgt, line)| {
@@ -316,7 +519,7 @@ fn resolve_calls_batch(
             }
 
             // Pass 2b: Inferred edges for the remaining call pairs.
-            let inferred_list = chunk
+            let inferred_list = eligible
                 .iter()
                 .filter(|(s, t, _)| !verified.contains(&(s.clone(), t.clone())))
                 .map(|(src, tgt, line)| {
@@ -333,6 +536,215 @@ fn resolve_calls_batch(
                 ))
                 .map_err(|e| GitCortexError::Store(format!("batch inferred calls: {e}")))?;
             }
+        }
+    }
+    Ok(())
+}
+
+#[derive(Clone)]
+struct RawReference {
+    id: String,
+    src_id: String,
+    src_file: String,
+    target_name: String,
+    kind: EdgeKind,
+    line: i64,
+}
+
+fn raw_reference_id(
+    src_id: &str,
+    target_name: &str,
+    kind: &EdgeKind,
+    line: i64,
+    occurrence: u32,
+) -> String {
+    let value = format!("{src_id}\0{target_name}\0{kind}\0{line}\0{occurrence}");
+    blake3::hash(value.as_bytes()).to_hex().to_string()
+}
+
+fn reference_facts(diff: &GraphDiff, caller_file: &HashMap<String, String>) -> Vec<RawReference> {
+    let mut facts = Vec::new();
+    let mut push = |src: &NodeId, target: &str, kind: EdgeKind, line: i64, occurrence: u32| {
+        let src_id = src.as_str();
+        let Some(src_file) = caller_file.get(&src_id) else {
+            return;
+        };
+        facts.push(RawReference {
+            id: raw_reference_id(&src_id, target, &kind, line, occurrence),
+            src_id,
+            src_file: src_file.clone(),
+            target_name: target.to_owned(),
+            kind,
+            line,
+        });
+    };
+    let mut call_occurrences: HashMap<(String, String, u32), u32> = HashMap::new();
+    for (src, target, line) in &diff.deferred_calls {
+        let occurrence = call_occurrences
+            .entry((src.as_str(), target.clone(), *line))
+            .or_default();
+        push(src, target, EdgeKind::Calls, *line as i64, *occurrence);
+        *occurrence += 1;
+    }
+    for (pairs, kind) in [
+        (&diff.deferred_uses, EdgeKind::Uses),
+        (&diff.deferred_imports, EdgeKind::Imports),
+        (&diff.deferred_implements, EdgeKind::Implements),
+        (&diff.deferred_inherits, EdgeKind::Inherits),
+        (&diff.deferred_throws, EdgeKind::Throws),
+        (&diff.deferred_annotated, EdgeKind::Annotated),
+        (&diff.deferred_doc_refs, EdgeKind::References),
+    ] {
+        for (src, target) in pairs {
+            push(src, target, kind.clone(), -1, 0);
+        }
+    }
+    facts
+}
+
+fn persist_reference_facts(conn: &Connection, rt: &str, facts: &[RawReference]) -> Result<()> {
+    let mut seen = HashSet::new();
+    let unique = facts
+        .iter()
+        .filter(|fact| seen.insert(fact.id.clone()))
+        .collect::<Vec<_>>();
+    for chunk in unique.chunks(EDGE_INSERT_CHUNK) {
+        let ids = chunk
+            .iter()
+            .map(|fact| format!("'{}'", esc(&fact.id)))
+            .collect::<Vec<_>>()
+            .join(",");
+        conn.query(&format!(
+            "MATCH (ref:{rt}) WHERE ref.id IN [{ids}] DELETE ref"
+        ))
+        .map_err(|e| GitCortexError::Store(format!("replace reference facts: {e}")))?;
+        let rows = chunk
+            .iter()
+            .map(|fact| {
+                format!(
+                    "{{id:'{}',s:'{}',f:'{}',t:'{}',k:'{}',ln:{}}}",
+                    esc(&fact.id),
+                    esc(&fact.src_id),
+                    esc(&fact.src_file),
+                    esc(&fact.target_name),
+                    esc(&fact.kind.to_string()),
+                    fact.line,
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        conn.query(&format!(
+            "UNWIND [{rows}] AS r CREATE (:{rt} {{\
+             id:r.id, src_id:r.s, src_file:r.f, target_name:r.t, kind:r.k, line:r.ln}})"
+        ))
+        .map_err(|e| GitCortexError::Store(format!("insert reference facts: {e}")))?;
+    }
+    Ok(())
+}
+
+fn load_reference_facts(
+    conn: &Connection,
+    rt: &str,
+    names: &HashSet<String>,
+) -> Result<Vec<RawReference>> {
+    if names.is_empty() {
+        return Ok(Vec::new());
+    }
+    let list = names
+        .iter()
+        .map(|name| format!("'{}'", esc(name)))
+        .collect::<Vec<_>>()
+        .join(",");
+    let mut rows = conn
+        .query(&format!(
+            "MATCH (ref:{rt}) WHERE ref.target_name IN [{list}] \
+             RETURN ref.id, ref.src_id, ref.src_file, ref.target_name, ref.kind, ref.line"
+        ))
+        .map_err(|e| GitCortexError::Store(format!("load reference facts: {e}")))?;
+    let mut facts = Vec::new();
+    for row in rows.by_ref() {
+        facts.push(RawReference {
+            id: str_val(&row[0])?,
+            src_id: str_val(&row[1])?,
+            src_file: str_val(&row[2])?,
+            target_name: str_val(&row[3])?,
+            kind: edge_kind_from_str(&str_val(&row[4])?),
+            line: i64_val(&row[5])?,
+        });
+    }
+    Ok(facts)
+}
+
+fn reconcile_reference_names(
+    conn: &Connection,
+    nt: &str,
+    et: &str,
+    rt: &str,
+    names: &HashSet<String>,
+) -> Result<()> {
+    let facts = load_reference_facts(conn, rt, names)?;
+    if facts.is_empty() {
+        return Ok(());
+    }
+
+    for chunk in facts.chunks(EDGE_INSERT_CHUNK) {
+        let rows = chunk
+            .iter()
+            .map(|fact| {
+                format!(
+                    "{{s:'{}',t:'{}',k:'{}'}}",
+                    esc(&fact.src_id),
+                    esc(&fact.target_name),
+                    esc(&fact.kind.to_string()),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        conn.query(&format!(
+            "UNWIND [{rows}] AS r \
+             MATCH (src:{nt})-[e:{et}]->(dst:{nt}) \
+             WHERE src.id = r.s AND dst.name = r.t AND e.kind = r.k DELETE e"
+        ))
+        .map_err(|e| GitCortexError::Store(format!("clear resolved references: {e}")))?;
+    }
+
+    let caller_file = facts
+        .iter()
+        .map(|fact| (fact.src_id.clone(), fact.src_file.clone()))
+        .collect::<HashMap<_, _>>();
+    let mut calls = Vec::new();
+    let mut by_kind: HashMap<EdgeKind, Vec<(NodeId, String)>> = HashMap::new();
+    for fact in facts {
+        let src = NodeId::try_from(fact.src_id.as_str())?;
+        if fact.kind == EdgeKind::Calls {
+            if fact.line >= 0 {
+                calls.push((src, fact.target_name, fact.line as u32));
+            }
+        } else {
+            by_kind
+                .entry(fact.kind)
+                .or_default()
+                .push((src, fact.target_name));
+        }
+    }
+
+    // Imports must exist before other relationships are classified as
+    // import-verified (`Resolved`).
+    if let Some(imports) = by_kind.remove(&EdgeKind::Imports) {
+        resolve_deferred_batch(conn, nt, et, &imports, &caller_file, EdgeKind::Imports)?;
+    }
+    resolve_calls_batch(conn, nt, et, &calls, &caller_file)?;
+    for kind in [
+        EdgeKind::Uses,
+        EdgeKind::Implements,
+        EdgeKind::Inherits,
+        EdgeKind::Throws,
+        EdgeKind::Annotated,
+        EdgeKind::References,
+        EdgeKind::HandledBy,
+    ] {
+        if let Some(pairs) = by_kind.remove(&kind) {
+            resolve_deferred_batch(conn, nt, et, &pairs, &caller_file, kind)?;
         }
     }
     Ok(())
@@ -468,7 +880,24 @@ impl GraphStore for KuzuGraphStore {
         self.ensure_branch(branch)?;
         let nt = db_schema::node_table(branch);
         let et = db_schema::edge_table(branch);
+        let rt = db_schema::reference_table(branch);
         let conn = self.conn()?;
+        let caller_file: HashMap<String, String> = diff
+            .added_nodes
+            .iter()
+            .map(|node| (node.id.as_str(), node.file.to_string_lossy().into_owned()))
+            .collect();
+        let new_reference_facts = reference_facts(diff, &caller_file);
+        let mut affected_names = diff
+            .added_nodes
+            .iter()
+            .map(|node| node.name.clone())
+            .chain(
+                new_reference_facts
+                    .iter()
+                    .map(|fact| fact.target_name.clone()),
+            )
+            .collect::<HashSet<_>>();
 
         // ── Fast path: bulk COPY load for a fresh full index ───────────────────
         // When the branch's node table is empty this is a first full index.
@@ -491,7 +920,49 @@ impl GraphStore for KuzuGraphStore {
             );
         }
         if empty {
-            return bulk_apply(&conn, &nt, &et, diff);
+            bulk_apply(&conn, &nt, &et, diff)?;
+            persist_reference_facts(&conn, &rt, &new_reference_facts)?;
+            reconcile_reference_names(&conn, &nt, &et, &rt, &affected_names)?;
+            return Ok(());
+        }
+
+        let replaced_files: HashSet<String> = diff
+            .removed_files
+            .iter()
+            .filter(|file| file.extension().is_some())
+            .map(|file| file.to_string_lossy().into_owned())
+            .collect();
+        let incoming_edges = incoming_edges_to_replaced_files(&conn, &nt, &et, &replaced_files)?;
+        if !replaced_files.is_empty() {
+            let files = replaced_files
+                .iter()
+                .map(|file| format!("'{}'", esc(file)))
+                .collect::<Vec<_>>()
+                .join(",");
+            let mut rows = conn
+                .query(&format!(
+                    "MATCH (node:{nt}) WHERE node.file IN [{files}] RETURN DISTINCT node.name"
+                ))
+                .map_err(|e| GitCortexError::Store(format!("capture replaced names: {e}")))?;
+            for row in rows.by_ref() {
+                affected_names.insert(str_val(&row[0])?);
+            }
+        }
+        if !diff.removed_node_ids.is_empty() {
+            let ids = diff
+                .removed_node_ids
+                .iter()
+                .map(|id| format!("'{}'", esc(&id.as_str())))
+                .collect::<Vec<_>>()
+                .join(",");
+            let mut rows = conn
+                .query(&format!(
+                    "MATCH (node:{nt}) WHERE node.id IN [{ids}] RETURN DISTINCT node.name"
+                ))
+                .map_err(|e| GitCortexError::Store(format!("capture removed names: {e}")))?;
+            for row in rows.by_ref() {
+                affected_names.insert(str_val(&row[0])?);
+            }
         }
 
         // Transaction 1: commit all deletes first.
@@ -500,6 +971,33 @@ impl GraphStore for KuzuGraphStore {
         // Splitting into separate transactions avoids this.
         conn.query("BEGIN TRANSACTION")
             .map_err(|e| GitCortexError::Store(format!("begin delete transaction: {e}")))?;
+
+        for chunk in replaced_files
+            .iter()
+            .collect::<Vec<_>>()
+            .chunks(DEFERRED_CHUNK)
+        {
+            let files = chunk
+                .iter()
+                .map(|file| format!("'{}'", esc(file)))
+                .collect::<Vec<_>>()
+                .join(",");
+            conn.query(&format!(
+                "MATCH (ref:{rt}) WHERE ref.src_file IN [{files}] DELETE ref"
+            ))
+            .map_err(|e| GitCortexError::Store(format!("delete stale reference facts: {e}")))?;
+        }
+        for chunk in diff.removed_node_ids.chunks(DEFERRED_CHUNK) {
+            let ids = chunk
+                .iter()
+                .map(|id| format!("'{}'", esc(&id.as_str())))
+                .collect::<Vec<_>>()
+                .join(",");
+            conn.query(&format!(
+                "MATCH (ref:{rt}) WHERE ref.src_id IN [{ids}] DELETE ref"
+            ))
+            .map_err(|e| GitCortexError::Store(format!("delete removed-source references: {e}")))?;
+        }
 
         // 1. Remove nodes for deleted/replaced files.
         //    Skip directory paths (no extension) — folder nodes are reused across
@@ -633,11 +1131,17 @@ impl GraphStore for KuzuGraphStore {
             .added_edges
             .iter()
             .filter(|e| {
-                seen_edges.insert((
+                let key = (
                     e.src.as_str().to_owned(),
                     e.dst.as_str().to_owned(),
                     e.kind.to_string(),
-                ))
+                );
+                if e.kind == EdgeKind::Calls {
+                    seen_edges.insert(key);
+                    true
+                } else {
+                    seen_edges.insert(key)
+                }
             })
             .map(|edge| {
                 let src_raw = edge.src.as_str();
@@ -671,81 +1175,20 @@ impl GraphStore for KuzuGraphStore {
             .map_err(|e| GitCortexError::Store(format!("batch insert edges: {e}")))?;
         }
 
-        // 6. Resolve cross-file deferred edges against the full store.
-        //    The diff-local pass couldn't find these callees/types because they
-        //    live in unchanged files. Batched by language scope: one UNWIND query
-        //    per language per edge kind instead of one query per pair.
-        let caller_file: HashMap<String, String> = diff
-            .added_nodes
-            .iter()
-            .map(|n| {
-                (
-                    n.id.as_str().to_owned(),
-                    n.file.to_string_lossy().into_owned(),
-                )
-            })
-            .collect();
+        restore_incoming_edges(
+            &conn,
+            &nt,
+            &et,
+            &incoming_edges,
+            &diff.added_nodes,
+            &mut seen_edges,
+        )?;
 
-        resolve_calls_batch(&conn, &nt, &et, &diff.deferred_calls, &caller_file)?;
-        resolve_deferred_batch(
-            &conn,
-            &nt,
-            &et,
-            &diff.deferred_uses,
-            &caller_file,
-            "uses",
-            "tgt.kind = 'struct' OR tgt.kind = 'enum' OR tgt.kind = 'trait' \
-             OR tgt.kind = 'interface' OR tgt.kind = 'type_alias'",
-        )?;
-        resolve_deferred_batch(
-            &conn,
-            &nt,
-            &et,
-            &diff.deferred_implements,
-            &caller_file,
-            "implements",
-            "tgt.kind = 'trait' OR tgt.kind = 'interface'",
-        )?;
-        resolve_deferred_batch(
-            &conn,
-            &nt,
-            &et,
-            &diff.deferred_inherits,
-            &caller_file,
-            "inherits",
-            "tgt.kind = 'struct' OR tgt.kind = 'interface' OR tgt.kind = 'trait'",
-        )?;
-        resolve_deferred_batch(
-            &conn,
-            &nt,
-            &et,
-            &diff.deferred_throws,
-            &caller_file,
-            "throws",
-            "",
-        )?;
-        resolve_deferred_batch(
-            &conn,
-            &nt,
-            &et,
-            &diff.deferred_annotated,
-            &caller_file,
-            "annotated",
-            "tgt.kind = 'annotation' OR tgt.kind = 'macro' OR tgt.kind = 'function'",
-        )?;
-        // No kind_filter: a doc reference can point at any code symbol kind.
-        // No language scoping happens here either — `caller_file` maps to a
-        // `.md` path, which `lang_scope_clause` doesn't recognise, so the
-        // scope clause it builds is empty (cross-language by design).
-        resolve_deferred_batch(
-            &conn,
-            &nt,
-            &et,
-            &diff.deferred_doc_refs,
-            &caller_file,
-            "references",
-            "",
-        )?;
+        // Persist raw name references and reconcile every affected name against
+        // the complete post-update graph. This also reevaluates unchanged callers
+        // when definitions alone cross an ambiguity threshold.
+        persist_reference_facts(&conn, &rt, &new_reference_facts)?;
+        reconcile_reference_names(&conn, &nt, &et, &rt, &affected_names)?;
 
         conn.query("COMMIT")
             .map_err(|e| GitCortexError::Store(format!("commit edges: {e}")))?;
@@ -1006,34 +1449,36 @@ impl GraphStore for KuzuGraphStore {
 
         let from_nt = db_schema::node_table(from);
         let to_nt = db_schema::node_table(to);
-        let mut conn = self.conn()?;
+        let conn = self.conn()?;
 
-        // Collect node IDs from each branch.
-        let from_ids = collect_ids(&mut conn, &from_nt)?;
-        let to_ids = collect_ids(&mut conn, &to_nt)?;
-
-        // Nodes in `to` but not in `from` → added.
-        let added_ids: Vec<&String> = to_ids.iter().filter(|id| !from_ids.contains(*id)).collect();
-
-        // Nodes in `from` but not in `to` → removed.
-        let removed_ids: Vec<&String> =
-            from_ids.iter().filter(|id| !to_ids.contains(*id)).collect();
+        let read_nodes = |node_table: &str| -> Result<Vec<Node>> {
+            let mut rows = conn
+                .query(&format!("MATCH (n:{node_table}) RETURN {NODE_COLS}"))
+                .map_err(|e| GitCortexError::Store(e.to_string()))?;
+            rows_to_nodes(&mut rows)
+        };
+        let from_nodes = read_nodes(&from_nt)?;
+        let to_nodes = read_nodes(&to_nt)?;
+        let from_by_id = from_nodes
+            .iter()
+            .map(|node| (node.id.as_str(), node))
+            .collect::<HashMap<_, _>>();
+        let to_by_id = to_nodes
+            .iter()
+            .map(|node| (node.id.as_str(), node))
+            .collect::<HashMap<_, _>>();
 
         let mut diff = GraphDiff::default();
-
-        for id in added_ids {
-            let id_esc = esc(id);
-            let mut r = conn
-                .query(&format!(
-                    "MATCH (n:{to_nt}) WHERE n.id = '{id_esc}' RETURN {NODE_COLS}"
-                ))
-                .map_err(|e| GitCortexError::Store(e.to_string()))?;
-            diff.added_nodes.extend(rows_to_nodes(&mut r)?);
+        for (id, node) in &to_by_id {
+            match from_by_id.get(id) {
+                None => diff.added_nodes.push((*node).clone()),
+                Some(previous) if *previous != *node => diff.modified_nodes.push((*node).clone()),
+                Some(_) => {}
+            }
         }
-
-        for id in removed_ids {
-            if let Ok(node_id) = NodeId::try_from(id.as_str()) {
-                diff.removed_node_ids.push(node_id);
+        for (id, node) in &from_by_id {
+            if !to_by_id.contains_key(id) {
+                diff.removed_node_ids.push(node.id.clone());
             }
         }
 

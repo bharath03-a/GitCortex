@@ -786,15 +786,8 @@ impl<'src> FileVisitor<'src> {
             return;
         }
         if let Some(callee_id) = self.fn_index.get(&callee_name).cloned() {
-            let edge = Edge::call(caller_id, callee_id, line);
-            if !self.edges.contains(&edge) {
-                self.edges.push(edge);
-            }
-        } else if !self
-            .deferred_calls
-            .iter()
-            .any(|(c, n, _)| c == &caller_id && n == &callee_name)
-        {
+            self.edges.push(Edge::call(caller_id, callee_id, line));
+        } else {
             self.deferred_calls.push((caller_id, callee_name, line));
         }
     }

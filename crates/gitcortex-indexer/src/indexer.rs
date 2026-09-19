@@ -1,12 +1,13 @@
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
 };
 
 use gitcortex_core::{
     error::{GitCortexError, Result},
     graph::{Edge, GraphDiff, Node, NodeId, NodeMetadata, Span},
+    resolution::{candidate_count_is_resolvable, target_kind_is_valid},
     schema::{EdgeConfidence, EdgeKind, NodeKind, Visibility},
 };
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
@@ -143,6 +144,11 @@ impl IncrementalIndexer {
             .iter()
             .map(|n| (&n.id, n.file.as_path()))
             .collect();
+        let id_to_kind: HashMap<&NodeId, &NodeKind> = merged
+            .added_nodes
+            .iter()
+            .map(|n| (&n.id, &n.kind))
+            .collect();
 
         // File-level imported-names index: file_path → set of leaf names that
         // are explicitly imported in that file. Used by `resolve_calls` and
@@ -168,83 +174,104 @@ impl IncrementalIndexer {
             .map(|e| (e.src.as_str(), e.dst.as_str(), e.kind.to_string()))
             .collect();
 
-        merged.deferred_calls = resolve_calls(
-            &name_to_ids,
-            &id_to_file,
-            &imported_by_file,
-            &all_calls,
-            &mut merged.added_edges,
-            &mut seen_edges,
-        );
-        merged.deferred_uses = resolve_deferred(
-            &name_to_ids,
-            &id_to_file,
-            &imported_by_file,
-            &all_uses,
-            EdgeKind::Uses,
-            &mut merged.added_edges,
-            &mut seen_edges,
-        );
-        merged.deferred_implements = resolve_deferred(
-            &name_to_ids,
-            &id_to_file,
-            &imported_by_file,
-            &all_implements,
-            EdgeKind::Implements,
-            &mut merged.added_edges,
-            &mut seen_edges,
-        );
+        if from_sha.is_none() {
+            merged.deferred_calls = resolve_calls(
+                &name_to_ids,
+                &id_to_file,
+                &id_to_kind,
+                &imported_by_file,
+                &all_calls,
+                &mut merged.added_edges,
+                &mut seen_edges,
+            );
+            merged.deferred_uses = resolve_deferred(
+                &name_to_ids,
+                (&id_to_file, &id_to_kind),
+                &imported_by_file,
+                &all_uses,
+                EdgeKind::Uses,
+                &mut merged.added_edges,
+                &mut seen_edges,
+            );
+            merged.deferred_implements = resolve_deferred(
+                &name_to_ids,
+                (&id_to_file, &id_to_kind),
+                &imported_by_file,
+                &all_implements,
+                EdgeKind::Implements,
+                &mut merged.added_edges,
+                &mut seen_edges,
+            );
+            merged.deferred_inherits = resolve_deferred(
+                &name_to_ids,
+                (&id_to_file, &id_to_kind),
+                &imported_by_file,
+                &all_inherits,
+                EdgeKind::Inherits,
+                &mut merged.added_edges,
+                &mut seen_edges,
+            );
+            merged.deferred_throws = resolve_deferred(
+                &name_to_ids,
+                (&id_to_file, &id_to_kind),
+                &imported_by_file,
+                &all_throws,
+                EdgeKind::Throws,
+                &mut merged.added_edges,
+                &mut seen_edges,
+            );
+            merged.deferred_annotated = resolve_deferred(
+                &name_to_ids,
+                (&id_to_file, &id_to_kind),
+                &imported_by_file,
+                &all_annotated,
+                EdgeKind::Annotated,
+                &mut merged.added_edges,
+                &mut seen_edges,
+            );
+            merged.deferred_doc_refs = resolve_deferred(
+                &name_to_ids,
+                (&id_to_file, &id_to_kind),
+                &imported_by_file,
+                &all_doc_refs,
+                EdgeKind::References,
+                &mut merged.added_edges,
+                &mut seen_edges,
+            );
+        } else {
+            // A changed-file diff does not contain the repository-wide candidate
+            // universe. Defer name-based resolution until after the store has
+            // inserted changed nodes and can count all candidates consistently.
+            merged.deferred_calls = all_calls.clone();
+            merged.deferred_uses = all_uses.clone();
+            merged.deferred_implements = all_implements.clone();
+            merged.deferred_inherits = all_inherits.clone();
+            merged.deferred_throws = all_throws.clone();
+            merged.deferred_annotated = all_annotated.clone();
+            merged.deferred_doc_refs = all_doc_refs.clone();
+        }
         // Imports use placeholder src IDs so we can't resolve them against the store;
         // resolve what we can locally and silently drop the rest.
         let _ = resolve_deferred(
             &name_to_ids,
-            &id_to_file,
+            (&id_to_file, &id_to_kind),
             &imported_by_file,
             &all_imports,
             EdgeKind::Imports,
             &mut merged.added_edges,
             &mut seen_edges,
         );
-        merged.deferred_inherits = resolve_deferred(
-            &name_to_ids,
-            &id_to_file,
-            &imported_by_file,
-            &all_inherits,
-            EdgeKind::Inherits,
-            &mut merged.added_edges,
-            &mut seen_edges,
-        );
-        merged.deferred_throws = resolve_deferred(
-            &name_to_ids,
-            &id_to_file,
-            &imported_by_file,
-            &all_throws,
-            EdgeKind::Throws,
-            &mut merged.added_edges,
-            &mut seen_edges,
-        );
-        merged.deferred_annotated = resolve_deferred(
-            &name_to_ids,
-            &id_to_file,
-            &imported_by_file,
-            &all_annotated,
-            EdgeKind::Annotated,
-            &mut merged.added_edges,
-            &mut seen_edges,
-        );
-        // Doc references are inherently cross-language (a Markdown file has
-        // no `language_extensions_for_path` match, so `resolve_deferred`'s
-        // language-scope filter is naturally a no-op here — no fan-out cap
-        // bypass needed, the existing MAX_RESOLVE_FANOUT guard still applies).
-        merged.deferred_doc_refs = resolve_deferred(
-            &name_to_ids,
-            &id_to_file,
-            &imported_by_file,
-            &all_doc_refs,
-            EdgeKind::References,
-            &mut merged.added_edges,
-            &mut seen_edges,
-        );
+        // Retain every raw name reference, including locally resolved and
+        // ambiguous ones, so later candidate changes can re-evaluate unchanged
+        // source files without scanning the repository again.
+        merged.deferred_calls = all_calls;
+        merged.deferred_uses = all_uses;
+        merged.deferred_imports = all_imports;
+        merged.deferred_implements = all_implements;
+        merged.deferred_inherits = all_inherits;
+        merged.deferred_throws = all_throws;
+        merged.deferred_annotated = all_annotated.clone();
+        merged.deferred_doc_refs = all_doc_refs;
         mark!(format!(
             "resolve_deferred done: {} total edges",
             merged.added_edges.len()
@@ -340,6 +367,11 @@ impl IncrementalIndexer {
             .iter()
             .map(|n| (&n.id, n.file.as_path()))
             .collect();
+        let id_to_kind: HashMap<&NodeId, &NodeKind> = merged
+            .added_nodes
+            .iter()
+            .map(|n| (&n.id, &n.kind))
+            .collect();
         let imported_by_file: HashMap<&Path, HashSet<&str>> = {
             let mut map: HashMap<&Path, HashSet<&str>> = HashMap::new();
             for (mod_id, leaf_name) in &all_imports {
@@ -355,74 +387,23 @@ impl IncrementalIndexer {
             .map(|e| (e.src.as_str(), e.dst.as_str(), e.kind.to_string()))
             .collect();
 
-        merged.deferred_calls = resolve_calls(
-            &name_to_ids,
-            &id_to_file,
-            &imported_by_file,
-            &all_calls,
-            &mut merged.added_edges,
-            &mut seen_edges,
-        );
-        merged.deferred_uses = resolve_deferred(
-            &name_to_ids,
-            &id_to_file,
-            &imported_by_file,
-            &all_uses,
-            EdgeKind::Uses,
-            &mut merged.added_edges,
-            &mut seen_edges,
-        );
-        merged.deferred_implements = resolve_deferred(
-            &name_to_ids,
-            &id_to_file,
-            &imported_by_file,
-            &all_implements,
-            EdgeKind::Implements,
-            &mut merged.added_edges,
-            &mut seen_edges,
-        );
+        // A working-tree update is always partial. Resolve name-based edges in
+        // the store after changed nodes are inserted so ambiguity is measured
+        // against the full current graph rather than this file subset.
+        merged.deferred_calls = all_calls;
+        merged.deferred_uses = all_uses;
+        merged.deferred_imports = all_imports.clone();
+        merged.deferred_implements = all_implements;
+        merged.deferred_inherits = all_inherits;
+        merged.deferred_throws = all_throws;
+        merged.deferred_annotated = all_annotated.clone();
+        merged.deferred_doc_refs = all_doc_refs;
         let _ = resolve_deferred(
             &name_to_ids,
-            &id_to_file,
+            (&id_to_file, &id_to_kind),
             &imported_by_file,
             &all_imports,
             EdgeKind::Imports,
-            &mut merged.added_edges,
-            &mut seen_edges,
-        );
-        merged.deferred_inherits = resolve_deferred(
-            &name_to_ids,
-            &id_to_file,
-            &imported_by_file,
-            &all_inherits,
-            EdgeKind::Inherits,
-            &mut merged.added_edges,
-            &mut seen_edges,
-        );
-        merged.deferred_throws = resolve_deferred(
-            &name_to_ids,
-            &id_to_file,
-            &imported_by_file,
-            &all_throws,
-            EdgeKind::Throws,
-            &mut merged.added_edges,
-            &mut seen_edges,
-        );
-        merged.deferred_annotated = resolve_deferred(
-            &name_to_ids,
-            &id_to_file,
-            &imported_by_file,
-            &all_annotated,
-            EdgeKind::Annotated,
-            &mut merged.added_edges,
-            &mut seen_edges,
-        );
-        merged.deferred_doc_refs = resolve_deferred(
-            &name_to_ids,
-            &id_to_file,
-            &imported_by_file,
-            &all_doc_refs,
-            EdgeKind::References,
             &mut merged.added_edges,
             &mut seen_edges,
         );
@@ -468,7 +449,6 @@ impl IncrementalIndexer {
     }
 
     fn index_file(&self, repo_relative_path: &Path) -> FileIndexResult {
-        let abs_path = self.repo_root.join(repo_relative_path);
         let empty = || {
             (
                 GraphDiff::default(),
@@ -487,6 +467,7 @@ impl IncrementalIndexer {
             return Ok(empty());
         }
 
+        let abs_path = self.validated_source_path(repo_relative_path)?;
         let source = fs::read_to_string(&abs_path).map_err(|e| GitCortexError::Parse {
             file: abs_path.clone(),
             message: e.to_string(),
@@ -501,6 +482,8 @@ impl IncrementalIndexer {
             None => return Ok(empty()),
         };
 
+        let mut parsed = parser.parse(repo_relative_path, &source)?;
+        stabilize_parse_result(&mut parsed);
         let ParseResult {
             nodes,
             edges,
@@ -512,7 +495,7 @@ impl IncrementalIndexer {
             deferred_throws,
             deferred_annotated,
             deferred_doc_refs,
-        } = parser.parse(repo_relative_path, &source)?;
+        } = parsed;
 
         let mut diff = GraphDiff::default();
         // Remove old code nodes for this file and old structural nodes for
@@ -545,17 +528,98 @@ impl IncrementalIndexer {
             .matched_path_or_any_parents(path, false)
             .is_ignore()
     }
+
+    fn validated_source_path(&self, repo_relative_path: &Path) -> Result<PathBuf> {
+        let mut current = self.repo_root.clone();
+        for component in repo_relative_path.components() {
+            let Component::Normal(segment) = component else {
+                return Err(GitCortexError::Parse {
+                    file: repo_relative_path.to_owned(),
+                    message: "source path must be repository-relative without traversal".to_owned(),
+                });
+            };
+            current.push(segment);
+            let metadata =
+                fs::symlink_metadata(&current).map_err(|error| GitCortexError::Parse {
+                    file: current.clone(),
+                    message: error.to_string(),
+                })?;
+            if metadata.file_type().is_symlink() {
+                return Err(GitCortexError::Parse {
+                    file: current,
+                    message: "refusing to index a source path containing a symlink".to_owned(),
+                });
+            }
+        }
+        Ok(current)
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/// When a name resolves to more than this many same-language definitions, it's
-/// treated as ambiguous and produces NO edges. Hot names like `get`, `save`,
-/// `__init__`, `filter` have hundreds of definitions; linking a call site to
-/// every one of them is both useless (no precision) and the source of an
-/// edge explosion that made full indexing O(call_sites × defs). Skipping the
-/// over-ambiguous names keeps the precise majority and drops the noise.
-const MAX_RESOLVE_FANOUT: usize = 8;
+// When a name resolves to too many same-language definitions, it is ambiguous
+// and produces no edges. Hot names like `get`, `save`, `__init__`, and `filter`
+// can have hundreds of definitions; linking to all of them creates noise and
+// made full indexing O(call_sites × defs).
+
+fn stabilize_parse_result(parsed: &mut ParseResult) {
+    let base_key = |node: &Node| {
+        format!(
+            "{}\0{}\0{}",
+            node.file.to_string_lossy(),
+            node.kind,
+            node.qualified_name
+        )
+    };
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for node in &parsed.nodes {
+        *counts.entry(base_key(node)).or_default() += 1;
+    }
+    let mut occurrences: HashMap<(String, String), usize> = HashMap::new();
+    let mut remap: HashMap<NodeId, NodeId> = HashMap::new();
+    for node in &mut parsed.nodes {
+        let base = base_key(node);
+        let key = if counts.get(&base).copied().unwrap_or_default() > 1 {
+            let signature = node.metadata.definition.signature.clone();
+            let occurrence = occurrences
+                .entry((base.clone(), signature.clone()))
+                .or_default();
+            let key = format!("{base}\0{signature}\0{occurrence}");
+            *occurrence += 1;
+            key
+        } else {
+            base
+        };
+        let stable = NodeId::stable(&format!("gitcortex:symbol:v1\0{key}"));
+        remap.insert(node.id.clone(), stable.clone());
+        node.id = stable;
+    }
+    let remap_id = |id: &mut NodeId| {
+        if let Some(stable) = remap.get(id) {
+            *id = stable.clone();
+        }
+    };
+    for edge in &mut parsed.edges {
+        remap_id(&mut edge.src);
+        remap_id(&mut edge.dst);
+    }
+    for (src, _, _) in &mut parsed.deferred_calls {
+        remap_id(src);
+    }
+    for pairs in [
+        &mut parsed.deferred_uses,
+        &mut parsed.deferred_implements,
+        &mut parsed.deferred_imports,
+        &mut parsed.deferred_inherits,
+        &mut parsed.deferred_throws,
+        &mut parsed.deferred_annotated,
+        &mut parsed.deferred_doc_refs,
+    ] {
+        for (src, _) in pairs {
+            remap_id(src);
+        }
+    }
+}
 
 /// Resolve deferred `(src_id, target_name)` pairs against a diff-local
 /// name→NodeId map. Returns the subset that couldn't be resolved (because the
@@ -571,13 +635,14 @@ const MAX_RESOLVE_FANOUT: usize = 8;
 /// and dominated full-index time on large repos.
 fn resolve_deferred(
     name_to_ids: &HashMap<&str, Vec<&NodeId>>,
-    id_to_file: &HashMap<&NodeId, &Path>,
+    node_index: (&HashMap<&NodeId, &Path>, &HashMap<&NodeId, &NodeKind>),
     imported_by_file: &HashMap<&Path, HashSet<&str>>,
     deferred: &[(NodeId, String)],
     kind: EdgeKind,
     edges: &mut Vec<Edge>,
     seen: &mut HashSet<(String, String, String)>,
 ) -> Vec<(NodeId, String)> {
+    let (id_to_file, id_to_kind) = node_index;
     let mut unresolved = Vec::new();
     for (src_id, target_name) in deferred {
         let src_file = id_to_file.get(src_id).copied();
@@ -588,21 +653,28 @@ fn resolve_deferred(
             continue;
         };
 
-        // Same-language candidates only.
+        // Same-language candidates valid for this relationship kind only.
         let candidates: Vec<&NodeId> = dst_ids
             .iter()
             .copied()
-            .filter(|dst_id| match (src_exts, id_to_file.get(*dst_id)) {
-                (Some(exts), Some(dst_path)) => language_extensions_for_path(dst_path)
-                    .map(|dst_exts| dst_exts.first() == exts.first())
-                    .unwrap_or(true),
-                _ => true,
+            .filter(|dst_id| {
+                let language_matches = match (src_exts, id_to_file.get(*dst_id)) {
+                    (Some(exts), Some(dst_path)) => language_extensions_for_path(dst_path)
+                        .map(|dst_exts| dst_exts.first() == exts.first())
+                        .unwrap_or(true),
+                    _ => true,
+                };
+                let kind_matches = id_to_kind
+                    .get(*dst_id)
+                    .map(|target| target_kind_is_valid(&kind, target))
+                    .unwrap_or(true);
+                language_matches && kind_matches
             })
             .collect();
 
         // Over-ambiguous name: don't fan out. Treat as resolved (not pushed to
         // `unresolved`) so the store doesn't retry the same explosive match.
-        if candidates.len() > MAX_RESOLVE_FANOUT {
+        if !candidate_count_is_resolvable(candidates.len()) {
             continue;
         }
 
@@ -643,6 +715,7 @@ fn resolve_deferred(
 fn resolve_calls(
     name_to_ids: &HashMap<&str, Vec<&NodeId>>,
     id_to_file: &HashMap<&NodeId, &Path>,
+    id_to_kind: &HashMap<&NodeId, &NodeKind>,
     imported_by_file: &HashMap<&Path, HashSet<&str>>,
     deferred: &[(NodeId, String, u32)],
     edges: &mut Vec<Edge>,
@@ -661,15 +734,22 @@ fn resolve_calls(
         let candidates: Vec<&NodeId> = dst_ids
             .iter()
             .copied()
-            .filter(|dst_id| match (src_exts, id_to_file.get(*dst_id)) {
-                (Some(exts), Some(dst_path)) => language_extensions_for_path(dst_path)
-                    .map(|dst_exts| dst_exts.first() == exts.first())
-                    .unwrap_or(true),
-                _ => true,
+            .filter(|dst_id| {
+                let language_matches = match (src_exts, id_to_file.get(*dst_id)) {
+                    (Some(exts), Some(dst_path)) => language_extensions_for_path(dst_path)
+                        .map(|dst_exts| dst_exts.first() == exts.first())
+                        .unwrap_or(true),
+                    _ => true,
+                };
+                let kind_matches = id_to_kind
+                    .get(*dst_id)
+                    .map(|target| target_kind_is_valid(&EdgeKind::Calls, target))
+                    .unwrap_or(true);
+                language_matches && kind_matches
             })
             .collect();
 
-        if candidates.len() > MAX_RESOLVE_FANOUT {
+        if !candidate_count_is_resolvable(candidates.len()) {
             continue;
         }
 
@@ -755,7 +835,10 @@ fn build_structural_nodes(diff: &GraphDiff) -> (Vec<Node>, Vec<Edge>) {
     // ── File nodes ────────────────────────────────────────────────────────────
     let mut file_ids: HashMap<&Path, NodeId> = HashMap::new();
     for (file_path, code_nodes) in &by_file {
-        let file_id = NodeId::new();
+        let file_id = NodeId::stable(&format!(
+            "gitcortex:file:v1\0{}",
+            file_path.to_string_lossy()
+        ));
         let name = file_path
             .file_name()
             .and_then(|n| n.to_str())
@@ -801,7 +884,12 @@ fn build_structural_nodes(diff: &GraphDiff) -> (Vec<Node>, Vec<Edge>) {
         .collect();
 
     for dir in &unique_dirs {
-        let dir_id = folder_ids.entry(dir.clone()).or_default().clone();
+        let dir_id = folder_ids
+            .entry(dir.clone())
+            .or_insert_with(|| {
+                NodeId::stable(&format!("gitcortex:folder:v1\0{}", dir.to_string_lossy()))
+            })
+            .clone();
         let name = dir
             .file_name()
             .and_then(|n| n.to_str())
@@ -866,4 +954,36 @@ fn build_ignorer(repo_root: &Path) -> Gitignore {
         let _ = builder.add(ignore_path);
     }
     builder.build().unwrap_or_else(|_| Gitignore::empty())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn source_path_rejects_parent_traversal() {
+        let repo = tempfile::tempdir().expect("repo");
+        let indexer = IncrementalIndexer::new(repo.path()).expect("indexer");
+        let error = indexer
+            .validated_source_path(Path::new("../secret.rs"))
+            .expect_err("parent traversal must fail");
+        assert!(error.to_string().contains("repository-relative"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn source_path_rejects_symlinked_parent() {
+        use std::os::unix::fs::symlink;
+
+        let repo = tempfile::tempdir().expect("repo");
+        let outside = tempfile::tempdir().expect("outside");
+        std::fs::write(outside.path().join("secret.rs"), "pub fn secret() {}\n")
+            .expect("write secret");
+        symlink(outside.path(), repo.path().join("src")).expect("symlink parent");
+        let indexer = IncrementalIndexer::new(repo.path()).expect("indexer");
+        let error = indexer
+            .validated_source_path(Path::new("src/secret.rs"))
+            .expect_err("symlinked parent must fail");
+        assert!(error.to_string().contains("symlink"));
+    }
 }

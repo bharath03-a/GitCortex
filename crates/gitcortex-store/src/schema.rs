@@ -15,6 +15,11 @@ pub fn edge_table(branch: &str) -> String {
     format!("{}_edges", branch::sanitize(branch))
 }
 
+/// Raw name references retained so candidate-set changes can be re-resolved.
+pub fn reference_table(branch: &str) -> String {
+    format!("{}_references", branch::sanitize(branch))
+}
+
 // ── DDL ───────────────────────────────────────────────────────────────────────
 
 /// Create the node and edge tables for `branch` if they don't already exist.
@@ -22,6 +27,7 @@ pub fn edge_table(branch: &str) -> String {
 pub fn ensure_branch(conn: &mut Connection, branch: &str) -> Result<()> {
     let nt = node_table(branch);
     let et = edge_table(branch);
+    let rt = reference_table(branch);
 
     conn.query(&format!(
         "CREATE NODE TABLE IF NOT EXISTS {nt} (\
@@ -65,6 +71,19 @@ pub fn ensure_branch(conn: &mut Connection, branch: &str) -> Result<()> {
     ))
     .map_err(|e| GitCortexError::Store(format!("create edge table: {e}")))?;
 
+    conn.query(&format!(
+        "CREATE NODE TABLE IF NOT EXISTS {rt} (\
+            id          STRING,\
+            src_id      STRING,\
+            src_file    STRING,\
+            target_name STRING,\
+            kind        STRING,\
+            line        INT64,\
+            PRIMARY KEY(id)\
+        )"
+    ))
+    .map_err(|e| GitCortexError::Store(format!("create reference table: {e}")))?;
+
     // Secondary indexes on columns hit by every deferred-resolution WHERE clause.
     // Best-effort: KuzuDB auto-indexes PKs; secondary index support depends on
     // the runtime version. Warn and continue rather than fail init.
@@ -75,6 +94,14 @@ pub fn ensure_branch(conn: &mut Connection, branch: &str) -> Result<()> {
     ] {
         if let Err(e) = conn.query(&format!("CREATE INDEX IF NOT EXISTS {idx} ON {nt}({col})")) {
             tracing::debug!("secondary index {idx} skipped: {e}");
+        }
+    }
+    for (idx, col) in [
+        (format!("{rt}_target_name_idx"), "target_name"),
+        (format!("{rt}_src_file_idx"), "src_file"),
+    ] {
+        if let Err(e) = conn.query(&format!("CREATE INDEX IF NOT EXISTS {idx} ON {rt}({col})")) {
+            tracing::debug!("reference index {idx} skipped: {e}");
         }
     }
 

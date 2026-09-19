@@ -125,7 +125,9 @@ pub(super) fn bulk_load(
                 continue;
             }
             let k = e.kind.to_string();
-            if !seen_edges.insert((s.clone(), d.clone(), k.clone())) {
+            if e.kind != gitcortex_core::schema::EdgeKind::Calls
+                && !seen_edges.insert((s.clone(), d.clone(), k.clone()))
+            {
                 continue;
             }
             let line = e.line.map(|l| l as i64).unwrap_or(-1);

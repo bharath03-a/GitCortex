@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use gitcortex_core::{
     graph::{Edge, GraphDiff, Node, NodeId, NodeMetadata, Span},
-    schema::{NodeKind, Visibility, SCHEMA_VERSION},
+    schema::{EdgeKind, NodeKind, Visibility, SCHEMA_VERSION},
     store::GraphStore,
 };
 use gitcortex_store::{branch, kuzu::KuzuGraphStore};
@@ -114,6 +114,88 @@ fn find_callers_via_calls_edge() {
     let callers = store.find_callers("main", "greet").expect("find_callers");
     assert_eq!(callers.len(), 1);
     assert_eq!(callers[0].name, "announce");
+}
+
+#[test]
+fn duplicate_replacement_node_id_does_not_drop_preserved_incoming_edge() {
+    let (mut store, _dir) = tmp_store();
+    let caller = make_node("caller", NodeKind::Function, "src/caller.rs", 1);
+    let callee = make_node("callee", NodeKind::Function, "src/callee.rs", 1);
+    store
+        .apply_diff(
+            "main",
+            &GraphDiff {
+                added_nodes: vec![caller.clone(), callee.clone()],
+                added_edges: vec![Edge::call(caller.id.clone(), callee.id.clone(), 3)],
+                ..Default::default()
+            },
+        )
+        .expect("apply initial graph");
+
+    store
+        .apply_diff(
+            "main",
+            &GraphDiff {
+                removed_files: vec![PathBuf::from("src/callee.rs")],
+                added_nodes: vec![callee.clone(), callee],
+                ..Default::default()
+            },
+        )
+        .expect("replace callee with duplicate node entries");
+
+    let callers = store.find_callers("main", "callee").expect("find callers");
+    assert_eq!(
+        callers.len(),
+        1,
+        "duplicate copies of one replacement node ID are not ambiguity"
+    );
+    assert_eq!(callers[0].id, caller.id);
+}
+
+#[test]
+fn replacement_edge_is_not_duplicated_when_already_present_in_diff() {
+    let (mut store, _dir) = tmp_store();
+    let caller = make_node("caller", NodeKind::Function, "src/caller.rs", 1);
+    let old_callee = make_node("callee", NodeKind::Function, "src/callee.rs", 1);
+    store
+        .apply_diff(
+            "main",
+            &GraphDiff {
+                added_nodes: vec![caller.clone(), old_callee.clone()],
+                added_edges: vec![Edge::call(caller.id.clone(), old_callee.id.clone(), 3)],
+                ..Default::default()
+            },
+        )
+        .expect("apply initial graph");
+
+    let replacement = make_node("callee", NodeKind::Function, "src/callee.rs", 1);
+    store
+        .apply_diff(
+            "main",
+            &GraphDiff {
+                removed_files: vec![PathBuf::from("src/callee.rs")],
+                added_nodes: vec![replacement.clone()],
+                added_edges: vec![Edge::call(caller.id.clone(), replacement.id.clone(), 3)],
+                ..Default::default()
+            },
+        )
+        .expect("replace callee with explicit edge");
+
+    let matching_edges = store
+        .list_all_edges("main")
+        .expect("list edges")
+        .into_iter()
+        .filter(|edge| {
+            edge.src == caller.id
+                && edge.dst == replacement.id
+                && edge.kind == EdgeKind::Calls
+                && edge.line == Some(3)
+        })
+        .count();
+    assert_eq!(
+        matching_edges, 1,
+        "an edge emitted by the diff must not also be restored"
+    );
 }
 
 #[test]
