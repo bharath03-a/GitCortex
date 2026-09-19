@@ -18,6 +18,12 @@ pub struct GcxDispatchParams {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct PlanQueryParams {
+    /// Natural-language repository question to compile into a safe typed action.
+    pub question: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct LookupSymbolParams {
     /// Symbol name to search for (unqualified).
     pub name: String,

@@ -261,6 +261,7 @@ impl GitCortexServer {
         let mut router = Self::tool_router();
         if compact {
             for name in [
+                "plan_query",
                 "lookup_symbol",
                 "find_callers",
                 "pre_edit_impact",
@@ -300,6 +301,16 @@ impl GitCortexServer {
 
 #[tool_router]
 impl GitCortexServer {
+    /// Compile a natural-language repository question into a safe typed action.
+    #[tool(
+        description = "Compile a common repository question into a typed, read-only GitCortex action. \
+        Supports callers, callees, symbol definitions, pre-edit impact, and type usages. \
+        Unsupported or malformed questions return needs_clarification; no Cypher, SQL, or shell is generated or executed."
+    )]
+    fn plan_query(&self, Parameters(p): Parameters<PlanQueryParams>) -> CallToolResult {
+        CallToolResult::structured(json!(super::planner::plan_question(&p.question)))
+    }
+
     /// Look up all nodes (functions, structs, traits, etc.) by name.
     #[tool(
         description = "Look up nodes in the code knowledge graph by name. Set fuzzy=true for substring matching (e.g. 'auth' finds 'validate_auth', 'auth_middleware'). Default is exact match."
@@ -1552,7 +1563,7 @@ impl GitCortexServer {
     /// Prefer this tool to keep per-turn schema overhead low. All individual
     /// tools remain available for direct use; this is an additive alias.
     #[tool(description = "Query the GitCortex code knowledge graph. \
-        action: lookup_symbol | find_callers | pre_edit_impact | find_callees | find_unused_symbols | \
+        action: plan_query | lookup_symbol | find_callers | pre_edit_impact | find_callees | find_unused_symbols | \
         get_subgraph | search_code | start_tour | wiki_symbol | trace_path | \
         list_definitions | symbol_context | list_symbols_in_range | graph_stats | ast_search | \
         type_hierarchy | find_importers | find_type_usages | module_dependencies | \
@@ -1585,6 +1596,9 @@ impl GitCortexServer {
         }
 
         let result = match p.action.as_str() {
+            "plan_query" => self.plan_query(Parameters(PlanQueryParams {
+                question: str_field!("question"),
+            })),
             "lookup_symbol" => self.lookup_symbol(Parameters(LookupSymbolParams {
                 name: str_field!("name"),
                 fuzzy: p.params.get("fuzzy").and_then(|v| v.as_bool()),
@@ -1961,6 +1975,20 @@ mod contract_tests {
         let tool = router.get("gcx").expect("gcx tool");
         let schema = serde_json::to_value(&tool.input_schema).expect("serialize schema");
         assert_eq!(schema["properties"]["params"]["type"], "object");
+    }
+
+    #[test]
+    fn typed_question_planner_is_available_through_both_tool_modes() {
+        let full = GitCortexServer::tool_router_for_mode(false);
+        assert!(full.get("plan_query").is_some());
+
+        let compact = GitCortexServer::tool_router_for_mode(true);
+        let dispatch = compact.get("gcx").expect("gcx tool");
+        assert!(dispatch
+            .description
+            .as_deref()
+            .unwrap_or("")
+            .contains("plan_query"));
     }
 
     #[test]
