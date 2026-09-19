@@ -28,6 +28,8 @@ pub struct QueryPlan {
     pub action: Option<PlannedAction>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub symbol: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_action: Option<String>,
 }
 
 pub fn plan_question(question: &str) -> QueryPlan {
@@ -74,6 +76,10 @@ fn clarification() -> QueryPlan {
         status: PlanStatus::NeedsClarification,
         action: None,
         symbol: None,
+        next_action: Some(
+            "Use one supported shape: 'Who calls X?', 'What does X call?', 'Where is X defined?', 'What is the impact of changing X?', 'Where is the type X used?', 'Explain X', or 'What implements X?'."
+                .to_owned(),
+        ),
     }
 }
 
@@ -100,6 +106,7 @@ fn ready_symbol(action: PlannedAction, raw: &str) -> QueryPlan {
         status: PlanStatus::Ready,
         action: Some(action),
         symbol: Some(symbol.to_owned()),
+        next_action: None,
     }
 }
 
@@ -157,6 +164,11 @@ mod tests {
             assert_eq!(plan.status, PlanStatus::NeedsClarification);
             assert_eq!(plan.action, None);
             assert_eq!(plan.symbol, None);
+            assert!(plan
+                .next_action
+                .as_deref()
+                .unwrap_or("")
+                .contains("Who calls X?"));
         }
     }
 
