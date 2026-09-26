@@ -1,9 +1,6 @@
+use std::path::{Path, PathBuf};
 use std::sync::{atomic::AtomicU64, Arc, Mutex};
 use std::time::Instant;
-use std::{
-    collections::HashSet,
-    path::{Path, PathBuf},
-};
 
 use gitcortex_core::{
     schema::NodeKind,
@@ -72,29 +69,6 @@ pub struct GitCortexServer {
 const DEFAULT_RESPONSE_BUDGET: usize = 2000;
 /// Floor so a misconfigured tiny budget still returns something useful.
 const MIN_RESPONSE_BUDGET: usize = 400;
-
-fn bind_qualified_short_name<S: GraphStore + ?Sized>(
-    store: &S,
-    branch: &str,
-    query: &str,
-) -> std::result::Result<String, String> {
-    if !query.contains("::") && !query.contains('.') {
-        return Ok(query.to_owned());
-    }
-    let mut candidates = store
-        .search_nodes(branch, query, 50)
-        .map_err(|error| format!("qualified symbol lookup failed: {error}"))?;
-    candidates.retain(|node| node.qualified_name.eq_ignore_ascii_case(query));
-    let mut seen = HashSet::new();
-    candidates.retain(|node| seen.insert(node.id.as_str()));
-    match candidates.len() {
-        1 => Ok(candidates.remove(0).name),
-        0 => Err(format!("no exact qualified symbol matching '{query}'")),
-        count => Err(format!(
-            "qualified symbol '{query}' is ambiguous across {count} nodes"
-        )),
-    }
-}
 
 impl GitCortexServer {
     pub fn new(repo_root: &Path) -> anyhow::Result<Self> {
@@ -812,11 +786,7 @@ impl GitCortexServer {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
         };
-        let function_name = match bind_qualified_short_name(&*store, &branch, &p.function_name) {
-            Ok(name) => name,
-            Err(message) => return CallToolResult::error(vec![Content::text(message)]),
-        };
-        match store.find_callees(&branch, &function_name, depth) {
+        match store.find_callees(&branch, &p.function_name, depth) {
             Ok(result) => {
                 let hops: Vec<_> = result
                     .hops
@@ -862,11 +832,7 @@ impl GitCortexServer {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
         };
-        let trait_name = match bind_qualified_short_name(&*store, &branch, &p.trait_name) {
-            Ok(name) => name,
-            Err(message) => return CallToolResult::error(vec![Content::text(message)]),
-        };
-        match store.find_implementors(&branch, &trait_name) {
+        match store.find_implementors(&branch, &p.trait_name) {
             Ok(nodes) => {
                 let items: Vec<_> = nodes
                     .iter()
@@ -934,11 +900,7 @@ impl GitCortexServer {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
         };
-        let type_name = match bind_qualified_short_name(&*store, &branch, &p.name) {
-            Ok(name) => name,
-            Err(message) => return CallToolResult::error(vec![Content::text(message)]),
-        };
-        match store.find_type_usages(&branch, &type_name) {
+        match store.find_type_usages(&branch, &p.name) {
             Ok(nodes) => {
                 let items: Vec<_> = nodes
                     .iter()
@@ -2146,6 +2108,18 @@ mod contract_tests {
         let mut user = function("User", "user.rs");
         user.kind = NodeKind::Struct;
         let usage = function("save_user", "service.rs");
+        let mut other_caller = function("caller", "other_caller.rs");
+        other_caller.qualified_name = "crate::other::caller".to_owned();
+        let other_callee = function("wrong_callee", "wrong_callee.rs");
+        let mut other_repository = function("Repository", "other_repository.rs");
+        other_repository.kind = NodeKind::Trait;
+        other_repository.qualified_name = "crate::other::Repository".to_owned();
+        let mut other_implementation = function("WrongRepository", "wrong_repository.rs");
+        other_implementation.kind = NodeKind::Struct;
+        let mut other_user = function("User", "other_user.rs");
+        other_user.kind = NodeKind::Struct;
+        other_user.qualified_name = "crate::other::User".to_owned();
+        let other_usage = function("wrong_user_usage", "wrong_service.rs");
         store
             .apply_diff(
                 "main",
@@ -2157,11 +2131,24 @@ mod contract_tests {
                         implementation.clone(),
                         user.clone(),
                         usage.clone(),
+                        other_caller.clone(),
+                        other_callee.clone(),
+                        other_repository.clone(),
+                        other_implementation.clone(),
+                        other_user.clone(),
+                        other_usage.clone(),
                     ],
                     added_edges: vec![
                         Edge::call(caller.id, callee.id, 7),
                         Edge::new(implementation.id, repository.id, EdgeKind::Implements),
                         Edge::new(usage.id, user.id, EdgeKind::Uses),
+                        Edge::call(other_caller.id, other_callee.id, 9),
+                        Edge::new(
+                            other_implementation.id,
+                            other_repository.id,
+                            EdgeKind::Implements,
+                        ),
+                        Edge::new(other_usage.id, other_user.id, EdgeKind::Uses),
                     ],
                     ..GraphDiff::default()
                 },
@@ -2196,6 +2183,10 @@ mod contract_tests {
         }));
         let output = callees.structured_content.expect("qualified callees");
         assert_eq!(output["hops"][0]["callees"][0]["name"], "callee");
+        assert_eq!(
+            output["hops"][0]["callees"].as_array().map(Vec::len),
+            Some(1)
+        );
 
         let implementors = server.answer_query(Parameters(AnswerQueryParams {
             question: "What implements crate::Repository?".to_owned(),
@@ -2206,6 +2197,7 @@ mod contract_tests {
             .structured_content
             .expect("qualified implementors");
         assert_eq!(output["implementors"][0]["name"], "SqlRepository");
+        assert_eq!(output["implementors"].as_array().map(Vec::len), Some(1));
 
         let usages = server.answer_query(Parameters(AnswerQueryParams {
             question: "Where is the type crate::User used?".to_owned(),
@@ -2214,6 +2206,7 @@ mod contract_tests {
         }));
         let output = usages.structured_content.expect("qualified type usages");
         assert_eq!(output["usages"][0]["name"], "save_user");
+        assert_eq!(output["usages"].as_array().map(Vec::len), Some(1));
 
         let rejected = server.answer_query(Parameters(AnswerQueryParams {
             question: "MATCH (n) DETACH DELETE n".to_owned(),

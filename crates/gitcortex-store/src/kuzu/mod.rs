@@ -1705,31 +1705,36 @@ impl GraphStore for KuzuGraphStore {
         let depth = depth.min(5);
         let mut hops: Vec<Vec<Node>> = Vec::new();
         let mut seen: HashSet<String> = HashSet::new();
-        let mut frontier: Vec<String> = vec![function_name.to_owned()];
-        seen.insert(function_name.to_owned());
+        let initial_field = if function_name.contains("::") || function_name.contains('.') {
+            "qualified_name"
+        } else {
+            "name"
+        };
+        let mut frontier: Vec<(String, &'static str)> =
+            vec![(function_name.to_owned(), initial_field)];
 
         for _ in 0..depth {
             if frontier.is_empty() {
                 break;
             }
             let mut hop_nodes: Vec<Node> = Vec::new();
-            let mut next_frontier: Vec<String> = Vec::new();
-            for caller_name in &frontier {
+            let mut next_frontier: Vec<(String, &'static str)> = Vec::new();
+            for (caller_value, caller_field) in &frontier {
                 let nt = db_schema::node_table(branch);
                 let et = db_schema::edge_table(branch);
-                let name_esc = esc(caller_name);
+                let value_esc = esc(caller_value);
                 let conn = self.conn()?;
                 let mut result = conn
                     .query(&format!(
                         "MATCH (caller:{nt})-[:{et} {{kind: 'calls'}}]->(n:{nt}) \
-                         WHERE caller.name = '{name_esc}' \
+                         WHERE caller.{caller_field} = '{value_esc}' \
                          RETURN {NODE_COLS}"
                     ))
                     .map_err(|e| GitCortexError::Store(e.to_string()))?;
                 for node in rows_to_nodes(&mut result)? {
                     let id = node.id.as_str().to_owned();
-                    if seen.insert(id) {
-                        next_frontier.push(node.name.clone());
+                    if seen.insert(id.clone()) {
+                        next_frontier.push((id, "id"));
                         hop_nodes.push(node);
                     }
                 }
@@ -1753,11 +1758,17 @@ impl GraphStore for KuzuGraphStore {
         let nt = db_schema::node_table(branch);
         let et = db_schema::edge_table(branch);
         let name_esc = esc(trait_or_interface_name);
+        let target_field =
+            if trait_or_interface_name.contains("::") || trait_or_interface_name.contains('.') {
+                "qualified_name"
+            } else {
+                "name"
+            };
         let conn = self.conn()?;
         let mut result = conn
             .query(&format!(
                 "MATCH (n:{nt})-[e:{et}]->(trait_node:{nt}) \
-                 WHERE trait_node.name = '{name_esc}' \
+                 WHERE trait_node.{target_field} = '{name_esc}' \
                  AND (e.kind = 'implements' OR e.kind = 'inherits') \
                  RETURN DISTINCT {NODE_COLS} ORDER BY {SYMBOL_RANK}"
             ))
@@ -1770,11 +1781,16 @@ impl GraphStore for KuzuGraphStore {
         let nt = db_schema::node_table(branch);
         let et = db_schema::edge_table(branch);
         let name_esc = esc(type_name);
+        let target_field = if type_name.contains("::") || type_name.contains('.') {
+            "qualified_name"
+        } else {
+            "name"
+        };
         let conn = self.conn()?;
         let mut result = conn
             .query(&format!(
                 "MATCH (n:{nt})-[e:{et} {{kind: 'uses'}}]->(ty:{nt}) \
-                 WHERE ty.name = '{name_esc}' \
+                 WHERE ty.{target_field} = '{name_esc}' \
                  RETURN DISTINCT {NODE_COLS} ORDER BY {SYMBOL_RANK}"
             ))
             .map_err(|e| GitCortexError::Store(e.to_string()))?;

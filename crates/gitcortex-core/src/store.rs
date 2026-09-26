@@ -360,11 +360,13 @@ pub trait GraphStore: Send + Sync {
 
     // ── Wave 2 tools ─────────────────────────────────────────────────────────
 
-    /// Find all functions/methods called by `function_name` up to `depth` hops.
+    /// Find all functions/methods called by a short or exact qualified
+    /// `function_name` up to `depth` hops.
     /// Returns callees grouped by hop distance (1..=depth). Capped at 5.
     fn find_callees(&self, branch: &str, function_name: &str, depth: u8) -> Result<CallersDeep>;
 
-    /// Find all structs/classes that implement/inherit `trait_or_interface_name`.
+    /// Find all structs/classes that implement/inherit a short or exact
+    /// qualified `trait_or_interface_name`.
     fn find_implementors(&self, branch: &str, trait_or_interface_name: &str) -> Result<Vec<Node>>;
 
     /// Return the in-repo modules that a module named `module_name` depends on,
@@ -431,7 +433,8 @@ pub trait GraphStore: Send + Sync {
         Ok(deps)
     }
 
-    /// Find functions/methods that reference a type named `type_name` as a
+    /// Find functions/methods that reference a short or exact qualified
+    /// `type_name` as a
     /// parameter or return type (following `Uses` edges). Answers "where is
     /// type T used in a signature" — the type-level analogue of find_callers.
     ///
@@ -444,9 +447,16 @@ pub trait GraphStore: Send + Sync {
         let nodes = self.list_all_nodes(branch)?;
         let edges = self.list_all_edges(branch)?;
 
+        let qualified = type_name.contains("::") || type_name.contains('.');
         let target_ids: HashSet<String> = nodes
             .iter()
-            .filter(|n| n.name == type_name)
+            .filter(|n| {
+                if qualified {
+                    n.qualified_name.eq_ignore_ascii_case(type_name)
+                } else {
+                    n.name == type_name
+                }
+            })
             .map(|n| n.id.as_str())
             .collect();
         if target_ids.is_empty() {
