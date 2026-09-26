@@ -261,6 +261,8 @@ impl GitCortexServer {
         let mut router = Self::tool_router();
         if compact {
             for name in [
+                "plan_query",
+                "answer_query",
                 "lookup_symbol",
                 "find_callers",
                 "pre_edit_impact",
@@ -300,6 +302,69 @@ impl GitCortexServer {
 
 #[tool_router]
 impl GitCortexServer {
+    /// Compile a natural-language repository question into a safe typed action.
+    #[tool(
+        description = "Compile a common repository question into a typed, read-only GitCortex action. \
+        Supports callers, callees, symbol definitions, pre-edit impact, type usages, symbol context, and implementors. \
+        Unsupported or malformed questions return needs_clarification; no Cypher, SQL, or shell is generated or executed."
+    )]
+    fn plan_query(&self, Parameters(p): Parameters<PlanQueryParams>) -> CallToolResult {
+        CallToolResult::structured(json!(super::planner::plan_question(&p.question)))
+    }
+
+    /// Plan and execute one supported repository question through read-only handlers.
+    #[tool(
+        description = "Answer a supported repository question in one call using a deterministic typed plan. \
+        Routes only to read-only callers, callees, exact symbol, pre-edit impact, type-usage, symbol-context, or implementor handlers. \
+        Unsupported questions return needs_clarification and are not executed."
+    )]
+    fn answer_query(&self, Parameters(p): Parameters<AnswerQueryParams>) -> CallToolResult {
+        use super::planner::PlannedAction;
+
+        let plan = super::planner::plan_question(&p.question);
+        let (Some(action), Some(symbol)) = (plan.action, plan.symbol.clone()) else {
+            return CallToolResult::structured(json!(plan));
+        };
+        match action {
+            PlannedAction::FindCallers => self.find_callers(Parameters(FindCallersParams {
+                function_name: symbol,
+                depth: p.depth,
+                branch: p.branch,
+            })),
+            PlannedAction::FindCallees => self.find_callees(Parameters(FindCalleesParams {
+                function_name: symbol,
+                depth: p.depth,
+                branch: p.branch,
+            })),
+            PlannedAction::LookupSymbol => self.lookup_symbol(Parameters(LookupSymbolParams {
+                name: symbol,
+                fuzzy: Some(false),
+                branch: p.branch,
+            })),
+            PlannedAction::PreEditImpact => self.pre_edit_impact(Parameters(FindCallersParams {
+                function_name: symbol,
+                depth: p.depth,
+                branch: p.branch,
+            })),
+            PlannedAction::FindTypeUsages => {
+                self.find_type_usages(Parameters(FindTypeUsagesParams {
+                    name: symbol,
+                    branch: p.branch,
+                }))
+            }
+            PlannedAction::SymbolContext => self.symbol_context(Parameters(SymbolContextParams {
+                name: symbol,
+                branch: p.branch,
+            })),
+            PlannedAction::FindImplementors => {
+                self.find_implementors(Parameters(FindImplementorsParams {
+                    trait_name: symbol,
+                    branch: p.branch,
+                }))
+            }
+        }
+    }
+
     /// Look up all nodes (functions, structs, traits, etc.) by name.
     #[tool(
         description = "Look up nodes in the code knowledge graph by name. Set fuzzy=true for substring matching (e.g. 'auth' finds 'validate_auth', 'auth_middleware'). Default is exact match."
@@ -311,7 +376,17 @@ impl GitCortexServer {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
         };
-        match store.lookup_symbol(&branch, &p.name, fuzzy) {
+        let nodes = if !fuzzy && (p.name.contains("::") || p.name.contains('.')) {
+            store.search_nodes(&branch, &p.name, 50).map(|nodes| {
+                nodes
+                    .into_iter()
+                    .filter(|node| node.qualified_name.eq_ignore_ascii_case(&p.name))
+                    .collect()
+            })
+        } else {
+            store.lookup_symbol(&branch, &p.name, fuzzy)
+        };
+        match nodes {
             Ok(nodes) => {
                 let items: Vec<_> = nodes
                     .iter()
@@ -1552,12 +1627,12 @@ impl GitCortexServer {
     /// Prefer this tool to keep per-turn schema overhead low. All individual
     /// tools remain available for direct use; this is an additive alias.
     #[tool(description = "Query the GitCortex code knowledge graph. \
-        action: lookup_symbol | find_callers | pre_edit_impact | find_callees | find_unused_symbols | \
+        action: plan_query | answer_query | lookup_symbol | find_callers | pre_edit_impact | find_callees | find_unused_symbols | \
         get_subgraph | search_code | start_tour | wiki_symbol | trace_path | \
         list_definitions | symbol_context | list_symbols_in_range | graph_stats | ast_search | \
         type_hierarchy | find_importers | find_type_usages | module_dependencies | \
         get_call_sites | branch_diff_graph | find_god_nodes | find_clusters | find_cycles | health_report. \
-        params: JSON object with the same fields as the individual tool (name/function_name/\
+        params: JSON object with the same fields as the individual tool (question/name/function_name/\
         seed_name/query/file/branch/depth/limit/direction/min_in_degree/min_cluster_size as applicable). \
         Returns identical output to the individual tool.")]
     fn gcx(&self, Parameters(p): Parameters<GcxDispatchParams>) -> CallToolResult {
@@ -1585,6 +1660,18 @@ impl GitCortexServer {
         }
 
         let result = match p.action.as_str() {
+            "plan_query" => self.plan_query(Parameters(PlanQueryParams {
+                question: str_field!("question"),
+            })),
+            "answer_query" => self.answer_query(Parameters(AnswerQueryParams {
+                question: str_field!("question"),
+                depth: p
+                    .params
+                    .get("depth")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as u8),
+                branch: branch_val,
+            })),
             "lookup_symbol" => self.lookup_symbol(Parameters(LookupSymbolParams {
                 name: str_field!("name"),
                 fuzzy: p.params.get("fuzzy").and_then(|v| v.as_bool()),
@@ -1819,7 +1906,8 @@ impl GitCortexServer {
             }
             other => {
                 return CallToolResult::error(vec![Content::text(format!(
-                    "gcx dispatch: unknown action '{other}'. Valid: lookup_symbol, find_callers, \
+                    "gcx dispatch: unknown action '{other}'. Valid: plan_query, answer_query, \
+                lookup_symbol, find_callers, pre_edit_impact, \
                 find_callees, find_unused_symbols, get_subgraph, search_code, start_tour, \
                 wiki_symbol, trace_path, list_definitions, symbol_context, list_symbols_in_range, \
                 graph_stats, ast_search, type_hierarchy, find_importers, find_type_usages, \
@@ -1944,7 +2032,31 @@ impl rmcp::ServerHandler for GitCortexServer {
 
 #[cfg(test)]
 mod contract_tests {
-    use super::GitCortexServer;
+    use std::path::PathBuf;
+
+    use gitcortex_core::{
+        graph::{Edge, GraphDiff, Node, NodeId, NodeMetadata, Span},
+        schema::{EdgeKind, NodeKind},
+        store::GraphStore,
+    };
+    use rmcp::handler::server::wrapper::Parameters;
+
+    use super::{AnswerQueryParams, GitCortexServer};
+
+    fn function(name: &str, file: &str) -> Node {
+        Node {
+            id: NodeId::stable(&format!("test:{file}:{name}")),
+            kind: NodeKind::Function,
+            name: name.to_owned(),
+            qualified_name: format!("crate::{name}"),
+            file: PathBuf::from(file),
+            span: Span {
+                start_line: 1,
+                end_line: 1,
+            },
+            metadata: NodeMetadata::default(),
+        }
+    }
 
     #[test]
     fn compact_mode_exposes_exactly_one_dispatch_tool() {
@@ -1961,6 +2073,149 @@ mod contract_tests {
         let tool = router.get("gcx").expect("gcx tool");
         let schema = serde_json::to_value(&tool.input_schema).expect("serialize schema");
         assert_eq!(schema["properties"]["params"]["type"], "object");
+    }
+
+    #[test]
+    fn typed_question_planner_is_available_through_both_tool_modes() {
+        let full = GitCortexServer::tool_router_for_mode(false);
+        assert!(full.get("plan_query").is_some());
+        assert!(full.get("answer_query").is_some());
+
+        let compact = GitCortexServer::tool_router_for_mode(true);
+        let dispatch = compact.get("gcx").expect("gcx tool");
+        assert!(dispatch
+            .description
+            .as_deref()
+            .unwrap_or("")
+            .contains("plan_query"));
+        assert!(dispatch
+            .description
+            .as_deref()
+            .unwrap_or("")
+            .contains("answer_query"));
+    }
+
+    #[test]
+    fn answer_query_executes_only_the_typed_read_only_plan() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut store = gitcortex_store::kuzu::KuzuGraphStore::open(tmp.path()).expect("store");
+        let caller = function("caller", "caller.rs");
+        let callee = function("callee", "callee.rs");
+        let mut repository = function("Repository", "repository.rs");
+        repository.kind = NodeKind::Trait;
+        let mut implementation = function("SqlRepository", "sql_repository.rs");
+        implementation.kind = NodeKind::Struct;
+        let mut user = function("User", "user.rs");
+        user.kind = NodeKind::Struct;
+        let usage = function("save_user", "service.rs");
+        let mut other_caller = function("caller", "other_caller.rs");
+        other_caller.qualified_name = "crate::other::caller".to_owned();
+        let other_callee = function("wrong_callee", "wrong_callee.rs");
+        let mut other_repository = function("Repository", "other_repository.rs");
+        other_repository.kind = NodeKind::Trait;
+        other_repository.qualified_name = "crate::other::Repository".to_owned();
+        let mut other_implementation = function("WrongRepository", "wrong_repository.rs");
+        other_implementation.kind = NodeKind::Struct;
+        let mut other_user = function("User", "other_user.rs");
+        other_user.kind = NodeKind::Struct;
+        other_user.qualified_name = "crate::other::User".to_owned();
+        let other_usage = function("wrong_user_usage", "wrong_service.rs");
+        store
+            .apply_diff(
+                "main",
+                &GraphDiff {
+                    added_nodes: vec![
+                        caller.clone(),
+                        callee.clone(),
+                        repository.clone(),
+                        implementation.clone(),
+                        user.clone(),
+                        usage.clone(),
+                        other_caller.clone(),
+                        other_callee.clone(),
+                        other_repository.clone(),
+                        other_implementation.clone(),
+                        other_user.clone(),
+                        other_usage.clone(),
+                    ],
+                    added_edges: vec![
+                        Edge::call(caller.id, callee.id, 7),
+                        Edge::new(implementation.id, repository.id, EdgeKind::Implements),
+                        Edge::new(usage.id, user.id, EdgeKind::Uses),
+                        Edge::call(other_caller.id, other_callee.id, 9),
+                        Edge::new(
+                            other_implementation.id,
+                            other_repository.id,
+                            EdgeKind::Implements,
+                        ),
+                        Edge::new(other_usage.id, other_user.id, EdgeKind::Uses),
+                    ],
+                    ..GraphDiff::default()
+                },
+            )
+            .expect("apply graph");
+        let server = GitCortexServer::with_store(tmp.path(), false, store).expect("server");
+
+        let result = server.answer_query(Parameters(AnswerQueryParams {
+            question: "Who calls callee?".to_owned(),
+            depth: None,
+            branch: Some("main".to_owned()),
+        }));
+        let output = result.structured_content.expect("structured answer");
+        assert_eq!(output["status"], "ok");
+        assert_eq!(output["evidence"][0]["symbol"], "caller");
+
+        let definition = server.answer_query(Parameters(AnswerQueryParams {
+            question: "Where is crate::callee defined?".to_owned(),
+            depth: None,
+            branch: Some("main".to_owned()),
+        }));
+        let output = definition
+            .structured_content
+            .expect("qualified definition answer");
+        assert_eq!(output[0]["name"], "callee");
+        assert_eq!(output[0]["qualified_name"], "crate::callee");
+
+        let callees = server.answer_query(Parameters(AnswerQueryParams {
+            question: "What does crate::caller call?".to_owned(),
+            depth: None,
+            branch: Some("main".to_owned()),
+        }));
+        let output = callees.structured_content.expect("qualified callees");
+        assert_eq!(output["hops"][0]["callees"][0]["name"], "callee");
+        assert_eq!(
+            output["hops"][0]["callees"].as_array().map(Vec::len),
+            Some(1)
+        );
+
+        let implementors = server.answer_query(Parameters(AnswerQueryParams {
+            question: "What implements crate::Repository?".to_owned(),
+            depth: None,
+            branch: Some("main".to_owned()),
+        }));
+        let output = implementors
+            .structured_content
+            .expect("qualified implementors");
+        assert_eq!(output["implementors"][0]["name"], "SqlRepository");
+        assert_eq!(output["implementors"].as_array().map(Vec::len), Some(1));
+
+        let usages = server.answer_query(Parameters(AnswerQueryParams {
+            question: "Where is the type crate::User used?".to_owned(),
+            depth: None,
+            branch: Some("main".to_owned()),
+        }));
+        let output = usages.structured_content.expect("qualified type usages");
+        assert_eq!(output["usages"][0]["name"], "save_user");
+        assert_eq!(output["usages"].as_array().map(Vec::len), Some(1));
+
+        let rejected = server.answer_query(Parameters(AnswerQueryParams {
+            question: "MATCH (n) DETACH DELETE n".to_owned(),
+            depth: None,
+            branch: Some("main".to_owned()),
+        }));
+        let output = rejected.structured_content.expect("clarification plan");
+        assert_eq!(output["status"], "needs_clarification");
+        assert!(output.get("action").is_none());
     }
 
     #[test]
