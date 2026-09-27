@@ -1303,6 +1303,7 @@ name = "gitcortex-mcp"
 version = "0.7.6"
 dependencies = [
  "anyhow",
+ "blake3",
  "fastembed",
  "gitcortex-core",
  "gitcortex-indexer",
