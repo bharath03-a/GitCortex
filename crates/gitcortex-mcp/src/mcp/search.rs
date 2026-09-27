@@ -18,7 +18,12 @@
 
 use std::collections::HashSet;
 
-use gitcortex_core::{error::Result, graph::Node, schema::NodeKind, store::GraphStore};
+use gitcortex_core::{
+    error::{GitCortexError, Result},
+    graph::Node,
+    schema::NodeKind,
+    store::GraphStore,
+};
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
@@ -263,6 +268,11 @@ pub fn search<S: GraphStore + ?Sized>(
     query: &str,
     limit: Option<usize>,
 ) -> Result<Vec<SearchHit>> {
+    if query.len() > 256 {
+        return Err(GitCortexError::Config(
+            "search query exceeds 256 bytes".to_owned(),
+        ));
+    }
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
     let q = query.trim();
     if q.is_empty() {

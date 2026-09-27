@@ -250,13 +250,13 @@ pub fn format_search_page<S: GraphStore + ?Sized>(
             None
         };
         evidence.push(SearchEvidence {
-            symbol: hit.name,
-            qualified_name: hit.qualified_name,
-            kind: hit.kind,
-            file: hit.file,
+            symbol: truncate_chars(hit.name, 96),
+            qualified_name: truncate_chars(hit.qualified_name, 160),
+            kind: truncate_chars(hit.kind, 32),
+            file: truncate_chars(hit.file, 96),
             line: hit.start_line,
             signature: if detail == SearchDetail::Full {
-                node.map(sig_line).unwrap_or_default()
+                truncate_chars(node.map(sig_line).unwrap_or_default(), 160)
             } else {
                 String::new()
             },
@@ -284,8 +284,8 @@ pub fn format_search_page<S: GraphStore + ?Sized>(
         } else {
             AgentStatus::Ok
         },
-        answer,
-        query: query.to_owned(),
+        answer: truncate_chars(answer, 256),
+        query: truncate_chars(query.to_owned(), 128),
         semantic_available,
         file_count: files.len(),
         evidence,
@@ -1021,6 +1021,7 @@ fn to_evidence(node: Node, confidence: EdgeConfidence, hop: u8) -> CallerEvidenc
 
 fn apply_search_budget(response: &mut AgentSearchResponse, budget_tokens: usize) {
     let budget_bytes = budget_tokens * 4;
+    let mut compacted_last_item = false;
     loop {
         response.coverage.returned = response.evidence.len();
         let next = response.coverage.offset + response.coverage.returned;
@@ -1034,10 +1035,33 @@ fn apply_search_budget(response: &mut AgentSearchResponse, budget_tokens: usize)
         let over_budget = serde_json::to_vec(response)
             .map(|bytes| bytes.len() > budget_bytes)
             .unwrap_or(false);
-        if !over_budget || response.evidence.is_empty() {
+        if !over_budget {
+            break;
+        }
+        if response.evidence.len() == 1 && !compacted_last_item {
+            let item = &mut response.evidence[0];
+            item.signature.clear();
+            item.doc = None;
+            item.symbol = truncate_chars(std::mem::take(&mut item.symbol), 64);
+            item.qualified_name = truncate_chars(std::mem::take(&mut item.qualified_name), 64);
+            item.file = truncate_chars(std::mem::take(&mut item.file), 64);
+            response.answer = truncate_chars(std::mem::take(&mut response.answer), 128);
+            response.query = truncate_chars(std::mem::take(&mut response.query), 64);
+            compacted_last_item = true;
+            continue;
+        }
+        if response.evidence.len() <= 1 {
             break;
         }
         response.evidence.pop();
+    }
+}
+
+fn truncate_chars(value: String, limit: usize) -> String {
+    if value.chars().count() <= limit {
+        value
+    } else {
+        value.chars().take(limit).collect()
     }
 }
 

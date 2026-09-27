@@ -325,3 +325,38 @@ fn compact_search_detail_preserves_more_evidence_within_the_same_budget() {
         assert!(full.evidence.iter().any(|item| !item.signature.is_empty()));
     });
 }
+
+#[test]
+fn oversized_search_query_is_rejected_before_retrieval() {
+    with_store(|store| {
+        let query = "x".repeat(257);
+        assert!(search(store, "main", &query, Some(10)).is_err());
+    });
+}
+
+#[test]
+fn oversized_evidence_is_compacted_without_stalling_pagination() {
+    with_store(|store| {
+        let mut hits = search(store, "main", "Greeter", Some(20)).expect("search");
+        assert!(hits.len() >= 2);
+        hits[0].qualified_name = "q".repeat(5_000);
+        hits[0].file = "f".repeat(5_000);
+
+        let response = format_search_page(
+            store,
+            "main",
+            "Greeter",
+            hits,
+            false,
+            0,
+            1,
+            SearchDetail::Full,
+            400,
+        )
+        .expect("budgeted response");
+
+        assert_eq!(response.coverage.returned, 1);
+        assert_eq!(response.coverage.next_offset, Some(1));
+        assert!(serde_json::to_vec(&response).unwrap().len() <= 1_600);
+    });
+}
