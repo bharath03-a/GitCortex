@@ -1227,7 +1227,8 @@ impl GitCortexServer {
         description = "Search the code graph by name or description. Returns a compact ranked \
         evidence envelope with file/line, signature, optional doc summary, and coverage counts. \
         Combines token/fuzzy text matching (CamelCase-aware, typo-tolerant) with semantic vector \
-        similarity when available. Ranks exact > prefix > semantic > substring. Default limit=10."
+        similarity when available. Ranks exact > prefix > semantic > substring. \
+        Use offset with coverage.next_offset for stable progressive expansion. Default limit=10."
     )]
     fn search_code(&self, Parameters(p): Parameters<SearchCodeParams>) -> CallToolResult {
         let branch = self.resolve_branch(p.branch.as_deref());
@@ -1240,7 +1241,7 @@ impl GitCortexServer {
                     return CallToolResult::error(vec![Content::text("store mutex poisoned")])
                 }
             };
-            match super::search::search(&*store, &branch, &p.query, p.limit) {
+            match super::search::search(&*store, &branch, &p.query, Some(200)) {
                 Ok(h) => h,
                 Err(e) => {
                     return CallToolResult::error(vec![Content::text(format!(
@@ -1260,10 +1261,10 @@ impl GitCortexServer {
             } = &*sem
             {
                 if semantic_branch == &branch {
-                    embedder.embed_one(&p.query).ok().map(|qvec| {
-                        let limit = p.limit.unwrap_or(10).min(200);
-                        index.top_k(&qvec, limit * 2)
-                    })
+                    embedder
+                        .embed_one(&p.query)
+                        .ok()
+                        .map(|qvec| index.top_k(&qvec, 400))
                 } else {
                     None
                 }
@@ -1277,10 +1278,11 @@ impl GitCortexServer {
         // ── RRF Merge ─────────────────────────────────────────────────────────
         // Fuse lexical + semantic via Reciprocal Rank Fusion (k=60) when semantic
         // is available. Falls back to lexical-only when semantic unavailable.
-        let limit = p.limit.unwrap_or(10).min(200);
+        let limit = p.limit.unwrap_or(10).clamp(1, 200);
+        let offset = p.offset.unwrap_or(0).min(200);
         let mut all_hits: Vec<super::search::SearchHit> =
             if let Some(scored_ids) = sem_hits.filter(|v| !v.is_empty()) {
-                let rrf_ids = super::hybrid::rrf_merge(&text_hits, &scored_ids, limit * 3);
+                let rrf_ids = super::hybrid::rrf_merge(&text_hits, &scored_ids, 200);
                 let store = match self.store.lock() {
                     Ok(g) => g,
                     Err(_) => {
@@ -1324,7 +1326,7 @@ impl GitCortexServer {
                 .cmp(&a.score)
                 .then_with(|| a.name.len().cmp(&b.name.len()))
         });
-        all_hits.truncate(limit);
+        all_hits.truncate(200);
 
         let semantic_available = matches!(
             self.semantic.try_lock().as_deref(),
@@ -1337,12 +1339,14 @@ impl GitCortexServer {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
         };
-        match super::agent::format_search(
+        match super::agent::format_search_page(
             &*store,
             &branch,
             &p.query,
             all_hits,
             semantic_available,
+            offset,
+            limit,
             self.response_budget.min(600),
         ) {
             Ok(response) => CallToolResult::structured(json!(response)),
@@ -1743,6 +1747,11 @@ impl GitCortexServer {
                 limit: p
                     .params
                     .get("limit")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize),
+                offset: p
+                    .params
+                    .get("offset")
                     .and_then(|v| v.as_u64())
                     .map(|n| n as usize),
                 branch: branch_val,

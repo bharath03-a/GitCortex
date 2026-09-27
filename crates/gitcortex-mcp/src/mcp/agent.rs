@@ -148,6 +148,9 @@ pub struct SearchCoverage {
     pub total: usize,
     pub returned: usize,
     pub truncated: bool,
+    pub offset: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_offset: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -194,8 +197,33 @@ pub fn format_search<S: GraphStore + ?Sized>(
     semantic_available: bool,
     budget_tokens: usize,
 ) -> Result<AgentSearchResponse> {
+    let limit = hits.len().max(1);
+    format_search_page(
+        store,
+        branch,
+        query,
+        hits,
+        semantic_available,
+        0,
+        limit,
+        budget_tokens,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn format_search_page<S: GraphStore + ?Sized>(
+    store: &S,
+    branch: &str,
+    query: &str,
+    hits: Vec<SearchHit>,
+    semantic_available: bool,
+    offset: usize,
+    limit: usize,
+    budget_tokens: usize,
+) -> Result<AgentSearchResponse> {
     let total = hits.len();
-    let ids: Vec<String> = hits.iter().map(|hit| hit.id.clone()).collect();
+    let page: Vec<SearchHit> = hits.into_iter().skip(offset).take(limit.max(1)).collect();
+    let ids: Vec<String> = page.iter().map(|hit| hit.id.clone()).collect();
     let nodes = store.get_nodes_by_ids(branch, &ids)?;
     let by_id: HashMap<String, Node> = nodes
         .into_iter()
@@ -203,7 +231,7 @@ pub fn format_search<S: GraphStore + ?Sized>(
         .collect();
     let mut files = HashSet::new();
     let mut evidence = Vec::new();
-    for hit in hits {
+    for hit in page {
         files.insert(hit.file.clone());
         let node = by_id.get(&hit.id);
         let doc = node
@@ -250,6 +278,8 @@ pub fn format_search<S: GraphStore + ?Sized>(
             total,
             returned: 0,
             truncated: false,
+            offset,
+            next_offset: None,
         },
         next_action: if total == 0 {
             Some("Try a concrete symbol fragment or alternate spelling.".to_owned())
@@ -976,15 +1006,24 @@ fn to_evidence(node: Node, confidence: EdgeConfidence, hop: u8) -> CallerEvidenc
 
 fn apply_search_budget(response: &mut AgentSearchResponse, budget_tokens: usize) {
     let budget_bytes = budget_tokens * 4;
-    while !response.evidence.is_empty()
-        && serde_json::to_vec(response)
+    loop {
+        response.coverage.returned = response.evidence.len();
+        let next = response.coverage.offset + response.coverage.returned;
+        response.coverage.truncated = next < response.coverage.total;
+        response.coverage.next_offset = response.coverage.truncated.then_some(next);
+        response.next_action = response
+            .coverage
+            .next_offset
+            .map(|offset| format!("Request the next search page with offset={offset}."));
+
+        let over_budget = serde_json::to_vec(response)
             .map(|bytes| bytes.len() > budget_bytes)
-            .unwrap_or(false)
-    {
+            .unwrap_or(false);
+        if !over_budget || response.evidence.is_empty() {
+            break;
+        }
         response.evidence.pop();
     }
-    response.coverage.returned = response.evidence.len();
-    response.coverage.truncated = response.coverage.returned < response.coverage.total;
 }
 
 fn apply_subgraph_budget(response: &mut AgentSubgraphResponse, budget_tokens: usize) {

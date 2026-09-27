@@ -190,6 +190,8 @@ pub struct SearchCodeParams {
     pub query: String,
     /// Max results (default 10, capped at 200).
     pub limit: Option<usize>,
+    /// Zero-based ranked-result offset for progressive evidence expansion.
+    pub offset: Option<usize>,
     pub branch: Option<String>,
 }
 

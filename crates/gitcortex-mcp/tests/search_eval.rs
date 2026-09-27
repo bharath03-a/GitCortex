@@ -11,7 +11,7 @@ use std::sync::{Mutex, OnceLock};
 use gitcortex_core::store::GraphStore;
 use gitcortex_indexer::IncrementalIndexer;
 use gitcortex_mcp::mcp::{
-    agent::{format_search, AgentStatus},
+    agent::{format_search, format_search_page, AgentStatus},
     search::search,
 };
 use gitcortex_store::kuzu::KuzuGraphStore;
@@ -227,5 +227,30 @@ fn agent_search_contract_adds_source_evidence_within_budget() {
             .iter()
             .any(|item| !item.signature.is_empty()));
         assert!(serde_json::to_vec(&response).unwrap().len() <= 1_600);
+    });
+}
+
+#[test]
+fn search_pages_expose_stable_non_overlapping_continuations() {
+    with_store(|store| {
+        let hits = search(store, "main", "Greeter", Some(20)).expect("search");
+        assert!(
+            hits.len() >= 2,
+            "fixture must provide at least two Greeters"
+        );
+
+        let first = format_search_page(store, "main", "Greeter", hits.clone(), false, 0, 1, 400)
+            .expect("first page");
+        let second = format_search_page(store, "main", "Greeter", hits, false, 1, 1, 400)
+            .expect("second page");
+
+        assert_eq!(first.coverage.offset, 0);
+        assert_eq!(first.coverage.next_offset, Some(1));
+        assert_eq!(second.coverage.offset, 1);
+        assert_ne!(
+            (&first.evidence[0].file, first.evidence[0].line),
+            (&second.evidence[0].file, second.evidence[0].line)
+        );
+        assert_eq!(first.coverage.total, second.coverage.total);
     });
 }

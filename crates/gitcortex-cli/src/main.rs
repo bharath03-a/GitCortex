@@ -263,6 +263,8 @@ pub enum QueryCmd {
         query: String,
         #[arg(long, default_value_t = 10)]
         limit: usize,
+        #[arg(long, default_value_t = 0)]
+        offset: usize,
         #[arg(long, default_value_t = 600)]
         budget_tokens: usize,
         #[arg(long, value_enum, default_value_t = AgentOutputFormat::Text)]
