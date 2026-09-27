@@ -261,6 +261,10 @@ pub enum QueryCmd {
     /// Fuzzy search over the graph by name + qualified path.
     Search {
         query: String,
+        #[arg(long)]
+        kind: Option<String>,
+        #[arg(long)]
+        file: Option<String>,
         #[arg(long, default_value_t = 10)]
         limit: usize,
         #[arg(long, default_value_t = 0)]

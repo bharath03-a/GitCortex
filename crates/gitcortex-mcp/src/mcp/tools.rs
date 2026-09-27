@@ -1226,6 +1226,7 @@ impl GitCortexServer {
     #[tool(
         description = "Search the code graph by name or description. Returns a compact ranked \
         evidence envelope with file/line, signature, optional doc summary, and coverage counts. \
+        Optional kind and file fields filter the ranked evidence before pagination. \
         Combines token/fuzzy text matching (CamelCase-aware, typo-tolerant) with semantic vector \
         similarity when available. Ranks exact > prefix > semantic > substring. \
         Use offset with coverage.next_offset for stable progressive expansion. Default limit=10."
@@ -1326,6 +1327,7 @@ impl GitCortexServer {
                 .cmp(&a.score)
                 .then_with(|| a.name.len().cmp(&b.name.len()))
         });
+        all_hits = super::search::filter_hits(all_hits, p.kind.as_deref(), p.file.as_deref());
         all_hits.truncate(200);
 
         let semantic_available = matches!(
@@ -1744,6 +1746,16 @@ impl GitCortexServer {
             })),
             "search_code" => self.search_code(Parameters(SearchCodeParams {
                 query: str_field!("query"),
+                kind: p
+                    .params
+                    .get("kind")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned),
+                file: p
+                    .params
+                    .get("file")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned),
                 limit: p
                     .params
                     .get("limit")

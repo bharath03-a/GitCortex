@@ -188,6 +188,10 @@ pub struct WikiSymbolParams {
 pub struct SearchCodeParams {
     /// Free-text query — substring matched against `name` and `qualified_name`.
     pub query: String,
+    /// Optional exact node kind, such as `function`, `method`, `struct`, or `trait`.
+    pub kind: Option<String>,
+    /// Optional exact repo-relative file path, with an optional leading `./`.
+    pub file: Option<String>,
     /// Max results (default 10, capped at 200).
     pub limit: Option<usize>,
     /// Zero-based ranked-result offset for progressive evidence expansion.

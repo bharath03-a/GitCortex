@@ -12,7 +12,7 @@ use gitcortex_core::store::GraphStore;
 use gitcortex_indexer::IncrementalIndexer;
 use gitcortex_mcp::mcp::{
     agent::{format_search, format_search_page, AgentStatus},
-    search::search,
+    search::{filter_hits, search},
 };
 use gitcortex_store::kuzu::KuzuGraphStore;
 
@@ -252,5 +252,17 @@ fn search_pages_expose_stable_non_overlapping_continuations() {
             (&second.evidence[0].file, second.evidence[0].line)
         );
         assert_eq!(first.coverage.total, second.coverage.total);
+    });
+}
+
+#[test]
+fn search_filters_by_kind_and_repo_relative_file() {
+    with_store(|store| {
+        let hits = search(store, "main", "Greeter", Some(50)).expect("search");
+        let filtered = filter_hits(hits, Some("trait"), Some("sample.rs"));
+
+        assert!(!filtered.is_empty());
+        assert!(filtered.iter().all(|hit| hit.kind == "trait"));
+        assert!(filtered.iter().all(|hit| hit.file == "sample.rs"));
     });
 }

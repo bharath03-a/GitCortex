@@ -222,13 +222,19 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
 
         QueryCmd::Search {
             query,
+            kind,
+            file,
             limit,
             offset,
             budget_tokens,
             format,
             branch,
         } => {
-            let hits = search::search(&store, &branch, &query, Some(200))?;
+            let hits = search::filter_hits(
+                search::search(&store, &branch, &query, Some(200))?,
+                kind.as_deref(),
+                file.as_deref(),
+            );
             match format {
                 AgentOutputFormat::AgentJson => {
                     let response = gitcortex_mcp::mcp::agent::format_search_page(

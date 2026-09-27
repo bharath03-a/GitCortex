@@ -332,6 +332,24 @@ pub fn search<S: GraphStore + ?Sized>(
     Ok(hits)
 }
 
+/// Apply deterministic field filters to ranked search hits without changing
+/// their relative order. File matching is exact after removing a leading `./`.
+pub fn filter_hits(hits: Vec<SearchHit>, kind: Option<&str>, file: Option<&str>) -> Vec<SearchHit> {
+    let kind = kind.map(str::trim).filter(|value| !value.is_empty());
+    let file = file
+        .map(str::trim)
+        .map(|value| value.strip_prefix("./").unwrap_or(value))
+        .filter(|value| !value.is_empty());
+    hits.into_iter()
+        .filter(|hit| {
+            kind.map_or(true, |expected| hit.kind.eq_ignore_ascii_case(expected))
+                && file.map_or(true, |expected| {
+                    hit.file.strip_prefix("./").unwrap_or(&hit.file) == expected
+                })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
