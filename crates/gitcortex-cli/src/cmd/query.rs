@@ -226,6 +226,7 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
             file,
             limit,
             offset,
+            include_details,
             budget_tokens,
             format,
             branch,
@@ -245,6 +246,11 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
                         false,
                         offset.min(200),
                         limit.clamp(1, 200),
+                        if include_details {
+                            gitcortex_mcp::mcp::agent::SearchDetail::Full
+                        } else {
+                            gitcortex_mcp::mcp::agent::SearchDetail::Compact
+                        },
                         budget_tokens,
                     )?;
                     println!("{}", serde_json::to_string(&response)?);

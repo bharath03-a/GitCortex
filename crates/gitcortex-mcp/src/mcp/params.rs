@@ -196,6 +196,8 @@ pub struct SearchCodeParams {
     pub limit: Option<usize>,
     /// Zero-based ranked-result offset for progressive evidence expansion.
     pub offset: Option<usize>,
+    /// Include signatures and doc summaries. Defaults to false for compact evidence.
+    pub include_details: Option<bool>,
     pub branch: Option<String>,
 }
 

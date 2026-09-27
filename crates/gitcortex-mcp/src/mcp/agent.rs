@@ -143,6 +143,12 @@ pub struct SearchEvidence {
     pub score: i32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchDetail {
+    Compact,
+    Full,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct SearchCoverage {
     pub total: usize,
@@ -206,6 +212,7 @@ pub fn format_search<S: GraphStore + ?Sized>(
         semantic_available,
         0,
         limit,
+        SearchDetail::Full,
         budget_tokens,
     )
 }
@@ -219,6 +226,7 @@ pub fn format_search_page<S: GraphStore + ?Sized>(
     semantic_available: bool,
     offset: usize,
     limit: usize,
+    detail: SearchDetail,
     budget_tokens: usize,
 ) -> Result<AgentSearchResponse> {
     let total = hits.len();
@@ -234,17 +242,24 @@ pub fn format_search_page<S: GraphStore + ?Sized>(
     for hit in page {
         files.insert(hit.file.clone());
         let node = by_id.get(&hit.id);
-        let doc = node
-            .and_then(|node| node.metadata.definition.doc_comment.as_deref())
-            .and_then(|text| text.lines().find(|line| !line.trim().is_empty()))
-            .map(|line| line.trim().chars().take(180).collect());
+        let doc = if detail == SearchDetail::Full {
+            node.and_then(|node| node.metadata.definition.doc_comment.as_deref())
+                .and_then(|text| text.lines().find(|line| !line.trim().is_empty()))
+                .map(|line| line.trim().chars().take(180).collect())
+        } else {
+            None
+        };
         evidence.push(SearchEvidence {
             symbol: hit.name,
             qualified_name: hit.qualified_name,
             kind: hit.kind,
             file: hit.file,
             line: hit.start_line,
-            signature: node.map(sig_line).unwrap_or_default(),
+            signature: if detail == SearchDetail::Full {
+                node.map(sig_line).unwrap_or_default()
+            } else {
+                String::new()
+            },
             doc,
             score: hit.score,
         });

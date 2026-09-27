@@ -1227,6 +1227,7 @@ impl GitCortexServer {
         description = "Search the code graph by name or description. Returns a compact ranked \
         evidence envelope with file/line, signature, optional doc summary, and coverage counts. \
         Optional kind and file fields filter the ranked evidence before pagination. \
+        Compact evidence is the default; set include_details=true for signatures and docs. \
         Combines token/fuzzy text matching (CamelCase-aware, typo-tolerant) with semantic vector \
         similarity when available. Ranks exact > prefix > semantic > substring. \
         Use offset with coverage.next_offset for stable progressive expansion. Default limit=10."
@@ -1281,6 +1282,11 @@ impl GitCortexServer {
         // is available. Falls back to lexical-only when semantic unavailable.
         let limit = p.limit.unwrap_or(10).clamp(1, 200);
         let offset = p.offset.unwrap_or(0).min(200);
+        let detail = if p.include_details.unwrap_or(false) {
+            super::agent::SearchDetail::Full
+        } else {
+            super::agent::SearchDetail::Compact
+        };
         let mut all_hits: Vec<super::search::SearchHit> =
             if let Some(scored_ids) = sem_hits.filter(|v| !v.is_empty()) {
                 let rrf_ids = super::hybrid::rrf_merge(&text_hits, &scored_ids, 200);
@@ -1349,6 +1355,7 @@ impl GitCortexServer {
             semantic_available,
             offset,
             limit,
+            detail,
             self.response_budget.min(600),
         ) {
             Ok(response) => CallToolResult::structured(json!(response)),
@@ -1766,6 +1773,7 @@ impl GitCortexServer {
                     .get("offset")
                     .and_then(|v| v.as_u64())
                     .map(|n| n as usize),
+                include_details: p.params.get("include_details").and_then(|v| v.as_bool()),
                 branch: branch_val,
             })),
             "start_tour" => self.start_tour(Parameters(StartTourParams {

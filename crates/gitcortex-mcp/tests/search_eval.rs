@@ -11,7 +11,7 @@ use std::sync::{Mutex, OnceLock};
 use gitcortex_core::store::GraphStore;
 use gitcortex_indexer::IncrementalIndexer;
 use gitcortex_mcp::mcp::{
-    agent::{format_search, format_search_page, AgentStatus},
+    agent::{format_search, format_search_page, AgentStatus, SearchDetail},
     search::{filter_hits, search},
 };
 use gitcortex_store::kuzu::KuzuGraphStore;
@@ -239,10 +239,30 @@ fn search_pages_expose_stable_non_overlapping_continuations() {
             "fixture must provide at least two Greeters"
         );
 
-        let first = format_search_page(store, "main", "Greeter", hits.clone(), false, 0, 1, 400)
-            .expect("first page");
-        let second = format_search_page(store, "main", "Greeter", hits, false, 1, 1, 400)
-            .expect("second page");
+        let first = format_search_page(
+            store,
+            "main",
+            "Greeter",
+            hits.clone(),
+            false,
+            0,
+            1,
+            SearchDetail::Full,
+            400,
+        )
+        .expect("first page");
+        let second = format_search_page(
+            store,
+            "main",
+            "Greeter",
+            hits,
+            false,
+            1,
+            1,
+            SearchDetail::Full,
+            400,
+        )
+        .expect("second page");
 
         assert_eq!(first.coverage.offset, 0);
         assert_eq!(first.coverage.next_offset, Some(1));
@@ -264,5 +284,44 @@ fn search_filters_by_kind_and_repo_relative_file() {
         assert!(!filtered.is_empty());
         assert!(filtered.iter().all(|hit| hit.kind == "trait"));
         assert!(filtered.iter().all(|hit| hit.file == "sample.rs"));
+    });
+}
+
+#[test]
+fn compact_search_detail_preserves_more_evidence_within_the_same_budget() {
+    with_store(|store| {
+        let hits = search(store, "main", "Greeter", Some(20)).expect("search");
+        let compact = format_search_page(
+            store,
+            "main",
+            "Greeter",
+            hits.clone(),
+            false,
+            0,
+            20,
+            SearchDetail::Compact,
+            400,
+        )
+        .expect("compact response");
+        let full = format_search_page(
+            store,
+            "main",
+            "Greeter",
+            hits,
+            false,
+            0,
+            20,
+            SearchDetail::Full,
+            400,
+        )
+        .expect("full response");
+
+        assert!(compact
+            .evidence
+            .iter()
+            .all(|item| item.signature.is_empty()));
+        assert!(compact.evidence.iter().all(|item| item.doc.is_none()));
+        assert!(compact.coverage.returned >= full.coverage.returned);
+        assert!(full.evidence.iter().any(|item| !item.signature.is_empty()));
     });
 }
