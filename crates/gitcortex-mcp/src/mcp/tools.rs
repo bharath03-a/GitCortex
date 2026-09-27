@@ -1646,7 +1646,8 @@ impl GitCortexServer {
         type_hierarchy | find_importers | find_type_usages | module_dependencies | \
         get_call_sites | branch_diff_graph | find_god_nodes | find_clusters | find_cycles | health_report. \
         params: JSON object with the same fields as the individual tool (question/name/function_name/\
-        seed_name/query/file/branch/depth/limit/direction/min_in_degree/min_cluster_size as applicable). \
+        seed_name/query/kind/file/branch/depth/limit/offset/include_details/direction/\
+        min_in_degree/min_cluster_size as applicable). \
         Returns identical output to the individual tool.")]
     fn gcx(&self, Parameters(p): Parameters<GcxDispatchParams>) -> CallToolResult {
         let branch_val = p
@@ -2102,6 +2103,21 @@ mod contract_tests {
         let tool = router.get("gcx").expect("gcx tool");
         let schema = serde_json::to_value(&tool.input_schema).expect("serialize schema");
         assert_eq!(schema["properties"]["params"]["type"], "object");
+    }
+
+    #[test]
+    fn compact_dispatch_advertises_progressive_search_controls() {
+        let router = GitCortexServer::tool_router_for_mode(true);
+        let description = router
+            .get("gcx")
+            .and_then(|tool| tool.description.as_deref())
+            .unwrap_or("");
+        for field in ["offset", "kind", "file", "include_details"] {
+            assert!(
+                description.contains(field),
+                "compact gcx description omitted {field}: {description}"
+            );
+        }
     }
 
     #[test]

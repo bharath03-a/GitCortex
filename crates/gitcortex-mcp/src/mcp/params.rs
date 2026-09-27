@@ -13,8 +13,9 @@ pub struct GcxDispatchParams {
     /// get_call_sites, find_god_nodes, find_clusters, find_cycles, health_report.
     pub action: String,
     /// Parameters for the chosen action as a JSON object (same fields as the
-    /// individual tool: question, name, function_name, seed_name, query, file, branch,
-    /// depth, limit, direction, src, dst, start_line, end_line).
+    /// individual tool: question, name, function_name, seed_name, query, kind, file,
+    /// branch, depth, limit, offset, include_details, direction, src, dst,
+    /// start_line, end_line).
     pub params: serde_json::Map<String, serde_json::Value>,
 }
 
