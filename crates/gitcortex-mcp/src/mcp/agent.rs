@@ -230,6 +230,11 @@ pub fn format_search_page<S: GraphStore + ?Sized>(
     budget_tokens: usize,
 ) -> Result<AgentSearchResponse> {
     let total = hits.len();
+    let total_file_count = hits
+        .iter()
+        .map(|hit| hit.file.as_str())
+        .collect::<HashSet<_>>()
+        .len();
     let page: Vec<SearchHit> = hits.into_iter().skip(offset).take(limit.max(1)).collect();
     let ids: Vec<String> = page.iter().map(|hit| hit.id.clone()).collect();
     let nodes = store.get_nodes_by_ids(branch, &ids)?;
@@ -237,10 +242,8 @@ pub fn format_search_page<S: GraphStore + ?Sized>(
         .into_iter()
         .map(|node| (node.id.as_str(), node))
         .collect();
-    let mut files = HashSet::new();
     let mut evidence = Vec::new();
     for hit in page {
-        files.insert(hit.file.clone());
         let node = by_id.get(&hit.id);
         let doc = if detail == SearchDetail::Full {
             node.and_then(|node| node.metadata.definition.doc_comment.as_deref())
@@ -275,7 +278,7 @@ pub fn format_search_page<S: GraphStore + ?Sized>(
             .join(", ");
         format!(
             "{total} ranked symbol match(es) across {} file(s). Top files: {top_files}.",
-            files.len()
+            total_file_count
         )
     };
     let mut response = AgentSearchResponse {
@@ -287,7 +290,7 @@ pub fn format_search_page<S: GraphStore + ?Sized>(
         answer: truncate_chars(answer, 256),
         query: truncate_chars(query.to_owned(), 128),
         semantic_available,
-        file_count: files.len(),
+        file_count: total_file_count,
         evidence,
         coverage: SearchCoverage {
             total,

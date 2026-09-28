@@ -272,6 +272,7 @@ fn search_pages_expose_stable_non_overlapping_continuations() {
             (&second.evidence[0].file, second.evidence[0].line)
         );
         assert_eq!(first.coverage.total, second.coverage.total);
+        assert!(first.file_count > first.evidence.len());
     });
 }
 

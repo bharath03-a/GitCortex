@@ -28,7 +28,31 @@ pub(crate) fn rrf_merge(
     }
 
     let mut ranked: Vec<(String, f64)> = scores.into_iter().collect();
-    ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    ranked.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.cmp(&b.0))
+    });
     ranked.truncate(limit);
     ranked.into_iter().map(|(id, _)| id).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn equal_rrf_scores_use_stable_id_tie_breaker() {
+        let lexical = vec![SearchHit {
+            id: "b".to_owned(),
+            name: "b".to_owned(),
+            qualified_name: "b".to_owned(),
+            kind: "function".to_owned(),
+            file: "b.rs".to_owned(),
+            start_line: 1,
+            score: 1,
+        }];
+        let semantic = vec![("a".to_owned(), 1.0)];
+        assert_eq!(rrf_merge(&lexical, &semantic, 2), vec!["a", "b"]);
+    }
 }

@@ -104,7 +104,11 @@ impl SemanticIndex {
             .map(|(id, v)| (id, dot(&q, v)))
             .filter(|(_, s)| *s >= SIMILARITY_THRESHOLD)
             .collect();
-        scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        scores.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.0.cmp(b.0))
+        });
         scores
             .into_iter()
             .take(k)
@@ -227,8 +231,9 @@ fn load_bin(path: &Path) -> Option<StoredIndex> {
 
     macro_rules! read_u32 {
         () => {{
-            let b: [u8; 4] = data.get(p..p + 4)?.try_into().ok()?;
-            p += 4;
+            let end = p.checked_add(4)?;
+            let b: [u8; 4] = data.get(p..end)?.try_into().ok()?;
+            p = end;
             u32::from_le_bytes(b)
         }};
     }
@@ -243,17 +248,27 @@ fn load_bin(path: &Path) -> Option<StoredIndex> {
         return None;
     }
     let dim = read_u32!() as usize;
+    if dim != DIM {
+        return None;
+    }
     let count = read_u32!() as usize;
+    let vector_bytes = dim.checked_mul(4)?;
+    let minimum_record_bytes = 4usize.checked_add(32)?.checked_add(vector_bytes)?;
+    if count > data.len().saturating_sub(p) / minimum_record_bytes {
+        return None;
+    }
 
     let mut vectors = HashMap::with_capacity(count);
     let mut fingerprints = HashMap::with_capacity(count);
     for _ in 0..count {
         let id_len = read_u32!() as usize;
-        let id = String::from_utf8(data.get(p..p + id_len)?.to_vec()).ok()?;
-        p += id_len;
-        let fingerprint: Fingerprint = data.get(p..p + 32)?.try_into().ok()?;
-        p += 32;
-        let end = p + dim * 4;
+        let id_end = p.checked_add(id_len)?;
+        let id = String::from_utf8(data.get(p..id_end)?.to_vec()).ok()?;
+        p = id_end;
+        let fingerprint_end = p.checked_add(32)?;
+        let fingerprint: Fingerprint = data.get(p..fingerprint_end)?.try_into().ok()?;
+        p = fingerprint_end;
+        let end = p.checked_add(vector_bytes)?;
         let vec: Vec<f32> = data
             .get(p..end)?
             .chunks_exact(4)
@@ -460,5 +475,49 @@ mod tests {
         }
         let results = index.top_k(&v, 5);
         assert_eq!(results.len(), 5);
+    }
+
+    #[test]
+    fn top_k_breaks_equal_similarity_by_node_id() {
+        let mut index = SemanticIndex {
+            vectors: HashMap::new(),
+            fingerprints: HashMap::new(),
+            path: PathBuf::from("/tmp/unused"),
+        };
+        let vector = vec![1.0; DIM];
+        index.insert("b".to_owned(), vector.clone(), [1; 32]);
+        index.insert("a".to_owned(), vector.clone(), [2; 32]);
+        let ids: Vec<_> = index
+            .top_k(&vector, 2)
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        assert_eq!(ids, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn load_bin_rejects_wrong_dimension() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("wrong-dim.bin");
+        let mut buf = Vec::new();
+        buf.extend_from_slice(MAGIC);
+        buf.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
+        buf.extend_from_slice(&1u32.to_le_bytes());
+        buf.extend_from_slice(&0u32.to_le_bytes());
+        std::fs::write(&path, buf).unwrap();
+        assert!(load_bin(&path).is_none());
+    }
+
+    #[test]
+    fn load_bin_rejects_impossible_record_count() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("huge-count.bin");
+        let mut buf = Vec::new();
+        buf.extend_from_slice(MAGIC);
+        buf.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
+        buf.extend_from_slice(&(DIM as u32).to_le_bytes());
+        buf.extend_from_slice(&u32::MAX.to_le_bytes());
+        std::fs::write(&path, buf).unwrap();
+        assert!(load_bin(&path).is_none());
     }
 }

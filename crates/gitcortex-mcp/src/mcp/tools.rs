@@ -1243,7 +1243,13 @@ impl GitCortexServer {
                     return CallToolResult::error(vec![Content::text("store mutex poisoned")])
                 }
             };
-            match super::search::search(&*store, &branch, &p.query, Some(200)) {
+            match super::search::search_filtered(
+                &*store,
+                &branch,
+                &p.query,
+                p.kind.as_deref(),
+                p.file.as_deref(),
+            ) {
                 Ok(h) => h,
                 Err(e) => {
                     return CallToolResult::error(vec![Content::text(format!(
@@ -1281,7 +1287,7 @@ impl GitCortexServer {
         // Fuse lexical + semantic via Reciprocal Rank Fusion (k=60) when semantic
         // is available. Falls back to lexical-only when semantic unavailable.
         let limit = p.limit.unwrap_or(10).clamp(1, 200);
-        let offset = p.offset.unwrap_or(0).min(200);
+        let offset = p.offset.unwrap_or(0).min(10_000);
         let detail = if p.include_details.unwrap_or(false) {
             super::agent::SearchDetail::Full
         } else {
@@ -1289,7 +1295,8 @@ impl GitCortexServer {
         };
         let mut all_hits: Vec<super::search::SearchHit> =
             if let Some(scored_ids) = sem_hits.filter(|v| !v.is_empty()) {
-                let rrf_ids = super::hybrid::rrf_merge(&text_hits, &scored_ids, 200);
+                let rrf_limit = text_hits.len().saturating_add(scored_ids.len()).min(10_000);
+                let rrf_ids = super::hybrid::rrf_merge(&text_hits, &scored_ids, rrf_limit);
                 let store = match self.store.lock() {
                     Ok(g) => g,
                     Err(_) => {
@@ -1332,9 +1339,10 @@ impl GitCortexServer {
             b.score
                 .cmp(&a.score)
                 .then_with(|| a.name.len().cmp(&b.name.len()))
+                .then_with(|| a.qualified_name.cmp(&b.qualified_name))
+                .then_with(|| a.id.cmp(&b.id))
         });
         all_hits = super::search::filter_hits(all_hits, p.kind.as_deref(), p.file.as_deref());
-        all_hits.truncate(200);
 
         let semantic_available = matches!(
             self.semantic.try_lock().as_deref(),

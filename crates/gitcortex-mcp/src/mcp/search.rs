@@ -268,12 +268,25 @@ pub fn search<S: GraphStore + ?Sized>(
     query: &str,
     limit: Option<usize>,
 ) -> Result<Vec<SearchHit>> {
+    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
+    let mut hits = search_filtered(store, branch, query, None, None)?;
+    hits.truncate(limit);
+    Ok(hits)
+}
+
+/// Return the complete bounded ranked candidate set after field filtering.
+pub fn search_filtered<S: GraphStore + ?Sized>(
+    store: &S,
+    branch: &str,
+    query: &str,
+    kind: Option<&str>,
+    file: Option<&str>,
+) -> Result<Vec<SearchHit>> {
     if query.len() > 256 {
         return Err(GitCortexError::Config(
             "search query exceeds 256 bytes".to_owned(),
         ));
     }
-    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
     let q = query.trim();
     if q.is_empty() {
         return Ok(Vec::new());
@@ -281,9 +294,8 @@ pub fn search<S: GraphStore + ?Sized>(
 
     let q_lower = q.to_ascii_lowercase();
     let q_tokens = tokenize(q);
-    let candidate_limit = (limit * 50).max(500);
+    let candidate_limit = 10_000;
 
-    // Fetch candidates: whole query first, then per token.
     let mut seen: HashSet<String> = HashSet::new();
     let mut nodes: Vec<Node> = Vec::new();
 
@@ -302,14 +314,8 @@ pub fn search<S: GraphStore + ?Sized>(
         store.search_nodes(branch, q, candidate_limit)?,
     );
 
-    // Per-token expansion: lets "validate token" find "validate_token" even
-    // when the store's CONTAINS filter requires the full substring.
     for token in &q_tokens {
-        if token.len() < MIN_TOKEN_LEN {
-            continue;
-        }
-        // Skip if token equals the whole query (already fetched above).
-        if token.as_str() == q_lower {
+        if token.len() < MIN_TOKEN_LEN || token.as_str() == q_lower {
             continue;
         }
         push(
@@ -319,13 +325,19 @@ pub fn search<S: GraphStore + ?Sized>(
         );
     }
 
-    // Typo-fallback: CONTAINS can't find misspelled queries ("Greetter" won't
-    // match "Greeter"). When no candidates found and query is short enough for
-    // edit-distance to be meaningful, scan all nodes so the scorer can apply
-    // typo tolerance.
     if nodes.is_empty() && q_lower.len() >= 4 && q_lower.len() <= 20 {
         push(&mut nodes, &mut seen, store.list_all_nodes(branch)?);
     }
+
+    nodes.retain(|node| {
+        fields_match(
+            &node.kind.to_string(),
+            &node.file.display().to_string(),
+            kind,
+            file,
+        )
+    });
+    nodes.truncate(candidate_limit);
 
     let mut hits: Vec<SearchHit> = nodes
         .into_iter()
@@ -337,27 +349,34 @@ pub fn search<S: GraphStore + ?Sized>(
             .cmp(&a.score)
             .then_with(|| a.name.len().cmp(&b.name.len()))
             .then_with(|| a.qualified_name.cmp(&b.qualified_name))
+            .then_with(|| a.id.cmp(&b.id))
     });
-    hits.truncate(limit);
-    Ok(hits)
+    Ok(filter_hits(hits, kind, file))
 }
 
 /// Apply deterministic field filters to ranked search hits without changing
 /// their relative order. File matching is exact after removing a leading `./`.
 pub fn filter_hits(hits: Vec<SearchHit>, kind: Option<&str>, file: Option<&str>) -> Vec<SearchHit> {
+    hits.into_iter()
+        .filter(|hit| fields_match(&hit.kind, &hit.file, kind, file))
+        .collect()
+}
+
+fn fields_match(
+    kind_value: &str,
+    file_value: &str,
+    kind: Option<&str>,
+    file: Option<&str>,
+) -> bool {
     let kind = kind.map(str::trim).filter(|value| !value.is_empty());
     let file = file
         .map(str::trim)
         .map(|value| value.strip_prefix("./").unwrap_or(value))
         .filter(|value| !value.is_empty());
-    hits.into_iter()
-        .filter(|hit| {
-            kind.map_or(true, |expected| hit.kind.eq_ignore_ascii_case(expected))
-                && file.map_or(true, |expected| {
-                    hit.file.strip_prefix("./").unwrap_or(&hit.file) == expected
-                })
+    kind.map_or(true, |expected| kind_value.eq_ignore_ascii_case(expected))
+        && file.map_or(true, |expected| {
+            file_value.strip_prefix("./").unwrap_or(file_value) == expected
         })
-        .collect()
 }
 
 #[cfg(test)]

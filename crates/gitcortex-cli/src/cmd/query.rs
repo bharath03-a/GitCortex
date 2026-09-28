@@ -231,11 +231,8 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
             format,
             branch,
         } => {
-            let hits = search::filter_hits(
-                search::search(&store, &branch, &query, Some(200))?,
-                kind.as_deref(),
-                file.as_deref(),
-            );
+            let hits =
+                search::search_filtered(&store, &branch, &query, kind.as_deref(), file.as_deref())?;
             match format {
                 AgentOutputFormat::AgentJson => {
                     let response = gitcortex_mcp::mcp::agent::format_search_page(
@@ -244,7 +241,7 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
                         &query,
                         hits,
                         false,
-                        offset.min(200),
+                        offset.min(10_000),
                         limit.clamp(1, 200),
                         if include_details {
                             gitcortex_mcp::mcp::agent::SearchDetail::Full
@@ -264,7 +261,7 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
                     }
                     for h in hits
                         .into_iter()
-                        .skip(offset.min(200))
+                        .skip(offset.min(10_000))
                         .take(limit.clamp(1, 200))
                     {
                         println!(
