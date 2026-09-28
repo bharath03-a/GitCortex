@@ -1533,16 +1533,15 @@ impl GraphStore for KuzuGraphStore {
         // Lowercase both sides for case-insensitive substring matching.
         let q = esc(&query.to_ascii_lowercase());
         let conn = self.conn()?;
-        // Push substring filter into Cypher so only matching rows cross the FFI
-        // boundary. A 500-candidate cap keeps scoring overhead bounded even on
-        // very large repos. The in-process scorer in search.rs re-ranks and
-        // truncates to the caller-supplied limit.
-        let cap = (limit * 50).max(500);
+        // Push substring filtering, stable ordering, and the caller's exact
+        // bound into Kuzu so pagination cannot depend on storage row order.
+        let cap = limit.clamp(1, 10_000);
         let mut result = conn
             .query(&format!(
                 "MATCH (n:{nt}) \
                  WHERE contains(lower(n.name), '{q}') OR contains(lower(n.qualified_name), '{q}') \
                  RETURN {NODE_COLS} \
+                 ORDER BY n.qualified_name, n.file, n.start_line, n.id \
                  LIMIT {cap}"
             ))
             .map_err(|e| GitCortexError::Store(e.to_string()))?;
