@@ -248,18 +248,18 @@ pub fn format_search_page<S: GraphStore + ?Sized>(
         let doc = if detail == SearchDetail::Full {
             node.and_then(|node| node.metadata.definition.doc_comment.as_deref())
                 .and_then(|text| text.lines().find(|line| !line.trim().is_empty()))
-                .map(|line| line.trim().chars().take(180).collect())
+                .map(|line| truncate_utf8_bytes(line.trim().to_owned(), 180))
         } else {
             None
         };
         evidence.push(SearchEvidence {
-            symbol: truncate_chars(hit.name, 96),
-            qualified_name: truncate_chars(hit.qualified_name, 160),
-            kind: truncate_chars(hit.kind, 32),
-            file: truncate_chars(hit.file, 96),
+            symbol: truncate_utf8_bytes(hit.name, 96),
+            qualified_name: truncate_utf8_bytes(hit.qualified_name, 160),
+            kind: truncate_utf8_bytes(hit.kind, 32),
+            file: truncate_utf8_bytes(hit.file, 96),
             line: hit.start_line,
             signature: if detail == SearchDetail::Full {
-                truncate_chars(node.map(sig_line).unwrap_or_default(), 160)
+                truncate_utf8_bytes(node.map(sig_line).unwrap_or_default(), 160)
             } else {
                 String::new()
             },
@@ -287,8 +287,8 @@ pub fn format_search_page<S: GraphStore + ?Sized>(
         } else {
             AgentStatus::Ok
         },
-        answer: truncate_chars(answer, 256),
-        query: truncate_chars(query.to_owned(), 128),
+        answer: truncate_utf8_bytes(answer, 256),
+        query: truncate_utf8_bytes(query.to_owned(), 128),
         semantic_available,
         file_count: total_file_count,
         evidence,
@@ -1045,11 +1045,12 @@ fn apply_search_budget(response: &mut AgentSearchResponse, budget_tokens: usize)
             let item = &mut response.evidence[0];
             item.signature.clear();
             item.doc = None;
-            item.symbol = truncate_chars(std::mem::take(&mut item.symbol), 64);
-            item.qualified_name = truncate_chars(std::mem::take(&mut item.qualified_name), 64);
-            item.file = truncate_chars(std::mem::take(&mut item.file), 64);
-            response.answer = truncate_chars(std::mem::take(&mut response.answer), 128);
-            response.query = truncate_chars(std::mem::take(&mut response.query), 64);
+            item.symbol = truncate_utf8_bytes(std::mem::take(&mut item.symbol), 64);
+            item.qualified_name = truncate_utf8_bytes(std::mem::take(&mut item.qualified_name), 64);
+            item.kind = truncate_utf8_bytes(std::mem::take(&mut item.kind), 16);
+            item.file = truncate_utf8_bytes(std::mem::take(&mut item.file), 64);
+            response.answer = truncate_utf8_bytes(std::mem::take(&mut response.answer), 128);
+            response.query = truncate_utf8_bytes(std::mem::take(&mut response.query), 64);
             compacted_last_item = true;
             continue;
         }
@@ -1060,11 +1061,16 @@ fn apply_search_budget(response: &mut AgentSearchResponse, budget_tokens: usize)
     }
 }
 
-fn truncate_chars(value: String, limit: usize) -> String {
-    if value.chars().count() <= limit {
+fn truncate_utf8_bytes(mut value: String, limit: usize) -> String {
+    if value.len() <= limit {
         value
     } else {
-        value.chars().take(limit).collect()
+        let mut end = limit;
+        while !value.is_char_boundary(end) {
+            end -= 1;
+        }
+        value.truncate(end);
+        value
     }
 }
 

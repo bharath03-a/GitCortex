@@ -340,8 +340,8 @@ fn oversized_evidence_is_compacted_without_stalling_pagination() {
     with_store(|store| {
         let mut hits = search(store, "main", "Greeter", Some(20)).expect("search");
         assert!(hits.len() >= 2);
-        hits[0].qualified_name = "q".repeat(5_000);
-        hits[0].file = "f".repeat(5_000);
+        hits[0].qualified_name = "🔥".repeat(5_000);
+        hits[0].file = "🔥".repeat(5_000);
 
         let response = format_search_page(
             store,
