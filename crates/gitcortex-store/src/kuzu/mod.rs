@@ -1548,6 +1548,45 @@ impl GraphStore for KuzuGraphStore {
         rows_to_nodes(&mut result)
     }
 
+    fn search_nodes_filtered(
+        &self,
+        branch: &str,
+        query: &str,
+        kind: Option<&str>,
+        file: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<Node>> {
+        self.ensure_branch(branch)?;
+        let nt = db_schema::node_table(branch);
+        let q = esc(&query.to_ascii_lowercase());
+        let mut predicates = vec![format!(
+            "(contains(lower(n.name), '{q}') OR contains(lower(n.qualified_name), '{q}'))"
+        )];
+        if let Some(kind) = kind.map(str::trim).filter(|value| !value.is_empty()) {
+            predicates.push(format!(
+                "lower(n.kind) = '{}'",
+                esc(&kind.to_ascii_lowercase())
+            ));
+        }
+        if let Some(file) = file.map(str::trim).filter(|value| !value.is_empty()) {
+            let file = file.strip_prefix("./").unwrap_or(file);
+            predicates.push(format!("n.file = '{}'", esc(file)));
+        }
+        let cap = limit.clamp(1, 10_000);
+        let conn = self.conn()?;
+        let mut result = conn
+            .query(&format!(
+                "MATCH (n:{nt}) \
+                 WHERE {} \
+                 RETURN {NODE_COLS} \
+                 ORDER BY n.qualified_name, n.file, n.start_line, n.id \
+                 LIMIT {cap}",
+                predicates.join(" AND ")
+            ))
+            .map_err(|e| GitCortexError::Store(e.to_string()))?;
+        rows_to_nodes(&mut result)
+    }
+
     fn get_nodes_by_ids(&self, branch: &str, ids: &[String]) -> Result<Vec<Node>> {
         if ids.is_empty() {
             return Ok(Vec::new());

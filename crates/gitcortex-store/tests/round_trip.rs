@@ -108,6 +108,25 @@ fn search_nodes_honors_limit_with_stable_ordering() {
             .collect::<Vec<_>>(),
         vec!["match_a", "match_m"]
     );
+
+    let structs = vec![
+        make_node("match_struct_z", NodeKind::Struct, "z.rs", 1),
+        make_node("match_struct_a", NodeKind::Struct, "a.rs", 1),
+    ];
+    store
+        .apply_diff(
+            "main",
+            &GraphDiff {
+                added_nodes: structs,
+                ..Default::default()
+            },
+        )
+        .expect("insert structs");
+    let filtered = store
+        .search_nodes_filtered("main", "match_", Some("struct"), None, 1)
+        .expect("filtered search");
+    assert_eq!(filtered.len(), 1);
+    assert_eq!(filtered[0].name, "match_struct_a");
 }
 
 #[test]

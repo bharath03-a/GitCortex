@@ -311,7 +311,7 @@ pub fn search_filtered<S: GraphStore + ?Sized>(
     push(
         &mut nodes,
         &mut seen,
-        store.search_nodes(branch, q, candidate_limit)?,
+        store.search_nodes_filtered(branch, q, kind, file, candidate_limit)?,
     );
 
     for token in &q_tokens {
@@ -321,7 +321,7 @@ pub fn search_filtered<S: GraphStore + ?Sized>(
         push(
             &mut nodes,
             &mut seen,
-            store.search_nodes(branch, token, candidate_limit)?,
+            store.search_nodes_filtered(branch, token, kind, file, candidate_limit)?,
         );
     }
 

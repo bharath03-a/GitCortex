@@ -12,7 +12,7 @@
 //! text-only while the indexer runs; it automatically uses semantic hits once
 //! at least one vector is loaded.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
@@ -97,10 +97,20 @@ impl SemanticIndex {
     /// Return up to `k` `(node_id, similarity)` pairs with cosine similarity ≥ SIMILARITY_THRESHOLD.
     /// Query vector need not be pre-normalised — normalised internally.
     pub fn top_k(&self, query_vec: &[f32], k: usize) -> Vec<(String, f32)> {
+        self.top_k_filtered(query_vec, k, None)
+    }
+
+    pub fn top_k_filtered(
+        &self,
+        query_vec: &[f32],
+        k: usize,
+        allowed_ids: Option<&HashSet<String>>,
+    ) -> Vec<(String, f32)> {
         let q = unit_normalise(query_vec.to_vec());
         let mut scores: Vec<(&String, f32)> = self
             .vectors
             .iter()
+            .filter(|(id, _)| allowed_ids.map_or(true, |allowed| allowed.contains(*id)))
             .map(|(id, v)| (id, dot(&q, v)))
             .filter(|(_, s)| *s >= SIMILARITY_THRESHOLD)
             .collect();
@@ -493,6 +503,10 @@ mod tests {
             .map(|(id, _)| id)
             .collect();
         assert_eq!(ids, vec!["a", "b"]);
+        let allowed = HashSet::from(["b".to_owned()]);
+        let filtered = index.top_k_filtered(&vector, 2, Some(&allowed));
+        assert_eq!(filtered[0].0, "b");
+        assert_eq!(filtered.len(), 1);
     }
 
     #[test]

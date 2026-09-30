@@ -1260,6 +1260,35 @@ impl GitCortexServer {
         };
 
         // ── Semantic search (best-effort, non-blocking) ───────────────────────
+        let semantic_allowed_ids = if p.kind.is_some() || p.file.is_some() {
+            let store = match self.store.lock() {
+                Ok(g) => g,
+                Err(_) => {
+                    return CallToolResult::error(vec![Content::text("store mutex poisoned")])
+                }
+            };
+            match store.search_nodes_filtered(
+                &branch,
+                "",
+                p.kind.as_deref(),
+                p.file.as_deref(),
+                10_000,
+            ) {
+                Ok(nodes) => Some(
+                    nodes
+                        .into_iter()
+                        .map(|node| node.id.as_str())
+                        .collect::<std::collections::HashSet<_>>(),
+                ),
+                Err(error) => {
+                    return CallToolResult::error(vec![Content::text(format!(
+                        "search filter failed: {error}"
+                    ))])
+                }
+            }
+        } else {
+            None
+        };
         // try_lock: never block an MCP call waiting for the background indexer.
         let sem_hits: Option<Vec<(String, f32)>> = if let Ok(sem) = self.semantic.try_lock() {
             if let SemanticState::Ready {
@@ -1272,7 +1301,7 @@ impl GitCortexServer {
                     embedder
                         .embed_one(&p.query)
                         .ok()
-                        .map(|qvec| index.top_k(&qvec, 400))
+                        .map(|qvec| index.top_k_filtered(&qvec, 400, semantic_allowed_ids.as_ref()))
                 } else {
                     None
                 }
