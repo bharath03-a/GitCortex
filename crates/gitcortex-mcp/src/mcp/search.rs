@@ -299,34 +299,36 @@ pub fn search_filtered<S: GraphStore + ?Sized>(
     let mut seen: HashSet<String> = HashSet::new();
     let mut nodes: Vec<Node> = Vec::new();
 
-    let push = |nodes: &mut Vec<Node>, seen: &mut HashSet<String>, batch: Vec<Node>| {
-        for n in batch {
-            let id = n.id.as_str();
-            if seen.insert(id) {
-                nodes.push(n);
-            }
-        }
-    };
-
-    push(
+    append_unique_bounded(
         &mut nodes,
         &mut seen,
         store.search_nodes_filtered(branch, q, kind, file, candidate_limit)?,
+        candidate_limit,
     );
 
     for token in &q_tokens {
+        if nodes.len() >= candidate_limit {
+            break;
+        }
         if token.len() < MIN_TOKEN_LEN || token.as_str() == q_lower {
             continue;
         }
-        push(
+        let remaining = candidate_limit - nodes.len();
+        append_unique_bounded(
             &mut nodes,
             &mut seen,
-            store.search_nodes_filtered(branch, token, kind, file, candidate_limit)?,
+            store.search_nodes_filtered(branch, token, kind, file, remaining)?,
+            candidate_limit,
         );
     }
 
     if nodes.is_empty() && q_lower.len() >= 4 && q_lower.len() <= 20 {
-        push(&mut nodes, &mut seen, store.list_all_nodes(branch)?);
+        append_unique_bounded(
+            &mut nodes,
+            &mut seen,
+            store.search_nodes_filtered(branch, "", kind, file, candidate_limit)?,
+            candidate_limit,
+        );
     }
 
     nodes.retain(|node| {
@@ -352,6 +354,23 @@ pub fn search_filtered<S: GraphStore + ?Sized>(
             .then_with(|| a.id.cmp(&b.id))
     });
     Ok(filter_hits(hits, kind, file))
+}
+
+fn append_unique_bounded(
+    nodes: &mut Vec<Node>,
+    seen: &mut HashSet<String>,
+    batch: Vec<Node>,
+    limit: usize,
+) {
+    for node in batch {
+        if nodes.len() >= limit {
+            break;
+        }
+        let id = node.id.as_str();
+        if seen.insert(id) {
+            nodes.push(node);
+        }
+    }
 }
 
 /// Apply deterministic field filters to ranked search hits without changing
@@ -384,6 +403,24 @@ mod tests {
     use super::*;
     use gitcortex_core::graph::{NodeId, NodeMetadata, Span};
     use std::path::PathBuf;
+
+    #[test]
+    fn candidate_accumulation_stops_at_global_limit() {
+        let mut nodes = Vec::new();
+        let mut seen = HashSet::new();
+        let batch = (0..5)
+            .map(|index| node_of(NodeKind::Function, &format!("node_{index}")))
+            .collect();
+        append_unique_bounded(&mut nodes, &mut seen, batch, 3);
+        assert_eq!(nodes.len(), 3);
+        append_unique_bounded(
+            &mut nodes,
+            &mut seen,
+            vec![node_of(NodeKind::Function, "extra")],
+            3,
+        );
+        assert_eq!(nodes.len(), 3);
+    }
 
     fn node_of(kind: NodeKind, name: &str) -> Node {
         Node {

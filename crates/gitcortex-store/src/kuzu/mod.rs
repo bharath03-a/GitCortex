@@ -1558,10 +1558,13 @@ impl GraphStore for KuzuGraphStore {
     ) -> Result<Vec<Node>> {
         self.ensure_branch(branch)?;
         let nt = db_schema::node_table(branch);
-        let q = esc(&query.to_ascii_lowercase());
-        let mut predicates = vec![format!(
-            "(contains(lower(n.name), '{q}') OR contains(lower(n.qualified_name), '{q}'))"
-        )];
+        let mut predicates = Vec::new();
+        if !query.is_empty() {
+            let q = esc(&query.to_ascii_lowercase());
+            predicates.push(format!(
+                "(contains(lower(n.name), '{q}') OR contains(lower(n.qualified_name), '{q}'))"
+            ));
+        }
         if let Some(kind) = kind.map(str::trim).filter(|value| !value.is_empty()) {
             predicates.push(format!(
                 "lower(n.kind) = '{}'",
@@ -1573,15 +1576,19 @@ impl GraphStore for KuzuGraphStore {
             predicates.push(format!("n.file = '{}'", esc(file)));
         }
         let cap = limit.clamp(1, 10_000);
+        let where_clause = if predicates.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", predicates.join(" AND "))
+        };
         let conn = self.conn()?;
         let mut result = conn
             .query(&format!(
                 "MATCH (n:{nt}) \
-                 WHERE {} \
+                 {where_clause} \
                  RETURN {NODE_COLS} \
                  ORDER BY n.qualified_name, n.file, n.start_line, n.id \
-                 LIMIT {cap}",
-                predicates.join(" AND ")
+                 LIMIT {cap}"
             ))
             .map_err(|e| GitCortexError::Store(e.to_string()))?;
         rows_to_nodes(&mut result)

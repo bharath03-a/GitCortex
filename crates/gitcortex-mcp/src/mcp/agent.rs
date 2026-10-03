@@ -7,7 +7,7 @@
 use std::collections::{HashMap, HashSet};
 
 use gitcortex_core::{
-    error::Result,
+    error::{GitCortexError, Result},
     graph::Node,
     schema::{EdgeConfidence, EdgeKind, NodeKind, Visibility},
     store::GraphStore,
@@ -305,7 +305,7 @@ pub fn format_search_page<S: GraphStore + ?Sized>(
             None
         },
     };
-    apply_search_budget(&mut response, budget_tokens.max(MIN_BUDGET_TOKENS));
+    apply_search_budget(&mut response, budget_tokens.max(MIN_BUDGET_TOKENS))?;
     Ok(response)
 }
 
@@ -1022,9 +1022,9 @@ fn to_evidence(node: Node, confidence: EdgeConfidence, hop: u8) -> CallerEvidenc
     }
 }
 
-fn apply_search_budget(response: &mut AgentSearchResponse, budget_tokens: usize) {
-    let budget_bytes = budget_tokens * 4;
-    let mut compacted_last_item = false;
+fn apply_search_budget(response: &mut AgentSearchResponse, budget_tokens: usize) -> Result<()> {
+    let budget_bytes = budget_tokens.saturating_mul(4);
+    let mut compaction_stage = 0;
     loop {
         response.coverage.returned = response.evidence.len();
         let next = response.coverage.offset + response.coverage.returned;
@@ -1036,12 +1036,13 @@ fn apply_search_budget(response: &mut AgentSearchResponse, budget_tokens: usize)
             .map(|offset| format!("Request the next search page with offset={offset}."));
 
         let over_budget = serde_json::to_vec(response)
-            .map(|bytes| bytes.len() > budget_bytes)
-            .unwrap_or(false);
+            .map_err(|error| GitCortexError::Config(error.to_string()))?
+            .len()
+            > budget_bytes;
         if !over_budget {
-            break;
+            return Ok(());
         }
-        if response.evidence.len() == 1 && !compacted_last_item {
+        if response.evidence.len() == 1 && compaction_stage == 0 {
             let item = &mut response.evidence[0];
             item.signature.clear();
             item.doc = None;
@@ -1051,11 +1052,26 @@ fn apply_search_budget(response: &mut AgentSearchResponse, budget_tokens: usize)
             item.file = truncate_utf8_bytes(std::mem::take(&mut item.file), 64);
             response.answer = truncate_utf8_bytes(std::mem::take(&mut response.answer), 128);
             response.query = truncate_utf8_bytes(std::mem::take(&mut response.query), 64);
-            compacted_last_item = true;
+            compaction_stage = 1;
+            continue;
+        }
+        if response.evidence.len() == 1 && compaction_stage == 1 {
+            let item = &mut response.evidence[0];
+            item.symbol.clear();
+            item.qualified_name.clear();
+            item.kind.clear();
+            item.file.clear();
+            item.signature.clear();
+            item.doc = None;
+            response.answer.clear();
+            response.query.clear();
+            compaction_stage = 2;
             continue;
         }
         if response.evidence.len() <= 1 {
-            break;
+            return Err(GitCortexError::Config(
+                "search response metadata exceeds the minimum response budget".to_owned(),
+            ));
         }
         response.evidence.pop();
     }

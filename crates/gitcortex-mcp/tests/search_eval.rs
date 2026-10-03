@@ -340,8 +340,10 @@ fn oversized_evidence_is_compacted_without_stalling_pagination() {
     with_store(|store| {
         let mut hits = search(store, "main", "Greeter", Some(20)).expect("search");
         assert!(hits.len() >= 2);
-        hits[0].qualified_name = "🔥".repeat(5_000);
-        hits[0].file = "🔥".repeat(5_000);
+        hits[0].name = "\0".repeat(5_000);
+        hits[0].qualified_name = "\u{0001}".repeat(5_000);
+        hits[0].kind = "\u{0002}".repeat(5_000);
+        hits[0].file = "\n".repeat(5_000);
 
         let response = format_search_page(
             store,
@@ -359,5 +361,25 @@ fn oversized_evidence_is_compacted_without_stalling_pagination() {
         assert_eq!(response.coverage.returned, 1);
         assert_eq!(response.coverage.next_offset, Some(1));
         assert!(serde_json::to_vec(&response).unwrap().len() <= 1_600);
+    });
+}
+
+#[test]
+fn search_budget_handles_maximum_cli_value_without_overflow() {
+    with_store(|store| {
+        let hits = search(store, "main", "Greeter", Some(20)).expect("search");
+        let response = format_search_page(
+            store,
+            "main",
+            "Greeter",
+            hits,
+            false,
+            0,
+            1,
+            SearchDetail::Compact,
+            usize::MAX,
+        )
+        .expect("budgeted response");
+        assert_eq!(response.coverage.returned, 1);
     });
 }
