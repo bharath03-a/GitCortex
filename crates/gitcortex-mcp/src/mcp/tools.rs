@@ -1226,8 +1226,10 @@ impl GitCortexServer {
     #[tool(
         description = "Search the code graph by name or description. Returns a compact ranked \
         evidence envelope with file/line, signature, optional doc summary, and coverage counts. \
-        Combines token/fuzzy text matching (CamelCase-aware, typo-tolerant) with semantic vector \
-        similarity when available. Ranks exact > prefix > semantic > substring. Default limit=10."
+        Optional kind and file fields filter the ranked evidence before pagination. \
+        Compact evidence is the default; set include_details=true for signatures and docs. \
+        Uses deterministic lexical ranking (CamelCase-aware and typo-tolerant), with the same ranking as the CLI. \
+        Use offset with coverage.next_offset for stable progressive expansion. Default limit=10."
     )]
     fn search_code(&self, Parameters(p): Parameters<SearchCodeParams>) -> CallToolResult {
         let branch = self.resolve_branch(p.branch.as_deref());
@@ -1240,7 +1242,13 @@ impl GitCortexServer {
                     return CallToolResult::error(vec![Content::text("store mutex poisoned")])
                 }
             };
-            match super::search::search(&*store, &branch, &p.query, p.limit) {
+            match super::search::search_filtered(
+                &*store,
+                &branch,
+                &p.query,
+                p.kind.as_deref(),
+                p.file.as_deref(),
+            ) {
                 Ok(h) => h,
                 Err(e) => {
                     return CallToolResult::error(vec![Content::text(format!(
@@ -1250,71 +1258,14 @@ impl GitCortexServer {
             }
         };
 
-        // ── Semantic search (best-effort, non-blocking) ───────────────────────
-        // try_lock: never block an MCP call waiting for the background indexer.
-        let sem_hits: Option<Vec<(String, f32)>> = if let Ok(sem) = self.semantic.try_lock() {
-            if let SemanticState::Ready {
-                branch: semantic_branch,
-                embedder,
-                index,
-            } = &*sem
-            {
-                if semantic_branch == &branch {
-                    embedder.embed_one(&p.query).ok().map(|qvec| {
-                        let limit = p.limit.unwrap_or(10).min(200);
-                        index.top_k(&qvec, limit * 2)
-                    })
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
+        let limit = p.limit.unwrap_or(10).clamp(1, 200);
+        let offset = p.offset.unwrap_or(0).min(10_000);
+        let detail = if p.include_details.unwrap_or(false) {
+            super::agent::SearchDetail::Full
         } else {
-            None
+            super::agent::SearchDetail::Compact
         };
-
-        // ── RRF Merge ─────────────────────────────────────────────────────────
-        // Fuse lexical + semantic via Reciprocal Rank Fusion (k=60) when semantic
-        // is available. Falls back to lexical-only when semantic unavailable.
-        let limit = p.limit.unwrap_or(10).min(200);
-        let mut all_hits: Vec<super::search::SearchHit> =
-            if let Some(scored_ids) = sem_hits.filter(|v| !v.is_empty()) {
-                let rrf_ids = super::hybrid::rrf_merge(&text_hits, &scored_ids, limit * 3);
-                let store = match self.store.lock() {
-                    Ok(g) => g,
-                    Err(_) => {
-                        return CallToolResult::error(vec![Content::text("store mutex poisoned")])
-                    }
-                };
-                match store.get_nodes_by_ids(&branch, &rrf_ids) {
-                    Ok(nodes) => {
-                        let mut by_id: std::collections::HashMap<String, _> = nodes
-                            .into_iter()
-                            .map(|n| (n.id.as_str().to_owned(), n))
-                            .collect();
-                        let base = (rrf_ids.len() as i32 + 1) * 10;
-                        rrf_ids
-                            .iter()
-                            .enumerate()
-                            .filter_map(|(rank, id)| {
-                                by_id.remove(id).map(|n| super::search::SearchHit {
-                                    id: n.id.as_str().to_owned(),
-                                    name: n.name,
-                                    qualified_name: n.qualified_name,
-                                    kind: n.kind.to_string(),
-                                    file: n.file.display().to_string(),
-                                    start_line: n.span.start_line,
-                                    score: base - rank as i32 * 10,
-                                })
-                            })
-                            .collect()
-                    }
-                    Err(_) => text_hits,
-                }
-            } else {
-                text_hits
-            };
+        let mut all_hits = text_hits;
 
         // Strip Section nodes — doc headings are not code symbols.
         all_hits.retain(|h| h.kind != "section");
@@ -1323,26 +1274,24 @@ impl GitCortexServer {
             b.score
                 .cmp(&a.score)
                 .then_with(|| a.name.len().cmp(&b.name.len()))
+                .then_with(|| a.qualified_name.cmp(&b.qualified_name))
+                .then_with(|| a.id.cmp(&b.id))
         });
-        all_hits.truncate(limit);
+        all_hits = super::search::filter_hits(all_hits, p.kind.as_deref(), p.file.as_deref());
 
-        let semantic_available = matches!(
-            self.semantic.try_lock().as_deref(),
-            Ok(SemanticState::Ready {
-                branch: semantic_branch,
-                ..
-            }) if semantic_branch == &branch
-        );
         let store = match self.store.lock() {
             Ok(g) => g,
             Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
         };
-        match super::agent::format_search(
+        match super::agent::format_search_page(
             &*store,
             &branch,
             &p.query,
             all_hits,
-            semantic_available,
+            false,
+            offset,
+            limit,
+            detail,
             self.response_budget.min(600),
         ) {
             Ok(response) => CallToolResult::structured(json!(response)),
@@ -1633,7 +1582,8 @@ impl GitCortexServer {
         type_hierarchy | find_importers | find_type_usages | module_dependencies | \
         get_call_sites | branch_diff_graph | find_god_nodes | find_clusters | find_cycles | health_report. \
         params: JSON object with the same fields as the individual tool (question/name/function_name/\
-        seed_name/query/file/branch/depth/limit/direction/min_in_degree/min_cluster_size as applicable). \
+        seed_name/query/kind/file/branch/depth/limit/offset/include_details/direction/\
+        min_in_degree/min_cluster_size as applicable). \
         Returns identical output to the individual tool.")]
     fn gcx(&self, Parameters(p): Parameters<GcxDispatchParams>) -> CallToolResult {
         let branch_val = p
@@ -1740,11 +1690,27 @@ impl GitCortexServer {
             })),
             "search_code" => self.search_code(Parameters(SearchCodeParams {
                 query: str_field!("query"),
+                kind: p
+                    .params
+                    .get("kind")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned),
+                file: p
+                    .params
+                    .get("file")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned),
                 limit: p
                     .params
                     .get("limit")
                     .and_then(|v| v.as_u64())
                     .map(|n| n as usize),
+                offset: p
+                    .params
+                    .get("offset")
+                    .and_then(|v| v.as_u64())
+                    .map(|n| n as usize),
+                include_details: p.params.get("include_details").and_then(|v| v.as_bool()),
                 branch: branch_val,
             })),
             "start_tour" => self.start_tour(Parameters(StartTourParams {
@@ -2073,6 +2039,33 @@ mod contract_tests {
         let tool = router.get("gcx").expect("gcx tool");
         let schema = serde_json::to_value(&tool.input_schema).expect("serialize schema");
         assert_eq!(schema["properties"]["params"]["type"], "object");
+    }
+
+    #[test]
+    fn compact_dispatch_advertises_progressive_search_controls() {
+        let router = GitCortexServer::tool_router_for_mode(true);
+        let description = router
+            .get("gcx")
+            .and_then(|tool| tool.description.as_deref())
+            .unwrap_or("");
+        for field in ["offset", "kind", "file", "include_details"] {
+            assert!(
+                description.contains(field),
+                "compact gcx description omitted {field}: {description}"
+            );
+        }
+    }
+
+    #[test]
+    fn search_contract_advertises_cli_parity_and_stable_lexical_pages() {
+        let router = GitCortexServer::tool_router_for_mode(false);
+        let description = router
+            .get("search_code")
+            .and_then(|tool| tool.description.as_deref())
+            .unwrap_or("");
+        assert!(description.contains("deterministic lexical ranking"));
+        assert!(description.contains("same ranking as the CLI"));
+        assert!(!description.contains("semantic vector"));
     }
 
     #[test]

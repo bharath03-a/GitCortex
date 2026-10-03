@@ -7,7 +7,7 @@
 use std::collections::{HashMap, HashSet};
 
 use gitcortex_core::{
-    error::Result,
+    error::{GitCortexError, Result},
     graph::Node,
     schema::{EdgeConfidence, EdgeKind, NodeKind, Visibility},
     store::GraphStore,
@@ -143,11 +143,20 @@ pub struct SearchEvidence {
     pub score: i32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchDetail {
+    Compact,
+    Full,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct SearchCoverage {
     pub total: usize,
     pub returned: usize,
     pub truncated: bool,
+    pub offset: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_offset: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -194,29 +203,66 @@ pub fn format_search<S: GraphStore + ?Sized>(
     semantic_available: bool,
     budget_tokens: usize,
 ) -> Result<AgentSearchResponse> {
+    let limit = hits.len().max(1);
+    format_search_page(
+        store,
+        branch,
+        query,
+        hits,
+        semantic_available,
+        0,
+        limit,
+        SearchDetail::Full,
+        budget_tokens,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn format_search_page<S: GraphStore + ?Sized>(
+    store: &S,
+    branch: &str,
+    query: &str,
+    hits: Vec<SearchHit>,
+    semantic_available: bool,
+    offset: usize,
+    limit: usize,
+    detail: SearchDetail,
+    budget_tokens: usize,
+) -> Result<AgentSearchResponse> {
     let total = hits.len();
-    let ids: Vec<String> = hits.iter().map(|hit| hit.id.clone()).collect();
+    let total_file_count = hits
+        .iter()
+        .map(|hit| hit.file.as_str())
+        .collect::<HashSet<_>>()
+        .len();
+    let page: Vec<SearchHit> = hits.into_iter().skip(offset).take(limit.max(1)).collect();
+    let ids: Vec<String> = page.iter().map(|hit| hit.id.clone()).collect();
     let nodes = store.get_nodes_by_ids(branch, &ids)?;
     let by_id: HashMap<String, Node> = nodes
         .into_iter()
         .map(|node| (node.id.as_str(), node))
         .collect();
-    let mut files = HashSet::new();
     let mut evidence = Vec::new();
-    for hit in hits {
-        files.insert(hit.file.clone());
+    for hit in page {
         let node = by_id.get(&hit.id);
-        let doc = node
-            .and_then(|node| node.metadata.definition.doc_comment.as_deref())
-            .and_then(|text| text.lines().find(|line| !line.trim().is_empty()))
-            .map(|line| line.trim().chars().take(180).collect());
+        let doc = if detail == SearchDetail::Full {
+            node.and_then(|node| node.metadata.definition.doc_comment.as_deref())
+                .and_then(|text| text.lines().find(|line| !line.trim().is_empty()))
+                .map(|line| truncate_utf8_bytes(line.trim().to_owned(), 180))
+        } else {
+            None
+        };
         evidence.push(SearchEvidence {
-            symbol: hit.name,
-            qualified_name: hit.qualified_name,
-            kind: hit.kind,
-            file: hit.file,
+            symbol: truncate_utf8_bytes(hit.name, 96),
+            qualified_name: truncate_utf8_bytes(hit.qualified_name, 160),
+            kind: truncate_utf8_bytes(hit.kind, 32),
+            file: truncate_utf8_bytes(hit.file, 96),
             line: hit.start_line,
-            signature: node.map(sig_line).unwrap_or_default(),
+            signature: if detail == SearchDetail::Full {
+                truncate_utf8_bytes(node.map(sig_line).unwrap_or_default(), 160)
+            } else {
+                String::new()
+            },
             doc,
             score: hit.score,
         });
@@ -232,7 +278,7 @@ pub fn format_search<S: GraphStore + ?Sized>(
             .join(", ");
         format!(
             "{total} ranked symbol match(es) across {} file(s). Top files: {top_files}.",
-            files.len()
+            total_file_count
         )
     };
     let mut response = AgentSearchResponse {
@@ -241,15 +287,17 @@ pub fn format_search<S: GraphStore + ?Sized>(
         } else {
             AgentStatus::Ok
         },
-        answer,
-        query: query.to_owned(),
+        answer: truncate_utf8_bytes(answer, 256),
+        query: truncate_utf8_bytes(query.to_owned(), 128),
         semantic_available,
-        file_count: files.len(),
+        file_count: total_file_count,
         evidence,
         coverage: SearchCoverage {
             total,
             returned: 0,
             truncated: false,
+            offset,
+            next_offset: None,
         },
         next_action: if total == 0 {
             Some("Try a concrete symbol fragment or alternate spelling.".to_owned())
@@ -257,7 +305,7 @@ pub fn format_search<S: GraphStore + ?Sized>(
             None
         },
     };
-    apply_search_budget(&mut response, budget_tokens.max(MIN_BUDGET_TOKENS));
+    apply_search_budget(&mut response, budget_tokens.max(MIN_BUDGET_TOKENS))?;
     Ok(response)
 }
 
@@ -974,17 +1022,72 @@ fn to_evidence(node: Node, confidence: EdgeConfidence, hop: u8) -> CallerEvidenc
     }
 }
 
-fn apply_search_budget(response: &mut AgentSearchResponse, budget_tokens: usize) {
-    let budget_bytes = budget_tokens * 4;
-    while !response.evidence.is_empty()
-        && serde_json::to_vec(response)
-            .map(|bytes| bytes.len() > budget_bytes)
-            .unwrap_or(false)
-    {
+fn apply_search_budget(response: &mut AgentSearchResponse, budget_tokens: usize) -> Result<()> {
+    let budget_bytes = budget_tokens.saturating_mul(4);
+    let mut compaction_stage = 0;
+    loop {
+        response.coverage.returned = response.evidence.len();
+        let next = response.coverage.offset + response.coverage.returned;
+        response.coverage.truncated = next < response.coverage.total;
+        response.coverage.next_offset = response.coverage.truncated.then_some(next);
+        response.next_action = response
+            .coverage
+            .next_offset
+            .map(|offset| format!("Request the next search page with offset={offset}."));
+
+        let over_budget = serde_json::to_vec(response)
+            .map_err(|error| GitCortexError::Config(error.to_string()))?
+            .len()
+            > budget_bytes;
+        if !over_budget {
+            return Ok(());
+        }
+        if response.evidence.len() == 1 && compaction_stage == 0 {
+            let item = &mut response.evidence[0];
+            item.signature.clear();
+            item.doc = None;
+            item.symbol = truncate_utf8_bytes(std::mem::take(&mut item.symbol), 64);
+            item.qualified_name = truncate_utf8_bytes(std::mem::take(&mut item.qualified_name), 64);
+            item.kind = truncate_utf8_bytes(std::mem::take(&mut item.kind), 16);
+            item.file = truncate_utf8_bytes(std::mem::take(&mut item.file), 64);
+            response.answer = truncate_utf8_bytes(std::mem::take(&mut response.answer), 128);
+            response.query = truncate_utf8_bytes(std::mem::take(&mut response.query), 64);
+            compaction_stage = 1;
+            continue;
+        }
+        if response.evidence.len() == 1 && compaction_stage == 1 {
+            let item = &mut response.evidence[0];
+            item.symbol.clear();
+            item.qualified_name.clear();
+            item.kind.clear();
+            item.file.clear();
+            item.signature.clear();
+            item.doc = None;
+            response.answer.clear();
+            response.query.clear();
+            compaction_stage = 2;
+            continue;
+        }
+        if response.evidence.len() <= 1 {
+            return Err(GitCortexError::Config(
+                "search response metadata exceeds the minimum response budget".to_owned(),
+            ));
+        }
         response.evidence.pop();
     }
-    response.coverage.returned = response.evidence.len();
-    response.coverage.truncated = response.coverage.returned < response.coverage.total;
+}
+
+fn truncate_utf8_bytes(mut value: String, limit: usize) -> String {
+    if value.len() <= limit {
+        value
+    } else {
+        let mut end = limit;
+        while !value.is_char_boundary(end) {
+            end -= 1;
+        }
+        value.truncate(end);
+        value
+    }
 }
 
 fn apply_subgraph_budget(response: &mut AgentSubgraphResponse, budget_tokens: usize) {

@@ -11,8 +11,8 @@ use std::sync::{Mutex, OnceLock};
 use gitcortex_core::store::GraphStore;
 use gitcortex_indexer::IncrementalIndexer;
 use gitcortex_mcp::mcp::{
-    agent::{format_search, AgentStatus},
-    search::search,
+    agent::{format_search, format_search_page, AgentStatus, SearchDetail},
+    search::{filter_hits, search},
 };
 use gitcortex_store::kuzu::KuzuGraphStore;
 
@@ -227,5 +227,159 @@ fn agent_search_contract_adds_source_evidence_within_budget() {
             .iter()
             .any(|item| !item.signature.is_empty()));
         assert!(serde_json::to_vec(&response).unwrap().len() <= 1_600);
+    });
+}
+
+#[test]
+fn search_pages_expose_stable_non_overlapping_continuations() {
+    with_store(|store| {
+        let hits = search(store, "main", "Greeter", Some(20)).expect("search");
+        assert!(
+            hits.len() >= 2,
+            "fixture must provide at least two Greeters"
+        );
+
+        let first = format_search_page(
+            store,
+            "main",
+            "Greeter",
+            hits.clone(),
+            false,
+            0,
+            1,
+            SearchDetail::Full,
+            400,
+        )
+        .expect("first page");
+        let second = format_search_page(
+            store,
+            "main",
+            "Greeter",
+            hits,
+            false,
+            1,
+            1,
+            SearchDetail::Full,
+            400,
+        )
+        .expect("second page");
+
+        assert_eq!(first.coverage.offset, 0);
+        assert_eq!(first.coverage.next_offset, Some(1));
+        assert_eq!(second.coverage.offset, 1);
+        assert_ne!(
+            (&first.evidence[0].file, first.evidence[0].line),
+            (&second.evidence[0].file, second.evidence[0].line)
+        );
+        assert_eq!(first.coverage.total, second.coverage.total);
+        assert!(first.file_count > first.evidence.len());
+    });
+}
+
+#[test]
+fn search_filters_by_kind_and_repo_relative_file() {
+    with_store(|store| {
+        let hits = search(store, "main", "Greeter", Some(50)).expect("search");
+        let filtered = filter_hits(hits, Some("trait"), Some("sample.rs"));
+
+        assert!(!filtered.is_empty());
+        assert!(filtered.iter().all(|hit| hit.kind == "trait"));
+        assert!(filtered.iter().all(|hit| hit.file == "sample.rs"));
+    });
+}
+
+#[test]
+fn compact_search_detail_preserves_more_evidence_within_the_same_budget() {
+    with_store(|store| {
+        let hits = search(store, "main", "Greeter", Some(20)).expect("search");
+        let compact = format_search_page(
+            store,
+            "main",
+            "Greeter",
+            hits.clone(),
+            false,
+            0,
+            20,
+            SearchDetail::Compact,
+            400,
+        )
+        .expect("compact response");
+        let full = format_search_page(
+            store,
+            "main",
+            "Greeter",
+            hits,
+            false,
+            0,
+            20,
+            SearchDetail::Full,
+            400,
+        )
+        .expect("full response");
+
+        assert!(compact
+            .evidence
+            .iter()
+            .all(|item| item.signature.is_empty()));
+        assert!(compact.evidence.iter().all(|item| item.doc.is_none()));
+        assert!(compact.coverage.returned >= full.coverage.returned);
+        assert!(full.evidence.iter().any(|item| !item.signature.is_empty()));
+    });
+}
+
+#[test]
+fn oversized_search_query_is_rejected_before_retrieval() {
+    with_store(|store| {
+        let query = "x".repeat(257);
+        assert!(search(store, "main", &query, Some(10)).is_err());
+    });
+}
+
+#[test]
+fn oversized_evidence_is_compacted_without_stalling_pagination() {
+    with_store(|store| {
+        let mut hits = search(store, "main", "Greeter", Some(20)).expect("search");
+        assert!(hits.len() >= 2);
+        hits[0].name = "\0".repeat(5_000);
+        hits[0].qualified_name = "\u{0001}".repeat(5_000);
+        hits[0].kind = "\u{0002}".repeat(5_000);
+        hits[0].file = "\n".repeat(5_000);
+
+        let response = format_search_page(
+            store,
+            "main",
+            "Greeter",
+            hits,
+            false,
+            0,
+            1,
+            SearchDetail::Full,
+            400,
+        )
+        .expect("budgeted response");
+
+        assert_eq!(response.coverage.returned, 1);
+        assert_eq!(response.coverage.next_offset, Some(1));
+        assert!(serde_json::to_vec(&response).unwrap().len() <= 1_600);
+    });
+}
+
+#[test]
+fn search_budget_handles_maximum_cli_value_without_overflow() {
+    with_store(|store| {
+        let hits = search(store, "main", "Greeter", Some(20)).expect("search");
+        let response = format_search_page(
+            store,
+            "main",
+            "Greeter",
+            hits,
+            false,
+            0,
+            1,
+            SearchDetail::Compact,
+            usize::MAX,
+        )
+        .expect("budgeted response");
+        assert_eq!(response.coverage.returned, 1);
     });
 }

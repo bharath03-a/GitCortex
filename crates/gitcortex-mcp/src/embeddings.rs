@@ -12,7 +12,7 @@
 //! text-only while the indexer runs; it automatically uses semantic hits once
 //! at least one vector is loaded.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
@@ -27,19 +27,22 @@ const DIM: usize = 384;
 
 // Binary format: magic + version + dim + count + entries
 const MAGIC: &[u8; 4] = b"GCXV";
-const FORMAT_VERSION: u32 = 2;
+const FORMAT_VERSION: u32 = 3;
+type Fingerprint = [u8; 32];
+type StoredIndex = (HashMap<String, Vec<f32>>, HashMap<String, Fingerprint>);
 
 // ── Vector index ──────────────────────────────────────────────────────────────
 
 pub struct SemanticIndex {
     /// node_id → unit-normalised embedding
     vectors: HashMap<String, Vec<f32>>,
+    fingerprints: HashMap<String, Fingerprint>,
     path: PathBuf,
 }
 
 impl SemanticIndex {
     pub fn load_or_create(path: &Path) -> Self {
-        let vectors = load_bin(path).unwrap_or_default();
+        let (vectors, fingerprints) = load_bin(path).unwrap_or_default();
         if !vectors.is_empty() {
             tracing::info!(
                 "semantic index loaded: {} vectors from {}",
@@ -49,6 +52,7 @@ impl SemanticIndex {
         }
         Self {
             vectors,
+            fingerprints,
             path: path.to_owned(),
         }
     }
@@ -57,8 +61,13 @@ impl SemanticIndex {
         self.vectors.contains_key(node_id)
     }
 
-    pub fn insert(&mut self, node_id: String, vec: Vec<f32>) {
+    pub fn insert(&mut self, node_id: String, vec: Vec<f32>, fingerprint: Fingerprint) {
+        self.fingerprints.insert(node_id.clone(), fingerprint);
         self.vectors.insert(node_id, unit_normalise(vec));
+    }
+
+    pub fn needs_embedding(&self, node: &Node) -> bool {
+        self.fingerprints.get(&node.id.as_str()) != Some(&node_fingerprint(node))
     }
 
     pub fn len(&self) -> usize {
@@ -69,18 +78,18 @@ impl SemanticIndex {
         self.vectors.is_empty()
     }
 
-    /// Drop vectors whose node ID is not in `live_ids`. Node UUIDs regenerate
-    /// on every re-index, so without pruning the index file grows with
-    /// orphaned vectors that can still surface as (unresolvable) hits.
+    /// Drop vectors whose node ID is not in `live_ids`. Stable IDs preserve
+    /// vectors across edits, while deleted/renamed nodes must still be pruned.
     /// Returns the number of vectors removed.
     pub fn retain_ids(&mut self, live_ids: &std::collections::HashSet<String>) -> usize {
         let before = self.vectors.len();
         self.vectors.retain(|id, _| live_ids.contains(id));
+        self.fingerprints.retain(|id, _| live_ids.contains(id));
         before - self.vectors.len()
     }
 
     pub fn save(&self) {
-        if let Err(e) = save_bin(&self.path, &self.vectors) {
+        if let Err(e) = save_bin(&self.path, &self.vectors, &self.fingerprints) {
             tracing::warn!("failed to save semantic index: {e}");
         }
     }
@@ -88,14 +97,28 @@ impl SemanticIndex {
     /// Return up to `k` `(node_id, similarity)` pairs with cosine similarity ≥ SIMILARITY_THRESHOLD.
     /// Query vector need not be pre-normalised — normalised internally.
     pub fn top_k(&self, query_vec: &[f32], k: usize) -> Vec<(String, f32)> {
+        self.top_k_filtered(query_vec, k, None)
+    }
+
+    pub fn top_k_filtered(
+        &self,
+        query_vec: &[f32],
+        k: usize,
+        allowed_ids: Option<&HashSet<String>>,
+    ) -> Vec<(String, f32)> {
         let q = unit_normalise(query_vec.to_vec());
         let mut scores: Vec<(&String, f32)> = self
             .vectors
             .iter()
+            .filter(|(id, _)| allowed_ids.map_or(true, |allowed| allowed.contains(*id)))
             .map(|(id, v)| (id, dot(&q, v)))
             .filter(|(_, s)| *s >= SIMILARITY_THRESHOLD)
             .collect();
-        scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        scores.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.0.cmp(b.0))
+        });
         scores
             .into_iter()
             .take(k)
@@ -179,6 +202,10 @@ pub fn node_text(n: &Node) -> String {
     parts.join(" ")
 }
 
+pub fn node_fingerprint(node: &Node) -> Fingerprint {
+    *blake3::hash(node_text(node).as_bytes()).as_bytes()
+}
+
 // ── Math helpers ──────────────────────────────────────────────────────────────
 
 fn dot(a: &[f32], b: &[f32]) -> f32 {
@@ -205,16 +232,18 @@ fn unit_normalise(mut v: Vec<f32>) -> Vec<f32> {
 //   per record:
 //     [4]       id_len (u32)
 //     [id_len]  node_id (UTF-8)
+//     [32]      BLAKE3 fingerprint of semantic node text
 //     [dim × 4] f32 values
 
-fn load_bin(path: &Path) -> Option<HashMap<String, Vec<f32>>> {
+fn load_bin(path: &Path) -> Option<StoredIndex> {
     let data = std::fs::read(path).ok()?;
     let mut p = 0usize;
 
     macro_rules! read_u32 {
         () => {{
-            let b: [u8; 4] = data.get(p..p + 4)?.try_into().ok()?;
-            p += 4;
+            let end = p.checked_add(4)?;
+            let b: [u8; 4] = data.get(p..end)?.try_into().ok()?;
+            p = end;
             u32::from_le_bytes(b)
         }};
     }
@@ -229,26 +258,44 @@ fn load_bin(path: &Path) -> Option<HashMap<String, Vec<f32>>> {
         return None;
     }
     let dim = read_u32!() as usize;
+    if dim != DIM {
+        return None;
+    }
     let count = read_u32!() as usize;
+    let vector_bytes = dim.checked_mul(4)?;
+    let minimum_record_bytes = 4usize.checked_add(32)?.checked_add(vector_bytes)?;
+    if count > data.len().saturating_sub(p) / minimum_record_bytes {
+        return None;
+    }
 
-    let mut map = HashMap::with_capacity(count);
+    let mut vectors = HashMap::with_capacity(count);
+    let mut fingerprints = HashMap::with_capacity(count);
     for _ in 0..count {
         let id_len = read_u32!() as usize;
-        let id = String::from_utf8(data.get(p..p + id_len)?.to_vec()).ok()?;
-        p += id_len;
-        let end = p + dim * 4;
+        let id_end = p.checked_add(id_len)?;
+        let id = String::from_utf8(data.get(p..id_end)?.to_vec()).ok()?;
+        p = id_end;
+        let fingerprint_end = p.checked_add(32)?;
+        let fingerprint: Fingerprint = data.get(p..fingerprint_end)?.try_into().ok()?;
+        p = fingerprint_end;
+        let end = p.checked_add(vector_bytes)?;
         let vec: Vec<f32> = data
             .get(p..end)?
             .chunks_exact(4)
             .map(|b| f32::from_le_bytes(b.try_into().unwrap()))
             .collect();
         p = end;
-        map.insert(id, vec);
+        fingerprints.insert(id.clone(), fingerprint);
+        vectors.insert(id, vec);
     }
-    Some(map)
+    Some((vectors, fingerprints))
 }
 
-fn save_bin(path: &Path, vectors: &HashMap<String, Vec<f32>>) -> std::io::Result<()> {
+fn save_bin(
+    path: &Path,
+    vectors: &HashMap<String, Vec<f32>>,
+    fingerprints: &HashMap<String, Fingerprint>,
+) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -264,6 +311,7 @@ fn save_bin(path: &Path, vectors: &HashMap<String, Vec<f32>>) -> std::io::Result
             let id_b = id.as_bytes();
             w.write_all(&(id_b.len() as u32).to_le_bytes())?;
             w.write_all(id_b)?;
+            w.write_all(fingerprints.get(id).unwrap_or(&[0; 32]))?;
             for &v in vec {
                 w.write_all(&v.to_le_bytes())?;
             }
@@ -344,6 +392,27 @@ mod tests {
     }
 
     #[test]
+    fn stable_node_id_reembeds_when_semantic_text_changes() {
+        let mut original = make_node("parse_json", "util::parse_json", "fn parse_json()", "old");
+        original.id = NodeId::stable("semantic-refresh-test");
+        let mut index = SemanticIndex {
+            vectors: HashMap::new(),
+            fingerprints: HashMap::new(),
+            path: PathBuf::from("/tmp/unused"),
+        };
+        index.insert(
+            original.id.as_str(),
+            vec![1.0; DIM],
+            node_fingerprint(&original),
+        );
+        assert!(!index.needs_embedding(&original));
+
+        let mut changed = original.clone();
+        changed.metadata.definition.signature = "fn parse_json(input: &str)".to_owned();
+        assert!(index.needs_embedding(&changed));
+    }
+
+    #[test]
     fn load_bin_rejects_stale_version() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.bin");
@@ -363,16 +432,21 @@ mod tests {
         let mut vecs: HashMap<String, Vec<f32>> = HashMap::new();
         vecs.insert("node-1".to_owned(), vec![1.0; 384]);
         vecs.insert("node-2".to_owned(), vec![0.5; 384]);
-        save_bin(&path, &vecs).unwrap();
-        let loaded = load_bin(&path).expect("should load v2 file");
+        let fingerprints = HashMap::from([
+            ("node-1".to_owned(), [1; 32]),
+            ("node-2".to_owned(), [2; 32]),
+        ]);
+        save_bin(&path, &vecs, &fingerprints).unwrap();
+        let (loaded, loaded_fingerprints) = load_bin(&path).expect("should load v3 file");
         assert_eq!(loaded.len(), 2);
-        assert!(loaded.contains_key("node-1"));
+        assert_eq!(loaded_fingerprints["node-1"], [1; 32]);
     }
 
     #[test]
     fn top_k_returns_scores_in_range() {
         let mut index = SemanticIndex {
             vectors: HashMap::new(),
+            fingerprints: HashMap::new(),
             path: PathBuf::from("/tmp/unused"),
         };
         let v: Vec<f32> = {
@@ -380,8 +454,8 @@ mod tests {
             raw[0] = 1.0;
             raw
         };
-        index.insert("a".to_owned(), v.clone());
-        index.insert("b".to_owned(), v.clone());
+        index.insert("a".to_owned(), v.clone(), [1; 32]);
+        index.insert("b".to_owned(), v.clone(), [2; 32]);
         let results = index.top_k(&v, 10);
         assert_eq!(results.len(), 2);
         for (_, score) in &results {
@@ -398,6 +472,7 @@ mod tests {
     fn top_k_respects_k_limit() {
         let mut index = SemanticIndex {
             vectors: HashMap::new(),
+            fingerprints: HashMap::new(),
             path: PathBuf::from("/tmp/unused"),
         };
         let v: Vec<f32> = {
@@ -406,9 +481,57 @@ mod tests {
             raw
         };
         for i in 0..20u32 {
-            index.insert(format!("node-{i}"), v.clone());
+            index.insert(format!("node-{i}"), v.clone(), [i as u8; 32]);
         }
         let results = index.top_k(&v, 5);
         assert_eq!(results.len(), 5);
+    }
+
+    #[test]
+    fn top_k_breaks_equal_similarity_by_node_id() {
+        let mut index = SemanticIndex {
+            vectors: HashMap::new(),
+            fingerprints: HashMap::new(),
+            path: PathBuf::from("/tmp/unused"),
+        };
+        let vector = vec![1.0; DIM];
+        index.insert("b".to_owned(), vector.clone(), [1; 32]);
+        index.insert("a".to_owned(), vector.clone(), [2; 32]);
+        let ids: Vec<_> = index
+            .top_k(&vector, 2)
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        assert_eq!(ids, vec!["a", "b"]);
+        let allowed = HashSet::from(["b".to_owned()]);
+        let filtered = index.top_k_filtered(&vector, 2, Some(&allowed));
+        assert_eq!(filtered[0].0, "b");
+        assert_eq!(filtered.len(), 1);
+    }
+
+    #[test]
+    fn load_bin_rejects_wrong_dimension() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("wrong-dim.bin");
+        let mut buf = Vec::new();
+        buf.extend_from_slice(MAGIC);
+        buf.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
+        buf.extend_from_slice(&1u32.to_le_bytes());
+        buf.extend_from_slice(&0u32.to_le_bytes());
+        std::fs::write(&path, buf).unwrap();
+        assert!(load_bin(&path).is_none());
+    }
+
+    #[test]
+    fn load_bin_rejects_impossible_record_count() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("huge-count.bin");
+        let mut buf = Vec::new();
+        buf.extend_from_slice(MAGIC);
+        buf.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
+        buf.extend_from_slice(&(DIM as u32).to_le_bytes());
+        buf.extend_from_slice(&u32::MAX.to_le_bytes());
+        std::fs::write(&path, buf).unwrap();
+        assert!(load_bin(&path).is_none());
     }
 }

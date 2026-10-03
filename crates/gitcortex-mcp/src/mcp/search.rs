@@ -18,7 +18,12 @@
 
 use std::collections::HashSet;
 
-use gitcortex_core::{error::Result, graph::Node, schema::NodeKind, store::GraphStore};
+use gitcortex_core::{
+    error::{GitCortexError, Result},
+    graph::Node,
+    schema::NodeKind,
+    store::GraphStore,
+};
 use serde::Serialize;
 
 #[derive(Debug, Clone, Serialize)]
@@ -264,6 +269,24 @@ pub fn search<S: GraphStore + ?Sized>(
     limit: Option<usize>,
 ) -> Result<Vec<SearchHit>> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT);
+    let mut hits = search_filtered(store, branch, query, None, None)?;
+    hits.truncate(limit);
+    Ok(hits)
+}
+
+/// Return the complete bounded ranked candidate set after field filtering.
+pub fn search_filtered<S: GraphStore + ?Sized>(
+    store: &S,
+    branch: &str,
+    query: &str,
+    kind: Option<&str>,
+    file: Option<&str>,
+) -> Result<Vec<SearchHit>> {
+    if query.len() > 256 {
+        return Err(GitCortexError::Config(
+            "search query exceeds 256 bytes".to_owned(),
+        ));
+    }
     let q = query.trim();
     if q.is_empty() {
         return Ok(Vec::new());
@@ -271,51 +294,52 @@ pub fn search<S: GraphStore + ?Sized>(
 
     let q_lower = q.to_ascii_lowercase();
     let q_tokens = tokenize(q);
-    let candidate_limit = (limit * 50).max(500);
+    let candidate_limit = 10_000;
 
-    // Fetch candidates: whole query first, then per token.
     let mut seen: HashSet<String> = HashSet::new();
     let mut nodes: Vec<Node> = Vec::new();
 
-    let push = |nodes: &mut Vec<Node>, seen: &mut HashSet<String>, batch: Vec<Node>| {
-        for n in batch {
-            let id = n.id.as_str();
-            if seen.insert(id) {
-                nodes.push(n);
-            }
-        }
-    };
-
-    push(
+    append_unique_bounded(
         &mut nodes,
         &mut seen,
-        store.search_nodes(branch, q, candidate_limit)?,
+        store.search_nodes_filtered(branch, q, kind, file, candidate_limit)?,
+        candidate_limit,
     );
 
-    // Per-token expansion: lets "validate token" find "validate_token" even
-    // when the store's CONTAINS filter requires the full substring.
     for token in &q_tokens {
-        if token.len() < MIN_TOKEN_LEN {
+        if nodes.len() >= candidate_limit {
+            break;
+        }
+        if token.len() < MIN_TOKEN_LEN || token.as_str() == q_lower {
             continue;
         }
-        // Skip if token equals the whole query (already fetched above).
-        if token.as_str() == q_lower {
-            continue;
-        }
-        push(
+        let remaining = candidate_limit - nodes.len();
+        append_unique_bounded(
             &mut nodes,
             &mut seen,
-            store.search_nodes(branch, token, candidate_limit)?,
+            store.search_nodes_filtered(branch, token, kind, file, remaining)?,
+            candidate_limit,
         );
     }
 
-    // Typo-fallback: CONTAINS can't find misspelled queries ("Greetter" won't
-    // match "Greeter"). When no candidates found and query is short enough for
-    // edit-distance to be meaningful, scan all nodes so the scorer can apply
-    // typo tolerance.
     if nodes.is_empty() && q_lower.len() >= 4 && q_lower.len() <= 20 {
-        push(&mut nodes, &mut seen, store.list_all_nodes(branch)?);
+        append_unique_bounded(
+            &mut nodes,
+            &mut seen,
+            store.search_nodes_filtered(branch, "", kind, file, candidate_limit)?,
+            candidate_limit,
+        );
     }
+
+    nodes.retain(|node| {
+        fields_match(
+            &node.kind.to_string(),
+            &node.file.display().to_string(),
+            kind,
+            file,
+        )
+    });
+    nodes.truncate(candidate_limit);
 
     let mut hits: Vec<SearchHit> = nodes
         .into_iter()
@@ -327,9 +351,51 @@ pub fn search<S: GraphStore + ?Sized>(
             .cmp(&a.score)
             .then_with(|| a.name.len().cmp(&b.name.len()))
             .then_with(|| a.qualified_name.cmp(&b.qualified_name))
+            .then_with(|| a.id.cmp(&b.id))
     });
-    hits.truncate(limit);
-    Ok(hits)
+    Ok(filter_hits(hits, kind, file))
+}
+
+fn append_unique_bounded(
+    nodes: &mut Vec<Node>,
+    seen: &mut HashSet<String>,
+    batch: Vec<Node>,
+    limit: usize,
+) {
+    for node in batch {
+        if nodes.len() >= limit {
+            break;
+        }
+        let id = node.id.as_str();
+        if seen.insert(id) {
+            nodes.push(node);
+        }
+    }
+}
+
+/// Apply deterministic field filters to ranked search hits without changing
+/// their relative order. File matching is exact after removing a leading `./`.
+pub fn filter_hits(hits: Vec<SearchHit>, kind: Option<&str>, file: Option<&str>) -> Vec<SearchHit> {
+    hits.into_iter()
+        .filter(|hit| fields_match(&hit.kind, &hit.file, kind, file))
+        .collect()
+}
+
+fn fields_match(
+    kind_value: &str,
+    file_value: &str,
+    kind: Option<&str>,
+    file: Option<&str>,
+) -> bool {
+    let kind = kind.map(str::trim).filter(|value| !value.is_empty());
+    let file = file
+        .map(str::trim)
+        .map(|value| value.strip_prefix("./").unwrap_or(value))
+        .filter(|value| !value.is_empty());
+    kind.map_or(true, |expected| kind_value.eq_ignore_ascii_case(expected))
+        && file.map_or(true, |expected| {
+            file_value.strip_prefix("./").unwrap_or(file_value) == expected
+        })
 }
 
 #[cfg(test)]
@@ -337,6 +403,24 @@ mod tests {
     use super::*;
     use gitcortex_core::graph::{NodeId, NodeMetadata, Span};
     use std::path::PathBuf;
+
+    #[test]
+    fn candidate_accumulation_stops_at_global_limit() {
+        let mut nodes = Vec::new();
+        let mut seen = HashSet::new();
+        let batch = (0..5)
+            .map(|index| node_of(NodeKind::Function, &format!("node_{index}")))
+            .collect();
+        append_unique_bounded(&mut nodes, &mut seen, batch, 3);
+        assert_eq!(nodes.len(), 3);
+        append_unique_bounded(
+            &mut nodes,
+            &mut seen,
+            vec![node_of(NodeKind::Function, "extra")],
+            3,
+        );
+        assert_eq!(nodes.len(), 3);
+    }
 
     fn node_of(kind: NodeKind, name: &str) -> Node {
         Node {

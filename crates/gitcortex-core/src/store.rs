@@ -339,6 +339,40 @@ pub trait GraphStore: Send + Sync {
         Ok(nodes)
     }
 
+    /// Search with optional exact kind and repo-relative file predicates.
+    /// Backends should apply all predicates before ordering and limiting.
+    fn search_nodes_filtered(
+        &self,
+        branch: &str,
+        query: &str,
+        kind: Option<&str>,
+        file: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<Node>> {
+        let mut nodes = self.search_nodes(branch, query, usize::MAX)?;
+        let kind = kind.map(str::trim).filter(|value| !value.is_empty());
+        let file = file
+            .map(str::trim)
+            .map(|value| value.strip_prefix("./").unwrap_or(value))
+            .filter(|value| !value.is_empty());
+        nodes.retain(|node| {
+            let node_file = node.file.to_string_lossy();
+            let node_file = node_file.strip_prefix("./").unwrap_or(&node_file);
+            kind.map_or(true, |expected| {
+                node.kind.to_string().eq_ignore_ascii_case(expected)
+            }) && file.map_or(true, |expected| node_file == expected)
+        });
+        nodes.sort_by(|a, b| {
+            a.qualified_name
+                .cmp(&b.qualified_name)
+                .then_with(|| a.file.cmp(&b.file))
+                .then_with(|| a.span.start_line.cmp(&b.span.start_line))
+                .then_with(|| a.id.as_str().cmp(&b.id.as_str()))
+        });
+        nodes.truncate(limit);
+        Ok(nodes)
+    }
+
     /// Resolve a set of node IDs to full nodes. Order is not guaranteed; IDs
     /// that don't exist on `branch` are silently skipped.
     ///

@@ -13,8 +13,9 @@ pub struct GcxDispatchParams {
     /// get_call_sites, find_god_nodes, find_clusters, find_cycles, health_report.
     pub action: String,
     /// Parameters for the chosen action as a JSON object (same fields as the
-    /// individual tool: question, name, function_name, seed_name, query, file, branch,
-    /// depth, limit, direction, src, dst, start_line, end_line).
+    /// individual tool: question, name, function_name, seed_name, query, kind, file,
+    /// branch, depth, limit, offset, include_details, direction, src, dst,
+    /// start_line, end_line).
     pub params: serde_json::Map<String, serde_json::Value>,
 }
 
@@ -188,8 +189,16 @@ pub struct WikiSymbolParams {
 pub struct SearchCodeParams {
     /// Free-text query — substring matched against `name` and `qualified_name`.
     pub query: String,
+    /// Optional exact node kind, such as `function`, `method`, `struct`, or `trait`.
+    pub kind: Option<String>,
+    /// Optional exact repo-relative file path, with an optional leading `./`.
+    pub file: Option<String>,
     /// Max results (default 10, capped at 200).
     pub limit: Option<usize>,
+    /// Zero-based ranked-result offset for progressive evidence expansion.
+    pub offset: Option<usize>,
+    /// Include signatures and doc summaries. Defaults to false for compact evidence.
+    pub include_details: Option<bool>,
     pub branch: Option<String>,
 }
 

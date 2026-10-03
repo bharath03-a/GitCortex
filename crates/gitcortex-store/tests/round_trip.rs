@@ -73,6 +73,63 @@ fn insert_and_lookup_node() {
 }
 
 #[test]
+fn search_nodes_honors_limit_with_stable_ordering() {
+    let (mut store, _dir) = tmp_store();
+    let nodes = vec![
+        make_node("match_z", NodeKind::Function, "z.rs", 1),
+        make_node("match_a", NodeKind::Function, "a.rs", 1),
+        make_node("match_m", NodeKind::Function, "m.rs", 1),
+    ];
+    store
+        .apply_diff(
+            "main",
+            &GraphDiff {
+                added_nodes: nodes,
+                ..Default::default()
+            },
+        )
+        .expect("insert nodes");
+
+    let first = store
+        .search_nodes("main", "match_", 2)
+        .expect("first search");
+    let second = store
+        .search_nodes("main", "match_", 2)
+        .expect("second search");
+    assert_eq!(first.len(), 2);
+    assert_eq!(
+        first.iter().map(|node| &node.id).collect::<Vec<_>>(),
+        second.iter().map(|node| &node.id).collect::<Vec<_>>()
+    );
+    assert_eq!(
+        first
+            .iter()
+            .map(|node| node.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["match_a", "match_m"]
+    );
+
+    let structs = vec![
+        make_node("match_struct_z", NodeKind::Struct, "z.rs", 1),
+        make_node("match_struct_a", NodeKind::Struct, "a.rs", 1),
+    ];
+    store
+        .apply_diff(
+            "main",
+            &GraphDiff {
+                added_nodes: structs,
+                ..Default::default()
+            },
+        )
+        .expect("insert structs");
+    let filtered = store
+        .search_nodes_filtered("main", "match_", Some("struct"), None, 1)
+        .expect("filtered search");
+    assert_eq!(filtered.len(), 1);
+    assert_eq!(filtered[0].name, "match_struct_a");
+}
+
+#[test]
 fn list_definitions_ordered_by_line() {
     let (mut store, _dir) = tmp_store();
 

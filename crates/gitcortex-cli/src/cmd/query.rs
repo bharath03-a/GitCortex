@@ -222,20 +222,32 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
 
         QueryCmd::Search {
             query,
+            kind,
+            file,
             limit,
+            offset,
+            include_details,
             budget_tokens,
             format,
             branch,
         } => {
-            let hits = search::search(&store, &branch, &query, Some(limit))?;
+            let hits =
+                search::search_filtered(&store, &branch, &query, kind.as_deref(), file.as_deref())?;
             match format {
                 AgentOutputFormat::AgentJson => {
-                    let response = gitcortex_mcp::mcp::agent::format_search(
+                    let response = gitcortex_mcp::mcp::agent::format_search_page(
                         &store,
                         &branch,
                         &query,
                         hits,
                         false,
+                        offset.min(10_000),
+                        limit.clamp(1, 200),
+                        if include_details {
+                            gitcortex_mcp::mcp::agent::SearchDetail::Full
+                        } else {
+                            gitcortex_mcp::mcp::agent::SearchDetail::Compact
+                        },
                         budget_tokens,
                     )?;
                     println!("{}", serde_json::to_string(&response)?);
@@ -247,7 +259,11 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
                             empty_msg(&format!("no matches for '{query}'"), &branch)
                         );
                     }
-                    for h in hits {
+                    for h in hits
+                        .into_iter()
+                        .skip(offset.min(10_000))
+                        .take(limit.clamp(1, 200))
+                    {
                         println!(
                             "{}  {} {}  {}{}{}  {}",
                             paint(score_style(), &format!("{:>4}", h.score)),

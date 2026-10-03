@@ -299,7 +299,7 @@ fn update_semantic_index(
 
     let missing: Vec<_> = nodes
         .iter()
-        .filter(|node| !index.has(&node.id.as_str()))
+        .filter(|node| index.needs_embedding(node))
         .collect();
     if !missing.is_empty() {
         tracing::info!(
@@ -310,10 +310,16 @@ fn update_semantic_index(
         for chunk in missing.chunks(BATCH) {
             let texts: Vec<String> = chunk.iter().map(|node| node_text(node)).collect();
             let ids: Vec<String> = chunk.iter().map(|node| node.id.as_str()).collect();
+            let fingerprints: Vec<_> = chunk
+                .iter()
+                .map(|node| crate::embeddings::node_fingerprint(node))
+                .collect();
             match embedder.embed_batch(texts) {
                 Ok(vectors) => {
-                    for (id, vector) in ids.into_iter().zip(vectors) {
-                        index.insert(id, vector);
+                    for ((id, fingerprint), vector) in
+                        ids.into_iter().zip(fingerprints).zip(vectors)
+                    {
+                        index.insert(id, vector, fingerprint);
                     }
                 }
                 Err(error) => tracing::warn!("embedding batch failed: {error}"),
