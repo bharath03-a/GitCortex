@@ -212,24 +212,34 @@ on:
 jobs:
   blast-radius:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
+      contents: read
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Install gcx
-        run: cargo install --git https://github.com/bharath03-a/GitCortex --bin gcx
+        run: cargo install gitcortex --locked
 
-      - name: Index repository
-        run: gcx init
-
-      - name: Run blast-radius analysis
+      - name: Index exact PR revisions and analyze
+        shell: bash
         run: |
+          set -euo pipefail
+          git checkout --detach "${{ github.event.pull_request.base.sha }}"
+          BASE_KEY=$(git rev-parse --short HEAD)
+          gcx init --editor none
+
+          git checkout --detach "${{ github.event.pull_request.head.sha }}"
+          HEAD_KEY=$(git rev-parse --short HEAD)
+          gcx init --editor none
+
           gcx blast-radius \
-            --base ${{ github.base_ref }} \
-            --head ${{ github.head_ref }} \
+            --base "$BASE_KEY" \
+            --head "$HEAD_KEY" \
             --format github-comment > /tmp/blast-radius.md
 
       - name: Post PR comment
@@ -297,5 +307,24 @@ mod tests {
             .success());
         assert!(ensure_hooks_scope(temp.path(), false).is_err());
         assert!(ensure_hooks_scope(temp.path(), true).is_ok());
+    }
+
+    #[test]
+    fn ci_workflow_indexes_exact_pr_base_and_head_revisions() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        write_ci_workflow(temp.path()).expect("write workflow");
+        let workflow =
+            fs::read_to_string(temp.path().join(".github/workflows/gcx-blast-radius.yml"))
+                .expect("read workflow");
+
+        assert!(workflow.contains("github.event.pull_request.base.sha"));
+        assert!(workflow.contains("github.event.pull_request.head.sha"));
+        assert_eq!(workflow.matches("gcx init --editor none").count(), 2);
+        assert!(workflow.contains("BASE_KEY=$(git rev-parse --short HEAD)"));
+        assert!(workflow.contains("HEAD_KEY=$(git rev-parse --short HEAD)"));
+        assert!(workflow.contains("--base \"$BASE_KEY\""));
+        assert!(workflow.contains("--head \"$HEAD_KEY\""));
+        assert!(!workflow.contains("github.base_ref"));
+        assert!(!workflow.contains("github.head_ref"));
     }
 }
