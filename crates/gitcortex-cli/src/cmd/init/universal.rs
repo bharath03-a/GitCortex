@@ -242,7 +242,14 @@ jobs:
             --head "$HEAD_KEY" \
             --format github-comment > /tmp/blast-radius.md
 
+      - name: Upload blast-radius report
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitcortex-blast-radius
+          path: /tmp/blast-radius.md
+
       - name: Post PR comment
+        if: github.event.pull_request.head.repo.full_name == github.repository
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           path: /tmp/blast-radius.md
@@ -326,5 +333,9 @@ mod tests {
         assert!(workflow.contains("--head \"$HEAD_KEY\""));
         assert!(!workflow.contains("github.base_ref"));
         assert!(!workflow.contains("github.head_ref"));
+        assert!(workflow.contains("actions/upload-artifact@v4"));
+        assert!(workflow
+            .contains("if: github.event.pull_request.head.repo.full_name == github.repository"));
+        assert!(workflow.contains("name: gitcortex-blast-radius"));
     }
 }
