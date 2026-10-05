@@ -288,6 +288,8 @@ cargo build --release
 For a reversible local trial, follow the [10-minute quickstart](docs/QUICKSTART.md).
 Teams can use the [pilot guide](docs/PILOT-GUIDE.md) to define held-out tasks,
 correctness gates, and rollout criteria before enabling GitCortex broadly.
+Maintainers preparing outreach can reuse the claim-safe
+[adoption messaging](docs/ADOPTION.md).
 
 ```bash
 cd your-repo
