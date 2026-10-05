@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use gitcortex_core::{
-    graph::Node,
+    graph::{GraphDiff, Node},
     schema::{EdgeConfidence, EdgeKind},
     store::GraphStore,
 };
@@ -27,7 +27,13 @@ pub fn run(base: String, head: String, depth: u8, format: BlastFormat) -> Result
     let diff = store
         .branch_diff(&base, &head)
         .context("branch diff failed")?;
-    let changed_nodes = diff.added_nodes;
+    let base_nodes = store
+        .list_all_nodes(&base)
+        .context("list base nodes failed")?;
+    let all_nodes = store
+        .list_all_nodes(&head)
+        .context("list head nodes failed")?;
+    let changed_nodes = changed_nodes_from_diff(diff, &base_nodes, &all_nodes);
 
     if changed_nodes.is_empty() {
         match format {
@@ -48,7 +54,6 @@ pub fn run(base: String, head: String, depth: u8, format: BlastFormat) -> Result
     }
 
     let all_edges = store.list_all_edges(&head).context("list edges failed")?;
-    let all_nodes = store.list_all_nodes(&head).context("list nodes failed")?;
 
     // node_id → Node lookup
     let node_map: HashMap<NodeId, &Node> = all_nodes.iter().map(|n| (n.id.clone(), n)).collect();
@@ -121,6 +126,42 @@ pub fn run(base: String, head: String, depth: u8, format: BlastFormat) -> Result
     }
 
     Ok(())
+}
+
+fn changed_nodes_from_diff(diff: GraphDiff, base_nodes: &[Node], head_nodes: &[Node]) -> Vec<Node> {
+    let base_by_id: HashMap<_, _> = base_nodes.iter().map(|node| (&node.id, node)).collect();
+    let head_by_id: HashMap<_, _> = head_nodes.iter().map(|node| (&node.id, node)).collect();
+    let mut seen = HashSet::new();
+    let mut changed = Vec::new();
+    let mut add = |node: Node| {
+        if seen.insert(node.id.clone()) {
+            changed.push(node);
+        }
+    };
+
+    for node in diff.added_nodes.into_iter().chain(diff.modified_nodes) {
+        add(node);
+    }
+    for id in diff.removed_node_ids {
+        if let Some(node) = base_by_id.get(&id) {
+            add((*node).clone());
+        }
+    }
+    for edge in diff.added_edges {
+        for id in [&edge.src, &edge.dst] {
+            if let Some(node) = head_by_id.get(id) {
+                add((*node).clone());
+            }
+        }
+    }
+    for (src, dst, _) in diff.removed_edges {
+        for id in [&src, &dst] {
+            if let Some(node) = base_by_id.get(id) {
+                add((*node).clone());
+            }
+        }
+    }
+    changed
 }
 
 /// Sums the `EdgeConfidence` mix of a caller list into (extracted, resolved,
@@ -325,6 +366,70 @@ fn repo_root() -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gitcortex_core::{
+        graph::{GraphDiff, NodeMetadata, Span},
+        schema::NodeKind,
+    };
+
+    fn test_node(name: &str) -> Node {
+        Node {
+            id: NodeId::new(),
+            kind: NodeKind::Function,
+            name: name.to_owned(),
+            qualified_name: name.to_owned(),
+            file: PathBuf::from(format!("{name}.rs")),
+            span: Span {
+                start_line: 1,
+                end_line: 1,
+            },
+            metadata: NodeMetadata::default(),
+        }
+    }
+
+    #[test]
+    fn changed_nodes_include_added_modified_and_removed_symbols() {
+        let added = test_node("added");
+        let modified = test_node("modified");
+        let removed = test_node("removed");
+        let diff = GraphDiff {
+            added_nodes: vec![added.clone()],
+            modified_nodes: vec![modified.clone()],
+            removed_node_ids: vec![removed.id.clone()],
+            ..GraphDiff::default()
+        };
+
+        let changed =
+            changed_nodes_from_diff(diff, std::slice::from_ref(&removed), &[added, modified]);
+        let names: HashSet<_> = changed.iter().map(|node| node.name.as_str()).collect();
+        assert_eq!(names, HashSet::from(["added", "modified", "removed"]));
+    }
+
+    #[test]
+    fn changed_nodes_include_edge_only_change_endpoints() {
+        let base_source = test_node("base_source");
+        let base_target = test_node("base_target");
+        let head_source = test_node("head_source");
+        let head_target = test_node("head_target");
+        let diff = GraphDiff {
+            added_edges: vec![gitcortex_core::graph::Edge::call(
+                head_source.id.clone(),
+                head_target.id.clone(),
+                1,
+            )],
+            removed_edges: vec![(
+                base_source.id.clone(),
+                base_target.id.clone(),
+                EdgeKind::Calls,
+            )],
+            ..GraphDiff::default()
+        };
+        let changed = changed_nodes_from_diff(
+            diff,
+            &[base_source, base_target],
+            &[head_source, head_target],
+        );
+        assert_eq!(changed.len(), 4);
+    }
 
     #[test]
     fn weighted_risk_band_preserves_uniform_extracted_bands() {

@@ -204,7 +204,8 @@ pub fn write_agent_guide(repo_root: &Path) -> Result<()> {
 }
 
 pub fn write_ci_workflow(repo_root: &Path) -> Result<()> {
-    const GH_WORKFLOW: &str = r#"name: GitCortex Blast Radius
+    const GH_WORKFLOW: &str = concat!(
+        r#"name: GitCortex Blast Radius
 
 on:
   pull_request:
@@ -215,27 +216,30 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
-      pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Install gcx
-        run: cargo install gitcortex --locked
+        working-directory: ${{ runner.temp }}
+        run: cargo install gitcortex --version "#,
+        env!("CARGO_PKG_VERSION"),
+        r#" --locked
 
       - name: Index exact PR revisions and analyze
         shell: bash
         run: |
           set -euo pipefail
-          git checkout --detach "${{ github.event.pull_request.base.sha }}"
-          BASE_KEY=$(git rev-parse --short HEAD)
-          gcx init --editor none
+          BASE_KEY="${{ github.event.pull_request.base.sha }}"
+          git -c core.hooksPath=/dev/null checkout --detach "$BASE_KEY"
+          GCX_BRANCH_OVERRIDE="$BASE_KEY" gcx init --editor none
 
-          git checkout --detach "${{ github.event.pull_request.head.sha }}"
-          HEAD_KEY=$(git rev-parse --short HEAD)
-          gcx init --editor none
+          HEAD_KEY="${{ github.event.pull_request.head.sha }}"
+          git -c core.hooksPath=/dev/null checkout --detach "$HEAD_KEY"
+          GCX_BRANCH_OVERRIDE="$HEAD_KEY" gcx init --editor none
 
           gcx blast-radius \
             --base "$BASE_KEY" \
@@ -243,17 +247,31 @@ jobs:
             --format github-comment > /tmp/blast-radius.md
 
       - name: Upload blast-radius report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: gitcortex-blast-radius
           path: /tmp/blast-radius.md
 
-      - name: Post PR comment
-        if: github.event.pull_request.head.repo.full_name == github.repository
-        uses: marocchino/sticky-pull-request-comment@v2
+  comment:
+    needs: blast-radius
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      pull-requests: write
+    steps:
+      - name: Download blast-radius report
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          path: /tmp/blast-radius.md
-"#;
+          name: gitcortex-blast-radius
+          path: /tmp/gcx-report
+
+      - name: Post PR comment
+        uses: marocchino/sticky-pull-request-comment@773744901bac0e8cbb5a0dc842800d45e9b2b405 # v2.9.4
+        with:
+          path: /tmp/gcx-report/blast-radius.md
+"#
+    );
     let dir = repo_root.join(".github").join("workflows");
     fs::create_dir_all(&dir)?;
     let path = dir.join("gcx-blast-radius.yml");
@@ -327,13 +345,28 @@ mod tests {
         assert!(workflow.contains("github.event.pull_request.base.sha"));
         assert!(workflow.contains("github.event.pull_request.head.sha"));
         assert_eq!(workflow.matches("gcx init --editor none").count(), 2);
-        assert!(workflow.contains("BASE_KEY=$(git rev-parse --short HEAD)"));
-        assert!(workflow.contains("HEAD_KEY=$(git rev-parse --short HEAD)"));
+        assert!(workflow.contains("BASE_KEY=\"${{ github.event.pull_request.base.sha }}\""));
+        assert!(workflow.contains("HEAD_KEY=\"${{ github.event.pull_request.head.sha }}\""));
+        assert!(workflow.contains("GCX_BRANCH_OVERRIDE=\"$BASE_KEY\" gcx init"));
+        assert!(workflow.contains("GCX_BRANCH_OVERRIDE=\"$HEAD_KEY\" gcx init"));
         assert!(workflow.contains("--base \"$BASE_KEY\""));
         assert!(workflow.contains("--head \"$HEAD_KEY\""));
         assert!(!workflow.contains("github.base_ref"));
         assert!(!workflow.contains("github.head_ref"));
-        assert!(workflow.contains("actions/upload-artifact@v4"));
+        assert!(workflow.contains("actions/checkout@11d5960a326750d5838078e36cf38b85af677262"));
+        assert!(
+            workflow.contains("actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02")
+        );
+        assert!(
+            workflow.contains("actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093")
+        );
+        assert!(workflow.contains(
+            "marocchino/sticky-pull-request-comment@773744901bac0e8cbb5a0dc842800d45e9b2b405"
+        ));
+        assert!(workflow.contains("persist-credentials: false"));
+        assert!(workflow.contains("cargo install gitcortex --version 0.7.6 --locked"));
+        assert!(workflow.contains("comment:\n    needs: blast-radius"));
+        assert!(workflow.contains("pull-requests: write"));
         assert!(workflow
             .contains("if: github.event.pull_request.head.repo.full_name == github.repository"));
         assert!(workflow.contains("name: gitcortex-blast-radius"));

@@ -370,7 +370,9 @@ Global files are never changed unless `--global-editor-config` is supplied.
 
 ### `gcx deinit`
 
-Safely removes GitCortex-owned hook blocks and repository-local editor integrations. Shared files retain unrelated content.
+Safely removes GitCortex-owned hook blocks, repository-local editor integrations,
+and the generated `.github/workflows/gcx-blast-radius.yml`. Shared files and
+unrelated workflows retain unrelated content.
 
 ```bash
 gcx deinit --dry-run                    # review every affected path

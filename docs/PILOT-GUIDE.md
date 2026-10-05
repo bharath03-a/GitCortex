@@ -34,6 +34,8 @@ For each selected task, record the existing workflow before enabling GitCortex:
 - assistant and model version
 - repository commit
 - question or task prompt
+- warm or cold cache state
+- planned repetition count (use at least three runs per condition for numerical comparisons)
 - tool calls and files read
 - elapsed time
 - input/output tokens when the client exposes them
@@ -83,13 +85,14 @@ Do not compare token counts across different models, prompts, repositories, cach
 
 ## Acceptance criteria
 
-Choose thresholds before collecting results. A reasonable pilot gate is:
+Choose thresholds and denominators before collecting results. A reasonable
+starting gate for a pilot with at least 20 held-out tasks is:
 
-- no known stale or cross-scope answers on the selected repositories
-- every answer used for a decision has verifiable file/line evidence
-- no material regression in commit, checkout, or editor workflows
-- median exploratory tool calls improve on the held-out task set
-- developers choose to keep GitCortex enabled after the pilot
+- 0 stale or cross-scope answers across all held-out tasks
+- 100% of answers used for a decision include verifiable file/line evidence
+- fewer than 1% of measured commits/checkouts exceed the team's predeclared hook-latency budget
+- median exploratory tool calls improve by at least 15% versus baseline on the same task set
+- at least 70% of pilot developers choose to keep GitCortex enabled
 - rollback has been tested successfully on one non-production clone
 
 Token reduction may be an additional criterion, but it should not override correctness.
@@ -124,6 +127,8 @@ Repository / commit:
 Client / model:
 GitCortex version:
 Task:
+Cache state (warm/cold):
+Run number / planned repetitions:
 Baseline result:
 GitCortex result:
 Correctness:

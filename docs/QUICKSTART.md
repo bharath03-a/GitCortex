@@ -85,7 +85,8 @@ Preview every integration file or hook block GitCortex would remove:
 gcx deinit --dry-run
 ```
 
-Then remove repository-local integration while retaining graph data:
+Then remove repository-local integration—including the generated
+`.github/workflows/gcx-blast-radius.yml` when present—while retaining graph data:
 
 ```bash
 gcx deinit

@@ -91,6 +91,12 @@ pub fn home_dir() -> PathBuf {
 }
 
 pub fn current_branch(repo_root: &std::path::Path) -> Result<String> {
+    if let Ok(branch) = std::env::var("GCX_BRANCH_OVERRIDE") {
+        let branch = branch.trim();
+        if !branch.is_empty() {
+            return Ok(branch.to_owned());
+        }
+    }
     let output = std::process::Command::new("git")
         .args(["symbolic-ref", "--short", "HEAD"])
         .current_dir(repo_root)

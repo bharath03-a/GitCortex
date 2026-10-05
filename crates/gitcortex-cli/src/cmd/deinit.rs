@@ -29,13 +29,7 @@ pub fn run(
     let mut changes = 0usize;
 
     changes += remove_hooks(&repo_root, dry_run)?;
-
-    for path in [
-        ".cursor/rules/gitcortex.mdc",
-        ".claude/hooks/pre-tool-use/gcx-context.sh",
-    ] {
-        changes += remove_file(&repo_root.join(path), dry_run)?;
-    }
+    changes += remove_repository_files(&repo_root, dry_run)?;
     for path in [
         ".claude/commands/gcx",
         ".claude/skills/gcx",
@@ -360,6 +354,18 @@ fn remove_file(path: &Path, dry_run: bool) -> Result<usize> {
     Ok(1)
 }
 
+fn remove_repository_files(repo_root: &Path, dry_run: bool) -> Result<usize> {
+    let mut changes = 0;
+    for path in [
+        ".cursor/rules/gitcortex.mdc",
+        ".claude/hooks/pre-tool-use/gcx-context.sh",
+        ".github/workflows/gcx-blast-radius.yml",
+    ] {
+        changes += remove_file(&repo_root.join(path), dry_run)?;
+    }
+    Ok(changes)
+}
+
 fn remove_dir(path: &Path, dry_run: bool) -> Result<usize> {
     if !path.exists() {
         return Ok(0);
@@ -425,6 +431,22 @@ mod tests {
                 .expect("parse updated configuration");
         assert!(value.pointer("/servers/other").is_some());
         assert!(value.pointer("/servers/gitcortex").is_none());
+    }
+
+    #[test]
+    fn removes_generated_ci_workflow_and_preserves_other_workflows() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let workflows = temp.path().join(".github/workflows");
+        fs::create_dir_all(&workflows).expect("workflow dir");
+        fs::write(workflows.join("gcx-blast-radius.yml"), "managed").expect("managed workflow");
+        fs::write(workflows.join("ci.yml"), "unrelated").expect("other workflow");
+
+        assert_eq!(
+            remove_repository_files(temp.path(), false).expect("remove files"),
+            1
+        );
+        assert!(!workflows.join("gcx-blast-radius.yml").exists());
+        assert!(workflows.join("ci.yml").exists());
     }
 
     #[test]
