@@ -285,6 +285,10 @@ cargo build --release
 
 ## Quick start
 
+For a reversible local trial, follow the [10-minute quickstart](docs/QUICKSTART.md).
+Teams can use the [pilot guide](docs/PILOT-GUIDE.md) to define held-out tasks,
+correctness gates, and rollout criteria before enabling GitCortex broadly.
+
 ```bash
 cd your-repo
 gcx init
@@ -559,6 +563,8 @@ gcx clean
 ### `gcx doctor`
 
 Diagnose setup issues: hooks installed, MCP registered, store accessible, index current.
+The command exits non-zero when a required check fails, so scripts and CI can
+use it as a setup gate after reading the remediation printed above the summary.
 
 ```bash
 gcx doctor
@@ -611,7 +617,12 @@ gcx update
 gcx init --ci
 ```
 
-This writes `.github/workflows/gcx-blast-radius.yml`. On every pull request it runs `gcx blast-radius` and posts the result as a sticky PR comment using the `github-comment` format.
+This writes `.github/workflows/gcx-blast-radius.yml`. On every pull request it
+indexes the exact immutable base and head SHAs, runs `gcx blast-radius`, and
+uploads the report as a workflow artifact. Same-repository branches also receive
+a sticky PR comment using the `github-comment` format; fork pull requests keep
+the artifact without attempting a write-token comment. Review the generated
+workflow before committing it.
 
 ---
 

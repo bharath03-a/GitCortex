@@ -1,173 +1,120 @@
-# GitCortex Demo — Recording Script
+# GitCortex demo — evidence-capture script
 
-**Format:** Silent screen recording, ~3–4 min  
-**Repo:** Django (`~/demo-django`)  
-**Core message:** Same question to Claude Code — without GitCortex, then with. The contrast tells the story.
+**Format:** 3–5 minute screen recording
+**Goal:** Demonstrate a repeatable code-understanding workflow without making benchmark claims the recording does not measure.
 
----
+## Before recording
 
-## Setup before you hit record
+Choose a public repository and pin the exact commit. Use a fresh clone or worktree so both runs begin from the same state.
+
+Record:
+
+- repository URL and commit SHA
+- GitCortex version
+- assistant, model, and client versions
+- cache state
+- exact prompt
+
+Select one held-out question with a verifiable answer, for example:
+
+> Where is authentication dispatched, and which functions call the dispatch point? Give file and line evidence.
+
+Do not rewrite the prompt after seeing either result.
+
+## Setup
 
 ```bash
-cd ~/demo-django
-
-# Write MCP config
-cat > .mcp.json << 'EOF'
-{"mcpServers":{"gcx":{"command":"gcx","args":["serve"]}}}
-EOF
-
-# Index the repo
-gcx init
-
-# Confirm indexed
+cd path/to/repository
+git rev-parse HEAD
+gcx --version
+gcx init --editor none
+gcx doctor
 gcx status
-
-# Clean terminal
-clear
 ```
 
-Large font size. Two terminal windows or split panes ready.
-
----
-
-## Shot list
-
-### Shot 1 — Benchmark report hero (5 sec)
-Open benchmark report HTML in browser.  
-Sit on the stat cards: **58% cheaper**, **2.15×** ratio.
-
----
-
-### Shot 2 — Without GitCortex (60 sec)
-
-Disable gcx, open Claude Code:
-```bash
-cd ~/demo-django
-mv .mcp.json .mcp.json.bak
-claude
-```
-
-Ask:
-```
-Where is authentication handled in this codebase?
-List the key files and functions.
-```
-
-Show the **tool calls panel** — Claude will grep repeatedly, read multiple files, many turns.  
-Let it finish. Note the turn count.
+Then configure the assistant through the supported installer rather than manually writing MCP files:
 
 ```bash
-# exit claude
-mv .mcp.json.bak .mcp.json
+gcx init --editor claude
+# or codex / cursor / windsurf / copilot / antigravity
 ```
 
----
+## Shot 1 — scope and controls
 
-### Shot 3 — Title card (3 sec)
-Text overlay or just type in terminal: `# WITH GitCortex`
+Show the pinned commit, client/model version, prompt, and whether caches are warm or cold. State that this is one workflow demonstration, not a universal performance claim.
 
----
+## Shot 2 — baseline
 
-### Shot 4 — With GitCortex (45 sec)
+Disable GitCortex for the client or use an equivalent clean client session. Ask the exact held-out question.
+
+Capture:
+
+- tool calls
+- files read
+- turns
+- elapsed time
+- total input/output tokens when available
+- final answer and evidence
+
+Do not cut failed searches from the recording.
+
+## Shot 3 — GitCortex
+
+Start a fresh client session with the compact GitCortex MCP server enabled. Ask the exact same prompt.
+
+Highlight the sequence rather than a predetermined result:
+
+1. typed question planning or compact `gcx` dispatch
+2. ranked search evidence
+3. exact caller/context query
+4. final file/line evidence
+
+Capture the same measures as the baseline.
+
+## Shot 4 — pre-edit impact
+
+Use a symbol found in the previous answer:
+
+> Before I change this symbol, show the direct callers and likely impact with file and line evidence.
+
+Verify at least one relationship against source code on screen.
+
+## Shot 5 — branch-aware PR impact
+
+On a real feature branch:
 
 ```bash
-claude
+gcx blast-radius --base main --head HEAD --format text
 ```
 
-**Same question:**
-```
-Where is authentication handled in this codebase?
-List the key files and functions.
-```
+Show changed symbols, affected callers, and the risk band. Explain that the report is evidence for review, not an automatic merge decision.
 
-Tool calls panel shows: `search_code` → one call → done in 2–3 turns.  
-Faster. Cleaner. Fewer reads.
-
----
-
-### Shot 5 — Refactor impact (30 sec)
-
-Still in Claude with gcx:
-```
-If I change BaseBackend, what breaks?
-Show me the direct callers.
-```
-
-`find_callers` → instant structured list with file + line.
-
----
-
-### Shot 6 — Tour (20 sec)
-
-```
-Give me a tour of this codebase — what are the main entry points?
-```
-
-`start_tour` → centrality-ranked entry points. One call.
-
----
-
-### Shot 7 — Viz (30 sec)
+## Shot 6 — diagnostics and rollback
 
 ```bash
-# exit claude
-gcx viz
+gcx doctor
+gcx deinit --dry-run
 ```
 
-Browser opens. Pan the Django graph.  
-Press Cmd+K → search "authenticate" → zoom to node → Inspector panel.
+Show that setup is diagnosable and the generated integration can be inspected before removal.
 
----
+## End card
 
-### Shot 8 — Report close (20 sec)
+Report only what this recording measured:
 
-Back to browser, scroll the benchmark report slowly:
-- Ratio bar chart (green bars = graph wins)
-- Cost table (ripgrep 55%, hono 58% cheaper)
-- Stat card: **58% cheaper**
+- repository and commit
+- client/model
+- baseline vs GitCortex tool calls, files read, turns, and tokens
+- correctness review
+- cache state
 
-End there.
+Link to the raw transcript or machine-readable run data when publishing numerical claims.
 
----
+## Editing rules
 
-## Key contrast
-Shot 2 (no gcx): Claude reads ~10 files, 8–12 turns, $0.04+  
-Shot 4 (gcx): Claude uses 1–2 graph calls, 2–3 turns, half the cost
-
-That gap is the whole pitch.
-
----
-
-## Editing notes
-- No voice needed — tool call panel + numbers do the work
-- Add split title: `WITHOUT GitCortex` → `WITH GitCortex` between Shot 2 and Shot 4
-- Cut any long Claude thinking pauses
-- Zoom in on tool call panel during Shot 2 vs Shot 4 for clarity
-- Export 1080p, upload to GitHub → paste URL into README `Demo` section
-
----
-
-## Commands in order
-
-```bash
-# Setup
-cd ~/demo-django && gcx init && clear
-
-# Shot 2 — no gcx
-mv .mcp.json .mcp.json.bak
-claude
-# ask: "Where is authentication handled?"
-# /exit
-
-# Re-enable
-mv .mcp.json.bak .mcp.json
-
-# Shot 4 — with gcx
-claude
-# same question
-# more questions
-# /exit
-
-# Shot 7
-gcx viz
-```
+- Keep identical prompts and repository state visible.
+- Do not remove failed GitCortex calls.
+- Do not compare different models or clients as if they were one experiment.
+- Label warm/cold cache state.
+- Avoid “X% cheaper” or “Y× faster” overlays unless those figures come from the displayed repeated run set.
+- Separate product demonstration from the pinned competitor benchmark performed during the release gate.
