@@ -32,8 +32,7 @@ pub fn run() -> Result<()> {
                 "cd into a git repo first",
                 &mut all_ok,
             );
-            print_summary(all_ok);
-            return Ok(());
+            return finish(all_ok);
         }
     };
 
@@ -115,8 +114,7 @@ pub fn run() -> Result<()> {
     check_editor_mcp(&repo_root);
 
     eprintln!();
-    print_summary(all_ok);
-    Ok(())
+    finish(all_ok)
 }
 
 fn check_wsl() {
@@ -280,7 +278,16 @@ fn print_summary(all_ok: bool) {
     if all_ok {
         eprintln!("All checks passed.");
     } else {
-        eprintln!("Some checks failed — see above for fixes.");
+        eprintln!("Setup issues found — see above for fixes.");
+    }
+}
+
+fn finish(all_ok: bool) -> Result<()> {
+    print_summary(all_ok);
+    if all_ok {
+        Ok(())
+    } else {
+        anyhow::bail!("gcx doctor found setup issues")
     }
 }
 
