@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use gitcortex_core::{
-    graph::{GraphDiff, Node},
+    graph::{Edge, GraphDiff, Node},
     schema::{EdgeConfidence, EdgeKind},
     store::GraphStore,
 };
@@ -53,21 +53,20 @@ pub fn run(base: String, head: String, depth: u8, format: BlastFormat) -> Result
         return Ok(());
     }
 
-    let all_edges = store.list_all_edges(&head).context("list edges failed")?;
+    let base_edges = store
+        .list_all_edges(&base)
+        .context("list base edges failed")?;
+    let all_edges = store
+        .list_all_edges(&head)
+        .context("list head edges failed")?;
 
     // node_id → Node lookup
-    let node_map: HashMap<NodeId, &Node> = all_nodes.iter().map(|n| (n.id.clone(), n)).collect();
+    let mut node_map: HashMap<NodeId, &Node> =
+        base_nodes.iter().map(|n| (n.id.clone(), n)).collect();
+    node_map.extend(all_nodes.iter().map(|n| (n.id.clone(), n)));
 
     // Reverse call graph: callee → [(caller, edge confidence)] (Calls edges only)
-    let mut reverse_calls: HashMap<NodeId, Vec<(NodeId, EdgeConfidence)>> = HashMap::new();
-    for edge in &all_edges {
-        if edge.kind == EdgeKind::Calls {
-            reverse_calls
-                .entry(edge.dst.clone())
-                .or_default()
-                .push((edge.src.clone(), edge.confidence));
-        }
-    }
+    let reverse_calls = build_reverse_calls(&base_edges, &all_edges);
 
     // BFS from each changed node up to `depth` hops through the reverse call graph.
     let changed_ids: HashSet<NodeId> = changed_nodes.iter().map(|n| n.id.clone()).collect();
@@ -133,35 +132,51 @@ fn changed_nodes_from_diff(diff: GraphDiff, base_nodes: &[Node], head_nodes: &[N
     let head_by_id: HashMap<_, _> = head_nodes.iter().map(|node| (&node.id, node)).collect();
     let mut seen = HashSet::new();
     let mut changed = Vec::new();
-    let mut add = |node: Node| {
-        if seen.insert(node.id.clone()) {
-            changed.push(node);
-        }
-    };
 
     for node in diff.added_nodes.into_iter().chain(diff.modified_nodes) {
-        add(node);
+        push_changed_node(&mut changed, &mut seen, node);
     }
     for id in diff.removed_node_ids {
         if let Some(node) = base_by_id.get(&id) {
-            add((*node).clone());
+            push_changed_node(&mut changed, &mut seen, (*node).clone());
         }
     }
-    for edge in diff.added_edges {
-        for id in [&edge.src, &edge.dst] {
-            if let Some(node) = head_by_id.get(id) {
-                add((*node).clone());
+    if changed.is_empty() {
+        for edge in diff.added_edges {
+            if let Some(node) = head_by_id.get(&edge.src) {
+                push_changed_node(&mut changed, &mut seen, (*node).clone());
             }
         }
-    }
-    for (src, dst, _) in diff.removed_edges {
-        for id in [&src, &dst] {
-            if let Some(node) = base_by_id.get(id) {
-                add((*node).clone());
+        for (src, _, _) in diff.removed_edges {
+            if let Some(node) = base_by_id.get(&src) {
+                push_changed_node(&mut changed, &mut seen, (*node).clone());
             }
         }
     }
     changed
+}
+
+fn push_changed_node(changed: &mut Vec<Node>, seen: &mut HashSet<NodeId>, node: Node) {
+    if seen.insert(node.id.clone()) {
+        changed.push(node);
+    }
+}
+
+fn build_reverse_calls(
+    base_edges: &[Edge],
+    head_edges: &[Edge],
+) -> HashMap<NodeId, Vec<(NodeId, EdgeConfidence)>> {
+    let mut reverse_calls: HashMap<NodeId, Vec<(NodeId, EdgeConfidence)>> = HashMap::new();
+    let mut seen = HashSet::new();
+    for edge in base_edges.iter().chain(head_edges) {
+        if edge.kind == EdgeKind::Calls && seen.insert((edge.src.clone(), edge.dst.clone())) {
+            reverse_calls
+                .entry(edge.dst.clone())
+                .or_default()
+                .push((edge.src.clone(), edge.confidence));
+        }
+    }
+    reverse_calls
 }
 
 /// Sums the `EdgeConfidence` mix of a caller list into (extracted, resolved,
@@ -428,7 +443,18 @@ mod tests {
             &[base_source, base_target],
             &[head_source, head_target],
         );
-        assert_eq!(changed.len(), 4);
+        assert_eq!(changed.len(), 2);
+    }
+
+    #[test]
+    fn reverse_calls_include_relationships_removed_from_head() {
+        let caller = test_node("caller");
+        let callee = test_node("callee");
+        let removed_call =
+            gitcortex_core::graph::Edge::call(caller.id.clone(), callee.id.clone(), 1);
+        let reverse = build_reverse_calls(&[removed_call], &[]);
+        assert_eq!(reverse.get(&callee.id).map(Vec::len), Some(1));
+        assert_eq!(reverse[&callee.id][0].0, caller.id);
     }
 
     #[test]

@@ -7,7 +7,7 @@ use super::init::{
     editors::{claude, codex, copilot, windsurf},
     helpers::{home_dir, repo_root, write_atomic},
     universal::{
-        ensure_hooks_scope, git_hooks_dir, CI_WORKFLOW_MARKER, HOOK_BLOCK_END, HOOK_BLOCK_START,
+        ensure_hooks_scope, git_hooks_dir, is_managed_ci_workflow, HOOK_BLOCK_END, HOOK_BLOCK_START,
     },
 };
 use super::serve_lock;
@@ -364,20 +364,19 @@ fn remove_repository_files(repo_root: &Path, dry_run: bool) -> Result<usize> {
     ] {
         changes += remove_file(&repo_root.join(path), dry_run)?;
     }
-    changes += remove_managed_file(
+    changes += remove_managed_ci_workflow(
         &repo_root.join(".github/workflows/gcx-blast-radius.yml"),
-        CI_WORKFLOW_MARKER,
         dry_run,
     )?;
     Ok(changes)
 }
 
-fn remove_managed_file(path: &Path, marker: &str, dry_run: bool) -> Result<usize> {
+fn remove_managed_ci_workflow(path: &Path, dry_run: bool) -> Result<usize> {
     if !path.exists() {
         return Ok(0);
     }
     let content = fs::read_to_string(path)?;
-    if !content.contains(marker) {
+    if !is_managed_ci_workflow(&content) {
         return Ok(0);
     }
     remove_file(path, dry_run)

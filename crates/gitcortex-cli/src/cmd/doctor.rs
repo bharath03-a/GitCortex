@@ -52,13 +52,28 @@ pub fn run() -> Result<()> {
 
     // 4. Graph store. An active MCP server intentionally owns Kuzu's
     // process-exclusive lock and performs Git synchronization itself.
-    if serve_lock::is_active(&repo_root).unwrap_or(false) {
+    let server_active = required(
+        serve_lock::is_active(&repo_root),
+        "could not inspect MCP server ownership",
+        "stop active gcx processes and rerun gcx doctor",
+        &mut all_ok,
+    )
+    .unwrap_or(false);
+    if server_active {
         ok("graph store owned by active MCP server");
         ok("index freshness managed by active MCP watcher");
     } else {
         match KuzuGraphStore::open(&repo_root) {
             Ok(store) => {
-                let branch = current_branch(&repo_root).unwrap_or_else(|_| "main".into());
+                let Some(branch) = required(
+                    current_branch(&repo_root),
+                    "could not resolve current branch",
+                    "run: git symbolic-ref --short HEAD or git rev-parse --short HEAD",
+                    &mut all_ok,
+                ) else {
+                    eprintln!();
+                    return finish(all_ok);
+                };
                 let node_count = required(
                     store.list_all_nodes(&branch).map(|nodes| nodes.len()),
                     "could not read graph nodes",
@@ -346,7 +361,14 @@ fn current_branch(repo_root: &Path) -> Result<String> {
             .args(["rev-parse", "--short", "HEAD"])
             .current_dir(repo_root)
             .output()?;
-        Ok(String::from_utf8(sha.stdout)?.trim().to_owned())
+        if !sha.status.success() {
+            anyhow::bail!("git rev-parse --short HEAD failed");
+        }
+        let value = String::from_utf8(sha.stdout)?.trim().to_owned();
+        if value.is_empty() {
+            anyhow::bail!("git rev-parse --short HEAD returned no revision");
+        }
+        Ok(value)
     }
 }
 
@@ -355,7 +377,14 @@ fn head_sha(repo_root: &Path) -> Result<String> {
         .args(["rev-parse", "HEAD"])
         .current_dir(repo_root)
         .output()?;
-    Ok(String::from_utf8(output.stdout)?.trim().to_owned())
+    if !output.status.success() {
+        anyhow::bail!("git rev-parse HEAD failed");
+    }
+    let value = String::from_utf8(output.stdout)?.trim().to_owned();
+    if value.is_empty() {
+        anyhow::bail!("git rev-parse HEAD returned no revision");
+    }
+    Ok(value)
 }
 
 fn dirs_home() -> Option<PathBuf> {
@@ -375,5 +404,12 @@ mod tests {
         let result: std::result::Result<usize, &str> = Err("store read failed");
         assert!(required(result, "read graph", "run: gcx init", &mut all_ok).is_none());
         assert!(!all_ok);
+    }
+
+    #[test]
+    fn git_revision_resolution_fails_outside_repository() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        assert!(current_branch(temp.path()).is_err());
+        assert!(head_sha(temp.path()).is_err());
     }
 }
