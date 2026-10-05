@@ -32,8 +32,7 @@ pub fn run() -> Result<()> {
                 "cd into a git repo first",
                 &mut all_ok,
             );
-            print_summary(all_ok);
-            return Ok(());
+            return finish(all_ok);
         }
     };
 
@@ -53,18 +52,45 @@ pub fn run() -> Result<()> {
 
     // 4. Graph store. An active MCP server intentionally owns Kuzu's
     // process-exclusive lock and performs Git synchronization itself.
-    if serve_lock::is_active(&repo_root).unwrap_or(false) {
+    let server_active = required(
+        serve_lock::is_active(&repo_root),
+        "could not inspect MCP server ownership",
+        "stop active gcx processes and rerun gcx doctor",
+        &mut all_ok,
+    )
+    .unwrap_or(false);
+    if server_active {
         ok("graph store owned by active MCP server");
         ok("index freshness managed by active MCP watcher");
     } else {
         match KuzuGraphStore::open(&repo_root) {
             Ok(store) => {
-                let branch = current_branch(&repo_root).unwrap_or_else(|_| "main".into());
-                let node_count = store.list_all_nodes(&branch).map(|v| v.len()).unwrap_or(0);
-                let edge_count = store.list_all_edges(&branch).map(|v| v.len()).unwrap_or(0);
-                ok(&format!(
-                    "graph store accessible  ({node_count} nodes, {edge_count} edges on {branch})"
-                ));
+                let Some(branch) = required(
+                    current_branch(&repo_root),
+                    "could not resolve current branch",
+                    "run: git symbolic-ref --short HEAD or git rev-parse --short HEAD",
+                    &mut all_ok,
+                ) else {
+                    eprintln!();
+                    return finish(all_ok);
+                };
+                let node_count = required(
+                    store.list_all_nodes(&branch).map(|nodes| nodes.len()),
+                    "could not read graph nodes",
+                    "run: gcx clean && gcx init",
+                    &mut all_ok,
+                );
+                let edge_count = required(
+                    store.list_all_edges(&branch).map(|edges| edges.len()),
+                    "could not read graph edges",
+                    "run: gcx clean && gcx init",
+                    &mut all_ok,
+                );
+                if let (Some(node_count), Some(edge_count)) = (node_count, edge_count) {
+                    ok(&format!(
+                        "graph store accessible  ({node_count} nodes, {edge_count} edges on {branch})"
+                    ));
+                }
 
                 // 5. Index freshness
                 match (store.last_indexed_sha(&branch), head_sha(&repo_root)) {
@@ -93,9 +119,16 @@ pub fn run() -> Result<()> {
                             &mut all_ok,
                         );
                     }
-                    _ => {
-                        warn("could not determine index freshness");
-                    }
+                    (Err(error), _) => fail(
+                        &format!("could not read indexed revision: {error}"),
+                        "run: gcx clean && gcx init",
+                        &mut all_ok,
+                    ),
+                    (_, Err(error)) => fail(
+                        &format!("could not read Git HEAD: {error}"),
+                        "run: git rev-parse HEAD",
+                        &mut all_ok,
+                    ),
                 }
             }
             Err(e) => {
@@ -115,8 +148,7 @@ pub fn run() -> Result<()> {
     check_editor_mcp(&repo_root);
 
     eprintln!();
-    print_summary(all_ok);
-    Ok(())
+    finish(all_ok)
 }
 
 fn check_wsl() {
@@ -268,8 +300,19 @@ fn fail(msg: &str, fix: &str, all_ok: &mut bool) {
     *all_ok = false;
 }
 
-fn warn(msg: &str) {
-    eprintln!("  [warn] {msg}");
+fn required<T, E: std::fmt::Display>(
+    result: std::result::Result<T, E>,
+    label: &str,
+    fix: &str,
+    all_ok: &mut bool,
+) -> Option<T> {
+    match result {
+        Ok(value) => Some(value),
+        Err(error) => {
+            fail(&format!("{label}: {error}"), fix, all_ok);
+            None
+        }
+    }
 }
 
 fn info(msg: &str) {
@@ -280,7 +323,16 @@ fn print_summary(all_ok: bool) {
     if all_ok {
         eprintln!("All checks passed.");
     } else {
-        eprintln!("Some checks failed — see above for fixes.");
+        eprintln!("Setup issues found — see above for fixes.");
+    }
+}
+
+fn finish(all_ok: bool) -> Result<()> {
+    print_summary(all_ok);
+    if all_ok {
+        Ok(())
+    } else {
+        anyhow::bail!("gcx doctor found setup issues")
     }
 }
 
@@ -309,7 +361,14 @@ fn current_branch(repo_root: &Path) -> Result<String> {
             .args(["rev-parse", "--short", "HEAD"])
             .current_dir(repo_root)
             .output()?;
-        Ok(String::from_utf8(sha.stdout)?.trim().to_owned())
+        if !sha.status.success() {
+            anyhow::bail!("git rev-parse --short HEAD failed");
+        }
+        let value = String::from_utf8(sha.stdout)?.trim().to_owned();
+        if value.is_empty() {
+            anyhow::bail!("git rev-parse --short HEAD returned no revision");
+        }
+        Ok(value)
     }
 }
 
@@ -318,7 +377,14 @@ fn head_sha(repo_root: &Path) -> Result<String> {
         .args(["rev-parse", "HEAD"])
         .current_dir(repo_root)
         .output()?;
-    Ok(String::from_utf8(output.stdout)?.trim().to_owned())
+    if !output.status.success() {
+        anyhow::bail!("git rev-parse HEAD failed");
+    }
+    let value = String::from_utf8(output.stdout)?.trim().to_owned();
+    if value.is_empty() {
+        anyhow::bail!("git rev-parse HEAD returned no revision");
+    }
+    Ok(value)
 }
 
 fn dirs_home() -> Option<PathBuf> {
@@ -326,4 +392,24 @@ fn dirs_home() -> Option<PathBuf> {
         .ok()
         .map(PathBuf::from)
         .or_else(|| std::env::var("USERPROFILE").ok().map(PathBuf::from))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn required_error_marks_doctor_unhealthy() {
+        let mut all_ok = true;
+        let result: std::result::Result<usize, &str> = Err("store read failed");
+        assert!(required(result, "read graph", "run: gcx init", &mut all_ok).is_none());
+        assert!(!all_ok);
+    }
+
+    #[test]
+    fn git_revision_resolution_fails_outside_repository() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        assert!(current_branch(temp.path()).is_err());
+        assert!(head_sha(temp.path()).is_err());
+    }
 }
