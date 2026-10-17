@@ -53,6 +53,7 @@ pub struct GitCortexServer {
     graph_revision: Arc<AtomicU64>,
     watcher_unhealthy: Arc<AtomicBool>,
     compact: bool,
+    audit: Arc<super::audit::CallAudit>,
     /// Approximate token budget for a single tool's list payload. List-returning
     /// tools truncate their items to fit this, setting `truncated: true`, so a
     /// high-fan-out symbol can never make the graph arm dump more than a grep
@@ -105,6 +106,7 @@ impl GitCortexServer {
             graph_revision: Arc::new(AtomicU64::new(0)),
             watcher_unhealthy: Arc::new(AtomicBool::new(false)),
             compact,
+            audit: Arc::new(super::audit::CallAudit::from_env()),
             response_budget,
             semantic: Arc::new(Mutex::new(SemanticState::Pending)),
         })
@@ -1892,12 +1894,8 @@ Any circular dependencies, large fan-outs, or architectural concerns visible in 
     }
 }
 
-// ── Combined ServerHandler (tools + prompts) ──────────────────────────────────
-
-#[tool_handler(router = self.active_tool_router())]
-#[prompt_handler(router = Self::prompt_router())]
-impl rmcp::ServerHandler for GitCortexServer {
-    async fn call_tool(
+impl GitCortexServer {
+    async fn call_tool_observed(
         &self,
         mut request: rmcp::model::CallToolRequestParams,
         context: RequestContext<RoleServer>,
@@ -2026,6 +2024,40 @@ impl rmcp::ServerHandler for GitCortexServer {
         result.content = vec![Content::text(data.to_string())];
         result.structured_content = Some(data);
         Ok(result)
+    }
+}
+
+// ── Combined ServerHandler (tools + prompts) ──────────────────────────────────
+
+#[tool_handler(router = self.active_tool_router())]
+#[prompt_handler(router = Self::prompt_router())]
+impl rmcp::ServerHandler for GitCortexServer {
+    async fn call_tool(
+        &self,
+        request: rmcp::model::CallToolRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let started = std::time::Instant::now();
+        let action = if request.name == "gcx" {
+            request
+                .arguments
+                .as_ref()
+                .and_then(|args| args.get("action"))
+                .and_then(|value| value.as_str())
+                .unwrap_or("")
+        } else {
+            request.name.as_ref()
+        };
+        // Only record advertised action names; unknown input may contain secrets.
+        let action = if Self::tool_router().get(action).is_some() {
+            action.to_owned()
+        } else {
+            "unknown".to_owned()
+        };
+        let result = self.call_tool_observed(request, context).await;
+        self.audit
+            .record(&action, self.compact, started.elapsed(), &result);
+        result
     }
 
     fn get_tool(&self, name: &str) -> Option<rmcp::model::Tool> {
