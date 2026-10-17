@@ -133,6 +133,27 @@ fn compact_and_full_clients_share_one_repository_daemon() {
     assert!(full_tools.len() > 10);
     assert!(full_tools.iter().any(|name| name == "gcx"));
 
+    // Doctor must interrogate the live graph owner, not infer freshness from
+    // its lock. Startup reconciliation can briefly report degraded readiness.
+    let deadline = Instant::now() + Duration::from_secs(8);
+    loop {
+        let doctor = gcx(repo.path(), data.path(), cache.path())
+            .arg("doctor")
+            .output()
+            .expect("doctor while active");
+        if doctor.status.success() {
+            assert!(String::from_utf8_lossy(&doctor.stderr)
+                .contains("active MCP server verified index readiness"));
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "{}",
+            String::from_utf8_lossy(&doctor.stderr)
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
     let clean = gcx(repo.path(), data.path(), cache.path())
         .arg("clean")
         .output()
