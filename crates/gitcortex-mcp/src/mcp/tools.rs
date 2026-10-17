@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
-use std::sync::{atomic::AtomicU64, Arc, Mutex};
-use std::time::Instant;
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64},
+    Arc, Mutex,
+};
 
 use gitcortex_core::{
     schema::NodeKind,
@@ -49,6 +51,7 @@ pub struct GitCortexServer {
     repo_root: PathBuf,
     default_branch: Arc<Mutex<String>>,
     graph_revision: Arc<AtomicU64>,
+    watcher_unhealthy: Arc<AtomicBool>,
     compact: bool,
     /// Approximate token budget for a single tool's list payload. List-returning
     /// tools truncate their items to fit this, setting `truncated: true`, so a
@@ -60,15 +63,20 @@ pub struct GitCortexServer {
     /// `Arc<Mutex<…>>` so the background task and all clone'd handler instances
     /// share the same index.
     pub semantic: Arc<Mutex<SemanticState>>,
-    /// Cached staleness warning: (computed_at, warning_text). Refreshed at most
-    /// once every 5 seconds so every MCP dispatch doesn't pay two subprocess forks.
-    staleness_cache: Arc<Mutex<Option<(Instant, String)>>>,
 }
 
 /// Default per-tool response token budget when `GCX_RESPONSE_BUDGET` is unset.
 const DEFAULT_RESPONSE_BUDGET: usize = 2000;
 /// Floor so a misconfigured tiny budget still returns something useful.
 const MIN_RESPONSE_BUDGET: usize = 400;
+
+/// Shared state owned by the repository watcher.
+pub struct WatcherContext {
+    pub store: Arc<Mutex<KuzuGraphStore>>,
+    pub branch: Arc<Mutex<String>>,
+    pub graph_revision: Arc<AtomicU64>,
+    pub unhealthy: Arc<AtomicBool>,
+}
 
 impl GitCortexServer {
     pub fn new(repo_root: &Path) -> anyhow::Result<Self> {
@@ -84,7 +92,7 @@ impl GitCortexServer {
     }
 
     fn with_store(repo_root: &Path, compact: bool, store: KuzuGraphStore) -> anyhow::Result<Self> {
-        let default_branch = detect_current_branch(repo_root).unwrap_or_else(|| "main".into());
+        let default_branch = detect_current_branch(repo_root).unwrap_or_default();
         let response_budget = std::env::var("GCX_RESPONSE_BUDGET")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
@@ -95,10 +103,10 @@ impl GitCortexServer {
             repo_root: repo_root.to_owned(),
             default_branch: Arc::new(Mutex::new(default_branch)),
             graph_revision: Arc::new(AtomicU64::new(0)),
+            watcher_unhealthy: Arc::new(AtomicBool::new(false)),
             compact,
             response_budget,
             semantic: Arc::new(Mutex::new(SemanticState::Pending)),
-            staleness_cache: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -112,12 +120,9 @@ impl GitCortexServer {
     }
 
     fn resolve_branch(&self, requested: Option<&str>) -> String {
-        requested.map(str::to_owned).unwrap_or_else(|| {
-            self.default_branch
-                .lock()
-                .map(|branch| branch.clone())
-                .unwrap_or_else(|_| "main".to_owned())
-        })
+        requested
+            .map(str::to_owned)
+            .unwrap_or_else(|| detect_current_branch(&self.repo_root).unwrap_or_default())
     }
 
     /// Truncate a list of JSON items to fit `response_budget`, returning the
@@ -158,99 +163,13 @@ impl GitCortexServer {
     }
 
     /// Return the shared store arc + branch needed by the file watcher.
-    pub fn store_context(
-        &self,
-    ) -> (
-        Arc<Mutex<KuzuGraphStore>>,
-        Arc<Mutex<String>>,
-        Arc<AtomicU64>,
-    ) {
-        (
-            self.store.clone(),
-            self.default_branch.clone(),
-            self.graph_revision.clone(),
-        )
-    }
-
-    /// Returns a staleness warning string if the index is behind HEAD or the
-    /// working tree has uncommitted edits. Empty string when index is fresh.
-    /// Result is cached for 5 seconds so repeated MCP calls don't each spawn
-    /// two git subprocesses.
-    fn staleness_warning(&self, branch: &str) -> String {
-        const CACHE_TTL_SECS: u64 = 5;
-
-        if let Ok(cache) = self.staleness_cache.lock() {
-            if let Some((computed_at, ref warn)) = *cache {
-                if computed_at.elapsed().as_secs() < CACHE_TTL_SECS {
-                    return warn.clone();
-                }
-            }
+    pub fn store_context(&self) -> WatcherContext {
+        WatcherContext {
+            store: self.store.clone(),
+            branch: self.default_branch.clone(),
+            graph_revision: self.graph_revision.clone(),
+            unhealthy: self.watcher_unhealthy.clone(),
         }
-
-        let warn = self.compute_staleness_warning(branch);
-
-        if let Ok(mut cache) = self.staleness_cache.lock() {
-            *cache = Some((Instant::now(), warn.clone()));
-        }
-        warn
-    }
-
-    fn compute_staleness_warning(&self, branch: &str) -> String {
-        let indexed = {
-            let store = match self.store.lock() {
-                Ok(g) => g,
-                Err(_) => return String::new(),
-            };
-            store.last_indexed_sha(branch).unwrap_or_else(|e| {
-                tracing::warn!("staleness check: could not read last_indexed_sha: {e}");
-                None
-            })
-        };
-
-        let head_sha = std::process::Command::new("git")
-            .args(["rev-parse", "HEAD"])
-            .current_dir(&self.repo_root)
-            .output()
-            .ok()
-            .and_then(|o| {
-                if o.status.success() {
-                    String::from_utf8(o.stdout)
-                        .ok()
-                        .map(|s| s.trim().to_owned())
-                } else {
-                    None
-                }
-            });
-
-        let dirty = std::process::Command::new("git")
-            .args(["status", "--porcelain"])
-            .current_dir(&self.repo_root)
-            .output()
-            .ok()
-            .and_then(|o| String::from_utf8(o.stdout).ok())
-            .map(|s| s.lines().count())
-            .unwrap_or(0);
-
-        let behind = match (&indexed, &head_sha) {
-            (Some(idx), Some(head)) => idx != head,
-            (None, _) => true,
-            _ => false,
-        };
-
-        if !behind && dirty == 0 {
-            return String::new();
-        }
-        let mut parts: Vec<String> = Vec::new();
-        if behind {
-            parts.push("index is behind HEAD".into());
-        }
-        if dirty > 0 {
-            parts.push(format!("{dirty} uncommitted file(s) not yet indexed"));
-        }
-        format!(
-            "⚠ Stale index: {} — run `gcx hook` to update.",
-            parts.join("; ")
-        )
     }
 
     fn active_tool_router(&self) -> ToolRouter<Self> {
@@ -446,7 +365,7 @@ impl GitCortexServer {
     #[tool(
         description = "Call this BEFORE editing, renaming, or removing a function or method's \
         signature or behavior — not just to answer 'who calls this?' after the fact. Returns \
-        every caller within the given hop radius, ranked by confidence and production-before-test, \
+        bounded observed callers within the given hop radius, ranked by confidence and production-before-test, \
         plus a risk_level (LOW/MEDIUM/HIGH/CRITICAL) based on caller count. Use the result to decide \
         how carefully to make the change and who else is affected before writing the edit. \
         Ambiguous short names return qualified candidates without traversal. depth=1 (default) is \
@@ -476,7 +395,7 @@ impl GitCortexServer {
 
     /// Get a 360° view of a symbol: definition, callers, callees, and type usages.
     #[tool(
-        description = "Get a complete picture of a symbol in one call: where it's defined, \
+        description = "Get bounded context for a symbol in one call: where it's defined, \
         what calls it (callers), what it calls (callees), and which code references it as a type. \
         Use this instead of chaining lookup_symbol + find_callers separately."
     )]
@@ -1114,7 +1033,7 @@ impl GitCortexServer {
     /// Find symbols with no callers or type references — potential dead code.
     #[tool(
         description = "Find symbols that are never called or used as a type anywhere in the indexed \
-        codebase. Useful for identifying dead code, safe-to-rename candidates, or refactoring targets. \
+        codebase. Investigation leads only: verify source, dynamic uses, and tests before removing or renaming. \
         Pass kind='function' to restrict to functions only."
     )]
     fn find_unused_symbols(
@@ -1305,9 +1224,8 @@ impl GitCortexServer {
         highest-centrality public functions/structs to give a new contributor an entry path. \
         With a seed, BFS-walks outward from it along call edges. Returns ordered tour steps \
         with rationale per step and a rendered markdown plan. \
-        ONE call is sufficient to answer onboarding and architecture questions — the output \
-        is self-contained. Do NOT follow up with additional tool calls after receiving the tour; \
-        synthesize and answer the user directly from this response."
+        Use this as a starting map. Check index readiness and verify relevant source and tests; \
+        an empty tour does not establish that the repository has no relationships."
     )]
     fn start_tour(&self, Parameters(p): Parameters<StartTourParams>) -> CallToolResult {
         let branch = self.resolve_branch(p.branch.as_deref());
@@ -1591,8 +1509,6 @@ impl GitCortexServer {
             .get("branch")
             .and_then(|v| v.as_str())
             .map(|s| s.to_owned());
-
-        let branch_for_stale = self.resolve_branch(branch_val.as_deref());
 
         // Helper: extract a string field from params.
         macro_rules! str_field {
@@ -1882,16 +1798,6 @@ impl GitCortexServer {
                 ))])
             }
         };
-        self.with_stale_warning(&branch_for_stale, result)
-    }
-
-    /// Wrap a `CallToolResult` with an optional staleness warning prepended as
-    /// a text block. Used by `gcx` dispatch after computing the inner result.
-    fn with_stale_warning(&self, branch: &str, mut result: CallToolResult) -> CallToolResult {
-        let warn = self.staleness_warning(branch);
-        if !warn.is_empty() {
-            result.content.insert(0, Content::text(warn));
-        }
         result
     }
 }
@@ -1908,7 +1814,7 @@ impl GitCortexServer {
         description = "Pre-commit impact analysis — maps changed files to affected callers and scores risk"
     )]
     fn detect_impact(&self, Parameters(p): Parameters<DetectImpactParams>) -> GetPromptResult {
-        let branch = p.branch.as_deref().unwrap_or("main");
+        let branch = self.resolve_branch(p.branch.as_deref());
         let files = p.changed_files.trim().to_owned();
 
         let user_msg = format!(
@@ -1944,7 +1850,7 @@ Please analyse the blast radius of these changes using the GitCortex knowledge g
         description = "Architecture documentation — produces a Mermaid diagram of modules, types, and key relationships"
     )]
     fn generate_map(&self, Parameters(p): Parameters<GenerateMapParams>) -> GetPromptResult {
-        let branch = p.branch.as_deref().unwrap_or("main");
+        let branch = self.resolve_branch(p.branch.as_deref());
 
         let user_msg = format!(
             r#"Generate an architecture map of this codebase on branch `{branch}` using GitCortex.
@@ -1991,6 +1897,137 @@ Any circular dependencies, large fan-outs, or architectural concerns visible in 
 #[tool_handler(router = self.active_tool_router())]
 #[prompt_handler(router = Self::prompt_router())]
 impl rmcp::ServerHandler for GitCortexServer {
+    async fn call_tool(
+        &self,
+        mut request: rmcp::model::CallToolRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        use std::sync::atomic::Ordering;
+
+        // Apply the same contract to compact dispatch and individual tools.
+        let compact = request.name == "gcx";
+        let arguments = request.arguments.get_or_insert_with(Default::default);
+        let action = if compact {
+            arguments
+                .get("action")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_owned()
+        } else {
+            request.name.to_string()
+        };
+        if action == "plan_query" || action.is_empty() {
+            let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
+            return self.active_tool_router().call(tcc).await;
+        }
+        let params = if compact {
+            arguments
+                .entry("params")
+                .or_insert_with(|| json!({}))
+                .as_object_mut()
+        } else {
+            Some(arguments)
+        };
+        let Some(params) = params else {
+            return Err(rmcp::ErrorData::invalid_params(
+                "params must be an object",
+                None,
+            ));
+        };
+        if params
+            .get("branch")
+            .is_some_and(|v| !v.is_null() && !v.is_string())
+        {
+            return Err(rmcp::ErrorData::invalid_params(
+                "branch must be a string",
+                None,
+            ));
+        }
+        let branch = self.resolve_branch(params.get("branch").and_then(|v| v.as_str()));
+        // Pin branch once per request so a checkout cannot change the scope
+        // between readiness checking and the inner tool's branch resolution.
+        params.insert("branch".to_owned(), json!(branch));
+        let scopes = if action == "branch_diff_graph" {
+            ["from_branch", "to_branch"]
+                .iter()
+                .filter_map(|key| params.get(*key).and_then(|v| v.as_str()).map(str::to_owned))
+                .collect::<Vec<_>>()
+        } else {
+            vec![branch]
+        };
+        let inspect = || -> Result<Vec<super::readiness::IndexReadiness>, rmcp::ErrorData> {
+            let store = self
+                .store
+                .lock()
+                .map_err(|_| rmcp::ErrorData::internal_error("store mutex poisoned", None))?;
+            Ok(scopes.iter().map(|scope| {
+                let mut state = super::readiness::inspect(&self.repo_root, &*store, scope);
+                if self.watcher_unhealthy.load(Ordering::Acquire) {
+                    state.state = "degraded";
+                    state.working_tree_verified = false;
+                    state.next_action = "Watcher synchronization is incomplete or failed. Wait for recovery or inspect source and restart gcx serve.";
+                }
+                state
+            }).collect())
+        };
+        let before = inspect()?;
+        let generation = self.graph_revision.load(Ordering::Acquire);
+        let diagnostic = matches!(action.as_str(), "graph_stats" | "health_report");
+        let safety_sensitive = matches!(action.as_str(), "find_unused_symbols" | "detect_changes");
+        let blocked = !diagnostic
+            && before.iter().any(|scope| {
+                matches!(
+                    scope.state,
+                    "missing" | "stale" | "unavailable" | "degraded"
+                ) || (safety_sensitive && scope.state == "unverified")
+            });
+        let index = if before.len() == 1 {
+            json!(before[0])
+        } else {
+            json!({"scopes": before})
+        };
+        if blocked {
+            return Ok(CallToolResult::structured_error(json!({
+                "status": "index_not_ready", "index": index,
+                "message": "Graph coverage cannot support this query. Empty or stale evidence does not establish that there are no dependencies. Inspect source and relevant tests."
+            })));
+        }
+        let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
+        let mut result = self.active_tool_router().call(tcc).await?;
+        let after = inspect()?;
+        if before != after || generation != self.graph_revision.load(Ordering::Acquire) {
+            return Ok(CallToolResult::structured_error(json!({
+                "status": "index_changed", "index": index,
+                "message": "Checkout or graph changed during the query; retry before relying on this evidence."
+            })));
+        }
+        // MCP structuredContent is an object. Keep legacy list payloads under
+        // items and synchronize text fallback with the exact same envelope.
+        let mut data = match result.structured_content.take() {
+            Some(serde_json::Value::Object(object)) => object,
+            Some(value) => serde_json::Map::from_iter([("items".to_owned(), value)]),
+            None => serde_json::Map::from_iter([("content".to_owned(), json!(result.content))]),
+        };
+        let unverified = before.iter().any(|scope| scope.state == "unverified");
+        if unverified {
+            data.insert("evidence_complete".to_owned(), json!(false));
+            data.insert("warning".to_owned(), json!("Working-tree evidence is unverified. Missing relationships do not establish safety; inspect source and relevant tests."));
+            if data.contains_key("risk_level") {
+                data.insert("risk_level".to_owned(), json!("UNKNOWN"));
+                data.insert(
+                    "answer".to_owned(),
+                    json!("Observed graph evidence only; working-tree coverage is unverified."),
+                );
+            }
+        }
+        data.insert("index".to_owned(), index);
+        data.insert("graph_generation".to_owned(), json!(generation));
+        let data = serde_json::Value::Object(data);
+        result.content = vec![Content::text(data.to_string())];
+        result.structured_content = Some(data);
+        Ok(result)
+    }
+
     fn get_tool(&self, name: &str) -> Option<rmcp::model::Tool> {
         self.active_tool_router().get(name).cloned()
     }

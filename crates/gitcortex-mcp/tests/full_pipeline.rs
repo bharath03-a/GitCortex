@@ -70,6 +70,54 @@ const FIXTURES: &str = concat!(
     "/../../tests/integration/fixtures"
 );
 
+#[test]
+fn growing_source_beyond_size_limit_removes_previous_definitions() {
+    let _lock = KUZU_LOCK.lock().expect("lock");
+    let tmp = tempfile::tempdir().expect("repo");
+    init_repo(tmp.path());
+    std::fs::write(tmp.path().join("a.rs"), "pub fn old_definition() {}\n").expect("small source");
+    for args in [["add", "a.rs"], ["commit", "-m"]] {
+        let mut command = Command::new("git");
+        command.args(args).current_dir(tmp.path());
+        if args[0] == "commit" {
+            command.arg("small");
+        }
+        assert!(command.output().expect("git").status.success());
+    }
+    let indexer = IncrementalIndexer::new(tmp.path()).expect("indexer");
+    let (diff, initial) = indexer.run(None).expect("initial index");
+    let mut store = KuzuGraphStore::open(tmp.path()).expect("store");
+    store.apply_diff("main", &diff).expect("initial graph");
+    assert!(!store
+        .lookup_symbol("main", "old_definition", false)
+        .expect("lookup")
+        .is_empty());
+    std::fs::write(
+        tmp.path().join("a.rs"),
+        "// now intentionally oversized\n".repeat(25_000),
+    )
+    .expect("large source");
+    for args in [vec!["add", "a.rs"], vec!["commit", "-m", "grow"]] {
+        assert!(Command::new("git")
+            .args(args)
+            .current_dir(tmp.path())
+            .output()
+            .expect("git")
+            .status
+            .success());
+    }
+    let (diff, _) = indexer.run(Some(&initial)).expect("incremental index");
+    assert!(
+        !diff.is_empty(),
+        "exclusion must invalidate stale graph rows"
+    );
+    store.apply_diff("main", &diff).expect("update graph");
+    assert!(store
+        .lookup_symbol("main", "old_definition", false)
+        .expect("lookup")
+        .is_empty());
+}
+
 fn init_repo(dir: &Path) {
     for args in [
         vec!["init"],
