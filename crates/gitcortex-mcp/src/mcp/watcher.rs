@@ -19,6 +19,14 @@ const DEBOUNCE_MS: u64 = 500;
 const MAX_BATCH_MS: u64 = 1_000;
 const MAX_PENDING: usize = 4096;
 
+fn queue_pending(pending: &mut HashSet<PathBuf>, path: PathBuf, rescan: &AtomicBool) {
+    if pending.contains(&path) || pending.len() < MAX_PENDING {
+        pending.insert(path);
+    } else {
+        rescan.store(true, Ordering::Release);
+    }
+}
+
 fn indexes_event(kind: EventKind) -> bool {
     matches!(
         kind,
@@ -111,6 +119,7 @@ async fn run_watcher(
 
     let mut pending = HashSet::new();
     let mut snapshots = HashMap::new();
+    let mut snapshot_limit = MAX_PENDING;
 
     let mut first_event = None;
     let mut last_event = Instant::now();
@@ -126,8 +135,8 @@ async fn run_watcher(
                 let Some(path) = path else { break; };
                 first_event.get_or_insert_with(Instant::now);
                 last_event = Instant::now();
-                if pending.len() < MAX_PENDING { pending.insert(path); }
-                else { rescan.store(true, Ordering::Release); unhealthy.store(true, Ordering::Release); }
+                queue_pending(&mut pending, path, &rescan);
+                if rescan.load(Ordering::Acquire) { unhealthy.store(true, Ordering::Release); }
             }
             _ = tick.tick() => {
                 let Some(current) = super::helpers::detect_current_branch(&repo_root) else {
@@ -153,10 +162,10 @@ async fn run_watcher(
                             for relative in paths {
                                 let path = repo_root.join(relative);
                                 let stamp = std::fs::symlink_metadata(&path).ok().map(|metadata| (metadata.len(), metadata.modified().ok()));
-                                if observed_disk.get(&path) != Some(&stamp) { pending.insert(path.clone()); }
+                                if observed_disk.get(&path) != Some(&stamp) { queue_pending(&mut pending, path.clone(), &rescan); }
                                 observed.insert(path, stamp);
                             }
-                            for old in observed_disk.keys() { if !observed.contains_key(old) { pending.insert(old.clone()); } }
+                            for old in observed_disk.keys() { if !observed.contains_key(old) { queue_pending(&mut pending, old.clone(), &rescan); } }
                             observed_disk = observed;
                             if !pending.is_empty() { first_event.get_or_insert_with(Instant::now); }
                         }
@@ -180,6 +189,11 @@ async fn run_watcher(
                 };
                 match result {
                     Ok(()) => {
+                        // Bound historical tombstones during long dirty coding
+                        // sessions. Reconciliation compacts to the current
+                        // source set, rather than retaining every past path.
+                        if recover { snapshot_limit = snapshots.len().saturating_add(MAX_PENDING); }
+                        else if snapshots.len() > snapshot_limit { rescan.store(true, Ordering::Release); }
                         previous_scope = Some(scope);
                         if let Ok(mut active) = branch.lock() { *active = current; }
                         pending.clear(); first_event = None;
@@ -379,6 +393,27 @@ mod tests {
         assert!(!indexes_event(EventKind::Access(
             notify::event::AccessKind::Any
         )));
+    }
+
+    #[test]
+    fn source_probe_flood_is_bounded_and_requests_reconciliation() {
+        let mut pending = HashSet::new();
+        let rescan = AtomicBool::new(false);
+        for index in 0..MAX_PENDING + 100 {
+            queue_pending(
+                &mut pending,
+                PathBuf::from(format!("file_{index}.rs")),
+                &rescan,
+            );
+        }
+        assert_eq!(pending.len(), MAX_PENDING);
+        assert!(rescan.load(Ordering::Acquire));
+        rescan.store(false, Ordering::Release);
+        queue_pending(&mut pending, PathBuf::from("file_0.rs"), &rescan);
+        assert!(
+            !rescan.load(Ordering::Acquire),
+            "duplicates need no recovery"
+        );
     }
 
     #[test]
