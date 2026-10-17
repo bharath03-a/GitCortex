@@ -1,0 +1,174 @@
+{
+  "status": "development_checkpoint_not_release_evidence",
+  "implementation_commit": "0c303208c67e4ddb27e6f730cf5e38e25dccae1d",
+  "profile": "debug",
+  "rounds": 1,
+  "model": "none",
+  "client": "gcx CLI",
+  "cache_state": "fresh index in a new benchmark work directory; no model cache",
+  "created_at": "2026-10-17T09:12:12.367621+00:00",
+  "binary_sha256": "87b3eda4e76d7ffd5d6ea6736eccfee1d3e5a3e0766bcfa3908dc64639c69567",
+  "suite_sha256": "e5754f41f3c4a8b9a0ce20d97894fd7430289174782f4281fcf5ddd94b1a2fb1",
+  "full_suite_task_count": 35,
+  "repo_commits": {
+    "cobra": "adbc8813901bba65827259daa8e22ff94ec1f30e"
+  },
+  "trace_path": "tools/agent-bench/results/pr5-frozen-debug-cobra-20261017.jsonl",
+  "trace_sha256": "1a134141adbc21ecee7cbefe5dc1f45a90f4c89ec9522f07ffeed5c1970c30e2",
+  "frozen_binary_path": "/tmp/gcx-pr5-frozen-0c30320/gcx",
+  "environment": {
+    "platform": "macOS-26.5.1-arm64-arm-64bit",
+    "machine": "arm64",
+    "python": "3.12.9",
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)"
+  },
+  "tasks": [
+    {
+      "task_id": "cobra-search-parse-flags",
+      "valid": true,
+      "quality_score": 1.0,
+      "payload_bytes": 2131,
+      "mrr": 1.0,
+      "precision_at_5": 1.0,
+      "file_recall": 1.0
+    },
+    {
+      "task_id": "cobra-tour",
+      "valid": true,
+      "quality_score": 1.0,
+      "payload_bytes": 294,
+      "mrr": null,
+      "precision_at_5": null,
+      "file_recall": null
+    },
+    {
+      "task_id": "cobra-callers-add-command",
+      "valid": true,
+      "quality_score": 1.0,
+      "payload_bytes": 2836,
+      "mrr": null,
+      "precision_at_5": null,
+      "file_recall": null
+    },
+    {
+      "task_id": "cobra-neighborhood-add-command",
+      "valid": true,
+      "quality_score": 1.0,
+      "payload_bytes": 2033,
+      "mrr": null,
+      "precision_at_5": null,
+      "file_recall": null
+    },
+    {
+      "task_id": "cobra-impact-add-command",
+      "valid": true,
+      "quality_score": 1.0,
+      "payload_bytes": 5177,
+      "mrr": null,
+      "precision_at_5": null,
+      "file_recall": null
+    },
+    {
+      "task_id": "cobra-architecture-parse-flags",
+      "valid": true,
+      "quality_score": 1.0,
+      "payload_bytes": 2686,
+      "mrr": null,
+      "precision_at_5": null,
+      "file_recall": null
+    },
+    {
+      "task_id": "cobra-refactor-add-command",
+      "valid": true,
+      "quality_score": 1.0,
+      "payload_bytes": 3596,
+      "mrr": null,
+      "precision_at_5": null,
+      "file_recall": null
+    }
+  ],
+  "summary": {
+    "by_action": {
+      "architecture": {
+        "latency_ms_median": 582,
+        "payload_bytes_median": 2686,
+        "quality_mean": 1.0,
+        "tasks": 1,
+        "valid": 1
+      },
+      "callers": {
+        "latency_ms_median": 381,
+        "payload_bytes_median": 2836,
+        "quality_mean": 1.0,
+        "tasks": 1,
+        "valid": 1
+      },
+      "impact": {
+        "latency_ms_median": 2354,
+        "payload_bytes_median": 5177,
+        "quality_mean": 1.0,
+        "tasks": 1,
+        "valid": 1
+      },
+      "refactor": {
+        "latency_ms_median": 439,
+        "payload_bytes_median": 3596,
+        "quality_mean": 1.0,
+        "tasks": 1,
+        "valid": 1
+      },
+      "search": {
+        "file_recall_mean": 1.0,
+        "latency_ms_median": 401,
+        "mrr_mean": 1.0,
+        "payload_bytes_median": 2131,
+        "precision_at_5_mean": 1.0,
+        "quality_mean": 1.0,
+        "relevance_tasks": 1,
+        "tasks": 1,
+        "valid": 1
+      },
+      "subgraph": {
+        "latency_ms_median": 425,
+        "payload_bytes_median": 2033,
+        "quality_mean": 1.0,
+        "tasks": 1,
+        "valid": 1
+      },
+      "tour": {
+        "latency_ms_median": 319,
+        "payload_bytes_median": 294,
+        "quality_mean": 1.0,
+        "tasks": 1,
+        "valid": 1
+      }
+    },
+    "invalid": 0,
+    "latency_ms_median": 425,
+    "payload_bytes_median": 2686,
+    "quality_mean": 1.0,
+    "tasks": 7,
+    "type": "summary",
+    "valid": 7
+  },
+  "validation": {
+    "rust_tests_passed": 350,
+    "frontend_tests_passed": 30,
+    "existing_harness_tests_passed": 50,
+    "release_gate_tests_passed": 24,
+    "clippy": "passed -D warnings",
+    "format": "passed",
+    "rust_audit": "passed using local advisory DB with --no-fetch",
+    "npm_audit": "no high-severity findings; one low-severity advisory remains"
+  },
+  "limitations": [
+    "One repository and one model-free round",
+    "No baseline comparison or noninferiority result",
+    "Debug build; no release performance claim",
+    "No autonomous continuous-coding client episodes yet",
+    "Full suite, migration/package matrix, competitors, and release gates remain pending",
+    "Earlier mutable-binary development run was aborted and is not evidence",
+    "The frozen retrieval smoke predates the follow-up bounded-history fix; that follow-up is covered by the final workspace tests"
+  ],
+  "current_product_commit": "e6841bfe23d57b99e712c81d0951829b39dbf4df"
+}

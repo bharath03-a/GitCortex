@@ -30,24 +30,29 @@ We follow **SemVer 0.x**:
 
 **Version discipline (pre-traction rule):**
 
-Until GitCortex has measurable organic traction — real GitHub issues from
-strangers, meaningful download counts, or a production user — **do not bump
-the minor version**. Ship everything as patch releases (`0.6.1`, `0.6.2`, …).
+Until GitCortex has measurable organic traction, prefer patch releases for
+compatible fixes. This does not override the compatibility rules above: schema,
+public CLI/MCP contract, and user-visible parser changes require a minor bump
+regardless of traction. Do not increase a version solely to imply momentum.
 
 Rationale: rapidly incrementing `0.X.0` with no users signals fake momentum.
 It also makes the project look further along than it is to potential
 contributors, which sets wrong expectations.
 
-Minor bump (`0.7.0`) is allowed only when at least one of:
+For discretionary minor releases without a compatibility trigger, require at least one of:
 - 50+ GitHub stars from external contributors
 - A production user filing a real issue or PR
 - A measurable week-over-week download trend from public registries
 
 `1.0.0` = public launch or first confirmed production deployment.
 
-When you change `SCHEMA_VERSION`, existing users will have their local graph
-wiped and re-indexed automatically on the next git hook. Call this out in the
-release notes.
+R1's compatibility-first target is **0.8.0** because PRs 1–4 changed the schema
+and public query contract. Version files remain unchanged until candidate
+validation is complete. PR 5 must verify and document the one-time re-index
+path; ordinary read queries must not destructively rebuild incompatible data.
+
+Before tagging, run `python3 scripts/r1_release_gate.py`. See
+[the combined R1 gate](docs/benchmarks/R1-RELEASE-GATE.md) for its evidence inputs.
 
 ---
 
