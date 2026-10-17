@@ -242,3 +242,29 @@ controlled results. Use the existing pilot guide and update it with episode logs
 Do not release merely because the benchmark is cheaper. Ship when graph scope
 is trustworthy, changing-code workflows pass, and all required release gates are
 satisfied. Do not require speculative roadmap features to finish this program.
+
+### Local call audit for experiments
+
+Set `GCX_AUDIT_LOG=/absolute/path/gcx-calls.jsonl` in the MCP server's
+startup environment and restart the server. The parent directory must already
+exist. Logging is disabled when this variable is absent or empty. Each completed
+MCP call records schema version, timestamp, process ID, advertised action name,
+compact/full mode, duration in microseconds, serialized response bytes, outcome,
+and available index state and graph generation. Unknown actions are recorded as
+`unknown`. Arguments, queries, symbols, paths, source, response contents, and error
+messages are excluded. Nothing is uploaded.
+
+The log rotates at 8 MiB, retaining one `.1` backup. Use a distinct path per
+server process: rotation is synchronized within a daemon, not across processes.
+New files use owner-only permissions on Unix; existing file permissions are
+preserved. Writes are synchronous and best effort; write failures warn on stderr
+without failing queries. Call latency excludes the audit write itself. A crash
+or cancellation before completion may leave no event. This is diagnostic usage
+history, not a tamper-proof security audit or a record of ordinary shell/CLI calls.
+
+For paired continuous-coding runs, keep one audit log per treatment session next
+to the client transcript. Compare action frequency, error/readiness outcomes,
+latency, response bytes, and generation changes against task completion and test
+results. These logs alone cannot establish correctness, token savings, or causal
+productivity improvements. CLI call auditing and an aggregate report remain
+follow-up work.

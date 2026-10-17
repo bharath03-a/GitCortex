@@ -1,4 +1,5 @@
 pub mod agent;
+pub(crate) mod audit;
 pub mod centrality;
 pub mod clustering;
 pub(crate) mod git_helpers;
