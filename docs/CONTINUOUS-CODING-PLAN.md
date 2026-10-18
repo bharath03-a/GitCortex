@@ -254,7 +254,9 @@ and available index state and graph generation. Unknown actions are recorded as
 `unknown`. Arguments, queries, symbols, paths, source, response contents, and error
 messages are excluded. Nothing is uploaded.
 
-The log rotates at 8 MiB, retaining one `.1` backup. Use a distinct path per
+The log rotates before exceeding 1 MiB, retaining one `.1` backup: at most
+2 MiB total per configured path, regardless of call count. Oversized files from
+the previous policy are discarded on the next write. Use a distinct path per
 server process: rotation is synchronized within a daemon, not across processes.
 New files use owner-only permissions on Unix; existing file permissions are
 preserved. Writes are synchronous and best effort; write failures warn on stderr
