@@ -9,7 +9,7 @@ server in `gitcortex-viz`; it does not currently have an audit API.
 Add an Activity tab beside the repository graph, with:
 
 - Logging state and retained storage: off, available, unavailable, or malformed.
-- A recent-call list: time, tool, outcome, duration, response bytes, index state.
+- A recent-call list: time, tool, outcome, duration, response text bytes, index state.
 - Action counts, error counts, latency median/p95, and readiness failures over
   the retained window. Show sample counts and the oldest/newest retained times.
 - Filters for action and outcome, plus a clear explanation of missing history.
@@ -25,6 +25,11 @@ Use one configured audit path per repository daemon. The UI must explicitly
 identify this as MCP usage; CLI and ordinary shell activity are not captured.
 Keep correctness, task success, and token savings out of the dashboard unless
 separate benchmark/client evidence supports them.
+
+Schema version 2 changes response size to `response_text_bytes` and includes
+cumulative drop/write-failure counts. Parse versions explicitly; do not mix v1
+protocol byte measurements with v2 text bytes. Queue loss or shutdown can leave
+gaps. Show loss counters as observed lower bounds, not proof of complete logs.
 
 ## Storage and implementation
 
