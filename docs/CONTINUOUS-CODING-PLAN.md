@@ -249,7 +249,7 @@ Set `GCX_AUDIT_LOG=/absolute/path/gcx-calls.jsonl` in the MCP server's
 startup environment and restart the server. The parent directory must already
 exist. Logging is disabled when this variable is absent or empty. Each completed
 MCP call records schema version, timestamp, process ID, advertised action name,
-compact/full mode, duration in microseconds, serialized response bytes, outcome,
+compact/full mode, duration in microseconds, response text bytes, outcome,
 and available index state and graph generation. Unknown actions are recorded as
 `unknown`. Arguments, queries, symbols, paths, source, response contents, and error
 messages are excluded. Nothing is uploaded.
@@ -259,8 +259,15 @@ The log rotates before exceeding 1 MiB, retaining one `.1` backup: at most
 the previous policy are discarded on the next write. Use a distinct path per
 server process: rotation is synchronized within a daemon, not across processes.
 New files use owner-only permissions on Unix; existing file permissions are
-preserved. Writes are synchronous and best effort; write failures warn on stderr
-without failing queries. Call latency excludes the audit write itself. A crash
+preserved. Writes use a background worker with a bounded 256-event queue.
+Enqueue never waits for disk: full/disconnected queues drop events and count
+losses. Schema version 2 records cumulative dropped-event and write-failure
+counts with the next queued event. If no later event is recorded, final loss
+counts may be unavailable. Write warnings are rate-limited to powers of two.
+Response text bytes are counted from already-rendered MCP text, not serialized
+protocol size or tokens. No response is copied into the queue. Disabled logging
+bypasses metadata processing. Call duration excludes audit processing; measure
+its remaining CPU overhead separately. Shutdown does not wait for a flush; a crash
 or cancellation before completion may leave no event. This is diagnostic usage
 history, not a tamper-proof security audit or a record of ordinary shell/CLI calls.
 

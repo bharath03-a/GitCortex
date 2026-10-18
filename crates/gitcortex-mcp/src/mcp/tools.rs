@@ -54,6 +54,7 @@ pub struct GitCortexServer {
     watcher_unhealthy: Arc<AtomicBool>,
     compact: bool,
     audit: Arc<super::audit::CallAudit>,
+    audit_actions: Arc<std::collections::BTreeSet<String>>,
     /// Approximate token budget for a single tool's list payload. List-returning
     /// tools truncate their items to fit this, setting `truncated: true`, so a
     /// high-fan-out symbol can never make the graph arm dump more than a grep
@@ -107,6 +108,12 @@ impl GitCortexServer {
             watcher_unhealthy: Arc::new(AtomicBool::new(false)),
             compact,
             audit: Arc::new(super::audit::CallAudit::from_env()),
+            audit_actions: Arc::new(
+                Self::tool_router()
+                    .into_iter()
+                    .map(|route| route.attr.name.into_owned())
+                    .collect(),
+            ),
             response_budget,
             semantic: Arc::new(Mutex::new(SemanticState::Pending)),
         })
@@ -2037,6 +2044,9 @@ impl rmcp::ServerHandler for GitCortexServer {
         request: rmcp::model::CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
+        if !self.audit.enabled() {
+            return self.call_tool_observed(request, context).await;
+        }
         let started = std::time::Instant::now();
         let action = if request.name == "gcx" {
             request
@@ -2049,7 +2059,7 @@ impl rmcp::ServerHandler for GitCortexServer {
             request.name.as_ref()
         };
         // Only record advertised action names; unknown input may contain secrets.
-        let action = if Self::tool_router().get(action).is_some() {
+        let action = if self.audit_actions.contains(action) {
             action.to_owned()
         } else {
             "unknown".to_owned()
