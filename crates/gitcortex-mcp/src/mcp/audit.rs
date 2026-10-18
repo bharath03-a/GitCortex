@@ -9,7 +9,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-const MAX_BYTES: u64 = 8 * 1024 * 1024;
+const MAX_BYTES: u64 = 1024 * 1024;
 
 pub(crate) struct CallAudit {
     path: Option<PathBuf>,
@@ -82,10 +82,26 @@ impl CallAudit {
             .lock
             .lock()
             .map_err(|_| std::io::Error::other("audit mutex poisoned"))?;
-        if fs::metadata(path).is_ok_and(|m| m.len() >= MAX_BYTES) {
-            let mut backup = path.as_os_str().to_owned();
-            backup.push(".1");
-            fs::rename(path, PathBuf::from(backup))?;
+        let mut line = serde_json::to_vec(record)?;
+        line.push(b'\n');
+        if line.len() as u64 > MAX_BYTES {
+            return Err(std::io::Error::other("audit record exceeds file budget"));
+        }
+        let mut backup = path.as_os_str().to_owned();
+        backup.push(".1");
+        let backup = PathBuf::from(backup);
+        // Repair files left by an older, larger retention policy.
+        if fs::metadata(&backup).is_ok_and(|m| m.len() > MAX_BYTES) {
+            fs::remove_file(&backup)?;
+        }
+        let current_bytes = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+        if current_bytes > MAX_BYTES {
+            OpenOptions::new().write(true).open(path)?.set_len(0)?;
+        } else if current_bytes + line.len() as u64 > MAX_BYTES {
+            if backup.exists() {
+                fs::remove_file(&backup)?;
+            }
+            fs::rename(path, &backup)?;
         }
         let mut options = OpenOptions::new();
         options.create(true).append(true);
@@ -95,8 +111,6 @@ impl CallAudit {
             options.mode(0o600);
         }
         let mut file = options.open(path)?;
-        let mut line = serde_json::to_vec(record)?;
-        line.push(b'\n');
         file.write_all(&line)
     }
 }
@@ -120,6 +134,38 @@ mod tests {
         assert_eq!(value["index_state"], "stale");
         assert_eq!(value["duration_us"], 2000);
     }
+    #[test]
+    fn repeated_rotation_never_exceeds_total_budget() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("calls.jsonl");
+        let backup = temp.path().join("calls.jsonl.1");
+        let audit = CallAudit {
+            path: Some(path.clone()),
+            lock: Mutex::new(()),
+        };
+        // Also exercise migration from the previous 8 MiB file budget.
+        fs::File::create(&path)
+            .unwrap()
+            .set_len(MAX_BYTES * 8)
+            .unwrap();
+        fs::File::create(&backup)
+            .unwrap()
+            .set_len(MAX_BYTES * 8)
+            .unwrap();
+        audit.append(&json!({"action":"search_code"})).unwrap();
+        assert!(!backup.exists());
+        let record = json!({"padding":"x".repeat(1024)});
+        for _ in 0..3200 {
+            audit.append(&record).unwrap();
+            let current = fs::metadata(&path).unwrap().len();
+            let previous = fs::metadata(&backup).map(|m| m.len()).unwrap_or(0);
+            assert!(current <= MAX_BYTES);
+            assert!(previous <= MAX_BYTES);
+            assert!(current + previous <= MAX_BYTES * 2);
+        }
+        assert_eq!(fs::read_dir(temp.path()).unwrap().count(), 2);
+    }
+
     #[test]
     fn rotates_and_preserves_protocol_failures() {
         let temp = tempfile::tempdir().unwrap();
