@@ -226,7 +226,9 @@ export function FilterRail({
                   title={`${file.path} · +${file.additions} / −${file.deletions}`}
                   className="flex items-center gap-2 rounded px-1.5 py-1 text-ui-xs hover:bg-(--color-void-deep)/70"
                 >
-                  <span className="w-3 shrink-0 text-(--color-text-dim)">{index + 1}</span>
+                  <span className="min-w-5 shrink-0 text-right text-(--color-text-dim)">
+                    {index + 1}
+                  </span>
                   <span className="min-w-0 flex-1 truncate font-mono text-(--color-text-muted)">
                     {file.path}
                   </span>
@@ -426,9 +428,9 @@ function FilterSection({
 }) {
   return (
     <details className="group border-b border-(--color-border-subtle)/70 py-1.5">
-      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 rounded-md px-1 py-1.5 text-ui-xs text-(--color-text-muted) hover:text-(--color-text-primary)">
+      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 rounded-md px-1 py-1.5 text-ui-base text-(--color-text-muted) hover:text-(--color-text-primary)">
         <span>{title}</span>
-        <span className="text-ui-xs text-(--color-text-dim)">{summary}</span>
+        <span className="text-ui-base text-(--color-text-dim)">{summary}</span>
       </summary>
       <div className="space-y-0.5 pb-2 pt-1">{children}</div>
     </details>
@@ -462,7 +464,7 @@ function FilterRow({
         className={swatchKind === "dot" ? "size-2 rounded-full" : "h-0.5 w-3 rounded"}
         style={{ background: swatchColor }}
       />
-      <span className="min-w-0 flex-1 break-words text-ui-xs capitalize text-(--color-text-muted)">
+      <span className="min-w-0 flex-1 break-words text-ui-base capitalize text-(--color-text-muted)">
         {label}
       </span>
       <span className="text-ui-xs text-(--color-text-dim)">{count}</span>
