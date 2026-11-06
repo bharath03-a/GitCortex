@@ -30,9 +30,11 @@ PR 5 (`release/r1-combined-validation`) merges to `main` as an ordinary PR first
 | **E PR impact (GitCortex)** | E1 semantic impact collector → E2 commit indexing + readiness → E3 impact JSON | 05 T1, T2a, T2b | E1: PR 5 merged. E2: B4 and D3 merged (shared `resolve_commit`/`apply_tree_index`/`inspect_commit`; consumes D3's `exit.rs`). E3: E1, E2, and D2 (explicit-union graph-v1 schema) merged |
 | E′ impact rollout (GitCortex) | E4 managed workflow pair migration → E5 CLI rollout docs | 05 T9b, T9c | E4: X9 merged and released. E5: E4 merged |
 | **X gitcortex-action** (separate repo) | X1 comparisons → X2 checkpoint cache → X3 installer → X4 analyze → X5 composite → X6 validate → X7 render → X8 publish → X9 workflows + docs; X10 policy gates (optional, later) | 05 T4, T5, T6a, T6b, T6c, T7, T3, T8, T9a; T10 | X2: a GitCortex release containing E1–E3. X2 real-Kuzu CI records its E1–E3 merged SHAs; X3 and X9 pin that same exact release |
-| **F usability** | per Plan 06 | 06 | per layer, see Plan 06 |
+| **F-cli usability** | F0 early symbolic-ref fix → F1 guards/status → F2 onboarding → F3 editor contracts → F4 hook contracts → F5 busy/viz advice | 06 | F0: PR 5 only, no E3 dependency. F1: D3/B4 merged. F3: Plan 01 deny/audit if TOML added. F5: D1 merged; coordinate Plan 03 lock lane. E2/E3 carry F0 regression through inspect_commit/report.rs changes |
+| **F-ui typography** | F6 tokens/labels → F7a shell → F7b details → F8 computed-style gate | 06 | Independent gh stack from main after PR 5; no F-cli dependency. F8: A2 merged. Coordinate D5 font assets without waiting for optional D5 |
+| **F-final acceptance** | F9a docs/contracts → F9b journey tests | 06 | F-cli/F-ui merged, B4, D3/D6, C5, E5; D5 only if shipped. Final acceptance follows all shipped candidate dependencies |
 
-B, D, and F run in parallel. C waits for B4. E2 waits for B4 and D3; E3 waits for D2. X1 can start any time (pure Node, no gcx); X2 onward waits for the E1–E3 release. E4 waits for X9. D4 (Mermaid) and D5/D6 are optional export functionality, not E or X prerequisites: impact comments are rendered only by X7.
+B, D, F-cli, and F-ui run in parallel as independent `gh stack` stacks; F-final waits for both F stacks. F0 lands early before E2/E3 ref/report changes; those layers preserve its regression without making F0 depend on them. C waits for B4. E2 waits for B4 and D3; E3 waits for D2. X1 can start any time (pure Node, no gcx); X2 onward waits for the E1–E3 release. E4 waits for X9. D4 (Mermaid) and D5/D6 are optional export functionality, not E or X prerequisites: impact comments are rendered only by X7.
 
 **Stack letters.** `A` is the supply-chain stack (Plan 01). The action repository's stack is `X`; Plan 05 uses the same `X1`–`X10` names.
 
