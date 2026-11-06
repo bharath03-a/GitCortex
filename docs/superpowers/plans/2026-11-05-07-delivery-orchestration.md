@@ -64,6 +64,8 @@ If a model is unavailable at dispatch time, use the next one in its family; if t
 
 - 2026-11-05: Claude API rate limit — Plan 06 re-run on Codex gpt-6.1-sol; cross-plan delta application re-run on Codex gpt-6-astra; reviews of those use Claude after the limit resets.
 
+- 2026-11-06 00:30: Codex usage limit (resets 04:23). B1–B3 review fixes re-run on Claude `claude-sonnet-5-5`; their review then uses Claude Opus (same family; logged exception) or Codex after reset. B4 and F7a were left interrupted with uncommitted work in their worktrees, to resume on Codex after reset.
+
 ## Per-layer loop (run by the chief of staff)
 
 1. **Dispatch** the implementer with `delegate_task`, `isolation: "worktree"` (in the layer's own repository). The brief contains the plan file and task numbers, the layer branch name `stack/<stack>/<n>-<slug>`, its parent branch (same repository only), the merged SHAs or release it depends on, the Global Constraints of both this file and the plan, and the required final line: `branch <name>, head <sha>, just ci <pass|fail>` (stack X: `branch <name>, head <sha>, node <pass|fail>, actionlint <pass|fail>, real-gcx <pass|fail|n/a>`).
@@ -92,3 +94,5 @@ If a model is unavailable at dispatch time, use the next one in its family; if t
 | D3 merged SHA (shared `exit.rs`) | — |
 | GitCortex release containing E1–E3 | — |
 | X9 merged SHA / action release tag (E4 templates pin this) | — |
+
+**Maintainer rule (2026-11-06, overrides all routing above): do not use Codex models.** Implementation: Claude (`claude-sonnet-5-5`, Opus for hard Rust). Review: Muse `muse-wonder-1.0` (cross-family), or Antigravity after its quota resets. Claude rate limits: run at most 3 Claude children at once.
