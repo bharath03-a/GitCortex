@@ -2,3 +2,6 @@
 # KuzuDB C++ static libs compile against the current macOS SDK.
 # Set deployment target to match so the release linker doesn't drop kuzu symbols.
 MACOSX_DEPLOYMENT_TARGET = "26.0"
+
+# Isolate cargo tests and development commands from durable user stores.
+GCX_STORE_PATH = { value = "target/gcx-test-store", relative = true }
