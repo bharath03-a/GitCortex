@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { createElement, type ReactNode } from "react";
 import { cleanup, render } from "@testing-library/react";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 const css = readFileSync("src/theme/tokens.css", "utf8");
 import { CosmosCanvas } from "../../components/CosmosCanvas";
 
@@ -19,9 +19,14 @@ afterEach(() => {
 });
 
 function block(selector: string): string {
-  const match = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].find(
-    (m) => m[1].trim() === selector || m[1].split(",").some((part) => part.trim() === selector),
-  );
+  const normalize = (value: string) => value.replace(/\s+/g, " ").trim();
+  const match = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .reverse()
+    .find(
+      (m) =>
+        normalize(m[1]) === normalize(selector) ||
+        m[1].split(",").some((part) => normalize(part) === normalize(selector)),
+    );
   expect(match, selector).toBeDefined();
   return match![2];
 }
@@ -153,6 +158,8 @@ it("graph_label_size_clamps_to_12", async () => {
   const { readGraphLabelSize } = await import("../typography");
   for (const [value, expected] of [
     ["17px", 17],
+    ["-5px", 13],
+    ["12.5px", 12.5],
     ["11px", 12],
     ["0px", 12],
     ["", 13],
@@ -194,4 +201,43 @@ it("cosmograph_label_size_uses_css_token", () => {
     showTopLabels: true,
     showHoveredPointLabel: true,
   });
+});
+
+it("headings_are_in_base_layer_so_utilities_win", () => {
+  expect(css).toMatch(/@layer base\s*\{\s*h1,\s*h2,\s*h3,\s*h4,\s*h5,\s*h6\s*\{/);
+});
+
+it("source_avoids_unavailable_bold_weights_without_explicit_exception", () => {
+  function check(directory: string) {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = `${directory}/${entry.name}`;
+      if (entry.isDirectory()) check(path);
+      else if (/\.tsx?$/.test(path) && !path.includes("__tests__")) {
+        for (const line of readFileSync(path, "utf8").split("\n")) {
+          // Mark a deliberate exception on the same line with font-weight-exception.
+          if (!line.includes("font-weight-exception")) {
+            expect(line, path).not.toMatch(/\bfont-(?:bold|extrabold)\b/);
+          }
+        }
+      }
+    }
+  }
+  check("src");
+});
+
+it("graph_label_background_is_opaque_in_both_themes", () => {
+  const label = block(".graph-point-label");
+  expect(label).toMatch(/background:\s*var\(--color-void-deep\) !important;/);
+  for (const theme of ["light", "dark"]) {
+    const tokens = {
+      ...declarations(block("@theme")),
+      ...declarations(block(`[data-theme="${theme}"]`)),
+    };
+    expect(rgba(tokens["--color-void-deep"])[3]).toBe(1);
+  }
+});
+
+it("keyboard_help_keys_keep_the_mono_font", () => {
+  const source = readFileSync("src/components/KeyboardHelp.tsx", "utf8");
+  expect(source).toMatch(/<kbd\b[^>]*className="[^"]*font-mono/);
 });
