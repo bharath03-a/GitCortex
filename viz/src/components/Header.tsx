@@ -30,7 +30,7 @@ export function Header({
       <div className="flex min-w-[220px] shrink-0 items-center gap-3">
         <BrandMark />
         <div className="leading-none">
-          <div className="text-[14px] font-bold tracking-[-0.025em]">GitCortex</div>
+          <div className="text-[14px] font-semibold tracking-[-0.025em]">GitCortex</div>
           <div className="mt-1.5 font-mono text-[8px] font-semibold tracking-[0.16em] text-(--color-text-dim) uppercase">
             {repoName ? `${repoName} · local code atlas` : "Local code atlas"}
           </div>
