@@ -9,7 +9,13 @@ use std::{
     process::Command,
 };
 
-pub struct TestRepo(tempfile::TempDir);
+// Kuzu reserves a large virtual address range for each open database. Bound
+// in-process fixture concurrency while still opening original + rebuild together.
+static FIXTURE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+pub struct TestRepo(
+    tempfile::TempDir,
+    Option<std::sync::MutexGuard<'static, ()>>,
+);
 impl Default for TestRepo {
     fn default() -> Self {
         Self::new()
@@ -17,7 +23,10 @@ impl Default for TestRepo {
 }
 impl TestRepo {
     pub fn new() -> Self {
-        let repo = Self(tempfile::tempdir().unwrap());
+        let repo = Self(
+            tempfile::tempdir().unwrap(),
+            Some(FIXTURE_LOCK.lock().unwrap_or_else(|e| e.into_inner())),
+        );
         repo.git(&["init", "-b", "main"]);
         repo.git(&["config", "user.name", "Trust Test"]);
         repo.git(&["config", "user.email", "trust@example.test"]);
@@ -77,7 +86,7 @@ impl TestRepo {
                 }
             }
         }
-        let repo = Self(tempfile::tempdir().unwrap());
+        let repo = Self(tempfile::tempdir().unwrap(), None);
         copy(self.root(), repo.root());
         repo
     }
