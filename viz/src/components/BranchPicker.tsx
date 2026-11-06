@@ -71,11 +71,17 @@ export function BranchPicker({ active, onSetActive, diffHead, onSetDiffHead }: P
         className="flex h-9 min-w-[168px] max-w-[240px] items-center gap-1.5 rounded-md border border-(--color-border-subtle) bg-(--color-void-deep) px-2.5 text-(--color-text-muted) transition-colors hover:border-(--color-border-strong) hover:text-(--color-text-primary)"
       >
         <GitBranch className="size-3.5 shrink-0" />
-        <span className="min-w-0 flex-1 truncate text-left font-mono text-[10px] font-medium">
+        <span
+          title={active ?? undefined}
+          className="font-mono min-w-0 flex-1 truncate text-left text-ui-xs font-medium"
+        >
           {active ?? "—"}
         </span>
         {diffHead && (
-          <span className="max-w-[86px] truncate font-mono text-[10px] text-(--color-accent)">
+          <span
+            title={diffHead}
+            className="font-mono max-w-[86px] truncate text-ui-xs text-(--color-accent-text)"
+          >
             vs {diffHead}
           </span>
         )}
@@ -85,7 +91,7 @@ export function BranchPicker({ active, onSetActive, diffHead, onSetDiffHead }: P
       </button>
       {open && (
         <div className="animate-fade-in absolute top-full right-0 z-40 mt-1.5 w-[280px] overflow-hidden rounded-md border border-(--color-border-subtle) bg-(--color-void-deep) shadow-[var(--shadow-float)]">
-          <div className="border-b border-(--color-border-subtle) bg-(--color-elevated)/65 px-3 py-2 font-mono text-[9px] font-semibold tracking-[0.14em] text-(--color-text-dim) uppercase">
+          <div className="border-b border-(--color-border-subtle) bg-(--color-elevated)/65 px-3 py-2 text-ui-base font-heading text-(--color-text-dim)">
             View branch
           </div>
           <ul className="max-h-[24vh] overflow-y-auto py-1">
@@ -97,24 +103,24 @@ export function BranchPicker({ active, onSetActive, diffHead, onSetDiffHead }: P
                     setOpen(false);
                   }}
                   className={`flex w-full items-center justify-between px-3 py-1.5 text-left hover:bg-(--color-accent-soft) ${
-                    branch === active ? "text-(--color-accent)" : "text-(--color-text-primary)"
+                    branch === active ? "text-(--color-accent-text)" : "text-(--color-text-primary)"
                   }`}
                 >
-                  <span className="font-mono text-[12px]">{branch}</span>
+                  <span className="min-w-0 break-all font-mono text-ui-xs">{branch}</span>
                   {branch === active && <Check className="size-3.5" />}
                 </button>
               </li>
             ))}
             {loading && branches.length === 0 && (
-              <li className="px-3 py-2 text-[11px] text-(--color-text-dim)">Loading branches…</li>
+              <li className="px-3 py-2 text-ui-base text-(--color-text-dim)">Loading branches…</li>
             )}
             {loadError && (
-              <li className="px-3 py-2 text-[11px] text-(--color-bad)">
+              <li className="px-3 py-2 text-ui-base text-(--color-bad)">
                 Branches could not be refreshed. Close and retry.
               </li>
             )}
           </ul>
-          <div className="flex items-center gap-1.5 border-y border-(--color-border-subtle) bg-(--color-elevated)/65 px-3 py-2 font-mono text-[9px] font-semibold tracking-[0.14em] text-(--color-text-dim) uppercase">
+          <div className="flex items-center gap-1.5 border-y border-(--color-border-subtle) bg-(--color-elevated)/65 px-3 py-2 text-ui-base font-heading text-(--color-text-dim)">
             <GitCompare className="size-3" /> Compare against
           </div>
           <ul className="max-h-[24vh] overflow-y-auto py-1">
@@ -125,7 +131,7 @@ export function BranchPicker({ active, onSetActive, diffHead, onSetDiffHead }: P
                     onSetDiffHead(null);
                     setOpen(false);
                   }}
-                  className="flex w-full items-center px-3 py-1.5 text-left text-[12px] text-(--color-text-muted) hover:bg-(--color-accent-soft) hover:text-(--color-text-primary)"
+                  className="flex w-full items-center px-3 py-1.5 text-left text-ui-xs text-(--color-text-muted) hover:bg-(--color-accent-soft) hover:text-(--color-text-primary)"
                 >
                   Clear comparison
                 </button>
@@ -141,16 +147,18 @@ export function BranchPicker({ active, onSetActive, diffHead, onSetDiffHead }: P
                       setOpen(false);
                     }}
                     className={`flex w-full items-center justify-between px-3 py-1.5 text-left hover:bg-(--color-accent-soft) ${
-                      diffHead === branch ? "text-(--color-accent)" : "text-(--color-text-primary)"
+                      diffHead === branch
+                        ? "text-(--color-accent-text)"
+                        : "text-(--color-text-primary)"
                     }`}
                   >
-                    <span className="font-mono text-[12px]">{branch}</span>
+                    <span className="min-w-0 break-all font-mono text-ui-xs">{branch}</span>
                     {diffHead === branch && <Check className="size-3.5" />}
                   </button>
                 </li>
               ))}
             {!loading && branches.length <= 1 && (
-              <li className="px-3 py-2 text-[11px] text-(--color-text-dim)">
+              <li className="px-3 py-2 text-ui-base text-(--color-text-dim)">
                 No other local branches
               </li>
             )}
