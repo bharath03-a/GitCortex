@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1200" font-family="monospace" font-size="9">
+  <rect width="1200" height="1200" fill="#1e1e2e"/>
+  <text x="20" y="24" fill="#cdd6f4">GitCortex · branch main · 9 nodes · 5 edges</text>
+  <line x1="680.0" y1="600.0" x2="624.7" y2="676.1" stroke="#45475a" stroke-width="0.5" opacity="0.5"/>
+  <line x1="624.7" y1="676.1" x2="535.3" y2="647.0" stroke="#45475a" stroke-width="0.5" opacity="0.5"/>
+  <line x1="535.3" y1="647.0" x2="535.3" y2="553.0" stroke="#45475a" stroke-width="0.5" opacity="0.5"/>
+  <line x1="965.0" y1="600.0" x2="1060.0" y2="600.0" stroke="#45475a" stroke-width="0.5" opacity="0.5"/>
+  <line x1="965.0" y1="600.0" x2="775.0" y2="600.0" stroke="#45475a" stroke-width="0.5" opacity="0.5"/>
+  <circle cx="680.0" cy="600.0" r="3.5" fill="#89b4fa" stroke="#11111b" stroke-width="0.5"/>
+  <text x="685.0" y="603.0" fill="#cdd6f4">&quot;x&lt;script&gt;`|&quot;&lt;/script&gt;λ</text>
+  <circle cx="624.7" cy="676.1" r="3.5" fill="#89b4fa" stroke="#11111b" stroke-width="0.5"/>
+  <text x="629.7" y="679.1" fill="#cdd6f4">function_1</text>
+  <circle cx="535.3" cy="647.0" r="3.5" fill="#89b4fa" stroke="#11111b" stroke-width="0.5"/>
+  <text x="540.3" y="650.0" fill="#cdd6f4">function_2</text>
+  <circle cx="535.3" cy="553.0" r="3.5" fill="#89b4fa" stroke="#11111b" stroke-width="0.5"/>
+  <text x="540.3" y="556.0" fill="#cdd6f4">function_3</text>
+  <circle cx="870.0" cy="600.0" r="3.5" fill="#cba6f7" stroke="#11111b" stroke-width="0.5"/>
+  <text x="875.0" y="603.0" fill="#cdd6f4">sample</text>
+  <circle cx="1060.0" cy="600.0" r="3.5" fill="#fab387" stroke="#11111b" stroke-width="0.5"/>
+  <text x="1065.0" y="603.0" fill="#cdd6f4">Greeter</text>
+  <circle cx="965.0" cy="600.0" r="3.5" fill="#a6e3a1" stroke="#11111b" stroke-width="0.5"/>
+  <text x="970.0" y="603.0" fill="#cdd6f4">Hello</text>
+  <circle cx="775.0" cy="600.0" r="3.5" fill="#74c7ec" stroke="#11111b" stroke-width="0.5"/>
+  <text x="780.0" y="603.0" fill="#cdd6f4">greet</text>
+  <circle cx="624.7" cy="523.9" r="3.5" fill="#89b4fa" stroke="#11111b" stroke-width="0.5"/>
+  <text x="629.7" y="526.9" fill="#cdd6f4">make_greeting</text>
+</svg>

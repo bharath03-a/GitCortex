@@ -1,0 +1,19 @@
+digraph gitcortex {
+  rankdir=LR;
+  node [shape=box style=filled fontcolor=white fontname=monospace];
+  edge [fontname=monospace fontsize=9];
+  "2598a175-2a19-5d0c-8fc0-5d7c56b0b483" [label="\"x<script>`|\"</script>λ\\nfunction" fillcolor="#89b4fa"];
+  "3e49f44d-3c03-59c4-a88b-c5c9b3bcd140" [label="function_1\\nfunction" fillcolor="#89b4fa"];
+  "8fbc0cfc-0efd-574c-803e-6518a3384aaa" [label="function_2\\nfunction" fillcolor="#89b4fa"];
+  "c666d9fa-d801-59be-b8d9-79e491566390" [label="function_3\\nfunction" fillcolor="#89b4fa"];
+  "08db6c11-db36-5002-bc44-b802705909df" [label="sample\\nmodule" fillcolor="#cba6f7"];
+  "4c9d203f-4915-591a-83e2-6b167d824259" [label="Greeter\\ntrait" fillcolor="#fab387"];
+  "f42cf851-5de5-5cd6-8bdd-19293be765a0" [label="Hello\\nstruct" fillcolor="#a6e3a1"];
+  "6ac25e01-c743-5012-9154-bbabd27cb257" [label="greet\\nmethod" fillcolor="#74c7ec"];
+  "15309f2e-98f6-51bf-97d1-93b5be5e5851" [label="make_greeting\\nfunction" fillcolor="#89b4fa"];
+  "2598a175-2a19-5d0c-8fc0-5d7c56b0b483" -> "3e49f44d-3c03-59c4-a88b-c5c9b3bcd140" [label="calls"];
+  "3e49f44d-3c03-59c4-a88b-c5c9b3bcd140" -> "8fbc0cfc-0efd-574c-803e-6518a3384aaa" [label="calls"];
+  "8fbc0cfc-0efd-574c-803e-6518a3384aaa" -> "c666d9fa-d801-59be-b8d9-79e491566390" [label="calls"];
+  "f42cf851-5de5-5cd6-8bdd-19293be765a0" -> "4c9d203f-4915-591a-83e2-6b167d824259" [label="implements"];
+  "f42cf851-5de5-5cd6-8bdd-19293be765a0" -> "6ac25e01-c743-5012-9154-bbabd27cb257" [label="contains"];
+}

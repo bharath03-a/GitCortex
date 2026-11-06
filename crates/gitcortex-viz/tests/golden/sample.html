@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>GitCortex graph — main</title>
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #1e1e2e; color: #cdd6f4; font-family: -apple-system, sans-serif; }
+  #header { padding: 10px 16px; background: #181825; border-bottom: 1px solid #313244; font-size: 13px; }
+  #header strong { color: #89b4fa; }
+  #header input { background: #313244; color: #cdd6f4; border: 1px solid #45475a; padding: 4px 8px; border-radius: 4px; margin-left: 12px; }
+  #net { width: 100vw; height: calc(100vh - 48px); }
+</style>
+</head>
+<body>
+<div id="header">
+  <strong>GitCortex</strong> · branch <code>main</code> · 9 nodes, 5 edges
+  <input id="q" type="search" placeholder="search by name…">
+</div>
+<div id="net"></div>
+<script>
+  const DATA = {"edges":[{"arrows":"to","from":"2598a175-2a19-5d0c-8fc0-5d7c56b0b483","label":"calls","to":"3e49f44d-3c03-59c4-a88b-c5c9b3bcd140"},{"arrows":"to","from":"3e49f44d-3c03-59c4-a88b-c5c9b3bcd140","label":"calls","to":"8fbc0cfc-0efd-574c-803e-6518a3384aaa"},{"arrows":"to","from":"8fbc0cfc-0efd-574c-803e-6518a3384aaa","label":"calls","to":"c666d9fa-d801-59be-b8d9-79e491566390"},{"arrows":"to","from":"f42cf851-5de5-5cd6-8bdd-19293be765a0","label":"implements","to":"4c9d203f-4915-591a-83e2-6b167d824259"},{"arrows":"to","from":"f42cf851-5de5-5cd6-8bdd-19293be765a0","label":"contains","to":"6ac25e01-c743-5012-9154-bbabd27cb257"}],"nodes":[{"color":"#89b4fa","group":"function","id":"2598a175-2a19-5d0c-8fc0-5d7c56b0b483","label":"\"x<script>`|\"<\/script>λ\nfunction","shape":"box","title":"\"x<script>`|\"<\/script>λ (sample::function_0)\\ntests/integration/fixtures/sample.rs:1\\nkind: function"},{"color":"#89b4fa","group":"function","id":"3e49f44d-3c03-59c4-a88b-c5c9b3bcd140","label":"function_1\nfunction","shape":"box","title":"function_1 (sample::function_1)\\ntests/integration/fixtures/sample.rs:2\\nkind: function"},{"color":"#89b4fa","group":"function","id":"8fbc0cfc-0efd-574c-803e-6518a3384aaa","label":"function_2\nfunction","shape":"box","title":"function_2 (sample::function_2)\\ntests/integration/fixtures/sample.rs:3\\nkind: function"},{"color":"#89b4fa","group":"function","id":"c666d9fa-d801-59be-b8d9-79e491566390","label":"function_3\nfunction","shape":"box","title":"function_3 (sample::function_3)\\ntests/integration/fixtures/sample.rs:4\\nkind: function"},{"color":"#cba6f7","group":"module","id":"08db6c11-db36-5002-bc44-b802705909df","label":"sample\nmodule","shape":"box","title":"sample (sample)\\nsample.rs:1\\nkind: module"},{"color":"#fab387","group":"trait","id":"4c9d203f-4915-591a-83e2-6b167d824259","label":"Greeter\ntrait","shape":"box","title":"Greeter (crate::Greeter)\\nsample.rs:1\\nkind: trait"},{"color":"#a6e3a1","group":"struct","id":"f42cf851-5de5-5cd6-8bdd-19293be765a0","label":"Hello\nstruct","shape":"box","title":"Hello (crate::Hello)\\nsample.rs:5\\nkind: struct"},{"color":"#74c7ec","group":"method","id":"6ac25e01-c743-5012-9154-bbabd27cb257","label":"greet\nmethod","shape":"box","title":"greet (crate::Hello::greet)\\nsample.rs:10\\nkind: method"},{"color":"#89b4fa","group":"function","id":"15309f2e-98f6-51bf-97d1-93b5be5e5851","label":"make_greeting\nfunction","shape":"box","title":"make_greeting (crate::make_greeting)\\nsample.rs:15\\nkind: function"}]};
+  const nodes = new vis.DataSet(DATA.nodes);
+  const edges = new vis.DataSet(DATA.edges);
+  const net = new vis.Network(document.getElementById('net'), { nodes, edges }, {
+    nodes: { font: { color: '#1e1e2e', face: 'monospace', size: 12 } },
+    edges: { color: { color: '#6c7086', highlight: '#f5c2e7' }, font: { color: '#bac2de', size: 10, strokeWidth: 0, background: 'rgba(30,30,46,0.7)' }, smooth: false },
+    physics: { stabilization: { iterations: 200 }, barnesHut: { gravitationalConstant: -8000, springLength: 120 } },
+    interaction: { hover: true, tooltipDelay: 200 }
+  });
+  document.getElementById('q').addEventListener('input', (e) => {
+    const term = e.target.value.toLowerCase();
+    if (!term) { net.unselectAll(); return; }
+    const hits = DATA.nodes.filter(n => (n.label || '').toLowerCase().includes(term)).map(n => n.id);
+    net.selectNodes(hits);
+    if (hits.length) net.focus(hits[0], { animation: true, scale: 0.8 });
+  });
+</script>
+</body>
+</html>
