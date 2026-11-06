@@ -106,6 +106,14 @@ pub(crate) fn detect_current_branch(repo_root: &Path) -> Option<String> {
             Some(b)
         }
     } else {
-        None
+        // Match the CLI's detached-HEAD storage identity, rather than silently
+        // querying an unrelated branch called main.
+        let out = std::process::Command::new("git")
+            .args(["rev-parse", "--short", "HEAD"])
+            .current_dir(repo_root)
+            .output()
+            .ok()?;
+        let value = String::from_utf8(out.stdout).ok()?;
+        (out.status.success() && !value.trim().is_empty()).then(|| value.trim().to_owned())
     }
 }

@@ -26,6 +26,11 @@ pub fn run(branch_switch: bool) -> Result<()> {
     let mut store = KuzuGraphStore::open(&repo_root).context("failed to open graph store")?;
 
     let last_sha = store.last_indexed_sha(&branch)?;
+    if store.working_tree_dirty(&branch)? {
+        anyhow::bail!(
+            "graph contains an unverified working-tree overlay; run gcx init to repair it"
+        );
+    }
 
     let indexer = IncrementalIndexer::new(&repo_root).context("failed to create indexer")?;
 
@@ -34,18 +39,25 @@ pub fn run(branch_switch: bool) -> Result<()> {
         .context("incremental index failed")?;
 
     if diff.is_empty() {
+        // Empty commits still advance the indexed revision.
+        store.set_last_indexed_sha(&branch, &head_sha)?;
         let elapsed = t0.elapsed().as_millis();
         eprintln!("gcx  [{branch}]  (no changes)  ({elapsed}ms)");
         tracing::debug!(elapsed_ms = elapsed, "no changes");
         return Ok(());
     }
 
+    let snapshots = diff.source_hashes.iter().cloned().collect();
+    let verified =
+        gitcortex_mcp::mcp::readiness::snapshots_match_commit(&repo_root, &head_sha, &snapshots)?;
+    store.set_working_tree_dirty(&branch, true)?;
     store
         .apply_diff(&branch, &diff)
         .context("failed to apply diff")?;
     store
         .set_last_indexed_sha(&branch, &head_sha)
         .context("failed to persist sha")?;
+    store.set_working_tree_dirty(&branch, !verified)?;
 
     let elapsed = t0.elapsed().as_millis();
     let added_n = diff.added_nodes.len();

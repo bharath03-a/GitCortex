@@ -298,6 +298,16 @@ fn last_indexed_sha_round_trip() {
         store.last_indexed_sha("main").unwrap().as_deref(),
         Some("abc123")
     );
+    assert!(!store.working_tree_dirty("main").unwrap());
+    store.set_working_tree_dirty("main", true).unwrap();
+    assert!(store.working_tree_dirty("main").unwrap());
+    assert!(!store.working_tree_dirty("feature").unwrap());
+    assert_eq!(
+        store.last_indexed_sha("main").unwrap().as_deref(),
+        Some("abc123")
+    );
+    store.set_working_tree_dirty("main", false).unwrap();
+    assert!(!store.working_tree_dirty("main").unwrap());
 }
 
 #[test]

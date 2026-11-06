@@ -2348,4 +2348,28 @@ impl GraphStore for KuzuGraphStore {
     fn set_last_indexed_sha(&mut self, branch_name: &str, sha: &str) -> Result<()> {
         branch::write_last_sha(&self.repo_id, branch_name, sha)
     }
+
+    fn working_tree_dirty(&self, branch_name: &str) -> Result<bool> {
+        let path = branch::last_sha_path(&self.repo_id, branch_name).with_extension("dirty");
+        match std::fs::read_to_string(path) {
+            Ok(_) => Ok(true),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    fn set_working_tree_dirty(&mut self, branch_name: &str, dirty: bool) -> Result<()> {
+        let path = branch::last_sha_path(&self.repo_id, branch_name).with_extension("dirty");
+        if dirty {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(path, b"unverified working-tree overlay")?;
+        } else if let Err(error) = std::fs::remove_file(path) {
+            if error.kind() != std::io::ErrorKind::NotFound {
+                return Err(error.into());
+            }
+        }
+        Ok(())
+    }
 }
