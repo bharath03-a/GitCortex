@@ -6,32 +6,67 @@ import tomllib
 from pathlib import Path
 
 ID = re.compile(r"RUSTSEC-\d{4}-\d{4}", re.ASCII)
-REASON = re.compile(r'"(RUSTSEC-\d{4}-\d{4})",\s*#\s*(\S.*)', re.ASCII)
+# Tokenize strings before comments so punctuation inside strings is harmless.
+TOKEN = re.compile(r"""\"(?:\\.|[^"\\])*\"|'[^']*'|\#[^\n]*|[\[\]{}]""", re.ASCII)
 
 
 def load_ignores(path: Path) -> dict[str, str]:
-    """Load the TOML ignore IDs, retaining empty reasons for validation."""
+    """Read values with TOML, and associate string entries with line comments."""
     source = path.read_text()
     entries = tomllib.loads(source).get("advisories", {}).get("ignore", [])
-    if not isinstance(entries, list) or any(not isinstance(item, str) for item in entries):
+    if not isinstance(entries, list):
         raise ValueError(f"{path}: ignore must be a list of advisory IDs")
-    # Only comments inside the advisories.ignore array document exceptions.
     reasons = {}
     in_advisories = False
     in_ignore = False
+    depth = 0
+    objects = 0
+    comments = []
     for line in source.splitlines():
         stripped = line.strip()
-        if stripped.startswith("[") and not in_ignore:
-            in_advisories = stripped == "[advisories]"
+        if not in_ignore and stripped.startswith("["):
+            in_advisories = bool(re.fullmatch(r"\[advisories\]\s*(?:#.*)?", stripped))
         if in_advisories and re.match(r"ignore\s*=\s*\[", stripped):
             in_ignore = True
-        if in_ignore:
-            match = REASON.search(line)
-            if match:
-                reasons[match[1]] = match[2].strip()
-            if "]" in line.split("#", 1)[0]:
-                in_ignore = False
-    return {entry: reasons.get(entry, "") for entry in entries}
+        if not in_ignore:
+            continue
+        ids = []
+        comment = ""
+        for match in TOKEN.finditer(line):
+            token = match.group()
+            if token.startswith("#"):
+                comment = token[1:].strip()
+                break
+            if token == "[":
+                depth += 1
+            elif token == "]":
+                depth -= 1
+            elif token == "{":
+                objects += 1
+            elif token == "}":
+                objects -= 1
+            elif depth == 1 and objects == 0:
+                ids.append(tomllib.loads("value = " + token)["value"])
+        if len(ids) > 1:
+            raise ValueError(f"{path}: multiple IDs on one line need separate reasons; "
+                             "use one ID per line or objects with reason keys")
+        comments.extend((advisory, comment) for advisory in ids)
+        if depth == 0:
+            in_ignore = False
+    string_reasons = dict(comments)
+    for entry in entries:
+        if isinstance(entry, str):
+            advisory, reason = entry, string_reasons.get(entry, "")
+        elif isinstance(entry, dict) and isinstance(entry.get("id"), str):
+            advisory, reason = entry["id"], entry.get("reason", "")
+            if not isinstance(reason, str):
+                raise ValueError(f"{path}: {advisory}: reason must be a string")
+        else:
+            raise ValueError(f"{path}: ignore entries must be IDs or objects with id and reason")
+        if advisory in reasons:
+            raise ValueError(f"{path}: duplicate advisory ID {advisory}")
+        reasons[advisory] = reason.strip()
+    return reasons
 
 
 def main(deny: Path, audit: Path) -> int:
