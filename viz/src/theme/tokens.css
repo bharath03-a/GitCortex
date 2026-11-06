@@ -79,6 +79,8 @@
   --color-text-primary: #14141a;
   --color-text-muted: #484852;
   --color-text-dim: #53535d;
+  /* Accent/accent-deep are decorative. F7/F8 guard legacy component text
+     migration to accent-text and verify rendered contrast. */
   --color-accent: #c4633f;
   --color-accent-deep: #a84d2d;
   --color-accent-text: #87341a;
@@ -146,26 +148,33 @@ body,
   letter-spacing: var(--tracking-ui);
 }
 
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  font-family: var(--font-sans);
-  font-weight: var(--font-weight-heading);
-  line-height: var(--leading-heading);
-  letter-spacing: var(--tracking-heading);
-  text-transform: none;
+@layer base {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-sans);
+    font-weight: var(--font-weight-heading);
+    line-height: var(--leading-heading);
+    letter-spacing: var(--tracking-heading);
+    text-transform: none;
+  }
+
+  /* Controls inherit the 14px/1.45 UI baseline; utilities may override both. */
+  button,
+  input,
+  select,
+  textarea {
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+  }
 }
 
 * {
   box-sizing: border-box;
-}
-
-button,
-input {
-  font-family: inherit;
 }
 
 button {
@@ -262,6 +271,7 @@ code {
   border-radius: 4px;
   padding: 2px 5px;
   font-family: var(--font-mono);
+  /* Cosmograph pointLabelFontSize wins; this is the CSS fallback. */
   font-size: var(--text-graph-label);
   font-weight: var(--font-weight-label);
   line-height: 1.35;
