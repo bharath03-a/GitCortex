@@ -125,3 +125,12 @@ This is overkill for most contributors but useful for CI debugging and air-gappe
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — how the crates fit together
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md) — per-track contributor guide
 - [`adr/`](adr/) — design decisions
+
+## Isolated development stores
+
+Cargo sets `GCX_STORE_PATH` to this checkout's `target/gcx-test-store`
+(via `.cargo/config.toml`). Tests and `cargo run` therefore use disposable
+stores instead of the real user data root. An explicitly exported
+`GCX_STORE_PATH` takes precedence; unset it before running the test suite.
+The agent benchmark passes `GCX_STORE_PATH=DEFAULT_WORK/store` to child
+commands, so benchmark indexes are isolated too.
