@@ -96,3 +96,5 @@ If a model is unavailable at dispatch time, use the next one in its family; if t
 | X9 merged SHA / action release tag (E4 templates pin this) | — |
 
 **Maintainer rule (2026-11-06, overrides all routing above): do not use Codex models.** Implementation: Claude (`claude-sonnet-5-5`, Opus for hard Rust). Review: Muse `muse-wonder-1.0` (cross-family), or Antigravity after its quota resets. Claude rate limits: run at most 3 Claude children at once.
+
+**Update (2026-11-06): the no-Codex rule above is withdrawn.** Routing returns to: Codex `gpt-6.1-sol` implements, `gpt-6-astra` plans only, Claude reviews. Run at most ~3 children per provider at once.
