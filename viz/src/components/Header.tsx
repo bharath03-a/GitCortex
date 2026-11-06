@@ -45,10 +45,12 @@ export function Header({
 
       <button
         onClick={onSearch}
-        className="group mx-auto flex h-9 w-full max-w-[620px] items-center gap-2.5 rounded-md border border-(--color-border-subtle) bg-(--color-elevated)/70 px-3 text-(--color-text-muted) shadow-[0_1px_2px_rgba(20,20,26,0.03)] transition-colors hover:border-(--color-border-strong) hover:bg-(--color-void-deep) hover:text-(--color-text-primary)"
+        className="group mx-auto flex h-9 min-w-0 flex-1 basis-[240px] max-w-[620px] items-center gap-2.5 rounded-md border border-(--color-border-subtle) bg-(--color-elevated)/70 px-3 text-(--color-text-muted) shadow-[0_1px_2px_rgba(20,20,26,0.03)] transition-colors hover:border-(--color-border-strong) hover:bg-(--color-void-deep) hover:text-(--color-text-primary)"
       >
         <Search className="size-3.5 shrink-0 text-(--color-accent-text)" />
-        <span className="flex-1 text-left text-ui-xs">Find a symbol, file, or qualified name</span>
+        <span className="min-w-0 flex-1 text-left text-ui-base">
+          Find a symbol, file, or qualified name
+        </span>
         <kbd className="rounded border border-(--color-border-subtle) bg-(--color-void-deep) px-1.5 py-0.5 text-ui-xs text-(--color-text-dim)">
           ⌘ K
         </kbd>

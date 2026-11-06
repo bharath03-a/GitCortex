@@ -498,7 +498,7 @@ export function CosmosCanvas({
               grouped overview
             </button>
           )}
-          <div className="grid grid-cols-3 gap-x-3 gap-y-1.5 text-ui-xs text-(--color-text-muted)">
+          <div className="grid max-w-[260px] grid-cols-3 gap-x-3 gap-y-1.5 text-ui-xs text-(--color-text-muted)">
             <Key color={kindPalette.function} shape="rounded-full" label="Callable" />
             <Key color={kindPalette.struct} shape="rotate-45" label="Type" />
             <Key color={kindPalette.module} shape="rounded-[2px]" label="Module" />
@@ -512,7 +512,7 @@ export function CosmosCanvas({
             <div className="mb-1 flex items-center justify-between gap-3">
               <span
                 title={hovered.node.name}
-                className="min-w-0 truncate font-mono text-ui-xs font-heading text-(--color-text-primary)"
+                className="min-w-0 break-all font-mono text-ui-xs font-heading text-(--color-text-primary)"
               >
                 {hovered.node.name}
               </span>
@@ -522,7 +522,7 @@ export function CosmosCanvas({
             </div>
             <div
               title={hovered.node.qualified_name || hovered.node.name}
-              className="truncate font-mono text-ui-xs text-(--color-text-muted)"
+              className="break-all font-mono text-ui-xs text-(--color-text-muted)"
             >
               {hovered.node.qualified_name || hovered.node.name}
             </div>
@@ -532,7 +532,7 @@ export function CosmosCanvas({
               <span>{hovered.node.loc} LOC</span>
               <span
                 title={hovered.node.file}
-                className="font-mono min-w-0 flex-1 truncate text-right"
+                className="font-mono min-w-0 flex-1 break-all text-right"
               >
                 {hovered.node.file.split("/").slice(-2).join("/")}
               </span>
