@@ -91,6 +91,7 @@ def run(command: list[str], cwd: Path | None = None, timeout: int = 900) -> subp
         return subprocess.run(
             command,
             cwd=cwd,
+            env={**os.environ, "GCX_STORE_PATH": str(DEFAULT_WORK / "store")},
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
