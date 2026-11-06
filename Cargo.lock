@@ -1378,6 +1378,7 @@ dependencies = [
  "gitcortex-core",
  "gitcortex-indexer",
  "gitcortex-store",
+ "jsonschema",
  "notify",
  "rmcp",
  "schemars",

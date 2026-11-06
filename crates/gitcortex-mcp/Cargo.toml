@@ -26,4 +26,5 @@ tracing.workspace = true
 [dev-dependencies]
 gitcortex-indexer.workspace = true
 gitcortex-store.workspace = true
+jsonschema = { version = "0.33.0", default-features = false }
 tempfile.workspace = true
