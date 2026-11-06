@@ -278,7 +278,7 @@ export function CosmosCanvas({
       {rendering && (
         <div className="graph-panel pointer-events-none absolute inset-0 z-20 flex items-center justify-center gap-2.5">
           <span className="size-3 animate-spin rounded-full border-2 border-(--color-accent) border-t-transparent" />
-          <span className="font-mono text-[11px] text-(--color-text-muted)">
+          <span className="text-ui-xs text-(--color-text-muted)">
             Rendering {points.length.toLocaleString()} symbols…
           </span>
         </div>
@@ -483,22 +483,22 @@ export function CosmosCanvas({
           style={{ height: "100%", width: "100%" }}
         />
         <div className="graph-panel pointer-events-none absolute top-4 left-4 rounded-md px-3 py-2.5">
-          <div className="mb-1 font-mono text-[9px] font-semibold tracking-[0.14em] text-(--color-text-dim) uppercase">
+          <div className="mb-1 text-ui-xs font-heading text-(--color-text-dim)">
             Architecture map
           </div>
-          <div className="mb-2 font-mono text-[8px] text-(--color-text-dim)">
+          <div className="mb-2 text-ui-xs text-(--color-text-dim)">
             {scaleProfile.label} · {paintedLinks.length.toLocaleString()} /{" "}
             {links.length.toLocaleString()} relations painted
           </div>
           {onShowOverview && (
             <button
               onClick={onShowOverview}
-              className="pointer-events-auto mb-2 rounded border border-(--color-border-subtle) px-2 py-1 font-mono text-[8px] text-(--color-text-muted) hover:border-(--color-accent) hover:text-(--color-accent)"
+              className="pointer-events-auto mb-2 rounded border border-(--color-border-subtle) px-2 py-1 text-ui-xs text-(--color-text-muted) hover:border-(--color-accent) hover:text-(--color-accent-text)"
             >
               grouped overview
             </button>
           )}
-          <div className="grid grid-cols-3 gap-x-3 gap-y-1.5 text-[10px] text-(--color-text-muted)">
+          <div className="grid grid-cols-3 gap-x-3 gap-y-1.5 text-ui-xs text-(--color-text-muted)">
             <Key color={kindPalette.function} shape="rounded-full" label="Callable" />
             <Key color={kindPalette.struct} shape="rotate-45" label="Type" />
             <Key color={kindPalette.module} shape="rounded-[2px]" label="Module" />
@@ -510,21 +510,30 @@ export function CosmosCanvas({
             style={{ left: hovered.x, top: hovered.y }}
           >
             <div className="mb-1 flex items-center justify-between gap-3">
-              <span className="truncate font-mono text-[12px] font-semibold text-(--color-text-primary)">
+              <span
+                title={hovered.node.name}
+                className="min-w-0 truncate font-mono text-ui-xs font-heading text-(--color-text-primary)"
+              >
                 {hovered.node.name}
               </span>
-              <span className="shrink-0 font-mono text-[9px] tracking-wider text-(--color-text-dim) uppercase">
+              <span className="shrink-0 text-ui-xs text-(--color-text-dim)">
                 {hovered.node.kind}
               </span>
             </div>
-            <div className="truncate font-mono text-[10px] text-(--color-text-muted)">
+            <div
+              title={hovered.node.qualified_name || hovered.node.name}
+              className="truncate font-mono text-ui-xs text-(--color-text-muted)"
+            >
               {hovered.node.qualified_name || hovered.node.name}
             </div>
-            <div className="mt-2 flex items-center gap-2 border-t border-(--color-border-subtle) pt-2 font-mono text-[9px] text-(--color-text-dim)">
+            <div className="mt-2 flex items-center gap-2 border-t border-(--color-border-subtle) pt-2 text-ui-xs text-(--color-text-dim)">
               <span>{hovered.degree} relations</span>
               <span>·</span>
               <span>{hovered.node.loc} LOC</span>
-              <span className="min-w-0 flex-1 truncate text-right">
+              <span
+                title={hovered.node.file}
+                className="font-mono min-w-0 flex-1 truncate text-right"
+              >
                 {hovered.node.file.split("/").slice(-2).join("/")}
               </span>
             </div>
