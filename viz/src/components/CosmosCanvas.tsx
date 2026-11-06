@@ -10,6 +10,7 @@ import {
   kindColors,
   type ProductTheme,
 } from "../theme/colors";
+import { readGraphLabelSize } from "../theme/typography";
 import { CanvasControls } from "./CanvasControls";
 import type { DiffOverlay } from "../hooks/useBranchDiff";
 import { graphClusterForFile, graphScaleProfile } from "../graph/semantics";
@@ -354,7 +355,7 @@ export function CosmosCanvas({
           pointLabelBy="name"
           pointLabelWeightBy="labelWeight"
           pointLabelClassName="graph-point-label"
-          pointLabelFontSize={11}
+          pointLabelFontSize={readGraphLabelSize(document.documentElement)}
           pointLabelPosition="above"
           pointLabelColor={graphTheme.label}
           pointOpacity={0.96}
@@ -445,6 +446,7 @@ export function CosmosCanvas({
           showTopLabels
           showTopLabelsLimit={scaleProfile.topLabelLimit}
           showHoveredPointLabel
+          hoveredPointLabelClassName="graph-point-label"
           renderHoveredPointRing
           hoveredPointCursor="pointer"
           hoveredPointRingColor={graphTheme.brand}
