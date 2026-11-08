@@ -854,6 +854,36 @@ impl KuzuGraphStore {
         })
     }
 
+    /// Persisted raw reference facts as `(src_id, src_file, target_name, kind, line)`.
+    /// Test support only: lets rebuild-equivalence checks cover the table that
+    /// later edge resolution reads.
+    #[doc(hidden)]
+    #[allow(clippy::type_complexity)]
+    pub fn list_reference_facts(
+        &self,
+        branch: &str,
+    ) -> Result<Vec<(String, String, String, String, i64)>> {
+        self.ensure_branch(branch)?;
+        let rt = db_schema::reference_table(branch);
+        let conn = self.conn()?;
+        let mut rows = conn
+            .query(&format!(
+                "MATCH (ref:{rt}) RETURN ref.src_id, ref.src_file, ref.target_name, ref.kind, ref.line"
+            ))
+            .map_err(|e| GitCortexError::Store(format!("list reference facts: {e}")))?;
+        let mut facts = Vec::new();
+        for row in rows.by_ref() {
+            facts.push((
+                str_val(&row[0])?,
+                str_val(&row[1])?,
+                str_val(&row[2])?,
+                str_val(&row[3])?,
+                i64_val(&row[4])?,
+            ));
+        }
+        Ok(facts)
+    }
+
     // ── Private helpers ───────────────────────────────────────────────────────
 
     fn conn(&self) -> Result<Connection<'_>> {

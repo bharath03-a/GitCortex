@@ -2,22 +2,48 @@
 #![allow(dead_code)]
 use gitcortex_core::{graph::Node, store::GraphStore};
 use gitcortex_indexer::IncrementalIndexer;
-use gitcortex_store::kuzu::KuzuGraphStore;
+use gitcortex_store::{branch::storage_repo_id, kuzu::KuzuGraphStore};
 use std::{
     collections::{BTreeMap, HashMap},
+    fmt::Debug,
     path::Path,
     process::Command,
 };
 
-pub struct TestRepo(tempfile::TempDir);
+// Every open Kuzu DB reserves a large virtual address-space range, so parallel
+// fixtures exhaust it. A TestRepo holds this lock until dropped. Not reentrant:
+// never call TestRepo::new while one is alive on the same thread (deadlock);
+// use snapshot_copy, which takes no lock.
+static FIXTURE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+pub struct TestRepo(
+    tempfile::TempDir,
+    Option<std::sync::MutexGuard<'static, ()>>,
+);
+// Git reports canonical paths (/private/var on macOS) and the store id hashes
+// the path string, so fixtures must live at their canonical path for an
+// external `gcx` process to resolve the same store.
+fn canonical_tempdir() -> tempfile::TempDir {
+    tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap()
+}
 impl Default for TestRepo {
     fn default() -> Self {
         Self::new()
     }
 }
+impl Drop for TestRepo {
+    fn drop(&mut self) {
+        // Best effort: a leftover store only wastes disk under target/.
+        let _ = std::fs::remove_dir_all(gitcortex_store::branch::data_dir(&storage_repo_id(
+            self.root(),
+        )));
+    }
+}
 impl TestRepo {
     pub fn new() -> Self {
-        let repo = Self(tempfile::tempdir().unwrap());
+        let repo = Self(
+            canonical_tempdir(),
+            Some(FIXTURE_LOCK.lock().unwrap_or_else(|e| e.into_inner())),
+        );
         repo.git(&["init", "-b", "main"]);
         repo.git(&["config", "user.name", "Trust Test"]);
         repo.git(&["config", "user.email", "trust@example.test"]);
@@ -77,7 +103,7 @@ impl TestRepo {
                 }
             }
         }
-        let repo = Self(tempfile::tempdir().unwrap());
+        let repo = Self(canonical_tempdir(), None);
         copy(self.root(), repo.root());
         repo
     }
@@ -142,12 +168,53 @@ pub struct EdgeRecord {
     pub line: Option<u32>,
     pub confidence: String,
 }
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct FactRecord {
+    pub src: Endpoint,
+    pub src_file: String,
+    pub target_name: String,
+    pub kind: String,
+    pub line: i64,
+}
 #[derive(Debug, PartialEq, Eq)]
 pub struct Fingerprint {
     pub nodes: BTreeMap<NodeRecord, usize>,
     pub edges: BTreeMap<EdgeRecord, usize>,
+    pub facts: BTreeMap<FactRecord, usize>,
 }
-pub fn fingerprint(store: &dyn GraphStore, branch: &str) -> Fingerprint {
+impl Fingerprint {
+    /// Symmetric per-record difference; `None` when equal.
+    pub fn diff(&self, rebuilt: &Fingerprint) -> Option<String> {
+        let mut out = Vec::new();
+        diff_counts("nodes", &self.nodes, &rebuilt.nodes, &mut out);
+        diff_counts("edges", &self.edges, &rebuilt.edges, &mut out);
+        diff_counts("facts", &self.facts, &rebuilt.facts, &mut out);
+        (!out.is_empty()).then(|| out.join("\n"))
+    }
+}
+fn diff_counts<K: Ord + Debug>(
+    label: &str,
+    incremental: &BTreeMap<K, usize>,
+    rebuilt: &BTreeMap<K, usize>,
+    out: &mut Vec<String>,
+) {
+    for (key, n) in incremental {
+        let m = rebuilt.get(key).copied().unwrap_or(0);
+        if *n != m {
+            out.push(format!(
+                "{label}: only in incremental (x{n} vs x{m} rebuilt): {key:?}"
+            ));
+        }
+    }
+    for (key, m) in rebuilt {
+        if !incremental.contains_key(key) {
+            out.push(format!(
+                "{label}: only in rebuild (x{m} vs x0 incremental): {key:?}"
+            ));
+        }
+    }
+}
+pub fn fingerprint(store: &KuzuGraphStore, branch: &str) -> Fingerprint {
     let nodes = store.list_all_nodes(branch).unwrap();
     let mut ids: HashMap<String, Vec<NodeKey>> = HashMap::new();
     let mut keys: BTreeMap<NodeKey, usize> = BTreeMap::new();
@@ -164,6 +231,7 @@ pub fn fingerprint(store: &dyn GraphStore, branch: &str) -> Fingerprint {
     let mut fp = Fingerprint {
         nodes: BTreeMap::new(),
         edges: BTreeMap::new(),
+        facts: BTreeMap::new(),
     };
     for n in &nodes {
         // serde_json::Value maps sort object keys recursively by default.
@@ -188,9 +256,20 @@ pub fn fingerprint(store: &dyn GraphStore, branch: &str) -> Fingerprint {
             })
             .or_default() += 1;
     }
+    for (src, src_file, target_name, kind, line) in store.list_reference_facts(branch).unwrap() {
+        *fp.facts
+            .entry(FactRecord {
+                src: endpoint(src),
+                src_file,
+                target_name,
+                kind,
+                line,
+            })
+            .or_default() += 1;
+    }
     fp
 }
-pub fn assert_matches_rebuild(repo: &TestRepo, store: &dyn GraphStore, branch: &str) {
+pub fn assert_matches_rebuild(repo: &TestRepo, store: &KuzuGraphStore, branch: &str) {
     let copy = repo.snapshot_copy();
     let mut rebuilt = KuzuGraphStore::open(copy.root()).unwrap();
     let (diff, _) = IncrementalIndexer::new(copy.root())
@@ -198,9 +277,7 @@ pub fn assert_matches_rebuild(repo: &TestRepo, store: &dyn GraphStore, branch: &
         .run(None)
         .unwrap();
     rebuilt.apply_diff(branch, &diff).unwrap();
-    assert_eq!(
-        fingerprint(store, branch),
-        fingerprint(&rebuilt, branch),
-        "rebuild mismatch"
-    );
+    if let Some(delta) = fingerprint(store, branch).diff(&fingerprint(&rebuilt, branch)) {
+        panic!("rebuild mismatch\n{delta}");
+    }
 }
