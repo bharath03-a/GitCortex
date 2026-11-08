@@ -52,23 +52,26 @@ structured-content contract when no output schema is advertised.
 | scenario | first result | fix commit | final |
 |---|---|---|---|
 | uncommitted_edit_visible_after_debounce (B3-001) | FAIL | — (architectural; deferred) | IGNORED |
-| deleted_file_symbols_disappear | FAIL: test unwrapped items during transient degraded response | — (test polling corrected) | PASS |
+| clean_checkout_reports_ready_and_verified (positive control) | PASS | — | PASS |
+| deleted_file_symbols_disappear (asserts the symbol is visible first) | FAIL: test unwrapped items during transient degraded response | — (test polling corrected) | PASS |
 | branch_omitted_answers_current_checkout | PASS | — | PASS |
 | branch_switch_while_running_updates_index_branch | PASS | — | PASS |
-| restart_with_dirty_overlay_not_ready_until_verified | FAIL: test startup barrier required a clean commit for a dirty overlay | — (wait for watcher health; preserve readiness assertion) | PASS |
-| detached_head_never_answers_main | PASS | — | PASS |
+| restart_with_dirty_overlay_not_ready_until_verified (disk restored clean, stale overlay + dirty flag; never ready while overlay visible; polls to reconciliation) | FAIL: test startup barrier required a clean commit for a dirty overlay | — (wait for watcher health; preserve readiness assertion) | PASS |
+| detached_head_never_answers_main (detached at an older commit; main-only symbol absent once ready) | PASS | — | PASS |
 | array_results_validate_against_output_schema | FAIL: test expected callers under items rather than evidence | — (test response-shape assertion corrected) | PASS |
 
-B3-001: after correcting transient-response polling, the function is visible
-within MAX_BATCH_MS + 2s, but the response is `unverified` with
-`working_tree_verified=false`. Both readiness inspection and watcher persistence
-certify committed content only; the watcher intentionally keeps a dirty marker
-for uncommitted overlays. Safely certifying an overlay requires a distinct live
-checkpoint with source-hash revalidation across requests/restarts, rather than
-clearing that persisted marker or equating watcher health with verified content.
-That changes readiness semantics and shared watcher state, so this scenario is
-left as an explicit failing regression under the plan's architectural-stop rule.
-No production fix is claimed.
+B3-001 root cause: `readiness::inspect` hard-codes `unverified` whenever
+`changed_sources` is non-empty for the checkout branch, and the watcher's
+`apply_disk_batch` verifies batch snapshots only against HEAD, so an uncommitted
+overlay can never be certified. The function is visible within the debounce
+window, but the response stays `unverified` with `working_tree_verified=false`
+(reproduced after the B3 rewrite with `--ignored`). The fix is a persisted
+overlay checkpoint `{head, path -> blob hash}` that readiness revalidates
+against the working tree across requests and restarts, rather than clearing the
+dirty marker or equating watcher health with verified content. That changes
+readiness semantics and shared watcher state, so the scenario stays an explicit
+ignored regression under the plan's architectural-stop rule. No production fix
+is claimed.
 
 During B3 targeted runs the real-root count rose 9371 → 9372 from another
 worktree's hook (the new directory contains
