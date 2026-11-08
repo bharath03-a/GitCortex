@@ -38,6 +38,20 @@ impl Drop for TestRepo {
         )));
     }
 }
+/// Removes the store of a repository root that is not a `TestRepo`. Declare it
+/// before the store so the store closes first.
+pub struct StoreCleanup(std::path::PathBuf);
+impl StoreCleanup {
+    pub fn new(root: &Path) -> Self {
+        Self(root.to_owned())
+    }
+}
+impl Drop for StoreCleanup {
+    fn drop(&mut self) {
+        let _ =
+            std::fs::remove_dir_all(gitcortex_store::branch::data_dir(&storage_repo_id(&self.0)));
+    }
+}
 impl TestRepo {
     pub fn new() -> Self {
         let repo = Self(

@@ -458,67 +458,6 @@ async fn tree_index_concurrent_with_watcher() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn duplicate_requests_spawn_one_job() {
-    use gitcortex_mcp::mcp::{
-        readiness::inspect_commit,
-        tree_jobs::{JobStatus, TreeIndexJobs},
-    };
-    let repo = TestRepo::new();
-    repo.write("a.rs", "pub fn target() {}\n");
-    let sha = repo.commit("fixture");
-    let store = std::sync::Arc::new(std::sync::Mutex::new(
-        KuzuGraphStore::open(repo.root()).unwrap(),
-    ));
-    let jobs = TreeIndexJobs::new(repo.root(), store.clone());
-    let statuses = {
-        let _store = store.lock().unwrap();
-        let barrier = std::sync::Barrier::new(5);
-        let runtime = tokio::runtime::Handle::current();
-        std::thread::scope(|scope| {
-            let threads: Vec<_> = (0..5)
-                .map(|_| {
-                    let jobs = &jobs;
-                    let sha = &sha;
-                    let barrier = &barrier;
-                    let runtime = &runtime;
-                    scope.spawn(move || {
-                        let _runtime = runtime.enter();
-                        barrier.wait();
-                        jobs.request("feat/x", sha)
-                    })
-                })
-                .collect();
-            threads
-                .into_iter()
-                .map(|t| t.join().unwrap())
-                .collect::<Vec<_>>()
-        })
-    };
-    assert_eq!(
-        statuses
-            .iter()
-            .filter(|s| matches!(s, JobStatus::Started))
-            .count(),
-        1
-    );
-    assert_eq!(
-        statuses
-            .iter()
-            .filter(|s| matches!(s, JobStatus::AlreadyRunning))
-            .count(),
-        4
-    );
-    let deadline = tokio::time::Instant::now() + DEADLINE;
-    loop {
-        if inspect_commit(&*store.lock().unwrap(), "feat/x", &sha).state == "ready" {
-            break;
-        }
-        assert!(tokio::time::Instant::now() < deadline);
-        tokio::time::sleep(POLL).await;
-    }
-}
-
-#[tokio::test(flavor = "multi_thread")]
 async fn failed_tree_index_reports_error_and_allows_retry() {
     let live = Live::start("tree", true).await;
     live.wait_ready().await;

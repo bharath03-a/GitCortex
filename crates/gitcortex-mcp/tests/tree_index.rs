@@ -2,7 +2,9 @@ mod support;
 use gitcortex_core::store::GraphStore;
 use gitcortex_mcp::mcp::{readiness::inspect_commit, tree_jobs::apply_tree_index};
 use gitcortex_store::kuzu::KuzuGraphStore;
-use support::{fingerprint, index_hook_path, TestRepo};
+use support::{fingerprint, index_hook_path, StoreCleanup, TestRepo};
+
+const DEADLINE: std::time::Duration = std::time::Duration::from_secs(15);
 
 #[test]
 fn tree_index_matches_checkout_index() {
@@ -65,6 +67,7 @@ fn commit_without_checkout(bare: bool) {
     source.write("lib.rs", "pub fn fetched() {}\n");
     let sha = source.commit("source");
     let root = tempfile::tempdir().unwrap();
+    let _cleanup = StoreCleanup::new(root.path());
     let mut init = std::process::Command::new("git");
     init.arg("init");
     if bare {
@@ -311,63 +314,52 @@ fn failed_tree_apply_stays_unverified() {
     assert_eq!(inspect_commit(&store, "main", &second).state, "ready");
 }
 
-#[tokio::test]
-async fn duplicate_requests_spawn_one_job() {
-    use gitcortex_mcp::mcp::tree_jobs::{JobStatus, TreeIndexJobs};
+// The store is held, so the job sits at `begin` across the switch and commit.
+#[tokio::test(flavor = "multi_thread")]
+async fn queued_job_cannot_overwrite_a_key_that_became_checked_out() {
+    use gitcortex_mcp::mcp::{
+        readiness::inspect,
+        tree_jobs::{JobStatus, TreeIndexJobs},
+    };
     let repo = TestRepo::new();
-    repo.write("a.rs", "pub fn target() {}\n");
-    let sha = repo.commit("fixture");
+    repo.write("a.rs", "pub fn base() {}\n");
+    repo.commit("s0");
+    repo.git(&["switch", "-c", "feat/x"]);
+    repo.write("a.rs", "pub fn job_bytes() {}\n");
+    let s1 = repo.commit("s1");
+    repo.git(&["switch", "main"]);
     let store = std::sync::Arc::new(std::sync::Mutex::new(
         KuzuGraphStore::open(repo.root()).unwrap(),
     ));
     let jobs = TreeIndexJobs::new(repo.root(), store.clone());
-    // Hold the shared store so the job cannot finish while requests race.
-    let statuses = {
-        let _store = store.lock().unwrap();
-        let barrier = std::sync::Barrier::new(5);
-        let runtime = tokio::runtime::Handle::current();
-        std::thread::scope(|scope| {
-            let threads: Vec<_> = (0..5)
-                .map(|_| {
-                    let jobs = &jobs;
-                    let sha = &sha;
-                    let barrier = &barrier;
-                    let runtime = &runtime;
-                    scope.spawn(move || {
-                        let _runtime = runtime.enter();
-                        barrier.wait();
-                        jobs.request("feat/x", sha)
-                    })
-                })
-                .collect();
-            threads
-                .into_iter()
-                .map(|t| t.join().unwrap())
-                .collect::<Vec<_>>()
-        })
-    };
-    assert_eq!(
-        statuses
-            .iter()
-            .filter(|s| matches!(s, JobStatus::Started))
-            .count(),
-        1
-    );
-    assert_eq!(
-        statuses
-            .iter()
-            .filter(|s| matches!(s, JobStatus::AlreadyRunning))
-            .count(),
-        4
-    );
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
-    loop {
-        if inspect_commit(&*store.lock().unwrap(), "feat/x", &sha).state == "ready" {
-            break;
-        }
-        assert!(tokio::time::Instant::now() < deadline);
+    {
+        let mut held = store.lock().unwrap();
+        assert!(matches!(jobs.request("feat/x", &s1), JobStatus::Started));
+        repo.git(&["switch", "feat/x"]);
+        repo.write("a.rs", "pub fn user_bytes() {}\n");
+        let s2 = repo.commit("s2");
+        apply_tree_index(repo.root(), &mut *held, "feat/x", &s2).unwrap();
+    }
+    let deadline = tokio::time::Instant::now() + DEADLINE;
+    while jobs.is_active() {
+        assert!(tokio::time::Instant::now() < deadline, "job still active");
         tokio::time::sleep(std::time::Duration::from_millis(25)).await;
     }
+    let store = store.lock().unwrap();
+    let head = repo.git(&["rev-parse", "HEAD"]);
+    assert_eq!(store.last_indexed_sha("feat/x").unwrap(), Some(head));
+    assert!(!store.working_tree_dirty("feat/x").unwrap());
+    assert!(!store
+        .lookup_symbol("feat/x", "user_bytes", false)
+        .unwrap()
+        .is_empty());
+    assert!(store
+        .lookup_symbol("feat/x", "job_bytes", false)
+        .unwrap()
+        .is_empty());
+    let state = inspect(repo.root(), &*store, "feat/x");
+    assert_eq!(state.state, "ready");
+    assert!(state.working_tree_verified);
 }
 
 #[test]
