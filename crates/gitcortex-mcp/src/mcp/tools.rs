@@ -49,6 +49,7 @@ use serde_json::json;
 pub struct GitCortexServer {
     store: Arc<Mutex<KuzuGraphStore>>,
     repo_root: PathBuf,
+    tree_jobs: super::tree_jobs::TreeIndexJobs,
     default_branch: Arc<Mutex<String>>,
     graph_revision: Arc<AtomicU64>,
     watcher_unhealthy: Arc<AtomicBool>,
@@ -100,8 +101,10 @@ impl GitCortexServer {
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(DEFAULT_RESPONSE_BUDGET)
             .max(MIN_RESPONSE_BUDGET);
+        let store = Arc::new(Mutex::new(store));
         Ok(Self {
-            store: Arc::new(Mutex::new(store)),
+            tree_jobs: super::tree_jobs::TreeIndexJobs::new(repo_root, store.clone()),
+            store,
             repo_root: repo_root.to_owned(),
             default_branch: Arc::new(Mutex::new(default_branch)),
             graph_revision: Arc::new(AtomicU64::new(0)),
@@ -132,6 +135,50 @@ impl GitCortexServer {
         requested
             .map(str::to_owned)
             .unwrap_or_else(|| detect_current_branch(&self.repo_root).unwrap_or_default())
+    }
+
+    /// Readiness of a branch other than the checkout, scheduling a background
+    /// tree index when its committed graph is absent or out of date.
+    fn tree_scope_readiness(
+        &self,
+        store: &dyn GraphStore,
+        branch: &str,
+    ) -> super::readiness::IndexReadiness {
+        use super::tree_jobs::{resolve_commit, JobStatus};
+        let sha = match resolve_commit(&self.repo_root, &format!("refs/heads/{branch}")) {
+            Ok(sha) => sha,
+            Err(error) => {
+                // Never enqueue a typo: the ref must exist before any work.
+                let mut state = super::readiness::inspect_commit(store, branch, "");
+                state.state = "missing";
+                state.target_revision = None;
+                state.next_action = format!(
+                    "No local branch named {branch} ({error}). Check the branch name; an empty index does not mean no dependencies."
+                );
+                return state;
+            }
+        };
+        let mut state = super::readiness::inspect_commit(store, branch, &sha);
+        if !matches!(state.state, "missing" | "stale" | "unverified") {
+            return state;
+        }
+        match self.tree_jobs.request(branch, &sha) {
+            JobStatus::Started | JobStatus::AlreadyRunning => {
+                state.state = "indexing";
+                state.next_action =
+                    format!("Branch {branch} is being indexed from commit {sha}; retry shortly.");
+            }
+            JobStatus::Failed { error, retry_after } => {
+                let wait = retry_after
+                    .saturating_duration_since(std::time::Instant::now())
+                    .as_secs();
+                state.state = "missing";
+                state.next_action = format!(
+                    "Indexing branch {branch} from commit {sha} failed: {error}. Retry in {wait}s or run gcx index --branch {branch}."
+                );
+            }
+        }
+        state
     }
 
     /// Truncate a list of JSON items to fit `response_budget`, returning the
@@ -1965,12 +2012,16 @@ impl GitCortexServer {
                 .store
                 .lock()
                 .map_err(|_| rmcp::ErrorData::internal_error("store mutex poisoned", None))?;
+            let checkout = detect_current_branch(&self.repo_root);
             Ok(scopes.iter().map(|scope| {
+                if checkout.as_deref() != Some(scope.as_str()) {
+                    return self.tree_scope_readiness(&*store, scope);
+                }
                 let mut state = super::readiness::inspect(&self.repo_root, &*store, scope);
                 if self.watcher_unhealthy.load(Ordering::Acquire) {
                     state.state = "degraded";
                     state.working_tree_verified = false;
-                    state.next_action = "Watcher synchronization is incomplete or failed. Wait for recovery or inspect source and restart gcx serve.";
+                    state.next_action = "Watcher synchronization is incomplete or failed. Wait for recovery or inspect source and restart gcx serve.".to_owned();
                 }
                 state
             }).collect())
@@ -1983,7 +2034,7 @@ impl GitCortexServer {
             && before.iter().any(|scope| {
                 matches!(
                     scope.state,
-                    "missing" | "stale" | "unavailable" | "degraded"
+                    "missing" | "stale" | "unavailable" | "degraded" | "indexing"
                 ) || (safety_sensitive && scope.state == "unverified")
             });
         let index = if before.len() == 1 {

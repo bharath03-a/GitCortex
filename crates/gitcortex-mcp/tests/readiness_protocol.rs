@@ -161,7 +161,25 @@ async fn protocol_reports_scope_and_rejects_missing_or_stale_impact() {
             data["index"]["target_revision"],
             data["index"]["checkout_revision"]
         );
-        assert_eq!(data["index"]["state"], "stale");
+        assert_eq!(data["index"]["state"], "indexing");
+        assert_eq!(data["index"]["checkout_revision"], Value::Null);
+        let main_sha = git(root, &["rev-parse", "main"]);
+        assert_eq!(data["index"]["target_revision"], main_sha);
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let data = client
+                .call_tool(call("graph_stats", json!({"branch":"main"})))
+                .await
+                .unwrap()
+                .structured_content
+                .unwrap();
+            if data["index"]["state"] == "ready" {
+                assert_eq!(data["index"]["target_revision"], main_sha);
+                break;
+            }
+            assert!(tokio::time::Instant::now() < deadline, "{data}");
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
         git(root, &["checkout", "--detach", &head]);
         let result = client
             .call_tool(call("graph_stats", json!({})))

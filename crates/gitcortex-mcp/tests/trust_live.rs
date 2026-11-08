@@ -75,10 +75,13 @@ fn seed_repo(case: &str) -> TestRepo {
     drop(store);
     match case {
         "restart" => persist_stale_overlay(&repo),
-        "omitted" => {
+        "omitted" | "tree" | "unknown" | "tree_watcher" => {
             repo.git(&["checkout", "-b", "feat/x"]);
             repo.write("a.rs", "pub fn feature_only() {}");
             repo.commit("feature");
+            if case != "omitted" {
+                repo.git(&["checkout", "main"]);
+            }
         }
         _ => {}
     }
@@ -191,6 +194,87 @@ impl Live {
     async fn wait_ready(&self) -> Value {
         self.wait_for("original", "startup readiness", is_ready)
             .await
+    }
+}
+
+async fn tree_branch_scenarios(live: &Live, case: &str) {
+    live.wait_ready().await;
+    let branch = if case == "unknown" {
+        "typo/no-such-branch"
+    } else {
+        "feat/x"
+    };
+    if case == "tree_watcher" {
+        live.repo.write("a.rs", "pub fn watcher_edit() {}\n");
+    }
+    let first = live.call("graph_stats", json!({"branch": branch})).await;
+    assert_eq!(
+        state(&first),
+        if case == "unknown" {
+            "missing"
+        } else {
+            "indexing"
+        },
+        "{first}"
+    );
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        let data = live.call("graph_stats", json!({"branch": branch})).await;
+        if case == "unknown" {
+            assert_eq!(state(&data), "missing", "{data}");
+            assert!(
+                data["index"]["next_action"]
+                    .as_str()
+                    .unwrap_or("")
+                    .contains(branch),
+                "{data}"
+            );
+            break;
+        }
+        if is_ready(&data) {
+            let symbols = live
+                .call(
+                    "lookup_symbol",
+                    json!({"name": "feature_only", "branch": branch}),
+                )
+                .await;
+            assert!(!items(&symbols).is_empty(), "{symbols}");
+            assert_eq!(symbols["index"]["working_tree_verified"], false);
+            break;
+        }
+        assert!(tokio::time::Instant::now() < deadline, "tree index: {data}");
+        tokio::time::sleep(POLL).await;
+    }
+    if case == "tree_watcher" {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let data = live
+                .call(
+                    "lookup_symbol",
+                    json!({"name": "watcher_edit", "branch": "main"}),
+                )
+                .await;
+            if !items(&data).is_empty() && state(&data) != "degraded" {
+                break;
+            }
+            assert!(tokio::time::Instant::now() < deadline, "watcher: {data}");
+            tokio::time::sleep(POLL).await;
+        }
+        let feature = live
+            .call(
+                "lookup_symbol",
+                json!({"name": "feature_only", "branch": "feat/x"}),
+            )
+            .await;
+        assert!(is_ready(&feature), "{feature}");
+        assert!(!items(&feature).is_empty(), "{feature}");
+        let main = live
+            .call(
+                "lookup_symbol",
+                json!({"name": "feature_only", "branch": "main"}),
+            )
+            .await;
+        assert!(items(&main).is_empty(), "{main}");
     }
 }
 
@@ -325,6 +409,7 @@ async fn run(case: &str, compact: bool) {
         "delete" => delete_removes_symbols(&live).await,
         "restart" => restart_reconciles_stale_overlay(&live).await,
         "schema" => schema_matches_output(&live).await,
+        "tree" | "unknown" | "tree_watcher" => tree_branch_scenarios(&live, case).await,
         _ => branch_scoped_never_leaks_main(&live, case).await,
     }
     live.client.cancel().await.unwrap();
@@ -357,3 +442,146 @@ live!(
 );
 live!(detached_head_never_answers_main, "detached");
 live!(array_results_validate_against_output_schema, "schema");
+
+#[tokio::test(flavor = "multi_thread")]
+async fn requested_unindexed_branch_starts_tree_index() {
+    run("tree", true).await;
+}
+#[tokio::test(flavor = "multi_thread")]
+async fn unknown_branch_reports_missing_without_indexing() {
+    run("unknown", true).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn tree_index_concurrent_with_watcher() {
+    run("tree_watcher", true).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn duplicate_requests_spawn_one_job() {
+    use gitcortex_mcp::mcp::{
+        readiness::inspect_commit,
+        tree_jobs::{JobStatus, TreeIndexJobs},
+    };
+    let repo = TestRepo::new();
+    repo.write("a.rs", "pub fn target() {}\n");
+    let sha = repo.commit("fixture");
+    let store = std::sync::Arc::new(std::sync::Mutex::new(
+        KuzuGraphStore::open(repo.root()).unwrap(),
+    ));
+    let jobs = TreeIndexJobs::new(repo.root(), store.clone());
+    let statuses = {
+        let _store = store.lock().unwrap();
+        let barrier = std::sync::Barrier::new(5);
+        let runtime = tokio::runtime::Handle::current();
+        std::thread::scope(|scope| {
+            let threads: Vec<_> = (0..5)
+                .map(|_| {
+                    let jobs = &jobs;
+                    let sha = &sha;
+                    let barrier = &barrier;
+                    let runtime = &runtime;
+                    scope.spawn(move || {
+                        let _runtime = runtime.enter();
+                        barrier.wait();
+                        jobs.request("feat/x", sha)
+                    })
+                })
+                .collect();
+            threads
+                .into_iter()
+                .map(|t| t.join().unwrap())
+                .collect::<Vec<_>>()
+        })
+    };
+    assert_eq!(
+        statuses
+            .iter()
+            .filter(|s| matches!(s, JobStatus::Started))
+            .count(),
+        1
+    );
+    assert_eq!(
+        statuses
+            .iter()
+            .filter(|s| matches!(s, JobStatus::AlreadyRunning))
+            .count(),
+        4
+    );
+    let deadline = tokio::time::Instant::now() + DEADLINE;
+    loop {
+        if inspect_commit(&*store.lock().unwrap(), "feat/x", &sha).state == "ready" {
+            break;
+        }
+        assert!(tokio::time::Instant::now() < deadline);
+        tokio::time::sleep(POLL).await;
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn failed_tree_index_reports_error_and_allows_retry() {
+    let live = Live::start("tree", true).await;
+    live.wait_ready().await;
+    let git_repo = git2::Repository::open(live.repo.root()).unwrap();
+    let commit = git_repo
+        .revparse_single("refs/heads/feat/x")
+        .unwrap()
+        .peel_to_commit()
+        .unwrap();
+    let tree = commit.tree().unwrap();
+    let entry = tree.get_name("a.rs").unwrap();
+    let blob_id = entry.id().to_string();
+    let blob_path = git_repo
+        .path()
+        .join("objects")
+        .join(&blob_id[..2])
+        .join(&blob_id[2..]);
+    let bytes = std::fs::read(&blob_path).unwrap();
+    std::fs::remove_file(&blob_path).unwrap();
+
+    let first = live.call("graph_stats", json!({"branch": "feat/x"})).await;
+    assert_eq!(state(&first), "indexing", "{first}");
+
+    let deadline = tokio::time::Instant::now() + DEADLINE;
+    let failed = loop {
+        let data = live.call("graph_stats", json!({"branch": "feat/x"})).await;
+        if state(&data) == "missing" {
+            break data;
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "expected failure: {data}"
+        );
+        tokio::time::sleep(POLL).await;
+    };
+    let next_action = failed["index"]["next_action"].as_str().unwrap_or("");
+    assert!(
+        next_action.contains("failed"),
+        "expected failure message in next_action: {failed}"
+    );
+
+    // Repair the loose blob and advance the branch so a new request retries and reaches ready.
+    std::fs::write(&blob_path, bytes).unwrap();
+    live.repo.git(&["checkout", "feat/x"]);
+    live.repo.write("b.rs", "pub fn after_repair() {}\n");
+    live.repo.commit("repair");
+    live.repo.git(&["checkout", "main"]);
+
+    let deadline = tokio::time::Instant::now() + DEADLINE;
+    loop {
+        let data = live
+            .call(
+                "lookup_symbol",
+                json!({"name": "after_repair", "branch": "feat/x"}),
+            )
+            .await;
+        if is_ready(&data) {
+            assert!(!items(&data).is_empty(), "{data}");
+            assert_eq!(data["index"]["working_tree_verified"], false);
+            break;
+        }
+        assert!(tokio::time::Instant::now() < deadline, "retry: {data}");
+        tokio::time::sleep(POLL).await;
+    }
+    live.client.cancel().await.unwrap();
+}

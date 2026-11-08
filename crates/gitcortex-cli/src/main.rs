@@ -38,6 +38,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Index a local branch from committed git objects.
+    Index(cmd::index::IndexArgs),
     /// Install git hooks and run the initial index for this repo.
     Init {
         /// Also install the GitHub Actions blast-radius workflow.
@@ -334,6 +336,7 @@ fn main() {
             global_editor_config,
             shared_git_hooks,
         } => cmd::deinit::run(dry_run, purge, global_editor_config, shared_git_hooks),
+        Commands::Index(args) => cmd::index::run(args),
         Commands::Hook { branch_switch } => cmd::hook::run(branch_switch),
         Commands::Serve { full } => cmd::serve::run(!full),
         Commands::ServeDaemon { repo_root } => cmd::serve::run_daemon(repo_root),

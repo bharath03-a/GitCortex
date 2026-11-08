@@ -10,3 +10,5 @@ pub mod serve;
 pub mod serve_lock;
 pub mod status;
 pub mod update;
+
+pub mod index;

@@ -12,6 +12,7 @@ Complete reference for the `gcx` CLI, MCP server tools, configuration, and graph
   - [gcx init](#gcx-init)
   - [gcx deinit](#gcx-deinit)
   - [gcx serve](#gcx-serve)
+  - [gcx index](#gcx-index)
   - [gcx hook](#gcx-hook)
   - [gcx query](#gcx-query)
   - [gcx blast-radius](#gcx-blast-radius)
@@ -185,6 +186,31 @@ gcx serve [OPTIONS]
 gcx serve          # compact single-dispatch surface (default)
 gcx serve --full   # compact dispatch plus all individual tools
 ```
+
+---
+
+### gcx index
+
+```bash
+gcx index --branch <name>
+```
+
+Synchronously index a local branch from committed git objects without checking
+it out. Prints indexed node and edge counts. Uses the branch's stored
+`.gitcortex/ignore`; uncommitted files do not affect the result. Binary and
+oversized sources are excluded using the same limits as checkout indexing.
+
+MCP requests for an unindexed or stale local branch outside the checkout start
+a bounded background tree index. Readiness remains under `index`:
+`index.state = "indexing"` and `index.next_action` asks the caller to retry.
+One job runs at a time; duplicate requests share the pending job. A failed job
+reports `missing` with its error and can be retried after 60 seconds. Unknown
+local branches report `missing` immediately without scheduling work.
+
+Commit readiness compares the persisted SHA and dirty marker with the requested
+commit. Failed applies remain `unverified`; successful tree indexing publishes
+`ready` with `working_tree_verified = false`, since it certifies committed blobs.
+An empty or stale graph never establishes that dependencies are absent.
 
 ---
 
