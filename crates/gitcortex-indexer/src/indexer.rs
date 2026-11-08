@@ -585,16 +585,6 @@ impl IncrementalIndexer {
             .is_ignore()
     }
 
-    /// A source reached through a symlink is skipped, as the tree path skips the
-    /// entry; `validated_source_path` still guards every read.
-    pub(crate) fn traverses_symlink(&self, repo_relative_path: &Path) -> bool {
-        let mut current = self.repo_root.clone();
-        repo_relative_path.components().any(|component| {
-            current.push(component);
-            fs::symlink_metadata(&current).is_ok_and(|meta| meta.file_type().is_symlink())
-        })
-    }
-
     pub(crate) fn validated_source_path(&self, repo_relative_path: &Path) -> Result<PathBuf> {
         let mut current = self.repo_root.clone();
         for component in repo_relative_path.components() {
