@@ -88,6 +88,54 @@ fn commit_without_checkout(bare: bool) {
 }
 
 #[test]
+fn dirty_retry_drops_folders_of_vanished_directories() {
+    let repo = TestRepo::new();
+    repo.write("keep/a.rs", "pub fn original() {}\n");
+    let sha = repo.commit("initial");
+    let mut store = KuzuGraphStore::open(repo.root()).unwrap();
+    apply_tree_index(repo.root(), &mut store, "main", &sha).unwrap();
+    repo.write("ghost_dir/nested/ghost.rs", "pub fn ghost() {}\n");
+    let diff = gitcortex_indexer::IncrementalIndexer::new(repo.root())
+        .unwrap()
+        .index_files_from_disk(&[repo.root().join("ghost_dir/nested/ghost.rs")])
+        .unwrap();
+    store.apply_diff("main", &diff).unwrap();
+    store.set_working_tree_dirty("main", true).unwrap();
+    apply_tree_index(repo.root(), &mut store, "main", &sha).unwrap();
+    support::assert_matches_rebuild(&repo, &store, "main");
+    assert_eq!(inspect_commit(&store, "main", &sha).state, "ready");
+}
+
+#[test]
+fn tree_index_incremental_drops_folders_of_vanished_directories() {
+    let repo = TestRepo::new();
+    repo.write("keep/a.rs", "pub fn kept() {}\n");
+    repo.write("gone/nested/b.rs", "pub fn removed() {}\n");
+    let first = repo.commit("first");
+    let mut store = KuzuGraphStore::open(repo.root()).unwrap();
+    apply_tree_index(repo.root(), &mut store, "main", &first).unwrap();
+    std::fs::remove_dir_all(repo.root().join("gone")).unwrap();
+    let second = repo.commit("second");
+    apply_tree_index(repo.root(), &mut store, "main", &second).unwrap();
+    support::assert_matches_rebuild(&repo, &store, "main");
+}
+
+#[test]
+#[ignore = "trust-ledger: B4-001"]
+fn dotted_directory_sibling_survives_incremental() {
+    let repo = TestRepo::new();
+    repo.write("v1.2/a.rs", "pub fn alpha() {}\n");
+    repo.write("v1.2/b.rs", "pub fn beta() {}\n");
+    let first = repo.commit("first");
+    let mut store = KuzuGraphStore::open(repo.root()).unwrap();
+    apply_tree_index(repo.root(), &mut store, "main", &first).unwrap();
+    repo.write("v1.2/a.rs", "pub fn alpha2() {}\n");
+    let second = repo.commit("second");
+    apply_tree_index(repo.root(), &mut store, "main", &second).unwrap();
+    support::assert_matches_rebuild(&repo, &store, "main");
+}
+
+#[test]
 fn dirty_retry_rebuilds_complete_tree() {
     let repo = TestRepo::new();
     repo.write("a.rs", "pub fn original() {}\n");
