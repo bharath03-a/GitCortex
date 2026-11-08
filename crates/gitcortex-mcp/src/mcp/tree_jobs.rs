@@ -82,9 +82,10 @@ pub fn apply_tree_index(
     rev: &str,
 ) -> anyhow::Result<TreeIndexOutcome> {
     let sha = resolve_commit(root, rev)?;
+    super::readiness::remove_overlay_checkpoint(root, key)?;
     let plan = begin_tree_apply(store, key, sha)?;
     let diff = tree_diff(root, &plan)?;
-    finish_tree_apply(store, key, plan, diff)
+    finish_tree_apply(root, store, key, plan, diff)
 }
 
 struct TreeApply {
@@ -136,6 +137,7 @@ fn stale_folders(persisted: &[Node], diff: &GraphDiff) -> Vec<NodeId> {
 }
 
 fn finish_tree_apply(
+    root: &Path,
     store: &mut dyn GraphStore,
     key: &str,
     plan: TreeApply,
@@ -152,6 +154,9 @@ fn finish_tree_apply(
         let stale = stale_folders(&persisted, &diff);
         diff.removed_node_ids.extend(stale);
     }
+    // Before writing: a crash mid-apply leaves `.dirty`, and an overlay beside it
+    // could certify bytes this job wrote.
+    super::readiness::remove_overlay_checkpoint(root, key)?;
     store.apply_diff(key, &diff)?;
     store.set_last_indexed_sha(key, &plan.sha)?;
     store.set_working_tree_dirty(key, false)?;
@@ -197,6 +202,8 @@ fn apply_tree_index_shared<G>(
         if checkout_owns_key(root, key)? {
             return Ok(None);
         }
+        // After the check: a checked-out key's overlay belongs to the watcher.
+        super::readiness::remove_overlay_checkpoint(root, key)?;
         begin_tree_apply(&mut *store, key, sha)?
     };
     let diff = tree_diff(root, &plan)?;
@@ -205,7 +212,7 @@ fn apply_tree_index_shared<G>(
     if checkout_owns_key(root, key)? || store.last_indexed_sha(key)? != plan.previous {
         return Ok(None);
     }
-    finish_tree_apply(&mut *store, key, plan, diff).map(Some)
+    finish_tree_apply(root, &mut *store, key, plan, diff).map(Some)
 }
 
 /// Set while a job applies or waits to apply, so readiness can answer without
