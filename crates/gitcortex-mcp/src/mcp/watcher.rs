@@ -38,6 +38,7 @@ fn indexes_event(kind: EventKind) -> bool {
 
 /// Keep ingress and pending sets bounded. A dropped event triggers explicit
 /// reconciliation; it is never treated as a successful incremental update.
+#[cfg(test)]
 pub fn spawn_file_watcher(
     repo_root: PathBuf,
     store_arc: Arc<Mutex<KuzuGraphStore>>,
