@@ -457,6 +457,96 @@ fn tree_index_incremental_ignore_change_matches_rebuild() {
     support::assert_matches_rebuild(&repo, &store, "main");
 }
 
+/// Serializes a tree by hand: `TreeBuilder` refuses legacy modes and odd names.
+fn raw_tree(repo: &git2::Repository, entries: &[(&[u8], u32, &[u8])]) -> git2::Oid {
+    let mut sorted = entries.to_vec();
+    sorted.sort_by_key(|(name, _, _)| name.to_vec());
+    let mut bytes = Vec::new();
+    for (name, mode, content) in sorted {
+        let id = if mode == 0o160000 {
+            git2::Oid::from_bytes(&[7; 20]).unwrap()
+        } else {
+            repo.blob(content).unwrap()
+        };
+        bytes.extend_from_slice(format!("{mode:o} ").as_bytes());
+        bytes.extend_from_slice(name);
+        bytes.push(0);
+        bytes.extend_from_slice(id.as_bytes());
+    }
+    repo.odb()
+        .unwrap()
+        .write(git2::ObjectType::Tree, &bytes)
+        .unwrap()
+}
+
+fn raw_commit(
+    repo: &git2::Repository,
+    parent: Option<&str>,
+    entries: &[(&[u8], u32, &[u8])],
+) -> String {
+    let tree = repo.find_tree(raw_tree(repo, entries)).unwrap();
+    let signature = git2::Signature::now("Test", "test@example.test").unwrap();
+    let parents: Vec<git2::Commit<'_>> = parent
+        .map(|sha| repo.revparse_single(sha).unwrap().peel_to_commit().unwrap())
+        .into_iter()
+        .collect();
+    let parents: Vec<&git2::Commit<'_>> = parents.iter().collect();
+    repo.commit(None, &signature, &signature, "fixture", &tree, &parents)
+        .unwrap()
+        .to_string()
+}
+
+// Entries a checkout-based test cannot create on every filesystem, through the
+// store, so non-UTF-8 paths and removals are covered past the indexer.
+#[test]
+fn unusual_tree_entries_survive_the_full_apply_path() {
+    let repo = TestRepo::new();
+    let git = git2::Repository::open(repo.root()).unwrap();
+    let first = raw_commit(
+        &git,
+        None,
+        &[
+            (b"legacy.rs", 0o100664, b"pub fn legacy_one() {}\n"),
+            (b"private.rs", 0o100600, b"pub fn private_mode() {}\n"),
+            (b"caf\xff.rs", 0o100644, b"pub fn non_utf8() {}\n"),
+            (b"link.rs", 0o120000, b"legacy.rs"),
+            (b"module.rs", 0o160000, b""),
+            (b"typechange.rs", 0o100644, b"pub fn was_regular() {}\n"),
+        ],
+    );
+    let mut store = KuzuGraphStore::open(repo.root()).unwrap();
+    let has = |store: &KuzuGraphStore, name: &str| {
+        !store.lookup_symbol("feat", name, false).unwrap().is_empty()
+    };
+    apply_tree_index(repo.root(), &mut store, "feat", &first).unwrap();
+    assert_eq!(inspect_commit(&store, "feat", &first).state, "ready");
+    for name in ["legacy_one", "private_mode", "non_utf8", "was_regular"] {
+        assert!(has(&store, name), "{name}");
+    }
+    let linked = store
+        .list_all_nodes("feat")
+        .unwrap()
+        .into_iter()
+        .filter(|n| matches!(n.file.to_str(), Some("link.rs" | "module.rs")))
+        .count();
+    assert_eq!(linked, 0);
+
+    let second = raw_commit(
+        &git,
+        Some(&first),
+        &[
+            (b"legacy.rs", 0o100664, b"pub fn legacy_two() {}\n"),
+            (b"typechange.rs", 0o120000, b"legacy.rs"),
+        ],
+    );
+    apply_tree_index(repo.root(), &mut store, "feat", &second).unwrap();
+    assert_eq!(inspect_commit(&store, "feat", &second).state, "ready");
+    assert!(has(&store, "legacy_two"));
+    for name in ["legacy_one", "private_mode", "non_utf8", "was_regular"] {
+        assert!(!has(&store, name), "{name} must be gone");
+    }
+}
+
 #[test]
 fn inspect_commit_read_errors_take_precedence() {
     let repo = TestRepo::new();
