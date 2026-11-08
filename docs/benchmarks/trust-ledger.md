@@ -78,6 +78,7 @@ worktree's hook (the new directory contains
 `stack__f_ui__6_type_foundation.sha`). Trust daemon children use explicit
 isolated store paths. Full-gate before/after counts are recorded separately.
 
-B3 full `just ci`: PASS (one documented ignored scenario);
-real-root count 9372 → 9372. The initial Clippy diagnostic in test code was
-corrected before this final gate. No library behavior changed in B1–B3.
+B3 full `just ci`: PASS (one documented ignored scenario).
+`cargo nextest run -p gitcortex-mcp -j 4`: 205 run, 205 passed, 1 skipped
+(B3-001). The only library change in B1–B3 is the `#[doc(hidden)]` test-only
+accessor `KuzuGraphStore::list_reference_facts`; no behavior changed.
