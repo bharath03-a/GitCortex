@@ -141,6 +141,24 @@ pub fn snapshots_match_commit(
     Ok(true)
 }
 
+/// Readiness when no store or repository evidence could be consulted.
+pub(crate) fn without_evidence(
+    state: &'static str,
+    branch: &str,
+    next_action: String,
+) -> IndexReadiness {
+    IndexReadiness {
+        state,
+        branch: branch.to_owned(),
+        checkout_branch: None,
+        checkout_revision: None,
+        target_revision: None,
+        indexed_revision: None,
+        working_tree_verified: false,
+        next_action,
+    }
+}
+
 /// Inspect commit evidence without consulting a checkout or HEAD.
 pub fn inspect_commit(store: &dyn GraphStore, key: &str, sha: &str) -> IndexReadiness {
     let indexed = store.last_indexed_sha(key);
@@ -174,57 +192,12 @@ pub fn inspect_commit(store: &dyn GraphStore, key: &str, sha: &str) -> IndexRead
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mcp::test_support::{commit_file, TempRepo, STORE_LOCK};
     use crate::mcp::tree_jobs::apply_tree_index;
     use gitcortex_store::kuzu::KuzuGraphStore;
-    use std::sync::Mutex;
 
-    static STORE_LOCK: Mutex<()> = Mutex::new(());
-
-    fn canonical_tempdir() -> tempfile::TempDir {
-        tempfile::tempdir_in(
-            std::env::temp_dir()
-                .canonicalize()
-                .expect("canonical temp_dir"),
-        )
-        .expect("tempdir")
-    }
-
-    fn git(root: &Path, args: &[&str]) -> String {
-        let out = Command::new("git")
-            .args(args)
-            .current_dir(root)
-            .output()
-            .expect("git command");
-        assert!(
-            out.status.success(),
-            "{args:?}: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-        String::from_utf8(out.stdout)
-            .expect("utf8")
-            .trim()
-            .to_owned()
-    }
-
-    fn init_repo() -> tempfile::TempDir {
-        let dir = canonical_tempdir();
-        git(dir.path(), &["init", "-b", "main"]);
-        git(dir.path(), &["config", "user.name", "Test"]);
-        git(dir.path(), &["config", "user.email", "test@example.test"]);
-        git(dir.path(), &["config", "core.hooksPath", "/dev/null"]);
-        git(dir.path(), &["config", "commit.gpgsign", "false"]);
-        dir
-    }
-
-    fn commit_file(root: &Path, rel: &str, contents: &str, msg: &str) -> String {
-        let path = root.join(rel);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).expect("mkdir");
-        }
-        std::fs::write(path, contents).expect("write");
-        git(root, &["add", "-A"]);
-        git(root, &["commit", "--allow-empty", "-m", msg]);
-        git(root, &["rev-parse", "HEAD"])
+    fn init_repo() -> TempRepo {
+        TempRepo::init()
     }
 
     #[test]
@@ -242,7 +215,7 @@ mod tests {
     fn commit_without_checkout(bare: bool) {
         let source = init_repo();
         let sha = commit_file(source.path(), "lib.rs", "pub fn fetched() {}\n", "source");
-        let root = canonical_tempdir();
+        let root = TempRepo::bare_tempdir();
         let mut init = Command::new("git");
         init.args(["init", "-b", "main"]);
         if bare {
