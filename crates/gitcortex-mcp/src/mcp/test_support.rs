@@ -4,7 +4,7 @@ use std::{
     future::Future,
     path::Path,
     process::Command,
-    sync::{Mutex, MutexGuard},
+    sync::{Arc, Mutex, MutexGuard},
 };
 
 use gitcortex_store::branch::{data_dir, storage_repo_id};
@@ -78,13 +78,21 @@ pub(crate) fn commit_file(root: &Path, rel: &str, contents: &str, msg: &str) -> 
     git(root, &["rev-parse", "HEAD"])
 }
 
-/// Runs an async test holding the store lock outside the future.
-pub(crate) fn run_async<F: Future>(test: F) -> F::Output {
+/// Runs an async test holding the store lock outside the future. The repository
+/// outlives the runtime so spawned tasks close their stores before its removal.
+pub(crate) fn run_async<F, Fut>(test: F) -> Fut::Output
+where
+    F: FnOnce(Arc<TempRepo>) -> Fut,
+    Fut: Future,
+{
     let _stores = lock_stores();
-    tokio::runtime::Builder::new_multi_thread()
+    let repo = Arc::new(TempRepo::init());
+    let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
         .build()
-        .expect("runtime")
-        .block_on(test)
+        .expect("runtime");
+    let output = runtime.block_on(test(repo.clone()));
+    drop(runtime);
+    output
 }

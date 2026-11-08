@@ -1,6 +1,6 @@
 //! Readiness and job behavior through real MCP calls, with the job queue held
 //! so an in-flight job can be observed deterministically.
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use gitcortex_core::store::GraphStore;
 use gitcortex_store::branch::{last_sha_path, storage_repo_id};
@@ -20,13 +20,12 @@ struct Harness {
     compact: bool,
     server: GitCortexServer,
     head: String,
-    repo: TempRepo,
+    repo: Arc<TempRepo>,
 }
 
 impl Harness {
     // main checked out; feat/x carries `feature_only`, never indexed.
-    async fn start(compact: bool) -> Self {
-        let repo = TempRepo::init();
+    async fn start(repo: Arc<TempRepo>, compact: bool) -> Self {
         commit_file(repo.path(), "a.rs", "pub fn base() {}\n", "one");
         let head = commit_file(
             repo.path(),
@@ -141,18 +140,18 @@ fn next_action(data: &Value) -> &str {
 
 fn both_modes<F, Fut>(test: F)
 where
-    F: Fn(bool) -> Fut,
+    F: Fn(Arc<TempRepo>, bool) -> Fut,
     Fut: std::future::Future<Output = ()>,
 {
     for compact in [false, true] {
-        run_async(test(compact));
+        run_async(|repo| test(repo, compact));
     }
 }
 
 #[test]
 fn indexing_gate_blocks_queries_while_a_job_is_held() {
-    both_modes(|compact| async move {
-        let live = Harness::start(compact).await;
+    both_modes(|repo, compact| async move {
+        let live = Harness::start(repo, compact).await;
         let permit = live.server.tree_jobs().hold_permit().await;
         for _ in 0..2 {
             let data = live.lookup("feature_only", "feat/x").await;
@@ -172,8 +171,8 @@ fn indexing_gate_blocks_queries_while_a_job_is_held() {
 
 #[test]
 fn duplicate_requests_spawn_one_job() {
-    both_modes(|compact| async move {
-        let live = Harness::start(compact).await;
+    both_modes(|repo, compact| async move {
+        let live = Harness::start(repo, compact).await;
         let permit = live.server.tree_jobs().hold_permit().await;
         let (a, b, c, d, e) = tokio::join!(
             live.stats("feat/x"),
@@ -195,8 +194,8 @@ fn duplicate_requests_spawn_one_job() {
 
 #[test]
 fn non_branch_input_reports_missing_without_work() {
-    both_modes(|compact| async move {
-        let live = Harness::start(compact).await;
+    both_modes(|repo, compact| async move {
+        let live = Harness::start(repo, compact).await;
         for input in [
             "main~1",
             "main^",
@@ -224,8 +223,8 @@ fn non_branch_input_reports_missing_without_work() {
 
 #[test]
 fn indexed_non_branch_keys_report_their_commit_without_a_job() {
-    both_modes(|compact| async move {
-        let live = Harness::start(compact).await;
+    both_modes(|repo, compact| async move {
+        let live = Harness::start(repo, compact).await;
         let short = git(live.repo.path(), &["rev-parse", "--short", &live.head]);
         for key in [live.head.clone(), short] {
             apply_tree_index(
@@ -254,8 +253,8 @@ fn indexed_non_branch_keys_report_their_commit_without_a_job() {
 
 #[test]
 fn remote_only_branch_explains_itself() {
-    both_modes(|compact| async move {
-        let live = Harness::start(compact).await;
+    both_modes(|repo, compact| async move {
+        let live = Harness::start(repo, compact).await;
         git(
             live.repo.path(),
             &["update-ref", "refs/remotes/origin/foo", &live.head],
@@ -274,8 +273,8 @@ fn remote_only_branch_explains_itself() {
 
 #[test]
 fn failed_job_reports_stable_actionable_next_step() {
-    both_modes(|compact| async move {
-        let live = Harness::start(compact).await;
+    both_modes(|repo, compact| async move {
+        let live = Harness::start(repo, compact).await;
         let repo = git2::Repository::open(live.repo.path()).expect("repo");
         let tree = repo
             .revparse_single("refs/heads/feat/x")
@@ -322,8 +321,8 @@ fn scope_readiness(
 
 #[test]
 fn unknown_checkout_is_unavailable_and_starts_no_job() {
-    run_async(async {
-        let live = Harness::start(true).await;
+    run_async(|repo| async move {
+        let live = Harness::start(repo, true).await;
         let state = scope_readiness(&live.server, None, "main");
         assert_eq!(state.state, "unavailable");
         assert!(!state.working_tree_verified);
@@ -336,8 +335,8 @@ fn unknown_checkout_is_unavailable_and_starts_no_job() {
 
 #[test]
 fn readiness_reports_indexing_instead_of_waiting_for_an_apply() {
-    run_async(async {
-        let live = Harness::start(true).await;
+    run_async(|repo| async move {
+        let live = Harness::start(repo, true).await;
         let held = hold_store(&live.server);
         let applying = live.server.tree_jobs().mark_applying();
         let server = live.server.clone();
@@ -363,8 +362,8 @@ fn readiness_reports_indexing_instead_of_waiting_for_an_apply() {
 
 #[test]
 fn diagnostics_answer_without_waiting_for_an_apply() {
-    run_async(async {
-        let live = Harness::start(true).await;
+    run_async(|repo| async move {
+        let live = Harness::start(repo, true).await;
         let held = hold_store(&live.server);
         let applying = live.server.tree_jobs().mark_applying();
         let result = tokio::time::timeout(
@@ -386,8 +385,8 @@ fn diagnostics_answer_without_waiting_for_an_apply() {
 
 #[test]
 fn checked_out_branch_never_starts_a_tree_job() {
-    both_modes(|compact| async move {
-        let live = Harness::start(compact).await;
+    both_modes(|repo, compact| async move {
+        let live = Harness::start(repo, compact).await;
         let data = live.stats("main").await;
         assert_ne!(state(&data), "indexing", "{data}");
         assert_eq!(live.server.tree_jobs().started(), 0);
