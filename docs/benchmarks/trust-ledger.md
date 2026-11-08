@@ -114,3 +114,27 @@ B4 full `just ci`: PASS (real-root count 9470 → 9470).
 `cargo nextest run -p gitcortex-mcp -j 4`: 236 run, 236 passed, 1 skipped (B3-001).
 Hook timing (`GCX_TIMING=1 gcx hook`): 322ms first run, 259ms incremental (under 500ms budget).
 
+### B4 review fixes
+
+| Test | Result |
+| --- | --- |
+| finish_aborts_when_key_became_checked_out, finish_aborts_when_baseline_moved_even_after_leaving_checkout, begin_aborts_for_checked_out_key_without_touching_markers, queued_job_cannot_overwrite_a_key_that_became_checked_out | PASS |
+| non_branch_input_reports_missing_without_work, resolve_local_branch_rejects_revision_syntax, revision_syntax_and_unknown_branches_are_refused_clearly | PASS |
+| legacy_blob_modes_index_as_regular_files, unusual_tree_entries_survive_the_full_apply_path | PASS |
+| dirty_retry_drops_folders_of_vanished_directories, tree_index_incremental_drops_folders_of_vanished_directories | PASS |
+| indexing_branch_gates_queries, indexing_gate_blocks_queries_while_a_job_is_held (mutation-checked) | PASS |
+| duplicate_requests_spawn_one_job (now 5 real MCP calls in both tool modes) | PASS |
+| idle_daemon_finishes_an_active_tree_job_before_exiting, idle_drain_is_capped_when_a_job_never_finishes | PASS |
+| dotted_directory_sibling_survives_incremental (B4-001) | IGNORED |
+
+B4-001: an incremental update under a directory whose name has an extension
+(`v1.2/`) deletes that folder node, because `apply_diff` treats the ancestor entry
+in `removed_files` as a file, and the rebuilt folder lacks its edges to unchanged
+siblings. Confirmed on the tree path; the hook path shares `apply_diff`. Open.
+
+Source symlinks are a documented split, not parity: checkout indexing refuses them
+(`indexing_rejects_source_symlink_outside_repository`), tree indexing skips them
+(`source_symlink_is_skipped_in_tree_but_refused_on_disk`).
+
+`cargo nextest run -p gitcortex-mcp -j 4`: 257 run, 257 passed, 2 skipped (B3-001, B4-001).
+
