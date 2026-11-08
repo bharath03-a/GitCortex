@@ -57,9 +57,11 @@ pub(crate) trait SourceProvider: Sync {
 pub(crate) struct DiskSource<'a>(pub &'a IncrementalIndexer);
 impl SourceProvider for DiskSource<'_> {
     fn read(&self, path: &Path) -> Result<Option<Vec<u8>>> {
-        if self.0.should_ignore(path) || self.0.traverses_symlink(path) {
+        if self.0.should_ignore(path) {
             return Ok(None);
         }
+        // A symlink fails the whole checkout index: following one could read
+        // outside the repository. Trees differ by design, see `TreeSource::read`.
         let absolute = self.0.validated_source_path(path)?;
         fs::read(&absolute)
             .map(Some)
@@ -170,6 +172,8 @@ impl SourceProvider for TreeSource {
         let repo = self.repo()?;
         let tree = repo.find_tree(self.tree).map_err(git)?;
         let entry = tree.get_path(path).map_err(git)?;
+        // A symlink's blob is only its target path and nothing is followed, so
+        // skipping is safe here, unlike on disk where a symlink fails the index.
         if !is_regular(entry.filemode()) {
             return Ok(None);
         }
@@ -601,7 +605,7 @@ mod tests {
     }
 
     #[test]
-    fn symlink_named_like_source_is_skipped_on_disk_and_in_tree() {
+    fn source_symlink_is_skipped_in_tree_but_refused_on_disk() {
         let root = tempfile::tempdir().unwrap();
         let repo = git2::Repository::init(root.path()).unwrap();
         std::fs::write(root.path().join("real.rs"), FN_A).unwrap();
@@ -612,19 +616,22 @@ mod tests {
             .unwrap();
         let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
         let signature = git2::Signature::now("Test", "test@example.test").unwrap();
-        repo.commit(Some("HEAD"), &signature, &signature, "fixture", &tree, &[])
-            .unwrap();
+        let sha = repo
+            .commit(Some("HEAD"), &signature, &signature, "fixture", &tree, &[])
+            .unwrap()
+            .to_string();
         let indexer = IncrementalIndexer::new(root.path()).unwrap();
-        let (disk, sha) = indexer.run(None).unwrap();
+        let refused = indexer.run(None).expect_err("checkout index refuses");
+        assert!(refused.to_string().contains("symlink"), "{refused}");
+        let refused = indexer
+            .index_files_from_disk(&[root.path().join("link.rs")])
+            .expect_err("live update refuses");
+        assert!(refused.to_string().contains("symlink"), "{refused}");
         let (tree, _) = indexer.run_tree(&sha, None).unwrap();
-        assert_eq!(graph_of(&disk), graph_of(&tree));
-        assert!(disk
+        assert!(names(&tree).contains(&"alpha"));
+        assert!(tree
             .added_nodes
             .iter()
             .all(|n| n.file.as_os_str() != "link.rs"));
-        let live = indexer
-            .index_files_from_disk(&[root.path().join("link.rs")])
-            .unwrap();
-        assert!(live.added_nodes.is_empty());
     }
 }
