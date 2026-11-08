@@ -209,12 +209,13 @@ fn spawn_background_services(repo_root: &Path, handler: &GitCortexServer) {
     let watch = handler.store_context();
     let watch_branch = watch.branch;
     let graph_revision = watch.graph_revision;
-    crate::mcp::watcher::spawn_file_watcher(
+    crate::mcp::watcher::spawn_file_watcher_with_pending(
         repo_root.to_owned(),
         watch.store,
         watch_branch.clone(),
         graph_revision.clone(),
         watch.unhealthy,
+        watch.pending,
     );
 
     let (sem_arc, store_arc, default_branch) = handler.semantic_context();

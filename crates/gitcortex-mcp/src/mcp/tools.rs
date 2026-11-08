@@ -53,6 +53,7 @@ pub struct GitCortexServer {
     default_branch: Arc<Mutex<String>>,
     graph_revision: Arc<AtomicU64>,
     watcher_unhealthy: Arc<AtomicBool>,
+    watcher_pending: Arc<AtomicBool>,
     compact: bool,
     audit: Arc<super::audit::CallAudit>,
     audit_actions: Arc<std::collections::BTreeSet<String>>,
@@ -79,6 +80,7 @@ pub struct WatcherContext {
     pub branch: Arc<Mutex<String>>,
     pub graph_revision: Arc<AtomicU64>,
     pub unhealthy: Arc<AtomicBool>,
+    pub pending: Arc<AtomicBool>,
 }
 
 impl GitCortexServer {
@@ -109,6 +111,7 @@ impl GitCortexServer {
             default_branch: Arc::new(Mutex::new(default_branch)),
             graph_revision: Arc::new(AtomicU64::new(0)),
             watcher_unhealthy: Arc::new(AtomicBool::new(false)),
+            watcher_pending: Arc::new(AtomicBool::new(false)),
             compact,
             audit: Arc::new(super::audit::CallAudit::from_env()),
             audit_actions: Arc::new(
@@ -166,7 +169,11 @@ impl GitCortexServer {
         if checkout != scope {
             return self.tree_scope_readiness(store, scope);
         }
-        let mut state = super::readiness::inspect(&self.repo_root, store, scope);
+        let pending = self
+            .watcher_pending
+            .load(std::sync::atomic::Ordering::Acquire);
+        let mut state =
+            super::readiness::inspect_with_pending(&self.repo_root, store, scope, pending);
         if self
             .watcher_unhealthy
             .load(std::sync::atomic::Ordering::Acquire)
@@ -325,6 +332,7 @@ impl GitCortexServer {
             branch: self.default_branch.clone(),
             graph_revision: self.graph_revision.clone(),
             unhealthy: self.watcher_unhealthy.clone(),
+            pending: self.watcher_pending.clone(),
         }
     }
 
@@ -2107,8 +2115,15 @@ impl GitCortexServer {
         } else {
             vec![branch]
         };
-        let inspect = || self.readiness_scopes(&scopes);
-        let before = inspect()?;
+        // Readiness runs git and waits on the store: keep it off async workers.
+        let inspect = || async {
+            let server = self.clone();
+            let scopes = scopes.clone();
+            tokio::task::spawn_blocking(move || server.readiness_scopes(&scopes))
+                .await
+                .map_err(|_| rmcp::ErrorData::internal_error("readiness task panicked", None))?
+        };
+        let before = inspect().await?;
         let generation = self.graph_revision.load(Ordering::Acquire);
         let diagnostic = matches!(action.as_str(), "graph_stats" | "health_report");
         let safety_sensitive = matches!(action.as_str(), "find_unused_symbols" | "detect_changes");
@@ -2140,7 +2155,7 @@ impl GitCortexServer {
         }
         let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
         let mut result = self.active_tool_router().call(tcc).await?;
-        let after = inspect()?;
+        let after = inspect().await?;
         if before != after || generation != self.graph_revision.load(Ordering::Acquire) {
             return Ok(CallToolResult::structured_error(json!({
                 "status": "index_changed", "index": index,
