@@ -101,7 +101,13 @@ impl CallAudit {
                 let state = state.filter(|s| {
                     matches!(
                         *s,
-                        "ready" | "missing" | "stale" | "unavailable" | "unverified" | "degraded"
+                        "ready"
+                            | "missing"
+                            | "stale"
+                            | "unavailable"
+                            | "unverified"
+                            | "degraded"
+                            | "indexing"
                     )
                 });
                 let status = data.and_then(|v| v.get("status")).and_then(|v| v.as_str());

@@ -15,3 +15,5 @@ pub mod tools;
 pub mod tour;
 pub(crate) mod watcher;
 pub mod wiki;
+
+pub mod tree_jobs;

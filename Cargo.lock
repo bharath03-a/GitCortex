@@ -1325,6 +1325,7 @@ dependencies = [
  "anyhow",
  "clap",
  "dialoguer",
+ "git2",
  "gitcortex-core",
  "gitcortex-indexer",
  "gitcortex-mcp",

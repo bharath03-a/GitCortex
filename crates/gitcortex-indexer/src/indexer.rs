@@ -16,6 +16,7 @@ use rayon::prelude::*;
 use crate::{
     differ::{Differ, FileChange},
     parser::{parser_for_path, ParseResult},
+    tree_source::{DiskSource, SourceProvider, TreeSource},
 };
 
 type FileIndexResult = Result<(
@@ -66,6 +67,27 @@ impl IncrementalIndexer {
             return Ok((GraphDiff::default(), head_sha));
         }
 
+        let changes = differ.changed_files(from_sha, &self.supported_extensions())?;
+        if changes.is_empty() {
+            return Ok((GraphDiff::default(), head_sha));
+        }
+        self.run_source(changes, head_sha, from_sha, &DiskSource(self))
+    }
+
+    /// Index a commit's blobs without reading the checkout or HEAD.
+    pub fn run_tree(&self, rev: &str, from_sha: Option<&str>) -> Result<(GraphDiff, String)> {
+        let source = TreeSource::new(&self.repo_root, rev)?;
+        let changes = source.changes(from_sha, &self.supported_extensions())?;
+        self.run_source(changes, source.sha.clone(), from_sha, &source)
+    }
+
+    fn run_source(
+        &self,
+        changes: Vec<FileChange>,
+        head_sha: String,
+        from_sha: Option<&str>,
+        source: &dyn SourceProvider,
+    ) -> Result<(GraphDiff, String)> {
         let timing = std::env::var_os("GCX_TIMING").is_some();
         let t0 = std::time::Instant::now();
         macro_rules! mark {
@@ -75,14 +97,6 @@ impl IncrementalIndexer {
                 }
             };
         }
-
-        let supported = self.supported_extensions();
-        let changes = differ.changed_files(from_sha, &supported)?;
-
-        if changes.is_empty() {
-            return Ok((GraphDiff::default(), head_sha));
-        }
-
         let (to_parse, to_delete): (Vec<_>, Vec<_>) = changes
             .into_iter()
             .partition(|c| !matches!(c, FileChange::Deleted(_)));
@@ -91,7 +105,7 @@ impl IncrementalIndexer {
         // Parse added/modified files in parallel.
         let per_file: Vec<FileIndexResult> = to_parse
             .par_iter()
-            .map(|change| self.index_file(change.path()))
+            .map(|change| self.index_source(change.path(), source))
             .collect();
         mark!("parse (parallel) done");
 
@@ -475,6 +489,14 @@ impl IncrementalIndexer {
     }
 
     fn index_file(&self, repo_relative_path: &Path) -> FileIndexResult {
+        self.index_source(repo_relative_path, &DiskSource(self))
+    }
+
+    fn index_source(
+        &self,
+        repo_relative_path: &Path,
+        provider: &dyn SourceProvider,
+    ) -> FileIndexResult {
         let empty = || {
             (
                 GraphDiff::default(),
@@ -489,21 +511,17 @@ impl IncrementalIndexer {
             )
         };
 
-        if self.should_ignore(repo_relative_path) {
+        let Some(bytes) = provider.read(repo_relative_path)? else {
             return Ok(empty());
-        }
-
-        let abs_path = self.validated_source_path(repo_relative_path)?;
-        let source = fs::read_to_string(&abs_path).map_err(|e| GitCortexError::Parse {
-            file: abs_path.clone(),
-            message: e.to_string(),
-        })?;
-
-        let source_hash = git2::Oid::hash_object(git2::ObjectType::Blob, source.as_bytes())
+        };
+        let source_hash = git2::Oid::hash_object(git2::ObjectType::Blob, &bytes)
             .map_err(|error| GitCortexError::Git(error.to_string()))?;
-        if source.len() > 512 * 1024 {
-            // Oversized source is intentionally excluded from AST extraction,
-            // but it still existed: never certify it as a deleted file.
+        let text = std::str::from_utf8(&bytes)
+            .ok()
+            .filter(|text| text.len() <= 512 * 1024 && !text.contains('\0'));
+        let Some(source) = text else {
+            // Oversized or binary source is excluded from AST extraction, but
+            // it still existed: never certify it as a deleted file.
             let mut excluded = empty();
             excluded.0.removed_files.push(repo_relative_path.to_owned());
             excluded
@@ -511,14 +529,14 @@ impl IncrementalIndexer {
                 .source_hashes
                 .push((repo_relative_path.to_owned(), Some(source_hash.to_string())));
             return Ok(excluded);
-        }
+        };
 
         let parser = match parser_for_path(repo_relative_path) {
             Some(p) => p,
             None => return Ok(empty()),
         };
 
-        let mut parsed = parser.parse(repo_relative_path, &source)?;
+        let mut parsed = parser.parse(repo_relative_path, source)?;
         stabilize_parse_result(&mut parsed);
         let ParseResult {
             nodes,
@@ -561,13 +579,13 @@ impl IncrementalIndexer {
         ))
     }
 
-    fn should_ignore(&self, path: &Path) -> bool {
+    pub(crate) fn should_ignore(&self, path: &Path) -> bool {
         self.ignorer
             .matched_path_or_any_parents(path, false)
             .is_ignore()
     }
 
-    fn validated_source_path(&self, repo_relative_path: &Path) -> Result<PathBuf> {
+    pub(crate) fn validated_source_path(&self, repo_relative_path: &Path) -> Result<PathBuf> {
         let mut current = self.repo_root.clone();
         for component in repo_relative_path.components() {
             let Component::Normal(segment) = component else {
