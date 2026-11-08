@@ -137,6 +137,11 @@ impl GitCortexServer {
             .unwrap_or_else(|| detect_current_branch(&self.repo_root).unwrap_or_default())
     }
 
+    /// Whether a branch index is queued or running.
+    pub(crate) fn has_active_tree_job(&self) -> bool {
+        self.tree_jobs.is_active()
+    }
+
     #[cfg(test)]
     pub(crate) fn tree_jobs(&self) -> &super::tree_jobs::TreeIndexJobs {
         &self.tree_jobs

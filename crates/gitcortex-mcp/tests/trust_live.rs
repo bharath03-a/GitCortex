@@ -3,7 +3,7 @@ use gitcortex_core::store::GraphStore;
 use gitcortex_indexer::IncrementalIndexer;
 use gitcortex_mcp::mcp::server::serve_daemon;
 use gitcortex_store::{
-    branch::{repo_id, storage_repo_id},
+    branch::{last_sha_path, repo_id, storage_repo_id},
     kuzu::KuzuGraphStore,
 };
 use rmcp::{model::CallToolRequestParams, service::RunningService, RoleClient, ServiceExt};
@@ -75,7 +75,7 @@ fn seed_repo(case: &str) -> TestRepo {
     drop(store);
     match case {
         "restart" => persist_stale_overlay(&repo),
-        "omitted" | "tree" | "unknown" | "tree_watcher" => {
+        "omitted" | "tree" | "tree_gate" | "unknown" | "tree_watcher" => {
             repo.git(&["checkout", "-b", "feat/x"]);
             repo.write("a.rs", "pub fn feature_only() {}");
             repo.commit("feature");
@@ -217,7 +217,7 @@ async fn tree_branch_scenarios(live: &Live, case: &str) {
         },
         "{first}"
     );
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    let deadline = tokio::time::Instant::now() + DEADLINE;
     loop {
         let data = live.call("graph_stats", json!({"branch": branch})).await;
         if case == "unknown" {
@@ -229,6 +229,13 @@ async fn tree_branch_scenarios(live: &Live, case: &str) {
                     .contains(branch),
                 "{data}"
             );
+            // A job would have written the dirty marker before anything else.
+            tokio::time::sleep(POLL * 10).await;
+            let again = live.call("graph_stats", json!({"branch": branch})).await;
+            assert_eq!(state(&again), "missing", "{again}");
+            let sha = last_sha_path(&storage_repo_id(live.repo.root()), branch);
+            assert!(!sha.exists(), "{}", sha.display());
+            assert!(!sha.with_extension("dirty").exists(), "{}", sha.display());
             break;
         }
         if is_ready(&data) {
@@ -246,7 +253,7 @@ async fn tree_branch_scenarios(live: &Live, case: &str) {
         tokio::time::sleep(POLL).await;
     }
     if case == "tree_watcher" {
-        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        let deadline = tokio::time::Instant::now() + DEADLINE;
         loop {
             let data = live
                 .call(
@@ -275,6 +282,31 @@ async fn tree_branch_scenarios(live: &Live, case: &str) {
             )
             .await;
         assert!(items(&main).is_empty(), "{main}");
+    }
+}
+
+// `graph_stats` bypasses the gate, so scenarios polling it cannot observe it.
+// The first request for a branch reports `indexing` however fast the job runs.
+async fn indexing_gate_withholds_items(live: &Live) {
+    live.wait_ready().await;
+    let params = json!({"name": "feature_only", "branch": "feat/x"});
+    let first = live.call("lookup_symbol", params.clone()).await;
+    assert_eq!(first["status"], "index_not_ready", "{first}");
+    assert_eq!(state(&first), "indexing", "{first}");
+    assert!(first.get("items").is_none(), "{first}");
+    let deadline = tokio::time::Instant::now() + DEADLINE;
+    loop {
+        let data = live.call("lookup_symbol", params.clone()).await;
+        if is_ready(&data) {
+            assert!(!items(&data).is_empty(), "{data}");
+            break;
+        }
+        assert!(
+            data.get("items").is_none(),
+            "served while not ready: {data}"
+        );
+        assert!(tokio::time::Instant::now() < deadline, "gate: {data}");
+        tokio::time::sleep(POLL).await;
     }
 }
 
@@ -409,6 +441,7 @@ async fn run(case: &str, compact: bool) {
         "delete" => delete_removes_symbols(&live).await,
         "restart" => restart_reconciles_stale_overlay(&live).await,
         "schema" => schema_matches_output(&live).await,
+        "tree_gate" => indexing_gate_withholds_items(&live).await,
         "tree" | "unknown" | "tree_watcher" => tree_branch_scenarios(&live, case).await,
         _ => branch_scoped_never_leaks_main(&live, case).await,
     }
@@ -443,23 +476,20 @@ live!(
 live!(detached_head_never_answers_main, "detached");
 live!(array_results_validate_against_output_schema, "schema");
 
-#[tokio::test(flavor = "multi_thread")]
-async fn requested_unindexed_branch_starts_tree_index() {
-    run("tree", true).await;
-}
-#[tokio::test(flavor = "multi_thread")]
-async fn unknown_branch_reports_missing_without_indexing() {
-    run("unknown", true).await;
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn tree_index_concurrent_with_watcher() {
-    run("tree_watcher", true).await;
-}
+live!(requested_unindexed_branch_starts_tree_index, "tree");
+live!(indexing_branch_gates_queries, "tree_gate");
+live!(unknown_branch_reports_missing_without_indexing, "unknown");
+live!(tree_index_concurrent_with_watcher, "tree_watcher");
 
 #[tokio::test(flavor = "multi_thread")]
 async fn failed_tree_index_reports_error_and_allows_retry() {
-    let live = Live::start("tree", true).await;
+    for compact in [false, true] {
+        failed_tree_index_scenario(compact).await;
+    }
+}
+
+async fn failed_tree_index_scenario(compact: bool) {
+    let live = Live::start("tree", compact).await;
     live.wait_ready().await;
     let git_repo = git2::Repository::open(live.repo.root()).unwrap();
     let commit = git_repo
