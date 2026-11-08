@@ -91,7 +91,6 @@ def run(command: list[str], cwd: Path | None = None, timeout: int = 900) -> subp
         return subprocess.run(
             command,
             cwd=cwd,
-            env={**os.environ, "GCX_STORE_PATH": str(DEFAULT_WORK / "store")},
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -547,6 +546,8 @@ def command_run(args: argparse.Namespace) -> int:
         raise BenchError("no tasks selected")
 
     work = args.work.resolve()
+    # Child gcx processes inherit this, keeping indexes inside --work.
+    os.environ["GCX_STORE_PATH"] = str(work / "store")
     adapter = RetrievalAdapter(gcx) if args.adapter == "retrieval" else LegacyRetrievalAdapter(gcx)
     repo_dirs: dict[str, Path] = {}
     index_seconds: dict[str, float] = {}
