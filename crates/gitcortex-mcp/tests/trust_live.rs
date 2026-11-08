@@ -476,13 +476,7 @@ macro_rules! live {
         }
     };
 }
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "trust-ledger: B3-001"]
-async fn uncommitted_edit_visible_after_debounce() {
-    for compact in [false, true] {
-        run("edit", compact).await;
-    }
-}
+live!(uncommitted_edit_visible_after_debounce, "edit");
 live!(clean_checkout_reports_ready_and_verified, "clean");
 live!(deleted_file_symbols_disappear, "delete");
 live!(branch_omitted_answers_current_checkout, "omitted");
@@ -498,6 +492,338 @@ live!(requested_unindexed_branch_starts_tree_index, "tree");
 live!(indexing_branch_gates_queries, "tree_gate");
 live!(unknown_branch_reports_missing_without_indexing, "unknown");
 live!(tree_index_concurrent_with_watcher, "tree_watcher");
+
+#[tokio::test(flavor = "multi_thread")]
+async fn edit_then_settle_reports_ready_and_verified() {
+    let live = Live::start("clean", true).await;
+    live.wait_ready().await;
+
+    // Ignored (.gitcortex/ignore) and unsupported (.txt) files must not block
+    // certification or be claimed as indexed.
+    live.repo.write(".gitcortex/ignore", "ignored.rs\n");
+    live.repo.write("ignored.rs", "pub fn ignored_sym() {}\n");
+    live.repo.write("notes.txt", "unsupported file\n");
+    live.repo.write("a.rs", "pub fn settled_edit() {}\n");
+
+    let settled = live
+        .wait_for("settled_edit", "edit then settle", |data| {
+            !items(data).is_empty()
+                && is_ready(data)
+                && data["index"]["working_tree_verified"] == true
+        })
+        .await;
+    assert_eq!(settled["index"]["state"], "ready", "{settled}");
+    assert_eq!(settled["index"]["working_tree_verified"], true, "{settled}");
+
+    let ignored = live
+        .settled("lookup_symbol", json!({"name": "ignored_sym"}))
+        .await;
+    assert!(items(&ignored).is_empty(), "{ignored}");
+    assert!(is_ready(&ignored), "{ignored}");
+
+    let dirty_path = gitcortex_store::branch::last_sha_path(
+        &storage_repo_id(live.repo.root()),
+        "main",
+    )
+    .with_extension("dirty");
+    assert!(
+        dirty_path.exists(),
+        ".dirty must remain set while uncommitted edits exist"
+    );
+    live.client.cancel().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn further_edit_after_checkpoint_returns_unverified_until_settled() {
+    let live = Live::start("clean", true).await;
+    live.wait_ready().await;
+
+    live.repo.write("a.rs", "pub fn first_edit() {}\n");
+    live.wait_for("first_edit", "first edit settle", |data| {
+        !items(data).is_empty()
+            && is_ready(data)
+            && data["index"]["working_tree_verified"] == true
+    })
+    .await;
+
+    // Further edit invalidates the checkpoint immediately on the next inspect
+    // before the 500ms debounce window elapses.
+    live.repo.write("a.rs", "pub fn second_edit() {}\n");
+    let immediate = live.lookup("first_edit").await;
+    assert_eq!(state(&immediate), "unverified", "{immediate}");
+    assert_eq!(
+        immediate["index"]["working_tree_verified"], false,
+        "{immediate}"
+    );
+
+    let resettled = live
+        .wait_for("second_edit", "second edit settle", |data| {
+            !items(data).is_empty()
+                && is_ready(data)
+                && data["index"]["working_tree_verified"] == true
+        })
+        .await;
+    assert_eq!(resettled["index"]["state"], "ready", "{resettled}");
+    assert_eq!(
+        resettled["index"]["working_tree_verified"], true,
+        "{resettled}"
+    );
+    live.client.cancel().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn checkpoint_for_other_head_is_not_trusted() {
+    use gitcortex_mcp::mcp::readiness::{inspect, write_overlay_checkpoint};
+    use std::collections::BTreeMap;
+
+    let repo = TestRepo::new();
+    repo.write("a.rs", ORIGINAL);
+    let sha1 = repo.commit("c1");
+    repo.write("b.rs", "pub fn second() {}\n");
+    let sha2 = repo.commit("c2");
+
+    let mut store = KuzuGraphStore::open(repo.root()).unwrap();
+    index_hook_path(&repo, &mut store, "main");
+    assert_eq!(store.last_indexed_sha("main").unwrap().as_deref(), Some(sha2.as_str()));
+
+    repo.write("a.rs", "pub fn dirty_on_sha2() {}\n");
+    let diff = IncrementalIndexer::new(repo.root())
+        .unwrap()
+        .index_files_from_disk(&[repo.root().join("a.rs")])
+        .unwrap();
+    store.set_working_tree_dirty("main", true).unwrap();
+    store.apply_diff("main", &diff).unwrap();
+    let files: BTreeMap<_, _> = diff.source_hashes.into_iter().collect();
+
+    // Checkpoint written with sha1 while HEAD and indexed_revision are sha2.
+    write_overlay_checkpoint(repo.root(), "main", &sha1, &files).unwrap();
+    let readiness = inspect(repo.root(), &store, "main");
+    assert_eq!(readiness.state, "unverified");
+    assert!(!readiness.working_tree_verified);
+
+    // Matching sha2 certifies.
+    write_overlay_checkpoint(repo.root(), "main", &sha2, &files).unwrap();
+    let certified = inspect(repo.root(), &store, "main");
+    assert_eq!(certified.state, "ready");
+    assert!(certified.working_tree_verified);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn changed_file_set_mismatch_is_not_certified() {
+    use gitcortex_mcp::mcp::readiness::{inspect, write_overlay_checkpoint};
+    use std::collections::BTreeMap;
+
+    let repo = TestRepo::new();
+    repo.write("a.rs", ORIGINAL);
+    let sha = repo.commit("initial");
+    let mut store = KuzuGraphStore::open(repo.root()).unwrap();
+    index_hook_path(&repo, &mut store, "main");
+
+    repo.write("a.rs", "pub fn dirty_a() {}\n");
+    let diff = IncrementalIndexer::new(repo.root())
+        .unwrap()
+        .index_files_from_disk(&[repo.root().join("a.rs")])
+        .unwrap();
+    store.set_working_tree_dirty("main", true).unwrap();
+    store.apply_diff("main", &diff).unwrap();
+    let mut files: BTreeMap<_, _> = diff.source_hashes.into_iter().collect();
+    write_overlay_checkpoint(repo.root(), "main", &sha, &files).unwrap();
+    assert_eq!(inspect(repo.root(), &store, "main").state, "ready");
+
+    // Extra dirty file on disk not present in checkpoint.
+    repo.write("b.rs", "pub fn unindexed_b() {}\n");
+    let state_subset = inspect(repo.root(), &store, "main");
+    assert_eq!(state_subset.state, "unverified");
+    assert!(!state_subset.working_tree_verified);
+    repo.remove("b.rs");
+    assert_eq!(inspect(repo.root(), &store, "main").state, "ready");
+
+    // Extra path in checkpoint not dirty on disk.
+    files.insert(PathBuf::from("phantom.rs"), None);
+    write_overlay_checkpoint(repo.root(), "main", &sha, &files).unwrap();
+    let state_superset = inspect(repo.root(), &store, "main");
+    assert_eq!(state_superset.state, "unverified");
+    assert!(!state_superset.working_tree_verified);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn deleted_file_overlay_certifies_after_settle() {
+    let live = Live::start("clean", true).await;
+    let before = live.wait_ready().await;
+    assert!(!items(&before).is_empty(), "precondition: {before}");
+
+    live.repo.remove("a.rs");
+    let settled = live
+        .wait_for("original", "deleted file settle", |data| {
+            items(data).is_empty()
+                && is_ready(data)
+                && data["index"]["working_tree_verified"] == true
+        })
+        .await;
+    assert_eq!(settled["index"]["state"], "ready", "{settled}");
+    assert_eq!(settled["index"]["working_tree_verified"], true, "{settled}");
+    live.client.cancel().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn restart_with_valid_checkpoint_recertifies_without_reindex() {
+    let repo = seed_repo("clean");
+    let (daemon1, runtime1, socket1) = spawn_daemon(&repo);
+    let client1 = connect(&socket1, true).await;
+    let live1 = Live {
+        client: client1,
+        compact: true,
+        _daemon: daemon1,
+        _runtime: runtime1,
+        repo,
+    };
+    live1.wait_ready().await;
+    live1.repo.write("a.rs", "pub fn persisted_across_restart() {}\n");
+    live1
+        .wait_for("persisted_across_restart", "settle before restart", |data| {
+            !items(data).is_empty()
+                && is_ready(data)
+                && data["index"]["working_tree_verified"] == true
+        })
+        .await;
+    let Live {
+        client: client1,
+        _daemon: daemon1,
+        _runtime: runtime1,
+        repo,
+        ..
+    } = live1;
+    client1.cancel().await.unwrap();
+    drop(daemon1);
+    drop(runtime1);
+
+    // Restart daemon over the same dirty working tree and valid checkpoint.
+    let (daemon2, runtime2, socket2) = spawn_daemon(&repo);
+    let client2 = connect(&socket2, true).await;
+    let live2 = Live {
+        client: client2,
+        compact: true,
+        _daemon: daemon2,
+        _runtime: runtime2,
+        repo,
+    };
+    let after = live2
+        .wait_for("persisted_across_restart", "recertify after restart", |data| {
+            !items(data).is_empty()
+                && is_ready(data)
+                && data["index"]["working_tree_verified"] == true
+        })
+        .await;
+    // Recertified directly from the persisted checkpoint without running a
+    // re-index batch (graph_generation remains 0).
+    assert_eq!(after["graph_generation"], 0, "{after}");
+    assert_eq!(after["index"]["state"], "ready", "{after}");
+    assert_eq!(after["index"]["working_tree_verified"], true, "{after}");
+    live2.client.cancel().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn restart_with_tampered_or_corrupt_checkpoint_stays_unverified() {
+    use gitcortex_mcp::mcp::readiness::{inspect, overlay_checkpoint_path, write_overlay_checkpoint};
+    use std::collections::BTreeMap;
+
+    let repo = TestRepo::new();
+    repo.write("a.rs", ORIGINAL);
+    let sha = repo.commit("initial");
+    let mut store = KuzuGraphStore::open(repo.root()).unwrap();
+    index_hook_path(&repo, &mut store, "main");
+
+    repo.write("a.rs", "pub fn edited_before_tamper() {}\n");
+    let diff = IncrementalIndexer::new(repo.root())
+        .unwrap()
+        .index_files_from_disk(&[repo.root().join("a.rs")])
+        .unwrap();
+    store.set_working_tree_dirty("main", true).unwrap();
+    store.apply_diff("main", &diff).unwrap();
+    let files: BTreeMap<_, _> = diff.source_hashes.into_iter().collect();
+    write_overlay_checkpoint(repo.root(), "main", &sha, &files).unwrap();
+    drop(store);
+
+    let cp_path = overlay_checkpoint_path(repo.root(), "main");
+
+    // Tamper with the stored blob hash before reopening the store.
+    std::fs::write(
+        &cp_path,
+        serde_json::json!({
+            "head": sha,
+            "branch_key": "main",
+            "files": { "a.rs": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" }
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let reopened = KuzuGraphStore::open(repo.root()).unwrap();
+    let tampered = inspect(repo.root(), &reopened, "main");
+    assert_eq!(tampered.state, "unverified");
+    assert!(!tampered.working_tree_verified);
+
+    // Corrupt the checkpoint file with invalid JSON.
+    std::fs::write(&cp_path, b"corrupt-json-payload").unwrap();
+    let corrupt = inspect(repo.root(), &reopened, "main");
+    assert_eq!(corrupt.state, "unverified");
+    assert!(!corrupt.working_tree_verified);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn oversized_or_many_changed_files_stay_unverified() {
+    use gitcortex_mcp::mcp::readiness::{MAX_OVERLAY_FILES, MAX_OVERLAY_FILE_BYTES};
+
+    let live = Live::start("clean", true).await;
+    live.wait_ready().await;
+
+    // 1. Oversized changed file (> 512 KiB) is skipped by AST extraction and
+    // must never be certified as ready/verified.
+    let oversized = format!(
+        "pub fn oversized_fn() {{}}\n{}",
+        "// filler line\n".repeat((MAX_OVERLAY_FILE_BYTES as usize / 14) + 100)
+    );
+    live.repo.write("a.rs", &oversized);
+    live.repo.write("b.rs", "pub fn companion_small() {}\n");
+    let after_oversized = live
+        .wait_for("companion_small", "watcher batch with oversized file", |data| {
+            !items(data).is_empty() && state(data) != "degraded"
+        })
+        .await;
+    assert_eq!(state(&after_oversized), "unverified", "{after_oversized}");
+    assert_eq!(
+        after_oversized["index"]["working_tree_verified"], false,
+        "{after_oversized}"
+    );
+
+    // Restore a.rs to a normal size and verify certification recovers.
+    live.repo.write("a.rs", "pub fn normal_size() {}\n");
+    live.wait_for("normal_size", "recover after oversized", |data| {
+        !items(data).is_empty()
+            && is_ready(data)
+            && data["index"]["working_tree_verified"] == true
+    })
+    .await;
+
+    // 2. Many changed files (> MAX_OVERLAY_FILES) exceed the inspect cap and
+    // stay unverified even after the watcher settles.
+    for i in 0..=MAX_OVERLAY_FILES {
+        live.repo
+            .write(&format!("bulk_{i}.rs"), &format!("pub fn bulk_{i}() {{}}\n"));
+    }
+    let last_sym = format!("bulk_{MAX_OVERLAY_FILES}");
+    let after_many = live
+        .wait_for(&last_sym, "watcher batch with many files", |data| {
+            !items(data).is_empty() && state(data) != "degraded"
+        })
+        .await;
+    assert_eq!(state(&after_many), "unverified", "{after_many}");
+    assert_eq!(
+        after_many["index"]["working_tree_verified"], false,
+        "{after_many}"
+    );
+
+    live.client.cancel().await.unwrap();
+}
 
 #[tokio::test(flavor = "multi_thread")]
 async fn failed_tree_index_reports_error_and_allows_retry() {
