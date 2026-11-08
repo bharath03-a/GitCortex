@@ -507,7 +507,9 @@ mod tests {
         let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let repo = init_repo();
         let sha = commit_file(repo.path(), "a.rs", "pub fn original() {}\n", "fixture");
-        let store = Arc::new(Mutex::new(KuzuGraphStore::open(repo.path()).expect("store")));
+        let store = Arc::new(Mutex::new(
+            KuzuGraphStore::open(repo.path()).expect("store"),
+        ));
         apply_tree_index(repo.path(), &mut *store.lock().expect("lock"), "main", &sha)
             .expect("index");
 
@@ -539,7 +541,9 @@ mod tests {
         .expect("apply_disk_batch");
 
         let store_guard = store.lock().expect("lock");
-        assert!(store_guard.working_tree_dirty("main").expect("dirty stays set"));
+        assert!(store_guard
+            .working_tree_dirty("main")
+            .expect("dirty stays set"));
         let after = inspect(repo.path(), &*store_guard, "main");
         assert_eq!(after.state, "ready");
         assert!(after.working_tree_verified);
@@ -558,7 +562,9 @@ mod tests {
         let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let repo = init_repo();
         let sha = commit_file(repo.path(), "a.rs", "pub fn original() {}\n", "fixture");
-        let store = Arc::new(Mutex::new(KuzuGraphStore::open(repo.path()).expect("store")));
+        let store = Arc::new(Mutex::new(
+            KuzuGraphStore::open(repo.path()).expect("store"),
+        ));
         apply_tree_index(repo.path(), &mut *store.lock().expect("lock"), "main", &sha)
             .expect("index");
 
@@ -581,12 +587,8 @@ mod tests {
         assert!(settled_v1.working_tree_verified);
 
         // Pending watcher events alone block certification even before bytes change.
-        let with_pending = inspect_with_pending(
-            repo.path(),
-            &*store.lock().expect("lock"),
-            "main",
-            true,
-        );
+        let with_pending =
+            inspect_with_pending(repo.path(), &*store.lock().expect("lock"), "main", true);
         assert_eq!(with_pending.state, "unverified");
         assert!(!with_pending.working_tree_verified);
 
@@ -617,9 +619,16 @@ mod tests {
         let repo = init_repo();
         let sha1 = commit_file(repo.path(), "a.rs", "pub fn original() {}\n", "c1");
         let sha2 = commit_file(repo.path(), "b.rs", "pub fn second() {}\n", "c2");
-        let store = Arc::new(Mutex::new(KuzuGraphStore::open(repo.path()).expect("store")));
-        apply_tree_index(repo.path(), &mut *store.lock().expect("lock"), "main", &sha2)
-            .expect("index sha2");
+        let store = Arc::new(Mutex::new(
+            KuzuGraphStore::open(repo.path()).expect("store"),
+        ));
+        apply_tree_index(
+            repo.path(),
+            &mut *store.lock().expect("lock"),
+            "main",
+            &sha2,
+        )
+        .expect("index sha2");
 
         std::fs::write(repo.path().join("a.rs"), "pub fn edited() {}\n").expect("edit");
         let revision = std::sync::atomic::AtomicU64::new(0);
@@ -634,7 +643,10 @@ mod tests {
             &mut snapshots,
         )
         .expect("settle at sha2");
-        assert_eq!(inspect(repo.path(), &*store.lock().expect("lock"), "main").state, "ready");
+        assert_eq!(
+            inspect(repo.path(), &*store.lock().expect("lock"), "main").state,
+            "ready"
+        );
 
         // Overwrite checkpoint with another commit's HEAD while keeping store indexed_sha == sha2.
         let mut files = std::collections::BTreeMap::new();
@@ -652,7 +664,9 @@ mod tests {
         let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let repo = init_repo();
         let sha = commit_file(repo.path(), "a.rs", "pub fn original() {}\n", "fixture");
-        let store = Arc::new(Mutex::new(KuzuGraphStore::open(repo.path()).expect("store")));
+        let store = Arc::new(Mutex::new(
+            KuzuGraphStore::open(repo.path()).expect("store"),
+        ));
         apply_tree_index(repo.path(), &mut *store.lock().expect("lock"), "main", &sha)
             .expect("index");
 
@@ -669,7 +683,10 @@ mod tests {
             &mut snapshots,
         )
         .expect("settle a");
-        assert_eq!(inspect(repo.path(), &*store.lock().expect("lock"), "main").state, "ready");
+        assert_eq!(
+            inspect(repo.path(), &*store.lock().expect("lock"), "main").state,
+            "ready"
+        );
 
         // Case 1: Extra dirty file on disk not in checkpoint.
         std::fs::write(repo.path().join("b.rs"), "pub fn extra() {}\n").expect("write b");
@@ -677,7 +694,10 @@ mod tests {
         assert_eq!(extra.state, "unverified");
         assert!(!extra.working_tree_verified);
         std::fs::remove_file(repo.path().join("b.rs")).expect("remove b");
-        assert_eq!(inspect(repo.path(), &*store.lock().expect("lock"), "main").state, "ready");
+        assert_eq!(
+            inspect(repo.path(), &*store.lock().expect("lock"), "main").state,
+            "ready"
+        );
 
         // Case 2: Checkpoint has extra path that is not dirty on disk.
         let mut superset = std::collections::BTreeMap::new();
@@ -697,7 +717,9 @@ mod tests {
         let repo = init_repo();
         commit_file(repo.path(), "a.rs", "pub fn keep() {}\n", "add a");
         let sha = commit_file(repo.path(), "b.rs", "pub fn gone() {}\n", "add b");
-        let store = Arc::new(Mutex::new(KuzuGraphStore::open(repo.path()).expect("store")));
+        let store = Arc::new(Mutex::new(
+            KuzuGraphStore::open(repo.path()).expect("store"),
+        ));
         apply_tree_index(repo.path(), &mut *store.lock().expect("lock"), "main", &sha)
             .expect("index");
 
@@ -729,12 +751,14 @@ mod tests {
             .is_empty());
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn restart_with_valid_checkpoint_recertifies_without_reindex() {
+    #[test]
+    fn restart_with_valid_checkpoint_recertifies_without_reindex() {
         let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let repo = init_repo();
         let sha = commit_file(repo.path(), "a.rs", "pub fn original() {}\n", "fixture");
-        let store = Arc::new(Mutex::new(KuzuGraphStore::open(repo.path()).expect("store")));
+        let store = Arc::new(Mutex::new(
+            KuzuGraphStore::open(repo.path()).expect("store"),
+        ));
         apply_tree_index(repo.path(), &mut *store.lock().expect("lock"), "main", &sha)
             .expect("index");
 
@@ -753,44 +777,53 @@ mod tests {
         .expect("settle before restart");
         drop(store);
 
-        // Reopen store as on daemon restart; graph_revision starts at 0.
-        let reopened = Arc::new(Mutex::new(KuzuGraphStore::open(repo.path()).expect("reopen")));
-        let branch = Arc::new(Mutex::new("main".to_owned()));
-        let restart_rev = Arc::new(std::sync::atomic::AtomicU64::new(0));
-        let unhealthy = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let pending = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let watcher = crate::mcp::watcher::spawn_file_watcher_with_pending(
-            repo.path().to_owned(),
-            reopened.clone(),
-            branch,
-            restart_rev.clone(),
-            unhealthy.clone(),
-            pending.clone(),
-        );
-
-        let started = std::time::Instant::now();
-        loop {
-            if !unhealthy.load(std::sync::atomic::Ordering::Acquire) {
-                break;
-            }
-            assert!(
-                started.elapsed() < std::time::Duration::from_secs(5),
-                "watcher did not become healthy"
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("runtime");
+        rt.block_on(async {
+            // Reopen store as on daemon restart; graph_revision starts at 0.
+            let reopened = Arc::new(Mutex::new(
+                KuzuGraphStore::open(repo.path()).expect("reopen"),
+            ));
+            let branch = Arc::new(Mutex::new("main".to_owned()));
+            let restart_rev = Arc::new(std::sync::atomic::AtomicU64::new(0));
+            let unhealthy = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let pending = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let watcher = crate::mcp::watcher::spawn_file_watcher_with_pending(
+                repo.path().to_owned(),
+                reopened.clone(),
+                branch,
+                restart_rev.clone(),
+                unhealthy.clone(),
+                pending.clone(),
             );
-            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-        }
-        // Recertified from the persisted checkpoint without running a reindex batch.
-        assert_eq!(restart_rev.load(std::sync::atomic::Ordering::Acquire), 0);
-        let state = inspect_with_pending(
-            repo.path(),
-            &*reopened.lock().expect("lock"),
-            "main",
-            pending.load(std::sync::atomic::Ordering::Acquire),
-        );
-        assert_eq!(state.state, "ready");
-        assert!(state.working_tree_verified);
-        watcher.abort();
-        let _ = watcher.await;
+
+            let started = std::time::Instant::now();
+            loop {
+                if !unhealthy.load(std::sync::atomic::Ordering::Acquire) {
+                    break;
+                }
+                assert!(
+                    started.elapsed() < std::time::Duration::from_secs(5),
+                    "watcher did not become healthy"
+                );
+                tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+            }
+            // Recertified from the persisted checkpoint without running a reindex batch.
+            assert_eq!(restart_rev.load(std::sync::atomic::Ordering::Acquire), 0);
+            let state = inspect_with_pending(
+                repo.path(),
+                &*reopened.lock().expect("lock"),
+                "main",
+                pending.load(std::sync::atomic::Ordering::Acquire),
+            );
+            assert_eq!(state.state, "ready");
+            assert!(state.working_tree_verified);
+            watcher.abort();
+            let _ = watcher.await;
+        });
     }
 
     #[test]
@@ -798,7 +831,9 @@ mod tests {
         let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let repo = init_repo();
         let sha = commit_file(repo.path(), "a.rs", "pub fn original() {}\n", "fixture");
-        let store = Arc::new(Mutex::new(KuzuGraphStore::open(repo.path()).expect("store")));
+        let store = Arc::new(Mutex::new(
+            KuzuGraphStore::open(repo.path()).expect("store"),
+        ));
         apply_tree_index(repo.path(), &mut *store.lock().expect("lock"), "main", &sha)
             .expect("index");
 
@@ -815,7 +850,10 @@ mod tests {
             &mut snapshots,
         )
         .expect("settle");
-        assert_eq!(inspect(repo.path(), &*store.lock().expect("lock"), "main").state, "ready");
+        assert_eq!(
+            inspect(repo.path(), &*store.lock().expect("lock"), "main").state,
+            "ready"
+        );
 
         let cp_path = overlay_checkpoint_path(repo.path(), "main");
 
@@ -855,7 +893,9 @@ mod tests {
         let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let repo = init_repo();
         let sha = commit_file(repo.path(), "a.rs", "pub fn original() {}\n", "fixture");
-        let store = Arc::new(Mutex::new(KuzuGraphStore::open(repo.path()).expect("store")));
+        let store = Arc::new(Mutex::new(
+            KuzuGraphStore::open(repo.path()).expect("store"),
+        ));
         apply_tree_index(repo.path(), &mut *store.lock().expect("lock"), "main", &sha)
             .expect("index");
 
@@ -892,7 +932,10 @@ mod tests {
             &mut snapshots,
         )
         .expect("apply normal");
-        assert_eq!(inspect(repo.path(), &*store.lock().expect("lock"), "main").state, "ready");
+        assert_eq!(
+            inspect(repo.path(), &*store.lock().expect("lock"), "main").state,
+            "ready"
+        );
 
         // Case 2: Too many changed files (> MAX_OVERLAY_FILES) stay unverified.
         let mut batch = Vec::new();

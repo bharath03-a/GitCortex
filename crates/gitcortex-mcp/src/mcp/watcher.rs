@@ -162,20 +162,17 @@ async fn run_watcher(
         git(&repo_root, &["rev-parse", "--verify", "HEAD"]),
     ) {
         let pre_epoch = event_epoch.load(Ordering::Acquire);
-        let recertified = store_arc
-            .lock()
-            .ok()
-            .and_then(|store| {
-                let last = store.last_indexed_sha(&current).ok().flatten()?;
-                let dirty = store.working_tree_dirty(&current).ok()?;
-                if last != head || !dirty {
-                    return None;
-                }
-                let changed = super::readiness::changed_sources(&repo_root).ok()?;
-                let cp =
-                    super::readiness::verify_overlay_checkpoint(&repo_root, &current, &head, &changed)?;
-                Some((changed, cp))
-            });
+        let recertified = store_arc.lock().ok().and_then(|store| {
+            let last = store.last_indexed_sha(&current).ok().flatten()?;
+            let dirty = store.working_tree_dirty(&current).ok()?;
+            if last != head || !dirty {
+                return None;
+            }
+            let changed = super::readiness::changed_sources(&repo_root).ok()?;
+            let cp =
+                super::readiness::verify_overlay_checkpoint(&repo_root, &current, &head, &changed)?;
+            Some((changed, cp))
+        });
         if let Some((changed, cp)) = recertified {
             if event_epoch.load(Ordering::Acquire) == pre_epoch && rx.is_empty() {
                 for (rel, hash) in cp.files {
@@ -434,9 +431,7 @@ pub(crate) fn apply_disk_batch(
         // been indexed into `snapshots` and no dirty file was skipped due to
         // size (> 512 KiB) or binary content.
         let all_changed_indexed = changed_after.len() == snapshots.len()
-            && changed_after
-                .iter()
-                .all(|rel| snapshots.contains_key(rel))
+            && changed_after.iter().all(|rel| snapshots.contains_key(rel))
             && changed_after.iter().all(|rel| {
                 let full = root.join(rel);
                 match std::fs::symlink_metadata(&full) {

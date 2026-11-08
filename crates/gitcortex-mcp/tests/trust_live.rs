@@ -521,11 +521,9 @@ async fn edit_then_settle_reports_ready_and_verified() {
     assert!(items(&ignored).is_empty(), "{ignored}");
     assert!(is_ready(&ignored), "{ignored}");
 
-    let dirty_path = gitcortex_store::branch::last_sha_path(
-        &storage_repo_id(live.repo.root()),
-        "main",
-    )
-    .with_extension("dirty");
+    let dirty_path =
+        gitcortex_store::branch::last_sha_path(&storage_repo_id(live.repo.root()), "main")
+            .with_extension("dirty");
     assert!(
         dirty_path.exists(),
         ".dirty must remain set while uncommitted edits exist"
@@ -540,9 +538,7 @@ async fn further_edit_after_checkpoint_returns_unverified_until_settled() {
 
     live.repo.write("a.rs", "pub fn first_edit() {}\n");
     live.wait_for("first_edit", "first edit settle", |data| {
-        !items(data).is_empty()
-            && is_ready(data)
-            && data["index"]["working_tree_verified"] == true
+        !items(data).is_empty() && is_ready(data) && data["index"]["working_tree_verified"] == true
     })
     .await;
 
@@ -584,7 +580,10 @@ async fn checkpoint_for_other_head_is_not_trusted() {
 
     let mut store = KuzuGraphStore::open(repo.root()).unwrap();
     index_hook_path(&repo, &mut store, "main");
-    assert_eq!(store.last_indexed_sha("main").unwrap().as_deref(), Some(sha2.as_str()));
+    assert_eq!(
+        store.last_indexed_sha("main").unwrap().as_deref(),
+        Some(sha2.as_str())
+    );
 
     repo.write("a.rs", "pub fn dirty_on_sha2() {}\n");
     let diff = IncrementalIndexer::new(repo.root())
@@ -678,13 +677,19 @@ async fn restart_with_valid_checkpoint_recertifies_without_reindex() {
         repo,
     };
     live1.wait_ready().await;
-    live1.repo.write("a.rs", "pub fn persisted_across_restart() {}\n");
     live1
-        .wait_for("persisted_across_restart", "settle before restart", |data| {
-            !items(data).is_empty()
-                && is_ready(data)
-                && data["index"]["working_tree_verified"] == true
-        })
+        .repo
+        .write("a.rs", "pub fn persisted_across_restart() {}\n");
+    live1
+        .wait_for(
+            "persisted_across_restart",
+            "settle before restart",
+            |data| {
+                !items(data).is_empty()
+                    && is_ready(data)
+                    && data["index"]["working_tree_verified"] == true
+            },
+        )
         .await;
     let Live {
         client: client1,
@@ -708,11 +713,15 @@ async fn restart_with_valid_checkpoint_recertifies_without_reindex() {
         repo,
     };
     let after = live2
-        .wait_for("persisted_across_restart", "recertify after restart", |data| {
-            !items(data).is_empty()
-                && is_ready(data)
-                && data["index"]["working_tree_verified"] == true
-        })
+        .wait_for(
+            "persisted_across_restart",
+            "recertify after restart",
+            |data| {
+                !items(data).is_empty()
+                    && is_ready(data)
+                    && data["index"]["working_tree_verified"] == true
+            },
+        )
         .await;
     // Recertified directly from the persisted checkpoint without running a
     // re-index batch (graph_generation remains 0).
@@ -724,7 +733,9 @@ async fn restart_with_valid_checkpoint_recertifies_without_reindex() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn restart_with_tampered_or_corrupt_checkpoint_stays_unverified() {
-    use gitcortex_mcp::mcp::readiness::{inspect, overlay_checkpoint_path, write_overlay_checkpoint};
+    use gitcortex_mcp::mcp::readiness::{
+        inspect, overlay_checkpoint_path, write_overlay_checkpoint,
+    };
     use std::collections::BTreeMap;
 
     let repo = TestRepo::new();
@@ -785,9 +796,11 @@ async fn oversized_or_many_changed_files_stay_unverified() {
     live.repo.write("a.rs", &oversized);
     live.repo.write("b.rs", "pub fn companion_small() {}\n");
     let after_oversized = live
-        .wait_for("companion_small", "watcher batch with oversized file", |data| {
-            !items(data).is_empty() && state(data) != "degraded"
-        })
+        .wait_for(
+            "companion_small",
+            "watcher batch with oversized file",
+            |data| !items(data).is_empty() && state(data) != "degraded",
+        )
         .await;
     assert_eq!(state(&after_oversized), "unverified", "{after_oversized}");
     assert_eq!(
@@ -798,17 +811,17 @@ async fn oversized_or_many_changed_files_stay_unverified() {
     // Restore a.rs to a normal size and verify certification recovers.
     live.repo.write("a.rs", "pub fn normal_size() {}\n");
     live.wait_for("normal_size", "recover after oversized", |data| {
-        !items(data).is_empty()
-            && is_ready(data)
-            && data["index"]["working_tree_verified"] == true
+        !items(data).is_empty() && is_ready(data) && data["index"]["working_tree_verified"] == true
     })
     .await;
 
     // 2. Many changed files (> MAX_OVERLAY_FILES) exceed the inspect cap and
     // stay unverified even after the watcher settles.
     for i in 0..=MAX_OVERLAY_FILES {
-        live.repo
-            .write(&format!("bulk_{i}.rs"), &format!("pub fn bulk_{i}() {{}}\n"));
+        live.repo.write(
+            &format!("bulk_{i}.rs"),
+            &format!("pub fn bulk_{i}() {{}}\n"),
+        );
     }
     let last_sym = format!("bulk_{MAX_OVERLAY_FILES}");
     let after_many = live
