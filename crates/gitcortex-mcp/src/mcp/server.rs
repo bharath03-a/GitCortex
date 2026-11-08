@@ -407,12 +407,10 @@ mod tests {
         permit: tokio::sync::OwnedSemaphorePermit,
         feature: String,
         _socket: tempfile::TempDir,
-        repo: TempRepo,
     }
 
     // A client starts a branch job held behind the permit, then disconnects.
-    async fn client_leaves_during_job(drain_cap: Duration) -> Idling {
-        let repo = TempRepo::init();
+    async fn client_leaves_during_job(repo: Arc<TempRepo>, drain_cap: Duration) -> Idling {
         let head = commit_file(repo.path(), "a.rs", "pub fn base() {}\n", "base");
         git(repo.path(), &["switch", "-c", "feat/x"]);
         let feature = commit_file(repo.path(), "b.rs", "pub fn feature() {}\n", "feature");
@@ -456,14 +454,13 @@ mod tests {
             permit,
             feature,
             _socket: socket,
-            repo,
         }
     }
 
     #[test]
     fn idle_daemon_finishes_an_active_tree_job_before_exiting() {
-        run_async(async {
-            let idling = client_leaves_during_job(Duration::from_secs(600)).await;
+        run_async(|repo| async move {
+            let idling = client_leaves_during_job(repo, Duration::from_secs(600)).await;
             tokio::time::sleep(CLIENT_IDLE_TIMEOUT * 4).await;
             assert!(!idling.daemon.is_finished(), "daemon abandoned the job");
             drop(idling.permit);
@@ -476,15 +473,13 @@ mod tests {
             let store = store.lock().expect("store");
             let state = inspect_commit(&*store, "feat/x", &idling.feature);
             assert_eq!(state.state, "ready");
-            drop(store);
-            drop(idling.repo);
         });
     }
 
     #[test]
     fn idle_drain_is_capped_when_a_job_never_finishes() {
-        run_async(async {
-            let idling = client_leaves_during_job(Duration::from_millis(1)).await;
+        run_async(|repo| async move {
+            let idling = client_leaves_during_job(repo, Duration::from_millis(1)).await;
             tokio::time::timeout(DEADLINE, idling.daemon)
                 .await
                 .expect("the drain cap ends the wait")
@@ -492,7 +487,6 @@ mod tests {
                 .expect("daemon");
             assert!(idling.handler.has_active_tree_job());
             drop(idling.permit);
-            drop(idling.repo);
         });
     }
 }
