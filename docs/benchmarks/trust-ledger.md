@@ -82,3 +82,35 @@ B3 full `just ci`: PASS (one documented ignored scenario).
 `cargo nextest run -p gitcortex-mcp -j 4`: 205 run, 205 passed, 1 skipped
 (B3-001). The only library change in B1–B3 is the `#[doc(hidden)]` test-only
 accessor `KuzuGraphStore::list_reference_facts`; no behavior changed.
+
+## B4: tree indexing from git objects without checkout
+
+| scenario | first result | fix commit | final |
+|---|---|---|---|
+| tree_source_lists_same_paths_as_disk | PASS | — | PASS |
+| tree_source_honors_ignore_in_tree | PASS | — | PASS |
+| tree_index_skips_binary_and_oversized | PASS | — | PASS |
+| tree_index_matches_checkout_index | PASS | — | PASS |
+| tree_index_incremental_from_sha | PASS | — | PASS |
+| tree_index_handles_unicode_branch | PASS | — | PASS |
+| inspect_commit_ready_in_bare_repo | PASS | — | PASS |
+| inspect_commit_ready_with_unborn_checkout | PASS | — | PASS |
+| inspect_commit_wrong_sha_is_stale | PASS | — | PASS |
+| inspect_commit_dirty_marker_is_unverified | PASS | — | PASS |
+| inspect_commit_missing_key_is_missing | PASS | — | PASS |
+| inspect_checkout_semantics_unchanged | PASS | — | PASS |
+| failed_tree_apply_stays_unverified | PASS | — | PASS |
+| tree_apply_publishes_sha_only_after_success | PASS | — | PASS |
+| failed_first_apply_is_unverified_without_sha | PASS | — | PASS |
+| dirty_retry_rebuilds_complete_tree | PASS | — | PASS |
+| requested_unindexed_branch_starts_tree_index | PASS | — | PASS |
+| unknown_branch_reports_missing_without_indexing | PASS | — | PASS |
+| duplicate_requests_spawn_one_job | PASS | — | PASS |
+| failed_tree_index_reports_error_and_allows_retry | PASS | — | PASS |
+| tree_index_concurrent_with_watcher | PASS | — | PASS |
+| index_branch_preserves_checkout_and_ignores_uncommitted_bytes | PASS | — | PASS |
+
+B4 full `just ci`: PASS (real-root count 9470 → 9470).
+`cargo nextest run -p gitcortex-mcp -j 4`: 236 run, 236 passed, 1 skipped (B3-001).
+Hook timing (`GCX_TIMING=1 gcx hook`): 322ms first run, 259ms incremental (under 500ms budget).
+
