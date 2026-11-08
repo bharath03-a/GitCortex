@@ -92,3 +92,15 @@ fn after_rebase_onto_main() {
     index_hook_path(&repo, &mut store, "feat/x");
     assert_matches_rebuild(&repo, &store, "feat/x");
 }
+#[test]
+fn after_callee_added_later() {
+    let repo = TestRepo::new();
+    repo.write("caller.rs", "pub fn caller() { later(); }\n");
+    repo.commit("caller first");
+    let mut store = KuzuGraphStore::open(repo.root()).unwrap();
+    index_hook_path(&repo, &mut store, "main");
+    repo.write("later.rs", "pub fn later() {}\n");
+    repo.commit("callee arrives");
+    index_hook_path(&repo, &mut store, "main");
+    assert_matches_rebuild(&repo, &store, "main");
+}
