@@ -226,6 +226,31 @@ commit. Failed applies remain `unverified`; successful tree indexing publishes
 `ready` with `working_tree_verified = false`, since it certifies committed blobs.
 An empty or stale graph never establishes that dependencies are absent.
 
+#### MCP readiness states and working-tree overlay certification
+
+Every MCP tool response carries an `index` metadata envelope with `state`,
+`working_tree_verified`, `working_tree_dirty`, `indexed_revision`, and
+`target_revision`:
+
+| `index.state` | `working_tree_verified` | Meaning |
+|---|---|---|
+| `ready` | `true` | Checkout branch matches `HEAD` cleanly, **or** the dirty working-tree overlay matches the persisted `.overlay` checkpoint with no pending watcher events. |
+| `ready` | `false` | Non-checkout branch (or commit tree index) matches its target commit SHA; working-tree files are not applicable. |
+| `unverified` | `false` | Checkout has uncommitted edits not yet certified by a settled `.overlay` checkpoint, pending watcher events exist, hashing caps were exceeded, or a previous apply left `.dirty` without a matching checkpoint. |
+| `stale` | `false` | Indexed revision differs from the target commit SHA. |
+| `missing` | `false` | Branch has not been indexed yet (or background tree indexing failed). |
+| `indexing` | `false` | Background tree indexing is currently running for the requested branch. |
+| `degraded` | `false` | Live file watcher is unhealthy or reconciling after an error. |
+| `unavailable` | `false` | Repository or store state could not be inspected. |
+
+**Overlay checkpoint & skipped-file rule:**
+- After a successful live watcher batch on a dirty checkout, the daemon atomically writes `<branch_key>.overlay` next to `<branch_key>.dirty` containing `{ head, branch_key, files: { path -> git_blob_sha1 | null } }`. The `.dirty` marker stays set until the working tree returns to a clean `HEAD`.
+- `readiness::inspect` certifies a dirty checkout (`state = "ready"`, `working_tree_verified = true`) only when `.dirty` is set, no watcher events are pending, the checkpoint's `head` and `branch_key` match the checkout, its path set exactly equals `changed_sources(root)`, and every file's current git-blob SHA-1 on disk matches the checkpoint (`null` for deleted tracked files whose path is absent on disk).
+- **Ignored and unsupported files** (`.gitignore`, `.gitcortex/ignore`, `.git/`, `.gitcortex/`, `target/`, `node_modules/`, and non-indexed extensions) are excluded by `IncrementalIndexer::includes_path` from both `changed_sources(root)` and the checkpoint: they do not block certification and are never claimed as indexed.
+- **Deleted tracked source files** remove graph nodes during the watcher batch and record `null` in the checkpoint; `inspect` verifies the path no longer exists on disk.
+- **Oversized (`> 512 KiB`) or binary/non-UTF-8 source files** with supported extensions are skipped by the AST parser, so their symbols are absent from the graph while they remain in `changed_sources(root)`. The watcher removes any `.overlay` checkpoint and `inspect` keeps the checkout `unverified` (`working_tree_verified = false`).
+- **Inspection bounds:** `inspect` hashes at most 64 changed files, at most 512 KiB per file, and at most 4 MiB total bytes (checkpoint JSON capped at 256 KiB). Exceeding any cap leaves `state = "unverified"`.
+
 ---
 
 ### gcx hook
@@ -1398,6 +1423,8 @@ All graph data is machine-local and never committed.
 <platform-data>/gitcortex/{repo_id}/
     graph.kuzu           # KuzuDB database (all branches, table-namespaced)
     main.sha             # last indexed commit SHA for branch "main"
+    main.dirty           # present while the graph contains an uncommitted overlay or unverified apply
+    main.overlay         # atomic JSON checkpoint { head, branch_key, files: path -> blob_hash | null }
     feat__auth.sha       # last indexed SHA for branch "feat/auth"
 ```
 
