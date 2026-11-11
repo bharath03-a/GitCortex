@@ -1,14 +1,10 @@
 //! Shared synchronous commit indexing and bounded daemon scheduling.
 use super::helpers::detect_current_branch;
-use gitcortex_core::{
-    graph::{GraphDiff, Node, NodeId},
-    schema::NodeKind,
-    store::GraphStore,
-};
+use gitcortex_core::{graph::GraphDiff, store::GraphStore};
 use gitcortex_indexer::IncrementalIndexer;
 use gitcortex_store::{branch::sanitize, kuzu::KuzuGraphStore};
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeSet, HashMap},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -119,26 +115,6 @@ fn tree_diff(root: &Path, plan: &TreeApply) -> anyhow::Result<GraphDiff> {
     Ok(diff)
 }
 
-/// `apply_diff` keeps folder nodes across updates, so a folder with no source
-/// left under it has to be removed by id.
-fn stale_folders(persisted: &[Node], diff: &GraphDiff) -> Vec<NodeId> {
-    let is_folder = |node: &&Node| node.kind == NodeKind::Folder;
-    let removed: HashSet<&Path> = diff.removed_files.iter().map(PathBuf::as_path).collect();
-    let live: HashSet<&Path> = persisted
-        .iter()
-        .filter(|node| !removed.contains(node.file.as_path()))
-        .chain(&diff.added_nodes)
-        .filter(|node| !is_folder(node))
-        .flat_map(|node| node.file.ancestors().skip(1))
-        .collect();
-    persisted
-        .iter()
-        .filter(is_folder)
-        .filter(|node| !live.contains(node.file.as_path()))
-        .map(|node| node.id.clone())
-        .collect()
-}
-
 fn finish_tree_apply(
     root: &Path,
     store: &mut dyn GraphStore,
@@ -146,16 +122,14 @@ fn finish_tree_apply(
     plan: TreeApply,
     mut diff: GraphDiff,
 ) -> anyhow::Result<TreeIndexOutcome> {
-    let rebuild = plan.baseline.is_none();
-    if rebuild || diff.source_hashes.iter().any(|(_, hash)| hash.is_none()) {
-        let persisted = store.list_all_nodes(key)?;
-        if rebuild {
-            // Full rebuild: drop files absent from the target tree too.
-            let files: BTreeSet<PathBuf> = persisted.iter().map(|n| n.file.clone()).collect();
-            diff.removed_files.extend(files);
-        }
-        let stale = stale_folders(&persisted, &diff);
-        diff.removed_node_ids.extend(stale);
+    if plan.baseline.is_none() {
+        // Full rebuild: drop files absent from the target tree too.
+        let files: BTreeSet<PathBuf> = store
+            .list_all_nodes(key)?
+            .into_iter()
+            .map(|n| n.file)
+            .collect();
+        diff.removed_files.extend(files);
     }
     // Before writing: a crash mid-apply leaves `.dirty`, and an overlay beside it
     // could certify bytes this job wrote.
