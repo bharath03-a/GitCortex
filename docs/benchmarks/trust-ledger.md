@@ -141,17 +141,26 @@ Source symlinks are a documented split, not parity: checkout indexing refuses th
 
 | scenario | first result | fix commit | final |
 |---|---|---|---|
-| uncommitted_edit_visible_after_debounce (B3-001 un-ignored) | FAIL (pre-B6) | cea0c7e | PASS |
-| edit_then_settle_reports_ready_and_verified | PASS | cea0c7e | PASS |
-| further_edit_after_checkpoint_returns_unverified_until_settled | PASS | cea0c7e | PASS |
-| checkpoint_for_other_head_is_not_trusted | PASS | cea0c7e | PASS |
-| changed_file_set_mismatch_is_not_certified | PASS | cea0c7e | PASS |
-| deleted_file_overlay_certifies_after_settle | PASS | cea0c7e | PASS |
-| restart_with_valid_checkpoint_recertifies_without_reindex | PASS | cea0c7e | PASS |
-| restart_with_tampered_or_corrupt_checkpoint_stays_unverified | PASS | cea0c7e | PASS |
-| oversized_or_many_changed_files_stay_unverified | PASS | cea0c7e | PASS |
+| uncommitted_edit_visible_after_debounce (B3-001 un-ignored) | FAIL (pre-B6) | 7fffe9c | PASS |
+| edit_then_settle_reports_ready_and_verified | PASS | 7fffe9c | PASS |
+| further_edit_after_checkpoint_returns_unverified_until_settled | PASS | 7fffe9c | PASS |
+| checkpoint_for_other_head_is_not_trusted | PASS | 7fffe9c | PASS |
+| changed_file_set_mismatch_is_not_certified | PASS | 7fffe9c | PASS |
+| deleted_file_overlay_certifies_after_settle | PASS | 7fffe9c | PASS |
+| restart_with_valid_checkpoint_recertifies_without_reindex | PASS | 7fffe9c | PASS |
+| restart_with_tampered_or_corrupt_checkpoint_stays_unverified | PASS | 7fffe9c | PASS |
+| oversized_or_many_changed_files_stay_unverified | PASS | 7fffe9c | PASS |
+| begin_leaves_overlay_of_checked_out_key_certified (mutation-checked) | FAIL (pre-rebase order) | 7fffe9c | PASS |
+| finish_leaves_overlay_written_during_the_job_certified | PASS | 7fffe9c | PASS |
+| successful_job_content_is_not_recertified_from_an_old_overlay | PASS | 7fffe9c | PASS |
+| failed_job_cannot_be_recertified_from_an_old_overlay (mutation-checked) | PASS | 7fffe9c | PASS |
+| overlay_written_during_the_job_does_not_outlive_its_apply (mutation-checked) | PASS | 7fffe9c | PASS |
+| failed_apply_leaves_no_overlay_to_recertify | PASS | 7fffe9c | PASS |
 
-B6 full `just ci`: PASS (real-root count 9470 → 9470; 0 skipped).
-`cargo nextest run -p gitcortex-mcp -j 4`: 253 run, 253 passed, 0 skipped.
+A tree job removes a key's overlay only after confirming the checkout does not own
+it, and again before writing, so a partial apply can never sit beside a checkpoint.
+
+B6 full `just ci`: PASS (0 skipped).
+`cargo nextest run -p gitcortex-mcp -j 4`: 282 run, 282 passed, 0 skipped.
 
 

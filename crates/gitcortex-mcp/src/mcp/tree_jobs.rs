@@ -391,6 +391,7 @@ impl TreeIndexJobs {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mcp::readiness;
     use crate::mcp::test_support::{commit_file, git, TempRepo, STORE_LOCK};
     #[test]
     fn running_guard_cleans_up_after_panic() {
@@ -412,7 +413,7 @@ mod tests {
 
     struct KeyRace {
         repo: TempRepo,
-        store: Mutex<KuzuGraphStore>,
+        store: Arc<Mutex<KuzuGraphStore>>,
         s1: String,
     }
 
@@ -423,7 +424,9 @@ mod tests {
         git(repo.path(), &["switch", "-c", "X"]);
         let s1 = commit_file(repo.path(), "a.rs", "pub fn job_bytes() {}\n", "s1");
         git(repo.path(), &["switch", "main"]);
-        let store = Mutex::new(KuzuGraphStore::open(repo.path()).expect("store"));
+        let store = Arc::new(Mutex::new(
+            KuzuGraphStore::open(repo.path()).expect("store"),
+        ));
         KeyRace { repo, store, s1 }
     }
 
@@ -508,6 +511,163 @@ mod tests {
             .expect("store")
             .working_tree_dirty("X")
             .expect("dirty"));
+    }
+
+    impl KeyRace {
+        // What the watcher leaves after settling an uncommitted file on X.
+        fn settle_overlay_on_x(&self, head: &str, rel: &str, contents: &str) {
+            let path = self.repo.path().join(rel);
+            std::fs::write(&path, contents).expect("edit");
+            let revision = std::sync::atomic::AtomicU64::new(0);
+            crate::mcp::watcher::apply_disk_batch(
+                self.repo.path(),
+                &self.store,
+                "X",
+                head,
+                &[path],
+                &revision,
+                &mut HashMap::new(),
+            )
+            .expect("settle");
+        }
+        fn overlay_exists(&self) -> bool {
+            readiness::overlay_checkpoint_path(self.repo.path(), "X").exists()
+        }
+        fn assert_overlay_certified(&self, symbol: &str) {
+            assert!(self.overlay_exists(), "overlay was cleared");
+            let store = self.store.lock().expect("store");
+            assert!(
+                store.working_tree_dirty("X").expect("dirty"),
+                "dirty cleared"
+            );
+            let state = readiness::inspect(self.repo.path(), &*store, "X");
+            assert_eq!(state.state, "ready");
+            assert!(state.working_tree_verified);
+            assert!(!store
+                .lookup_symbol("X", symbol, false)
+                .expect("q")
+                .is_empty());
+        }
+        // On main again with `extra.rs` left over, X's overlay certified earlier.
+        fn overlay_then_leave_checkout(&self) {
+            git(self.repo.path(), &["switch", "X"]);
+            let mut store = self.store.lock().expect("store");
+            apply_tree_index(self.repo.path(), &mut *store, "X", &self.s1).expect("sync");
+            drop(store);
+            self.settle_overlay_on_x(&self.s1, "extra.rs", "pub fn overlay_only() {}\n");
+            self.assert_overlay_certified("overlay_only");
+            git(self.repo.path(), &["switch", "main"]);
+        }
+        // Back on X: the bytes on disk still match what the overlay recorded.
+        fn assert_not_recertifiable(&self) {
+            git(self.repo.path(), &["switch", "X"]);
+            let changed = readiness::changed_sources(self.repo.path()).expect("changed");
+            assert_eq!(changed, vec![PathBuf::from("extra.rs")]);
+            assert!(readiness::verify_overlay_checkpoint(
+                self.repo.path(),
+                "X",
+                &self.s1,
+                &changed
+            )
+            .is_none());
+            let store = self.store.lock().expect("store");
+            let state = readiness::inspect(self.repo.path(), &*store, "X");
+            assert_eq!(state.state, "unverified");
+            assert!(!state.working_tree_verified);
+        }
+    }
+
+    #[test]
+    fn begin_leaves_overlay_of_checked_out_key_certified() {
+        let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let race = key_race();
+        let s2 = race.commit_on_x_and_sync();
+        race.settle_overlay_on_x(&s2, "a.rs", "pub fn overlay_edit() {}\n");
+        race.assert_overlay_certified("overlay_edit");
+        let outcome = apply_tree_index_shared(race.repo.path(), &race.store, "X", &race.s1, || {
+            panic!("a checked-out key must not reach parsing");
+        })
+        .expect("job");
+        assert!(outcome.is_none());
+        race.assert_overlay_certified("overlay_edit");
+    }
+
+    #[test]
+    fn finish_leaves_overlay_written_during_the_job_certified() {
+        let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let race = key_race();
+        let outcome = apply_tree_index_shared(race.repo.path(), &race.store, "X", &race.s1, || {
+            let s2 = race.commit_on_x_and_sync();
+            race.settle_overlay_on_x(&s2, "a.rs", "pub fn overlay_edit() {}\n");
+        })
+        .expect("job");
+        assert!(outcome.is_none());
+        race.assert_overlay_certified("overlay_edit");
+    }
+
+    #[test]
+    fn successful_job_content_is_not_recertified_from_an_old_overlay() {
+        let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let race = key_race();
+        race.overlay_then_leave_checkout();
+        let outcome = apply_tree_index_shared(race.repo.path(), &race.store, "X", &race.s1, || {})
+            .expect("job");
+        assert!(outcome.is_some());
+        assert!(!race.overlay_exists());
+        let store = race.store.lock().expect("store");
+        assert!(store
+            .lookup_symbol("X", "overlay_only", false)
+            .expect("q")
+            .is_empty());
+        drop(store);
+        race.assert_not_recertifiable();
+    }
+
+    #[test]
+    fn overlay_written_during_the_job_does_not_outlive_its_apply() {
+        let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let race = key_race();
+        race.overlay_then_leave_checkout();
+        let outcome = apply_tree_index_shared(race.repo.path(), &race.store, "X", &race.s1, || {
+            git(race.repo.path(), &["switch", "X"]);
+            race.settle_overlay_on_x(&race.s1, "extra.rs", "pub fn overlay_only() {}\n");
+            git(race.repo.path(), &["switch", "main"]);
+        })
+        .expect("job");
+        assert!(outcome.is_some());
+        assert!(!race.overlay_exists());
+        race.assert_not_recertifiable();
+    }
+
+    #[test]
+    fn failed_job_cannot_be_recertified_from_an_old_overlay() {
+        let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let race = key_race();
+        race.overlay_then_leave_checkout();
+        let blob = git(
+            race.repo.path(),
+            &["rev-parse", &format!("{}:a.rs", race.s1)],
+        );
+        let path = race
+            .repo
+            .path()
+            .join(".git/objects")
+            .join(&blob[..2])
+            .join(&blob[2..]);
+        let bytes = std::fs::read(&path).expect("loose blob");
+        std::fs::remove_file(&path).expect("corrupt fixture");
+        apply_tree_index_shared(race.repo.path(), &race.store, "X", &race.s1, || {})
+            .err()
+            .expect("job fails on the missing blob");
+        std::fs::write(&path, bytes).expect("repair blob");
+        assert!(!race.overlay_exists());
+        assert!(race
+            .store
+            .lock()
+            .expect("store")
+            .working_tree_dirty("X")
+            .expect("dirty"));
+        race.assert_not_recertifiable();
     }
 
     #[test]
