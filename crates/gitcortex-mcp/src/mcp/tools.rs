@@ -185,9 +185,18 @@ impl GitCortexServer {
         state
     }
 
+    #[cfg(test)]
     pub(crate) fn readiness_scopes(
         &self,
         scopes: &[String],
+    ) -> Result<Vec<super::readiness::IndexReadiness>, rmcp::ErrorData> {
+        self.readiness_scopes_inner(scopes, false)
+    }
+
+    fn readiness_scopes_inner(
+        &self,
+        scopes: &[String],
+        nonblocking: bool,
     ) -> Result<Vec<super::readiness::IndexReadiness>, rmcp::ErrorData> {
         let poisoned = || rmcp::ErrorData::internal_error("store mutex poisoned", None);
         // A branch apply can hold the store for a long time; never park a worker
@@ -195,7 +204,9 @@ impl GitCortexServer {
         let store = match self.store.try_lock() {
             Ok(store) => store,
             Err(std::sync::TryLockError::Poisoned(_)) => return Err(poisoned()),
-            Err(std::sync::TryLockError::WouldBlock) if self.tree_jobs.is_applying() => {
+            Err(std::sync::TryLockError::WouldBlock)
+                if nonblocking || self.tree_jobs.is_applying() =>
+            {
                 return Ok(scopes
                     .iter()
                     .map(|scope| {
@@ -217,6 +228,32 @@ impl GitCortexServer {
             .iter()
             .map(|scope| self.scope_readiness(&*store, checkout.as_deref(), scope))
             .collect())
+    }
+
+    fn try_lock_for_diagnostic(
+        &self,
+        branch: &str,
+    ) -> Result<std::sync::MutexGuard<'_, KuzuGraphStore>, CallToolResult> {
+        match self.store.try_lock() {
+            Ok(guard) => Ok(guard),
+            Err(std::sync::TryLockError::Poisoned(_)) => {
+                Err(CallToolResult::error(vec![Content::text(
+                    "store mutex poisoned",
+                )]))
+            }
+            Err(std::sync::TryLockError::WouldBlock) => {
+                let readiness = super::readiness::without_evidence(
+                    "indexing",
+                    branch,
+                    "A branch index is being written to the graph; retry shortly.".to_owned(),
+                );
+                Err(CallToolResult::structured(json!({
+                    "status": "index_not_ready",
+                    "index": readiness,
+                    "message": "Graph coverage cannot support this query. Empty or stale evidence does not establish that there are no dependencies. Inspect source and relevant tests."
+                })))
+            }
+        }
     }
 
     /// Readiness of a branch other than the checkout, scheduling a background
@@ -619,9 +656,9 @@ impl GitCortexServer {
     )]
     fn graph_stats(&self, Parameters(p): Parameters<GraphStatsParams>) -> CallToolResult {
         let branch = self.resolve_branch(p.branch.as_deref());
-        let store = match self.store.lock() {
+        let store = match self.try_lock_for_diagnostic(&branch) {
             Ok(g) => g,
-            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+            Err(busy_or_err) => return busy_or_err,
         };
         match store.graph_stats(&branch) {
             Ok(stats) => {
@@ -1529,9 +1566,9 @@ impl GitCortexServer {
     fn health_report(&self, Parameters(p): Parameters<HealthReportParams>) -> CallToolResult {
         let branch = self.resolve_branch(p.branch.as_deref());
 
-        let store = match self.store.lock() {
+        let store = match self.try_lock_for_diagnostic(&branch) {
             Ok(g) => g,
-            Err(_) => return CallToolResult::error(vec![Content::text("store mutex poisoned")]),
+            Err(busy_or_err) => return busy_or_err,
         };
 
         // ── Unused symbols ────────────────────────────────────────────────────
@@ -2115,17 +2152,18 @@ impl GitCortexServer {
         } else {
             vec![branch]
         };
+        let diagnostic = matches!(action.as_str(), "graph_stats" | "health_report");
         // Readiness runs git and waits on the store: keep it off async workers.
+        // Diagnostics never block on a contended store mutex.
         let inspect = || async {
             let server = self.clone();
             let scopes = scopes.clone();
-            tokio::task::spawn_blocking(move || server.readiness_scopes(&scopes))
+            tokio::task::spawn_blocking(move || server.readiness_scopes_inner(&scopes, diagnostic))
                 .await
                 .map_err(|_| rmcp::ErrorData::internal_error("readiness task panicked", None))?
         };
         let before = inspect().await?;
         let generation = self.graph_revision.load(Ordering::Acquire);
-        let diagnostic = matches!(action.as_str(), "graph_stats" | "health_report");
         let safety_sensitive = matches!(action.as_str(), "find_unused_symbols" | "detect_changes");
         let blocked = !diagnostic
             && before.iter().any(|scope| {
@@ -2140,8 +2178,14 @@ impl GitCortexServer {
             json!({"scopes": before})
         };
         // Diagnostics stay non-errors, but cannot read a store held by an apply.
-        let store_busy =
-            self.tree_jobs.is_applying() && before.iter().any(|scope| scope.state == "indexing");
+        let store_busy = (self.tree_jobs.is_applying()
+            && before.iter().any(|scope| scope.state == "indexing"))
+            || (diagnostic
+                && before.iter().any(|scope| {
+                    scope.state == "indexing"
+                        && scope.next_action
+                            == "A branch index is being written to the graph; retry shortly."
+                }));
         if blocked || (diagnostic && store_busy) {
             let payload = json!({
                 "status": "index_not_ready", "index": index,
@@ -2155,6 +2199,16 @@ impl GitCortexServer {
         }
         let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
         let mut result = self.active_tool_router().call(tcc).await?;
+        if diagnostic
+            && result
+                .structured_content
+                .as_ref()
+                .and_then(|v| v.get("status"))
+                .and_then(|v| v.as_str())
+                == Some("index_not_ready")
+        {
+            return Ok(result);
+        }
         let after = inspect().await?;
         if before != after || generation != self.graph_revision.load(Ordering::Acquire) {
             return Ok(CallToolResult::structured_error(json!({
