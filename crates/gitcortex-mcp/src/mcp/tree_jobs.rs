@@ -696,15 +696,11 @@ mod tests {
             let hash = blake3::hash(b"pub fn overlay_only() {}\n")
                 .to_hex()
                 .to_string();
-            let files =
-                std::collections::BTreeMap::from([(PathBuf::from("extra.rs"), Some(hash))]);
-            assert!(readiness::write_overlay_checkpoint(
-                race.repo.path(),
-                "X",
-                &race.s1,
-                &files
-            )
-            .expect("write overlay"));
+            let files = std::collections::BTreeMap::from([(PathBuf::from("extra.rs"), Some(hash))]);
+            assert!(
+                readiness::write_overlay_checkpoint(race.repo.path(), "X", &race.s1, &files)
+                    .expect("write overlay")
+            );
         })
         .expect("job");
         assert!(outcome.is_some());
