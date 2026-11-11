@@ -119,6 +119,53 @@ python3 tools/agent-bench/agent_run.py --client agy \
 This lane is reported as `agy-mcp` and scores the same required
 final-answer evidence as the Codex and Claude Code lanes.
 
+## Unforced lane (do agents choose gcx?)
+
+The lanes above force exactly one gcx call, which proves value *when used*. The
+unforced lane removes the requirement: the prompt never mentions GitCortex, the
+agent keeps its normal read tools, and the gcx MCP server is merely available.
+
+```bash
+python3 tools/agent-bench/agent_run.py --unforced \
+  --gcx /path/to/gcx-under-test \
+  --model sonnet --reasoning low --label v1-smoke \
+  --arms baseline,gcx-bare --rounds 1 --seed 20261111 \
+  --max-total-usd 15 --max-run-usd 1.5 \
+  --task cobra-impact-add-command --task cobra-restraint-unknown-command
+python3 tools/agent-bench/agent_run.py --unforced --gcx ... --label x --max-total-usd 15 --dry-run
+```
+
+`--gcx` is a parameter, so the same command runs the published baseline binary
+and the release candidate. Arms (`unforced_client.ARMS`):
+
+| Arm | gcx MCP server | Guide |
+|---|---|---|
+| `baseline` | no | no |
+| `gcx-bare` | yes | no guidance |
+| `gcx-guide` | yes | the files `gcx init --editor claude` writes (`.claude/CLAUDE.md`, `.gitcortex/AGENT_GUIDE.md`), installed for the run and removed after |
+
+Every arm gets the same model, effort, read-only tool allowlist, pinned repo
+checkout, and per-run cap. The operator's own Claude settings, skills, hooks,
+and auto-memory are excluded (`--setting-sources project,local`,
+`--disable-slash-commands`, `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`). Arm order is a
+seeded permutation per task, rotated each round.
+
+Tasks (`unforced-suite.toml`) are `graph` (callers/impact; inherit ground truth
+from `suite.toml`) or `restraint` (exact-string/config questions that grep
+answers directly; ground truth read from pinned source). Per run the JSONL
+records outcome against required evidence, total/uncached tokens, cost, wall
+time, turns, tool calls, gcx adoption, first gcx call position, tokens before
+the first gcx call, gcx error rate, `index.state` handling, and repeat reads.
+`index.state` exists only on binaries with the readiness contract; older
+binaries record no state and the not-ready metric stays empty rather than guessed.
+
+**Spend control.** `--max-total-usd` is required. Each run is handed
+`min(--max-run-usd, remaining)` as the client's own `--max-budget-usd`; the
+runner refuses to start a run it cannot afford, and a run with no reported cost
+(timeout, crash) is charged its full cap. `--max-runs` bounds run count.
+`--dry-run` prints the plan and spends nothing. Only `--client claude` is
+supported: `codex exec` does not expose ad-hoc MCP tools.
+
 ## Lanes
 
 1. **Retrieval** (implemented): deterministic, free contract/evidence gate.
