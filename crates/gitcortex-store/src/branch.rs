@@ -318,6 +318,34 @@ pub fn write_last_sha(repo_id: &str, branch: &str, sha: &str) -> Result<()> {
     fs::write(&path, sha).map_err(GitCortexError::Io)
 }
 
+/// Path to the monotonic mutation epoch file for a specific branch.
+pub fn mutation_epoch_path(repo_id: &str, branch: &str) -> PathBuf {
+    data_dir(repo_id).join(format!("{}.epoch", sanitize(branch)))
+}
+
+/// Read the monotonic mutation epoch for `branch`, returning `0` when absent.
+pub fn read_mutation_epoch(repo_id: &str, branch: &str) -> Result<u64> {
+    let path = mutation_epoch_path(repo_id, branch);
+    match fs::read_to_string(&path) {
+        Ok(s) => s.trim().parse::<u64>().map_err(|e| {
+            GitCortexError::Store(format!("corrupt mutation epoch in {}: {e}", path.display()))
+        }),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(0),
+        Err(e) => Err(GitCortexError::Io(e)),
+    }
+}
+
+/// Increment and persist the monotonic mutation epoch for `branch`.
+pub fn bump_mutation_epoch(repo_id: &str, branch: &str) -> Result<u64> {
+    let next = read_mutation_epoch(repo_id, branch)?.saturating_add(1);
+    let path = mutation_epoch_path(repo_id, branch);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&path, next.to_string()).map_err(GitCortexError::Io)?;
+    Ok(next)
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

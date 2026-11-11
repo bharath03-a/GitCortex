@@ -170,6 +170,7 @@ pub fn initial_index(repo_root: &Path) -> Result<(usize, usize)> {
             &snapshots,
         )?;
         let _ = gitcortex_mcp::mcp::readiness::remove_overlay_checkpoint(repo_root, &branch);
+        store.bump_mutation_epoch(&branch)?;
         store.set_working_tree_dirty(&branch, true)?;
         store.apply_diff(&branch, &diff).context("apply diff")?;
         store
