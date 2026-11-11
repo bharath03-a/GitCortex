@@ -178,6 +178,10 @@ impl GraphStore for FaultStore {
             self.inner.last_indexed_sha(branch)?.as_deref(),
             Some(target.as_str())
         );
+        assert!(
+            !gitcortex_mcp::mcp::readiness::overlay_checkpoint_path(&self.root, branch).exists(),
+            "an overlay beside a partial apply could certify the job's bytes"
+        );
         if self.fail {
             return Err(GitCortexError::Store("injected apply failure".into()));
         }
@@ -283,6 +287,28 @@ fn failed_first_apply_is_unverified_without_sha() {
     assert_eq!(store.last_indexed_sha("main").unwrap(), None);
     assert!(store.working_tree_dirty("main").unwrap());
     assert_eq!(inspect_commit(&store, "main", &first).state, "unverified");
+}
+
+#[test]
+fn failed_apply_leaves_no_overlay_to_recertify() {
+    use gitcortex_mcp::mcp::readiness::{overlay_checkpoint_path, write_overlay_checkpoint};
+    let repo = TestRepo::new();
+    repo.write("a.rs", "pub fn original() {}\n");
+    let first = repo.commit("first");
+    let mut store = fault_store(&repo, false);
+    apply_tree_index(repo.root(), &mut store, "feature", &first).unwrap();
+    repo.write("a.rs", "pub fn updated() {}\n");
+    let second = repo.commit("second");
+    let files = std::collections::BTreeMap::from([(std::path::PathBuf::from("a.rs"), None)]);
+    assert!(write_overlay_checkpoint(repo.root(), "feature", &first, &files).unwrap());
+    store.fail = true;
+    assert!(apply_tree_index(repo.root(), &mut store, "feature", &second).is_err());
+    assert!(!overlay_checkpoint_path(repo.root(), "feature").exists());
+    assert!(store.working_tree_dirty("feature").unwrap());
+    assert_eq!(
+        inspect_commit(&store, "feature", &second).state,
+        "unverified"
+    );
 }
 
 #[test]
