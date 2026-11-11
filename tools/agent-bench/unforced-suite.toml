@@ -1,0 +1,103 @@
+suite = "unforced-v1"
+version = 1
+# Repos and graph-task ground truth are inherited from the core suite so the
+# pinned commits and required evidence stay single-sourced.
+core_suite = "suite.toml"
+
+# kind = "graph": cross-file structure question; the graph can plausibly help.
+#   Inherits repo/action/query/required from the core task named by `core`.
+# kind = "restraint": exact-string or config question; grep answers it directly,
+#   so an agent that still reaches for the graph is over-using it.
+#   Ground truth below was read from the pinned source, not from gcx output.
+
+[[tasks]]
+id = "cobra-impact-add-command"
+kind = "graph"
+core = "cobra-impact-add-command"
+
+[[tasks]]
+id = "cobra-callers-add-command"
+kind = "graph"
+core = "cobra-callers-add-command"
+
+[[tasks]]
+id = "requests-impact-send"
+kind = "graph"
+core = "requests-impact-send"
+
+[[tasks]]
+id = "requests-callers-send"
+kind = "graph"
+core = "requests-callers-send"
+
+[[tasks]]
+id = "ripgrep-impact-line-number"
+kind = "graph"
+core = "ripgrep-impact-line-number"
+
+[[tasks]]
+id = "ripgrep-callers-line-number"
+kind = "graph"
+core = "ripgrep-callers-line-number"
+
+[[tasks]]
+id = "hono-impact-compose"
+kind = "graph"
+core = "hono-impact-compose"
+
+[[tasks]]
+id = "hono-callers-compose"
+kind = "graph"
+core = "hono-callers-compose"
+
+[[tasks]]
+id = "gson-impact-begin-array"
+kind = "graph"
+core = "gson-impact-begin-array"
+
+[[tasks]]
+id = "gson-callers-begin-array"
+kind = "graph"
+core = "gson-callers-begin-array"
+
+[[tasks]]
+id = "cobra-restraint-unknown-command"
+kind = "restraint"
+repo = "cobra"
+prompt = "When a command that has subcommands is given an unknown subcommand name, what exact format string builds the returned error, and in which file is it?"
+required = ["args.go", "unknown command %q for %q"]
+
+[[tasks]]
+id = "requests-restraint-redirect-limit"
+kind = "restraint"
+repo = "requests"
+prompt = "What is the default maximum number of redirects Requests follows, what is the constant called, and in which file is it defined?"
+required = ["DEFAULT_REDIRECT_LIMIT", "30", "src/requests/models.py"]
+
+[[tasks]]
+id = "requests-restraint-python-version"
+kind = "restraint"
+repo = "requests"
+prompt = "Which minimum Python version does this project's packaging metadata require, and in which file is that declared?"
+required = ["pyproject.toml", ">=3.10"]
+
+[[tasks]]
+id = "ripgrep-restraint-msrv"
+kind = "restraint"
+repo = "ripgrep"
+prompt = "Which minimum supported Rust version does the workspace manifest declare, and in which file?"
+required = ["Cargo.toml", "1.96"]
+
+[[tasks]]
+id = "hono-restraint-methods"
+kind = "restraint"
+repo = "hono"
+prompt = "Which HTTP methods are listed in the METHODS constant, and in which file is it defined?"
+required = ["src/router.ts", "METHODS", "options", "patch"]
+
+[[tasks]]
+id = "gson-restraint-nesting-limit"
+kind = "restraint"
+repo = "gson"
+prompt = "What is the default nesting limit of JsonReader, what is the constant called, and in which file is it defined?"
+required = ["JsonReader.java", "DEFAULT_NESTING_LIMIT", "255"]

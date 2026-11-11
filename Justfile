@@ -84,6 +84,11 @@ clippy:
 test:
     cargo test --workspace
 
+# Python tests for the agent benchmark harness and release scripts (no Rust build)
+bench-test:
+    cd tools/agent-bench && python3 -m unittest discover -p "test_*.py"
+    cd scripts && python3 -m unittest discover -p "test_*.py"
+
 # Frontend lint (eslint + tsc)
 viz-lint:
     cd viz && npm run lint
