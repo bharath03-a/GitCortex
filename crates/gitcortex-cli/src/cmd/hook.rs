@@ -40,6 +40,7 @@ pub fn run(branch_switch: bool) -> Result<()> {
 
     if diff.is_empty() {
         // Empty commits still advance the indexed revision.
+        store.bump_mutation_epoch(&branch)?;
         store.set_last_indexed_sha(&branch, &head_sha)?;
         let elapsed = t0.elapsed().as_millis();
         eprintln!("gcx  [{branch}]  (no changes)  ({elapsed}ms)");
@@ -50,6 +51,7 @@ pub fn run(branch_switch: bool) -> Result<()> {
     let snapshots = diff.source_hashes.iter().cloned().collect();
     let verified =
         gitcortex_mcp::mcp::readiness::snapshots_match_commit(&repo_root, &head_sha, &snapshots)?;
+    store.bump_mutation_epoch(&branch)?;
     store.set_working_tree_dirty(&branch, true)?;
     store
         .apply_diff(&branch, &diff)

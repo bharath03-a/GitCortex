@@ -266,6 +266,12 @@ impl GraphStore for FaultStore {
     fn set_working_tree_dirty(&mut self, _branch: &str, _dirty: bool) -> Result<()> {
         self.inner.set_working_tree_dirty(_branch, _dirty)
     }
+    fn mutation_epoch(&self, branch: &str) -> Result<u64> {
+        self.inner.mutation_epoch(branch)
+    }
+    fn bump_mutation_epoch(&mut self, branch: &str) -> Result<u64> {
+        self.inner.bump_mutation_epoch(branch)
+    }
 }
 fn fault_store(repo: &TestRepo, fail: bool) -> FaultStore {
     FaultStore {

@@ -388,6 +388,7 @@ pub(crate) fn apply_disk_batch(
         .lock()
         .map_err(|_| anyhow::anyhow!("store mutex poisoned"))?;
     let _ = super::readiness::remove_overlay_checkpoint(root, branch);
+    store.bump_mutation_epoch(branch)?;
     store.set_working_tree_dirty(branch, true)?;
     store.apply_diff(branch, &diff)?;
     for (path, hash) in &diff.source_hashes {
@@ -470,7 +471,7 @@ pub(crate) fn apply_disk_batch(
     Ok(())
 }
 
-fn sync_commit(
+pub(crate) fn sync_commit(
     root: &Path,
     store: &Arc<Mutex<KuzuGraphStore>>,
     branch: &str,
@@ -493,6 +494,7 @@ fn sync_commit(
         "checkout changed during commit synchronization"
     );
     let _ = super::readiness::remove_overlay_checkpoint(root, branch);
+    store.bump_mutation_epoch(branch)?;
     store.set_working_tree_dirty(branch, true)?;
     store.apply_diff(branch, &diff)?;
     for (path, hash) in &diff.source_hashes {

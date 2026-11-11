@@ -1253,6 +1253,8 @@ impl GraphStore for KuzuGraphStore {
         conn.query("COMMIT")
             .map_err(|e| GitCortexError::Store(format!("commit edges: {e}")))?;
 
+        branch::bump_mutation_epoch(&self.repo_id, branch)?;
+
         Ok(())
     }
 
@@ -2431,5 +2433,13 @@ impl GraphStore for KuzuGraphStore {
             }
         }
         Ok(())
+    }
+
+    fn mutation_epoch(&self, branch_name: &str) -> Result<u64> {
+        branch::read_mutation_epoch(&self.repo_id, branch_name)
+    }
+
+    fn bump_mutation_epoch(&mut self, branch_name: &str) -> Result<u64> {
+        branch::bump_mutation_epoch(&self.repo_id, branch_name)
     }
 }
