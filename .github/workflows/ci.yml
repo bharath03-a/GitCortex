@@ -52,6 +52,8 @@ jobs:
       - name: release page generator
         working-directory: scripts
         run: python3 -m unittest discover -p "test_*.py" -v
+      - name: advisory ignore parity
+        run: python3 scripts/check_advisory_ignores.py deny.toml .cargo/audit.toml
       - name: release page renders from the real changelog
         run: |
           python3 scripts/build_release_page.py
