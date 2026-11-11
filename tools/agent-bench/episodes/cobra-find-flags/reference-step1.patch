@@ -1,0 +1,11 @@
+--- a/command.go
++++ b/command.go
+@@ -688,7 +688,7 @@
+ 		case s == "--":
+ 			// "--" terminates the flags
+ 			break Loop
+-		case strings.HasPrefix(s, "--") && !strings.Contains(s, "=") && hasNoOptDefVal(s[2:], flags):
++		case strings.HasPrefix(s, "--") && !strings.Contains(s, "=") && !hasNoOptDefVal(s[2:], flags):
+ 			// If '--flag arg' then
+ 			// delete arg from args.
+ 			fallthrough // (do the same as below)
