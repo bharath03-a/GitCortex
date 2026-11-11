@@ -747,4 +747,67 @@ mod tests {
         watcher.abort();
         let _ = watcher.await;
     }
+
+    #[test]
+    fn watcher_prunes_vanished_nested_folders_and_keeps_surviving_sibling() {
+        use crate::mcp::test_support::{commit_file, TempRepo, STORE_LOCK};
+        use gitcortex_core::schema::NodeKind;
+        let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let repo = TempRepo::init();
+        commit_file(
+            repo.path(),
+            "parent/sibling/stay.rs",
+            "pub fn stay() {}\n",
+            "stay",
+        );
+        let head = commit_file(
+            repo.path(),
+            "parent/vanish/deep/inner/gone.rs",
+            "pub fn gone() {}\n",
+            "gone",
+        );
+        let store = Arc::new(Mutex::new(
+            KuzuGraphStore::open(repo.path()).expect("store"),
+        ));
+        let mut snapshots = HashMap::new();
+        let revision = AtomicU64::new(0);
+        reconcile_disk(
+            repo.path(),
+            &store,
+            "main",
+            &head,
+            &revision,
+            &mut snapshots,
+        )
+        .expect("initial reconcile");
+        let gone_path = repo.path().join("parent/vanish/deep/inner/gone.rs");
+        std::fs::remove_dir_all(repo.path().join("parent/vanish")).expect("remove vanish dir");
+        apply_disk_batch(
+            repo.path(),
+            &store,
+            "main",
+            &head,
+            &[gone_path],
+            &revision,
+            &mut snapshots,
+        )
+        .expect("watcher batch after dir removal");
+        let folders: Vec<PathBuf> = {
+            let guard = store.lock().expect("store");
+            let mut f: Vec<PathBuf> = guard
+                .list_all_nodes("main")
+                .expect("nodes")
+                .into_iter()
+                .filter(|n| n.kind == NodeKind::Folder)
+                .map(|n| n.file)
+                .collect();
+            f.sort();
+            f
+        };
+        assert_eq!(
+            folders,
+            vec![PathBuf::from("parent"), PathBuf::from("parent/sibling")],
+            "vanished nested folders must be pruned while surviving sibling folder remains"
+        );
+    }
 }

@@ -1049,8 +1049,8 @@ impl GraphStore for KuzuGraphStore {
         }
 
         // 1. Remove nodes for deleted/replaced files.
-        //    Folder nodes are reused across incremental updates to preserve their
-        //    Contains edges to sibling files; only `removed_node_ids` removes one.
+        //    Folder nodes with remaining children are reused across incremental
+        //    updates to preserve their Contains edges to sibling files.
         for file in &replaced_files {
             let file_str = esc(file);
             conn.query(&format!(
@@ -1066,6 +1066,43 @@ impl GraphStore for KuzuGraphStore {
                 "MATCH (n:{nt}) WHERE n.id = '{id_str}' DETACH DELETE n"
             ))
             .map_err(|e| GitCortexError::Store(format!("delete node: {e}")))?;
+        }
+
+        // 2b. Prune ancestor Folder nodes of removed files that have no remaining
+        //     child file or live subfolder via Contains (bottom-up).
+        let mut candidate_folders: Vec<String> = diff
+            .removed_files
+            .iter()
+            .flat_map(|file| file.ancestors().skip(1))
+            .filter(|dir| !dir.as_os_str().is_empty())
+            .map(|dir| dir.to_string_lossy().into_owned())
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        candidate_folders.sort_by_key(|dir| std::cmp::Reverse(dir.len()));
+        for dir in &candidate_folders {
+            let dir_str = esc(dir);
+            let mut rows = conn
+                .query(&format!(
+                    "MATCH (f:{nt}) WHERE f.file = '{dir_str}' AND f.kind = 'folder' \
+                     AND NOT EXISTS {{ \
+                         MATCH (f)-[:{et} {{kind: 'contains'}}]->(child:{nt}) \
+                         WHERE child.kind = 'file' OR child.kind = 'folder' \
+                     }} \
+                     RETURN f.id"
+                ))
+                .map_err(|e| GitCortexError::Store(format!("find empty folder: {e}")))?;
+            let mut empty_ids = Vec::new();
+            for row in rows.by_ref() {
+                empty_ids.push(str_val(&row[0])?);
+            }
+            for id in empty_ids {
+                let id_str = esc(&id);
+                conn.query(&format!(
+                    "MATCH (f:{nt}) WHERE f.id = '{id_str}' DETACH DELETE f"
+                ))
+                .map_err(|e| GitCortexError::Store(format!("delete empty folder: {e}")))?;
+            }
         }
 
         // 3. Remove explicit edges.
