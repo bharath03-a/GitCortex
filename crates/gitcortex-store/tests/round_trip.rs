@@ -286,6 +286,26 @@ fn delete_file_removes_nodes() {
 }
 
 #[test]
+fn removed_paths_never_delete_folders_and_ignore_extensions() {
+    let (mut store, _dir) = tmp_store();
+    let folder = make_node("v1.2", NodeKind::Folder, "v1.2", 1);
+    let extensionless = make_node("build_rule", NodeKind::Function, "Makefile", 1);
+    let setup = GraphDiff {
+        added_nodes: vec![folder.clone(), extensionless],
+        ..GraphDiff::default()
+    };
+    store.apply_diff("main", &setup).expect("seed");
+    let removal = GraphDiff {
+        removed_files: vec![PathBuf::from("v1.2"), PathBuf::from("Makefile")],
+        ..GraphDiff::default()
+    };
+    store.apply_diff("main", &removal).expect("remove");
+    let remaining = store.list_all_nodes("main").expect("list");
+    assert_eq!(remaining.len(), 1, "{remaining:?}");
+    assert_eq!(remaining[0].id, folder.id);
+}
+
+#[test]
 fn last_indexed_sha_round_trip() {
     let (mut store, _dir) = tmp_store();
 

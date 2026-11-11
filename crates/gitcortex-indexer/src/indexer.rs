@@ -554,15 +554,8 @@ impl IncrementalIndexer {
         let mut diff = GraphDiff::default();
         diff.source_hashes
             .push((repo_relative_path.to_owned(), Some(source_hash.to_string())));
-        // Remove old code nodes for this file and old structural nodes for
-        // every ancestor folder (they'll be re-synthesised after merging).
+        // Folder nodes persist across updates, so only this file is replaced.
         diff.removed_files.push(repo_relative_path.to_owned());
-        for ancestor in repo_relative_path.ancestors().skip(1) {
-            if ancestor == Path::new("") || ancestor == Path::new(".") {
-                break;
-            }
-            diff.removed_files.push(ancestor.to_path_buf());
-        }
         diff.added_nodes = nodes;
         diff.added_edges = edges;
 

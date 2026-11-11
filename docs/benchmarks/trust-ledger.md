@@ -125,16 +125,18 @@ Hook timing (`GCX_TIMING=1 gcx hook`): 322ms first run, 259ms incremental (under
 | indexing_branch_gates_queries, indexing_gate_blocks_queries_while_a_job_is_held (mutation-checked) | PASS |
 | duplicate_requests_spawn_one_job (now 5 real MCP calls in both tool modes) | PASS |
 | idle_daemon_finishes_an_active_tree_job_before_exiting, idle_drain_is_capped_when_a_job_never_finishes | PASS |
-| dotted_directory_sibling_survives_incremental (B4-001) | IGNORED |
+| dotted_directory_sibling_survives_incremental (B4-001) | PASS |
+| after_modify_in_dotted_directory (hook path) | PASS |
 
-B4-001: an incremental update under a directory whose name has an extension
-(`v1.2/`) deletes that folder node, because `apply_diff` treats the ancestor entry
-in `removed_files` as a file, and the rebuilt folder lacks its edges to unchanged
-siblings. Confirmed on the tree path; the hook path shares `apply_diff`. Open.
+B4-001 (fixed): an incremental update under a directory whose name has an
+extension (`v1.2/`) deleted that folder node, because `apply_diff` inferred
+directories from extensions, and the rebuilt folder lost its edges to unchanged
+siblings. `removed_files` now carries files only, and removal never matches a
+`folder` node. Reused folders also no longer duplicate their edges to each other.
 
 Source symlinks are a documented split, not parity: checkout indexing refuses them
 (`indexing_rejects_source_symlink_outside_repository`), tree indexing skips them
 (`source_symlink_is_skipped_in_tree_but_refused_on_disk`).
 
-`cargo nextest run -p gitcortex-mcp -j 4`: 257 run, 257 passed, 2 skipped (B3-001, B4-001).
+`cargo nextest run -p gitcortex-mcp -j 4`: 259 run, 259 passed, 1 skipped (B3-001).
 

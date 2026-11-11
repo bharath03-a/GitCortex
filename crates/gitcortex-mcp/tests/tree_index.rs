@@ -121,7 +121,6 @@ fn tree_index_incremental_drops_folders_of_vanished_directories() {
 }
 
 #[test]
-#[ignore = "trust-ledger: B4-001"]
 fn dotted_directory_sibling_survives_incremental() {
     let repo = TestRepo::new();
     repo.write("v1.2/a.rs", "pub fn alpha() {}\n");

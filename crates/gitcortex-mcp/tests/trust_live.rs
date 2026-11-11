@@ -49,8 +49,9 @@ struct Live {
 fn state(data: &Value) -> &str {
     data["index"]["state"].as_str().unwrap_or("")
 }
+// `index_changed` echoes the pre-query index and carries no evidence.
 fn is_ready(data: &Value) -> bool {
-    state(data) == "ready"
+    state(data) == "ready" && data["status"] != "index_changed"
 }
 fn items(data: &Value) -> &[Value] {
     data["items"].as_array().map_or(&[], Vec::as_slice)
@@ -174,6 +175,21 @@ impl Live {
             .structured_content
             .unwrap()
     }
+    /// Asks again while the graph changes mid-query, as the response instructs.
+    async fn settled(&self, action: &str, params: Value) -> Value {
+        let deadline = tokio::time::Instant::now() + DEADLINE;
+        loop {
+            let data = self.call(action, params.clone()).await;
+            if data["status"] != "index_changed" {
+                return data;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "index kept changing: {data}"
+            );
+            tokio::time::sleep(POLL).await;
+        }
+    }
     async fn lookup(&self, name: &str) -> Value {
         self.call("lookup_symbol", json!({"name": name})).await
     }
@@ -240,7 +256,7 @@ async fn tree_branch_scenarios(live: &Live, case: &str) {
         }
         if is_ready(&data) {
             let symbols = live
-                .call(
+                .settled(
                     "lookup_symbol",
                     json!({"name": "feature_only", "branch": branch}),
                 )
@@ -268,7 +284,7 @@ async fn tree_branch_scenarios(live: &Live, case: &str) {
             tokio::time::sleep(POLL).await;
         }
         let feature = live
-            .call(
+            .settled(
                 "lookup_symbol",
                 json!({"name": "feature_only", "branch": "feat/x"}),
             )
@@ -276,7 +292,7 @@ async fn tree_branch_scenarios(live: &Live, case: &str) {
         assert!(is_ready(&feature), "{feature}");
         assert!(!items(&feature).is_empty(), "{feature}");
         let main = live
-            .call(
+            .settled(
                 "lookup_symbol",
                 json!({"name": "feature_only", "branch": "main"}),
             )
@@ -334,7 +350,9 @@ async fn restart_reconciles_stale_overlay(live: &Live) {
         reconciled["index"]["working_tree_verified"], true,
         "{reconciled}"
     );
-    let restored = live.lookup("original").await;
+    let restored = live
+        .settled("lookup_symbol", json!({"name": "original"}))
+        .await;
     assert!(is_ready(&restored), "{restored}");
     assert!(!items(&restored).is_empty(), "{restored}");
 }

@@ -66,7 +66,7 @@ fn incoming_edges_to_replaced_files(
     let mut rows = conn
         .query(&format!(
             "MATCH (src:{nt})-[e:{et}]->(dst:{nt}) \
-             WHERE dst.file IN [{files}] \
+             WHERE dst.file IN [{files}] AND dst.kind <> 'folder' \
              RETURN src.id, src.file, dst.file, dst.qualified_name, dst.kind, \
                     e.kind, e.line, e.confidence"
         ))
@@ -93,6 +93,25 @@ fn incoming_edges_to_replaced_files(
         });
     }
     Ok(preserved)
+}
+
+fn folder_edges(
+    conn: &Connection,
+    nt: &str,
+    et: &str,
+) -> Result<HashSet<(String, String, String)>> {
+    let mut rows = conn
+        .query(&format!(
+            "MATCH (s:{nt})-[e:{et}]->(d:{nt}) \
+             WHERE s.kind = 'folder' AND d.kind = 'folder' \
+             RETURN s.id, d.id, e.kind"
+        ))
+        .map_err(|e| GitCortexError::Store(format!("read folder edges: {e}")))?;
+    let mut edges = HashSet::new();
+    for row in rows.by_ref() {
+        edges.insert((str_val(&row[0])?, str_val(&row[1])?, str_val(&row[2])?));
+    }
+    Ok(edges)
 }
 
 fn restore_incoming_edges(
@@ -935,9 +954,9 @@ impl GraphStore for KuzuGraphStore {
         // per-row MATCH/CREATE on large repos.
         //
         // The diff's `removed_*` fields are ignored on this path: the indexer
-        // emits a `removed_files` entry for every parsed file + its ancestor
-        // folders (so an incremental re-parse first clears the old nodes), but
-        // against an empty table those deletes are vacuous. Deferred cross-file
+        // emits a `removed_files` entry for every parsed file (so an incremental
+        // re-parse first clears the old nodes), but against an empty table those
+        // deletes are vacuous. Deferred cross-file
         // resolution is likewise skipped — on a full index every in-repo name
         // is already in `added_edges`; the only `deferred_*` left are external
         // (stdlib) names the store couldn't resolve anyway.
@@ -959,7 +978,6 @@ impl GraphStore for KuzuGraphStore {
         let replaced_files: HashSet<String> = diff
             .removed_files
             .iter()
-            .filter(|file| file.extension().is_some())
             .map(|file| file.to_string_lossy().into_owned())
             .collect();
         let incoming_edges = incoming_edges_to_replaced_files(&conn, &nt, &et, &replaced_files)?;
@@ -971,7 +989,8 @@ impl GraphStore for KuzuGraphStore {
                 .join(",");
             let mut rows = conn
                 .query(&format!(
-                    "MATCH (node:{nt}) WHERE node.file IN [{files}] RETURN DISTINCT node.name"
+                    "MATCH (node:{nt}) WHERE node.file IN [{files}] AND node.kind <> 'folder' \
+                     RETURN DISTINCT node.name"
                 ))
                 .map_err(|e| GitCortexError::Store(format!("capture replaced names: {e}")))?;
             for row in rows.by_ref() {
@@ -1030,15 +1049,12 @@ impl GraphStore for KuzuGraphStore {
         }
 
         // 1. Remove nodes for deleted/replaced files.
-        //    Skip directory paths (no extension) — folder nodes are reused across
-        //    incremental updates to preserve their Contains edges to sibling files.
-        for file in &diff.removed_files {
-            if file.extension().is_none() {
-                continue;
-            }
-            let file_str = esc(file.to_string_lossy().as_ref());
+        //    Folder nodes are reused across incremental updates to preserve their
+        //    Contains edges to sibling files; only `removed_node_ids` removes one.
+        for file in &replaced_files {
+            let file_str = esc(file);
             conn.query(&format!(
-                "MATCH (n:{nt}) WHERE n.file = '{file_str}' DETACH DELETE n"
+                "MATCH (n:{nt}) WHERE n.file = '{file_str}' AND n.kind <> 'folder' DETACH DELETE n"
             ))
             .map_err(|e| GitCortexError::Store(format!("delete file nodes: {e}")))?;
         }
@@ -1157,9 +1173,23 @@ impl GraphStore for KuzuGraphStore {
         //    parallel edges. Remap folder IDs to existing DB nodes where applicable.
         //    MATCH yields nothing for missing endpoints → skip silently.
         let mut seen_edges: HashSet<(String, String, String)> = HashSet::new();
+        let stored_folder_edges = if id_remap.is_empty() {
+            HashSet::new()
+        } else {
+            folder_edges(&conn, &nt, &et)?
+        };
+        let resolved = |id: String| id_remap.get(&id).cloned().unwrap_or(id);
         let edge_rows: Vec<String> = diff
             .added_edges
             .iter()
+            .filter(|e| {
+                // Folders outlive updates, so their edges to each other can too.
+                !stored_folder_edges.contains(&(
+                    resolved(e.src.as_str()),
+                    resolved(e.dst.as_str()),
+                    e.kind.to_string(),
+                ))
+            })
             .filter(|e| {
                 let key = (
                     e.src.as_str().to_owned(),

@@ -93,6 +93,29 @@ fn after_rebase_onto_main() {
     assert_matches_rebuild(&repo, &store, "feat/x");
 }
 #[test]
+fn after_modify_in_dotted_directory() {
+    let repo = TestRepo::new();
+    repo.write("v1.2/changed.rs", "pub fn changed() {}\n");
+    repo.write("v1.2/sibling.rs", "pub fn sibling() {}\n");
+    repo.write("v1.2/pkg.d/nested.rs", "pub fn nested() {}\n");
+    repo.write("plain/inner/other.rs", "pub fn other() {}\n");
+    repo.commit("initial");
+    let mut store = KuzuGraphStore::open(repo.root()).unwrap();
+    index_hook_path(&repo, &mut store, "main");
+    repo.write("v1.2/changed.rs", "pub fn changed_again() {}\n");
+    repo.commit("modify beside siblings");
+    index_hook_path(&repo, &mut store, "main");
+    assert_matches_rebuild(&repo, &store, "main");
+    repo.write("v1.2/pkg.d/nested.rs", "pub fn nested_again() {}\n");
+    repo.commit("modify in nested dotted directory");
+    index_hook_path(&repo, &mut store, "main");
+    assert_matches_rebuild(&repo, &store, "main");
+    repo.write("plain/inner/other.rs", "pub fn other_again() {}\n");
+    repo.commit("modify in nested plain directory");
+    index_hook_path(&repo, &mut store, "main");
+    assert_matches_rebuild(&repo, &store, "main");
+}
+#[test]
 fn after_callee_added_later() {
     let repo = TestRepo::new();
     repo.write("caller.rs", "pub fn caller() { later(); }\n");
