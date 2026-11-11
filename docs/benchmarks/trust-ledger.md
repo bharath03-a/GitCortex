@@ -163,4 +163,20 @@ it, and again before writing, so a partial apply can never sit beside a checkpoi
 B6 full `just ci`: PASS (0 skipped).
 `cargo nextest run -p gitcortex-mcp -j 4`: 282 run, 282 passed, 0 skipped.
 
+## B7: trust hardening (mutation epochs, store-level folder pruning, non-blocking diagnostics)
 
+| scenario | first result | fix commit | final |
+|---|---|---|---|
+| finish_aborts_after_transient_checkout_with_overlay | FAIL: `finish` passed (`outcome.is_some()`) and certified `X` at `S1` with stray `overlay_only` nodes | 9fb4a00 | PASS |
+| finish_aborts_when_sync_commit_mutated_graph_without_sha | FAIL: `finish` passed (`outcome.is_some()`) after `sync_commit` mutated `X`'s graph without advancing `last_indexed_sha` | 9fb4a00 | PASS |
+| after_delete_last_file_in_directory (`trust_commit_path` + `assert_matches_rebuild`) | FAIL: rebuild mismatch — 4 vanished `Folder` nodes (`parent/vanish`, `parent/vanish/deep`, `parent/vanish/deep/inner`, `standalone_dir`) and 3 `Contains` edges remained in incremental store | bb25c66 | PASS |
+| watcher_prunes_vanished_nested_folders_and_keeps_surviving_sibling | FAIL: `left: ["parent", "parent/sibling", "parent/vanish", "parent/vanish/deep", "parent/vanish/deep/inner"]` vs `right: ["parent", "parent/sibling"]` | bb25c66 | PASS |
+| graph_stats_returns_indexing_promptly_when_finish_holds_store (`graph_stats` + `health_report`, full + compact) | FAIL: `Elapsed(())` (500ms timeout exceeded; blocked on `store.lock()`) | 4a12449 | PASS |
+
+1. **Per-key monotonic mutation epoch (`<branch>.epoch`)**: stored alongside `<branch>.sha` and `<branch>.dirty` in `gitcortex-store::branch` and exposed via `GraphStore::{mutation_epoch, bump_mutation_epoch}`. Bumped on every branch graph/revision write (`KuzuGraphStore::apply_diff`, `watcher::sync_commit`, `watcher::apply_disk_batch`, `tree_jobs::finish_tree_apply`, `cli::cmd::hook::run`, and `cli::cmd::init::universal::initial_index`). `TreeApply` snapshots `epoch` at `begin_tree_apply` and `apply_tree_index_shared` aborts at `finish` if `store.mutation_epoch(key)? != plan.epoch`, closing both transient-checkout overlay and interrupted `sync_commit` windows without coupling `gitcortex-store` to `gitcortex-mcp`.
+2. **Store-level folder pruning in `KuzuGraphStore::apply_diff`**: after deleting replaced/deleted file nodes and explicit `removed_node_ids`, ancestor `Folder` nodes of `diff.removed_files` are checked bottom-up (deepest path first) and deleted when no child `file` or `folder` remains via outgoing `Contains` edges. The duplicate `stale_folders` pass in `tree_jobs.rs` is removed so commit-hook, watcher, and tree-index paths share a single rule while preserving B4-001 dotted-directory survival and folder-edge deduplication.
+3. **Non-blocking diagnostics (`graph_stats`, `health_report`)**: `readiness_scopes_inner` (when `diagnostic` is true) and `try_lock_for_diagnostic` use `self.store.try_lock()`, returning `status: "index_not_ready"` with `index.state: "indexing"` immediately on `WouldBlock` instead of parking an async worker on `self.store.lock()` while `finish_tree_apply` holds the store mutex.
+
+B7 full gate (`cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace -j 4`, `cargo nextest run -p gitcortex-mcp -j 4`): PASS (0 skipped).
+`cargo nextest run -p gitcortex-mcp -j 4`: 287 run, 287 passed, 0 skipped.
+Hook timing (`GCX_TIMING=1 gcx hook` with isolated `GCX_STORE_PATH`): 497ms first run, 435ms incremental (under 500ms budget).
