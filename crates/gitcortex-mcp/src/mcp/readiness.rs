@@ -380,6 +380,27 @@ pub(crate) fn without_evidence(
     }
 }
 
+/// Readiness while another writer holds the store: no graph evidence, but the
+/// requested branch's commit is still resolved from Git.
+pub(crate) fn store_busy(root: &Path, branch: &str) -> IndexReadiness {
+    IndexReadiness {
+        target_revision: git(
+            root,
+            &[
+                "rev-parse",
+                "--verify",
+                "--end-of-options",
+                &format!("{branch}^{{commit}}"),
+            ],
+        ),
+        ..without_evidence(
+            "indexing",
+            branch,
+            "A branch index is being written to the graph; retry shortly.".to_owned(),
+        )
+    }
+}
+
 /// Inspect commit evidence without consulting a checkout or HEAD.
 pub fn inspect_commit(store: &dyn GraphStore, key: &str, sha: &str) -> IndexReadiness {
     let indexed = store.last_indexed_sha(key);

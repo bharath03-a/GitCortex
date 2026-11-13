@@ -209,14 +209,7 @@ impl GitCortexServer {
             {
                 return Ok(scopes
                     .iter()
-                    .map(|scope| {
-                        super::readiness::without_evidence(
-                            "indexing",
-                            scope,
-                            "A branch index is being written to the graph; retry shortly."
-                                .to_owned(),
-                        )
-                    })
+                    .map(|scope| super::readiness::store_busy(&self.repo_root, scope))
                     .collect());
             }
             Err(std::sync::TryLockError::WouldBlock) => {
@@ -242,11 +235,7 @@ impl GitCortexServer {
                 )]))
             }
             Err(std::sync::TryLockError::WouldBlock) => {
-                let readiness = super::readiness::without_evidence(
-                    "indexing",
-                    branch,
-                    "A branch index is being written to the graph; retry shortly.".to_owned(),
-                );
+                let readiness = super::readiness::store_busy(&self.repo_root, branch);
                 Err(CallToolResult::structured(json!({
                     "status": "index_not_ready",
                     "index": readiness,
