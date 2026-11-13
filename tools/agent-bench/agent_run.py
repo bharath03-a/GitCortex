@@ -698,6 +698,10 @@ def summarize(results: list[AgentTaskResult]) -> dict[str, Any]:
 
 
 def main() -> int:
+    if "--unforced" in sys.argv[1:]:
+        from unforced_run import main as unforced_main
+
+        return unforced_main([arg for arg in sys.argv[1:] if arg != "--unforced"])
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--suite", type=Path, default=DEFAULT_SUITE)
     parser.add_argument("--gcx", type=Path, required=True)
