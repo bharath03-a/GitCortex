@@ -51,7 +51,7 @@ structured-content contract when no output schema is advertised.
 
 | scenario | first result | fix commit | final |
 |---|---|---|---|
-| uncommitted_edit_visible_after_debounce (B3-001) | FAIL | — (architectural; deferred) | IGNORED |
+| uncommitted_edit_visible_after_debounce (B3-001) | FAIL | cea0c7e (B6 overlay checkpoint) | PASS |
 | clean_checkout_reports_ready_and_verified (positive control) | PASS | — | PASS |
 | deleted_file_symbols_disappear (asserts the symbol is visible first) | FAIL: test unwrapped items during transient degraded response | — (test polling corrected) | PASS |
 | branch_omitted_answers_current_checkout | PASS | — | PASS |
@@ -65,13 +65,10 @@ B3-001 root cause: `readiness::inspect` hard-codes `unverified` whenever
 `apply_disk_batch` verifies batch snapshots only against HEAD, so an uncommitted
 overlay can never be certified. The function is visible within the debounce
 window, but the response stays `unverified` with `working_tree_verified=false`
-(reproduced after the B3 rewrite with `--ignored`). The fix is a persisted
-overlay checkpoint `{head, path -> blob hash}` that readiness revalidates
-against the working tree across requests and restarts, rather than clearing the
-dirty marker or equating watcher health with verified content. That changes
-readiness semantics and shared watcher state, so the scenario stays an explicit
-ignored regression under the plan's architectural-stop rule. No production fix
-is claimed.
+(reproduced after the B3 rewrite with `--ignored`). Resolved in B6 (`cea0c7e` /
+`ddbce46`) via a persisted atomic overlay checkpoint `{head, branch_key, files: path -> blob hash | null}`
+that readiness revalidates against the working tree across requests and restarts
+while keeping `.dirty` set and respecting pending watcher events.
 
 During B3 targeted runs the real-root count rose 9371 → 9372 from another
 worktree's hook (the new directory contains
@@ -139,4 +136,31 @@ Source symlinks are a documented split, not parity: checkout indexing refuses th
 (`source_symlink_is_skipped_in_tree_but_refused_on_disk`).
 
 `cargo nextest run -p gitcortex-mcp -j 4`: 259 run, 259 passed, 1 skipped (B3-001).
+
+## B6: working-tree overlay checkpoint and readiness certification
+
+| scenario | first result | fix commit | final |
+|---|---|---|---|
+| uncommitted_edit_visible_after_debounce (B3-001 un-ignored) | FAIL (pre-B6) | 7fffe9c | PASS |
+| edit_then_settle_reports_ready_and_verified | PASS | 7fffe9c | PASS |
+| further_edit_after_checkpoint_returns_unverified_until_settled | PASS | 7fffe9c | PASS |
+| checkpoint_for_other_head_is_not_trusted | PASS | 7fffe9c | PASS |
+| changed_file_set_mismatch_is_not_certified | PASS | 7fffe9c | PASS |
+| deleted_file_overlay_certifies_after_settle | PASS | 7fffe9c | PASS |
+| restart_with_valid_checkpoint_recertifies_without_reindex | PASS | 7fffe9c | PASS |
+| restart_with_tampered_or_corrupt_checkpoint_stays_unverified | PASS | 7fffe9c | PASS |
+| oversized_or_many_changed_files_stay_unverified | PASS | 7fffe9c | PASS |
+| begin_leaves_overlay_of_checked_out_key_certified (mutation-checked) | FAIL (pre-rebase order) | 7fffe9c | PASS |
+| finish_leaves_overlay_written_during_the_job_certified | PASS | 7fffe9c | PASS |
+| successful_job_content_is_not_recertified_from_an_old_overlay | PASS | 7fffe9c | PASS |
+| failed_job_cannot_be_recertified_from_an_old_overlay (mutation-checked) | PASS | 7fffe9c | PASS |
+| overlay_written_during_the_job_does_not_outlive_its_apply (mutation-checked) | PASS | 7fffe9c | PASS |
+| failed_apply_leaves_no_overlay_to_recertify | PASS | 7fffe9c | PASS |
+
+A tree job removes a key's overlay only after confirming the checkout does not own
+it, and again before writing, so a partial apply can never sit beside a checkpoint.
+
+B6 full `just ci`: PASS (0 skipped).
+`cargo nextest run -p gitcortex-mcp -j 4`: 282 run, 282 passed, 0 skipped.
+
 
