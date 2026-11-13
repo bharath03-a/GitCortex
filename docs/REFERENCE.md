@@ -205,8 +205,8 @@ can index the branch: call any tool with `branch` set to it.
 Uses the branch's stored `.gitcortex/ignore`; uncommitted files do not affect the
 result. Binary and oversized sources are excluded using the same limits as
 checkout indexing. A tracked source symlink is skipped here, since a tree holds
-only its target path and nothing is followed, while checkout indexing refuses it
-with an error so that no read can leave the repository.
+only its target path. Checkout indexing skips it too, logging one warning per
+skipped path, and never follows a symlink, so no read can leave the repository.
 
 MCP requests for an unindexed or stale local branch outside the checkout start
 a bounded background tree index. Readiness remains under `index`:
@@ -229,8 +229,8 @@ An empty or stale graph never establishes that dependencies are absent.
 #### MCP readiness states and working-tree overlay certification
 
 Every MCP tool response carries an `index` metadata envelope with `state`,
-`working_tree_verified`, `working_tree_dirty`, `indexed_revision`, and
-`target_revision`:
+`branch`, `checkout_branch`, `checkout_revision`, `target_revision`,
+`indexed_revision`, `working_tree_verified`, and `next_action`:
 
 | `index.state` | `working_tree_verified` | Meaning |
 |---|---|---|
@@ -244,9 +244,12 @@ Every MCP tool response carries an `index` metadata envelope with `state`,
 | `unavailable` | `false` | Repository or store state could not be inspected. |
 
 **Overlay checkpoint & skipped-file rule:**
-- After a successful live watcher batch on a dirty checkout, the daemon atomically writes `<branch_key>.overlay` next to `<branch_key>.dirty` containing `{ head, branch_key, files: { path -> git_blob_sha1 | null } }`. The `.dirty` marker stays set until the working tree returns to a clean `HEAD`.
-- `readiness::inspect` certifies a dirty checkout (`state = "ready"`, `working_tree_verified = true`) only when `.dirty` is set, no watcher events are pending, the checkpoint's `head` and `branch_key` match the checkout, its path set exactly equals `changed_sources(root)`, and every file's current git-blob SHA-1 on disk matches the checkpoint (`null` for deleted tracked files whose path is absent on disk).
-- **Ignored and unsupported files** (`.gitignore`, `.gitcortex/ignore`, `.git/`, `.gitcortex/`, `target/`, `node_modules/`, and non-indexed extensions) are excluded by `IncrementalIndexer::includes_path` from both `changed_sources(root)` and the checkpoint: they do not block certification and are never claimed as indexed.
+- After a successful live watcher batch on a dirty checkout, the daemon atomically writes `<branch_key>.overlay` next to `<branch_key>.dirty` containing `{ head, branch_key, files: { path -> git_blob_sha1 | null }, ignore: git_blob_sha1 | null }`, where `ignore` is the hash of the working-tree `.gitcortex/ignore` the overlay was indexed under. The `.dirty` marker stays set until the working tree returns to a clean `HEAD`.
+- `readiness::inspect` certifies a dirty checkout (`state = "ready"`, `working_tree_verified = true`) only when `.dirty` is set, no watcher events are pending, the checkpoint's `head` and `branch_key` match the checkout, its path set exactly equals `changed_sources(root)`, every file's current git-blob SHA-1 on disk matches the checkpoint (`null` for deleted tracked files whose path is absent on disk), and the current `.gitcortex/ignore` hash matches `ignore`.
+- **Ignored and unsupported files** (`.gitcortex/ignore` patterns, `.git/`, `.gitcortex/`, `target/`, `node_modules/`, and non-indexed extensions) are excluded by `IncrementalIndexer::includes_path` from both `changed_sources(root)` and the checkpoint: they do not block certification and are never claimed as indexed. When a file already in the graph becomes ignored, its nodes are removed on its next change.
+- **Untracked git-ignored files** (for example `.venv/**/*.py` or `.next/**/*.js`) are never indexed by the watcher and any nodes they left behind are removed; Git status never reports them, so they do not block certification. Tracked files matching a `.gitignore` pattern are still indexed.
+- **Ignore-rule changes:** editing or deleting a committed `.gitcortex/ignore` keeps the checkout `unverified`, clean or dirty, until the change is committed or reverted. The watcher reconciles the whole graph when the rules file changes, and indexing a commit that changes the rules re-evaluates every path.
+- **Source symlinks** are skipped, never followed. A dirty symlinked source has no recorded hash, so it keeps the checkout `unverified`.
 - **Deleted tracked source files** remove graph nodes during the watcher batch and record `null` in the checkpoint; `inspect` verifies the path no longer exists on disk.
 - **Oversized (`> 512 KiB`) or binary/non-UTF-8 source files** with supported extensions are skipped by the AST parser, so their symbols are absent from the graph while they remain in `changed_sources(root)`. The watcher removes any `.overlay` checkpoint and `inspect` keeps the checkout `unverified` (`working_tree_verified = false`).
 - **Inspection bounds:** `inspect` hashes at most 64 changed files, at most 512 KiB per file, and at most 4 MiB total bytes (checkpoint JSON capped at 256 KiB). Exceeding any cap leaves `state = "unverified"`.
@@ -1330,6 +1333,8 @@ vendor/
 ```
 
 The file is read by the [`ignore` crate](https://docs.rs/ignore) and supports the full `.gitignore` pattern syntax including negation (`!`), directory anchors, and double-star globs.
+
+Rule changes apply to files already in the graph: a commit that changes this file re-evaluates every path, and a running `gcx serve` reconciles when the working-tree copy changes. While a committed copy has uncommitted edits, checkout readiness stays `unverified`.
 
 ---
 
