@@ -1,0 +1,62 @@
+suite = "continuous-v1"
+version = 1
+# Pinned repos come from the core suite. Each episode starts from the pinned
+# commit plus `start.patch` (seeded bugs). Hidden tests live next to the
+# patches, outside the agent's checkout, and are copied in only to score a step.
+# `reference-stepN.patch` apply in order to the start state; verification proves
+# the hidden tests fail at start and pass after the references (continuous_verify.py).
+core_suite = "suite.toml"
+
+[[episodes]]
+id = "requests-auth-redirect"
+repo = "requests"
+language = "python"
+family = "cross-module-debug"
+dir = "episodes/requests-auth-redirect"
+runner = "pytest"
+reference_files = ["src/requests/utils.py", "src/requests/sessions.py"]
+
+[[episodes.steps]]
+id = "step1"
+kind = "edit"
+tests = "test_step1.py"
+prompt = "Users report that following a redirect between https://example.com:443/a and https://example.com/b drops the Authorization header, even though both URLs point at the same server on the standard https port. Find the root cause in this codebase and fix it. Do not edit test files."
+
+[[episodes.steps]]
+id = "step2"
+kind = "edit"
+tests = "test_step2.py"
+prompt = "Follow-up: credentials must also never follow a redirect that leaves the original server. Check that a redirect to a different host, a different port, or a lower scheme (https to http) all drop the Authorization header, while http to https on the same host keeps it, and fix whatever is wrong. Do not edit test files."
+
+[[episodes.steps]]
+id = "probe"
+kind = "probe"
+prompt = "Before wrapping up: which source files reference the DEFAULT_PORTS constant, counting both its definition and every use? Answer from the code, citing repository-relative paths."
+required = ["src/requests/utils.py", "src/requests/sessions.py"]
+
+[[episodes]]
+id = "cobra-find-flags"
+repo = "cobra"
+language = "go"
+family = "cross-module-debug"
+dir = "episodes/cobra-find-flags"
+runner = "gotest"
+reference_files = ["command.go"]
+
+[[episodes.steps]]
+id = "step1"
+kind = "edit"
+tests = "TestHiddenStep1"
+prompt = "A command tree has a persistent string flag --config, a persistent bool flag --verbose, and a subcommand named sub. Running `root --config x sub` and `root --verbose sub` does not dispatch to sub. Find the root cause in this codebase and fix it. Do not edit test files."
+
+[[episodes.steps]]
+id = "step2"
+kind = "edit"
+tests = "TestHiddenStep2"
+prompt = "Follow-up: the short forms must work the same way. `root -n x sub` (-n is a persistent string flag) and `root -v sub` (-v is a persistent bool flag) must also reach sub, including through Execute with mixed long and short flags. Fix whatever is wrong. Do not edit test files."
+
+[[episodes.steps]]
+id = "probe"
+kind = "probe"
+prompt = "Before wrapping up: where is the stripFlags function called from? List every call site by function and file, answering from the code."
+required = ["command.go", "Find"]

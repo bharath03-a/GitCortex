@@ -1,0 +1,11 @@
+--- a/src/requests/utils.py
++++ b/src/requests/utils.py
+@@ -82,7 +82,7 @@
+ DEFAULT_CA_BUNDLE_PATH: str = certs.where()
+ 
+ 
+-DEFAULT_PORTS: Final = {"http": 80, "https": 444}
++DEFAULT_PORTS: Final = {"http": 80, "https": 443}
+ 
+ _KT = TypeVar("_KT")
+ _VT = TypeVar("_VT")
