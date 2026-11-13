@@ -1358,6 +1358,7 @@ dependencies = [
  "pulldown-cmark",
  "rayon",
  "tempfile",
+ "tracing",
  "tree-sitter",
  "tree-sitter-go",
  "tree-sitter-java",
