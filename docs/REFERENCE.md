@@ -12,6 +12,7 @@ Complete reference for the `gcx` CLI, MCP server tools, configuration, and graph
   - [gcx init](#gcx-init)
   - [gcx deinit](#gcx-deinit)
   - [gcx serve](#gcx-serve)
+  - [gcx index](#gcx-index)
   - [gcx hook](#gcx-hook)
   - [gcx query](#gcx-query)
   - [gcx blast-radius](#gcx-blast-radius)
@@ -185,6 +186,45 @@ gcx serve [OPTIONS]
 gcx serve          # compact single-dispatch surface (default)
 gcx serve --full   # compact dispatch plus all individual tools
 ```
+
+---
+
+### gcx index
+
+```bash
+gcx index --branch <name>
+```
+
+Synchronously index a local branch from committed git objects without checking
+it out. Prints the branch's total node and edge counts, marked `unchanged` when
+the branch was already current. `<name>` must be a local branch; revision syntax
+such as `main~1` is refused, and remote-only branches need a local branch first.
+While an MCP session owns the graph this command cannot open it, but that session
+can index the branch: call any tool with `branch` set to it.
+
+Uses the branch's stored `.gitcortex/ignore`; uncommitted files do not affect the
+result. Binary and oversized sources are excluded using the same limits as
+checkout indexing. A tracked source symlink is skipped here, since a tree holds
+only its target path and nothing is followed, while checkout indexing refuses it
+with an error so that no read can leave the repository.
+
+MCP requests for an unindexed or stale local branch outside the checkout start
+a bounded background tree index. Readiness remains under `index`:
+`index.state = "indexing"` and `index.next_action` asks the caller to retry.
+One job runs at a time; duplicate requests share the pending job. A failed job
+reports `missing` with its error and can be retried after 60 seconds. Unknown
+local branches report `missing` immediately without scheduling work; a key that
+is not a local branch but has an indexed commit, such as a detached short SHA,
+answers from that commit without a job. A job never writes the checked-out branch,
+whose graph belongs to the watcher: if the branch becomes checked out or its SHA
+moves while the job runs, the job stops without applying. An idle daemon waits up
+to 10 minutes for active jobs before exiting. While a job writes its result the
+store is busy, and requests report `indexing` rather than waiting.
+
+Commit readiness compares the persisted SHA and dirty marker with the requested
+commit. Failed applies remain `unverified`; successful tree indexing publishes
+`ready` with `working_tree_verified = false`, since it certifies committed blobs.
+An empty or stale graph never establishes that dependencies are absent.
 
 ---
 

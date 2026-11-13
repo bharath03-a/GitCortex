@@ -82,3 +82,61 @@ B3 full `just ci`: PASS (one documented ignored scenario).
 `cargo nextest run -p gitcortex-mcp -j 4`: 205 run, 205 passed, 1 skipped
 (B3-001). The only library change in B1–B3 is the `#[doc(hidden)]` test-only
 accessor `KuzuGraphStore::list_reference_facts`; no behavior changed.
+
+## B4: tree indexing from git objects without checkout
+
+| scenario | first result | fix commit | final |
+|---|---|---|---|
+| tree_source_lists_same_paths_as_disk | PASS | — | PASS |
+| tree_source_honors_ignore_in_tree | PASS | — | PASS |
+| tree_index_skips_binary_and_oversized | PASS | — | PASS |
+| tree_index_matches_checkout_index | PASS | — | PASS |
+| tree_index_incremental_from_sha | PASS | — | PASS |
+| tree_index_handles_unicode_branch | PASS | — | PASS |
+| inspect_commit_ready_in_bare_repo | PASS | — | PASS |
+| inspect_commit_ready_with_unborn_checkout | PASS | — | PASS |
+| inspect_commit_wrong_sha_is_stale | PASS | — | PASS |
+| inspect_commit_dirty_marker_is_unverified | PASS | — | PASS |
+| inspect_commit_missing_key_is_missing | PASS | — | PASS |
+| inspect_checkout_semantics_unchanged | PASS | — | PASS |
+| failed_tree_apply_stays_unverified | PASS | — | PASS |
+| tree_apply_publishes_sha_only_after_success | PASS | — | PASS |
+| failed_first_apply_is_unverified_without_sha | PASS | — | PASS |
+| dirty_retry_rebuilds_complete_tree | PASS | — | PASS |
+| requested_unindexed_branch_starts_tree_index | PASS | — | PASS |
+| unknown_branch_reports_missing_without_indexing | PASS | — | PASS |
+| duplicate_requests_spawn_one_job | PASS | — | PASS |
+| failed_tree_index_reports_error_and_allows_retry | PASS | — | PASS |
+| tree_index_concurrent_with_watcher | PASS | — | PASS |
+| index_branch_preserves_checkout_and_ignores_uncommitted_bytes | PASS | — | PASS |
+
+B4 full `just ci`: PASS (real-root count 9470 → 9470).
+`cargo nextest run -p gitcortex-mcp -j 4`: 236 run, 236 passed, 1 skipped (B3-001).
+Hook timing (`GCX_TIMING=1 gcx hook`): 322ms first run, 259ms incremental (under 500ms budget).
+
+### B4 review fixes
+
+| Test | Result |
+| --- | --- |
+| finish_aborts_when_key_became_checked_out, finish_aborts_when_baseline_moved_even_after_leaving_checkout, begin_aborts_for_checked_out_key_without_touching_markers, queued_job_cannot_overwrite_a_key_that_became_checked_out | PASS |
+| non_branch_input_reports_missing_without_work, resolve_local_branch_rejects_revision_syntax, revision_syntax_and_unknown_branches_are_refused_clearly | PASS |
+| legacy_blob_modes_index_as_regular_files, unusual_tree_entries_survive_the_full_apply_path | PASS |
+| dirty_retry_drops_folders_of_vanished_directories, tree_index_incremental_drops_folders_of_vanished_directories | PASS |
+| indexing_branch_gates_queries, indexing_gate_blocks_queries_while_a_job_is_held (mutation-checked) | PASS |
+| duplicate_requests_spawn_one_job (now 5 real MCP calls in both tool modes) | PASS |
+| idle_daemon_finishes_an_active_tree_job_before_exiting, idle_drain_is_capped_when_a_job_never_finishes | PASS |
+| dotted_directory_sibling_survives_incremental (B4-001) | PASS |
+| after_modify_in_dotted_directory (hook path) | PASS |
+
+B4-001 (fixed): an incremental update under a directory whose name has an
+extension (`v1.2/`) deleted that folder node, because `apply_diff` inferred
+directories from extensions, and the rebuilt folder lost its edges to unchanged
+siblings. `removed_files` now carries files only, and removal never matches a
+`folder` node. Reused folders also no longer duplicate their edges to each other.
+
+Source symlinks are a documented split, not parity: checkout indexing refuses them
+(`indexing_rejects_source_symlink_outside_repository`), tree indexing skips them
+(`source_symlink_is_skipped_in_tree_but_refused_on_disk`).
+
+`cargo nextest run -p gitcortex-mcp -j 4`: 259 run, 259 passed, 1 skipped (B3-001).
+

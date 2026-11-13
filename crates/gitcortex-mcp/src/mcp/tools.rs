@@ -49,6 +49,7 @@ use serde_json::json;
 pub struct GitCortexServer {
     store: Arc<Mutex<KuzuGraphStore>>,
     repo_root: PathBuf,
+    tree_jobs: super::tree_jobs::TreeIndexJobs,
     default_branch: Arc<Mutex<String>>,
     graph_revision: Arc<AtomicU64>,
     watcher_unhealthy: Arc<AtomicBool>,
@@ -100,8 +101,10 @@ impl GitCortexServer {
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(DEFAULT_RESPONSE_BUDGET)
             .max(MIN_RESPONSE_BUDGET);
+        let store = Arc::new(Mutex::new(store));
         Ok(Self {
-            store: Arc::new(Mutex::new(store)),
+            tree_jobs: super::tree_jobs::TreeIndexJobs::new(repo_root, store.clone()),
+            store,
             repo_root: repo_root.to_owned(),
             default_branch: Arc::new(Mutex::new(default_branch)),
             graph_revision: Arc::new(AtomicU64::new(0)),
@@ -132,6 +135,150 @@ impl GitCortexServer {
         requested
             .map(str::to_owned)
             .unwrap_or_else(|| detect_current_branch(&self.repo_root).unwrap_or_default())
+    }
+
+    /// Whether a branch index is queued or running.
+    pub(crate) fn has_active_tree_job(&self) -> bool {
+        self.tree_jobs.is_active()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn tree_jobs(&self) -> &super::tree_jobs::TreeIndexJobs {
+        &self.tree_jobs
+    }
+
+    /// Readiness of one requested scope given the checkout observed for this
+    /// request.
+    pub(crate) fn scope_readiness(
+        &self,
+        store: &dyn GraphStore,
+        checkout: Option<&str>,
+        scope: &str,
+    ) -> super::readiness::IndexReadiness {
+        // Unknown checkout: this scope may be the watcher's key, so start no job.
+        let Some(checkout) = checkout else {
+            return super::readiness::without_evidence(
+                "unavailable",
+                scope,
+                "Could not determine the current checkout. Verify the repository and fall back to source inspection.".to_owned(),
+            );
+        };
+        if checkout != scope {
+            return self.tree_scope_readiness(store, scope);
+        }
+        let mut state = super::readiness::inspect(&self.repo_root, store, scope);
+        if self
+            .watcher_unhealthy
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            state.state = "degraded";
+            state.working_tree_verified = false;
+            state.next_action = "Watcher synchronization is incomplete or failed. Wait for recovery or inspect source and restart gcx serve.".to_owned();
+        }
+        state
+    }
+
+    pub(crate) fn readiness_scopes(
+        &self,
+        scopes: &[String],
+    ) -> Result<Vec<super::readiness::IndexReadiness>, rmcp::ErrorData> {
+        let poisoned = || rmcp::ErrorData::internal_error("store mutex poisoned", None);
+        // A branch apply can hold the store for a long time; never park a worker
+        // behind it just to learn that the graph is busy.
+        let store = match self.store.try_lock() {
+            Ok(store) => store,
+            Err(std::sync::TryLockError::Poisoned(_)) => return Err(poisoned()),
+            Err(std::sync::TryLockError::WouldBlock) if self.tree_jobs.is_applying() => {
+                return Ok(scopes
+                    .iter()
+                    .map(|scope| {
+                        super::readiness::without_evidence(
+                            "indexing",
+                            scope,
+                            "A branch index is being written to the graph; retry shortly."
+                                .to_owned(),
+                        )
+                    })
+                    .collect());
+            }
+            Err(std::sync::TryLockError::WouldBlock) => {
+                self.store.lock().map_err(|_| poisoned())?
+            }
+        };
+        let checkout = detect_current_branch(&self.repo_root);
+        Ok(scopes
+            .iter()
+            .map(|scope| self.scope_readiness(&*store, checkout.as_deref(), scope))
+            .collect())
+    }
+
+    /// Readiness of a branch other than the checkout, scheduling a background
+    /// tree index when its committed graph is absent or out of date.
+    fn tree_scope_readiness(
+        &self,
+        store: &dyn GraphStore,
+        branch: &str,
+    ) -> super::readiness::IndexReadiness {
+        use super::tree_jobs::{resolve_local_branch, JobStatus, RETRY_AFTER};
+        let sha = match resolve_local_branch(&self.repo_root, branch) {
+            Ok(Some(sha)) => sha,
+            // Never enqueue a typo: the ref must exist before any work.
+            Ok(None) => return self.non_branch_readiness(store, branch),
+            Err(error) => {
+                return super::readiness::without_evidence(
+                    "unavailable",
+                    branch,
+                    format!(
+                        "Could not read branch {branch}: {error}. Fall back to source inspection."
+                    ),
+                );
+            }
+        };
+        let mut state = super::readiness::inspect_commit(store, branch, &sha);
+        if !matches!(state.state, "missing" | "stale" | "unverified") {
+            return state;
+        }
+        match self.tree_jobs.request(branch, &sha) {
+            JobStatus::Started | JobStatus::AlreadyRunning => {
+                state.state = "indexing";
+                state.next_action =
+                    format!("Branch {branch} is being indexed from commit {sha}; retry shortly.");
+            }
+            // Keep this text constant between calls: `next_action` takes part in
+            // the before/after comparison that detects a changed index.
+            JobStatus::Failed { error, .. } => {
+                state.state = "missing";
+                state.next_action = format!(
+                    "Indexing branch {branch} from commit {sha} failed: {error}. Retry after {} s, or close MCP sessions and run gcx index --branch {branch}.",
+                    RETRY_AFTER.as_secs()
+                );
+            }
+        }
+        state
+    }
+
+    /// A key that is not a local branch: a detached or full-SHA key answers from
+    /// its persisted commit; anything else has no graph. Neither starts a job.
+    fn non_branch_readiness(
+        &self,
+        store: &dyn GraphStore,
+        key: &str,
+    ) -> super::readiness::IndexReadiness {
+        match store.last_indexed_sha(key) {
+            Ok(Some(sha)) => super::readiness::inspect_commit(store, key, &sha),
+            Ok(None) => super::readiness::without_evidence(
+                "missing",
+                key,
+                super::tree_jobs::missing_branch_message(&self.repo_root, key),
+            ),
+            Err(error) => super::readiness::without_evidence(
+                "unavailable",
+                key,
+                format!(
+                    "Could not read the index for {key}: {error}. Fall back to source inspection."
+                ),
+            ),
+        }
     }
 
     /// Truncate a list of JSON items to fit `response_budget`, returning the
@@ -1960,21 +2107,7 @@ impl GitCortexServer {
         } else {
             vec![branch]
         };
-        let inspect = || -> Result<Vec<super::readiness::IndexReadiness>, rmcp::ErrorData> {
-            let store = self
-                .store
-                .lock()
-                .map_err(|_| rmcp::ErrorData::internal_error("store mutex poisoned", None))?;
-            Ok(scopes.iter().map(|scope| {
-                let mut state = super::readiness::inspect(&self.repo_root, &*store, scope);
-                if self.watcher_unhealthy.load(Ordering::Acquire) {
-                    state.state = "degraded";
-                    state.working_tree_verified = false;
-                    state.next_action = "Watcher synchronization is incomplete or failed. Wait for recovery or inspect source and restart gcx serve.";
-                }
-                state
-            }).collect())
-        };
+        let inspect = || self.readiness_scopes(&scopes);
         let before = inspect()?;
         let generation = self.graph_revision.load(Ordering::Acquire);
         let diagnostic = matches!(action.as_str(), "graph_stats" | "health_report");
@@ -1983,7 +2116,7 @@ impl GitCortexServer {
             && before.iter().any(|scope| {
                 matches!(
                     scope.state,
-                    "missing" | "stale" | "unavailable" | "degraded"
+                    "missing" | "stale" | "unavailable" | "degraded" | "indexing"
                 ) || (safety_sensitive && scope.state == "unverified")
             });
         let index = if before.len() == 1 {
@@ -1991,11 +2124,19 @@ impl GitCortexServer {
         } else {
             json!({"scopes": before})
         };
-        if blocked {
-            return Ok(CallToolResult::structured_error(json!({
+        // Diagnostics stay non-errors, but cannot read a store held by an apply.
+        let store_busy =
+            self.tree_jobs.is_applying() && before.iter().any(|scope| scope.state == "indexing");
+        if blocked || (diagnostic && store_busy) {
+            let payload = json!({
                 "status": "index_not_ready", "index": index,
                 "message": "Graph coverage cannot support this query. Empty or stale evidence does not establish that there are no dependencies. Inspect source and relevant tests."
-            })));
+            });
+            return Ok(if blocked {
+                CallToolResult::structured_error(payload)
+            } else {
+                CallToolResult::structured(payload)
+            });
         }
         let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
         let mut result = self.active_tool_router().call(tcc).await?;
