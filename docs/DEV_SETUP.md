@@ -125,3 +125,23 @@ This is overkill for most contributors but useful for CI debugging and air-gappe
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — how the crates fit together
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md) — per-track contributor guide
 - [`adr/`](adr/) — design decisions
+
+## Isolated development stores
+
+Cargo sets `GCX_STORE_PATH` to this checkout's `target/gcx-test-store`
+(via `.cargo/config.toml`). Tests and `cargo run` therefore use disposable
+stores instead of the real user data root. An explicitly exported
+`GCX_STORE_PATH` takes precedence; unset it before running the test suite.
+The agent benchmark exports `GCX_STORE_PATH=<--work>/store` (default
+`/tmp/gcx-agent-bench/store`) for its child commands, so benchmark indexes are
+isolated too.
+
+Two caveats:
+
+- `cargo run -- init` indexes the disposable store and installs hooks that call
+  the `gcx` on your `PATH`. Later Git commands outside Cargo do not inherit
+  Cargo's `[env]`, so those hooks use the real store unless you explicitly
+  export `GCX_STORE_PATH`. Export a disposable path before exercising hooks.
+- `[env]` in `.cargo/config.toml` is read from the working directory upward.
+  `cargo run --manifest-path <repo>/Cargo.toml` from outside the checkout skips
+  it and falls back to the real store; `cd` into the checkout first.
