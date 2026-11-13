@@ -432,3 +432,54 @@ fn overlay_over_the_total_byte_budget_writes_no_checkpoint() {
     );
     assert_uncertified(&state(&repo, &store));
 }
+
+/// Indexes an edit, then replaces a.rs and its checkpoint by hand with the
+/// correct blob hash of `bytes`, so only the content gates can refuse it.
+fn hand_written_checkpoint_state(bytes: &[u8]) -> IndexReadiness {
+    let repo = TempRepo::init();
+    let head = commit_file(repo.path(), "a.rs", "pub fn alpha() {}\n", "a");
+    let store = indexed(&repo, &head);
+    std::fs::write(repo.path().join("a.rs"), "pub fn alpha_edited() {}\n").expect("edit");
+    batch(&repo, &store, &head, &["a.rs"]);
+    assert_certified(&state(&repo, &store));
+    std::fs::write(repo.path().join("a.rs"), bytes).expect("replace");
+    let hash = git2::Oid::hash_object(git2::ObjectType::Blob, bytes)
+        .expect("hash")
+        .to_string();
+    let checkpoint = serde_json::json!({
+        "head": head,
+        "branch_key": gitcortex_store::branch::sanitize("main"),
+        "files": {"a.rs": hash},
+        "ignore": null,
+    });
+    std::fs::write(
+        super::readiness::overlay_checkpoint_path(repo.path(), "main"),
+        checkpoint.to_string(),
+    )
+    .expect("checkpoint");
+    state(&repo, &store)
+}
+
+#[test]
+fn hand_written_checkpoint_with_a_correct_hash_certifies_valid_source() {
+    let _stores = lock_stores();
+    assert_certified(&hand_written_checkpoint_state(b"pub fn by_hand() {}\n"));
+}
+
+#[test]
+fn hand_written_checkpoint_for_an_oversized_file_is_not_certified() {
+    let _stores = lock_stores();
+    let size = super::readiness::MAX_OVERLAY_FILE_BYTES as usize + 1;
+    let mut bytes = b"pub fn big() {}\n".to_vec();
+    bytes.resize(size, b' ');
+    assert!(!bytes.contains(&0) && std::str::from_utf8(&bytes).is_ok());
+    assert_uncertified(&hand_written_checkpoint_state(&bytes));
+}
+
+#[test]
+fn hand_written_checkpoint_for_a_nul_file_is_not_certified() {
+    let _stores = lock_stores();
+    let bytes = b"pub fn nul() {}\n\0\n";
+    assert!((bytes.len() as u64) < super::readiness::MAX_OVERLAY_FILE_BYTES);
+    assert_uncertified(&hand_written_checkpoint_state(bytes));
+}
