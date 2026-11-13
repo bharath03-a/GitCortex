@@ -1,0 +1,1924 @@
+{
+  "artifacts": [
+    {
+      "path": "tools/agent-bench/results/v1-smoke-v076-20261111T093242Z.unforced.jsonl",
+      "sha256": "b4617c7b85ae3c19f867115dd526bc6f8ebac0e668ec39239644442265dc09de"
+    }
+  ],
+  "bootstrap_seed": 0,
+  "complete": true,
+  "generated_at": "2026-11-11T17:51:18.732490+00:00",
+  "groups": {
+    "client": {
+      "claude": {
+        "arms": {
+          "baseline": {
+            "cost_per_success": 0.02644,
+            "cost_unknown_runs": 0,
+            "cost_usd_mean": 0.02644,
+            "cost_usd_total": 0.13222,
+            "discoverability": null,
+            "false_safe": 0,
+            "patch_lines_mean": null,
+            "repeat_reads_mean": 0.0,
+            "runs": 5,
+            "status_counts": {
+              "ok": 5
+            },
+            "success": {
+              "den": 5,
+              "num": 5,
+              "rate": 1.0
+            },
+            "tool_calls_mean": 2.4,
+            "total_tokens_mean": 36221.2,
+            "turns_mean": 3.4,
+            "uncached_tokens_mean": 4310.0,
+            "unrelated_files_total": 0,
+            "wall_s_mean": 10.12
+          },
+          "gcx-bare": {
+            "cost_per_success": 0.02355,
+            "cost_unknown_runs": 0,
+            "cost_usd_mean": 0.02355,
+            "cost_usd_total": 0.11773,
+            "discoverability": {
+              "adoption": {
+                "den": 5,
+                "num": 0,
+                "rate": 0.0
+              },
+              "connection_success": {
+                "den": 5,
+                "num": 5,
+                "rate": 1.0
+              },
+              "first_position_median": null,
+              "gcx_error_rate": {
+                "den": 0,
+                "num": 0,
+                "rate": null
+              },
+              "not_ready_correct": {
+                "den": 0,
+                "num": 0,
+                "rate": null
+              },
+              "restraint": {
+                "den": 2,
+                "num": 2,
+                "rate": 1.0
+              },
+              "right_tool": {
+                "den": 3,
+                "num": 0,
+                "rate": 0.0
+              },
+              "tokens_before_first_total_median": null,
+              "tokens_before_first_uncached_median": null
+            },
+            "false_safe": 0,
+            "patch_lines_mean": null,
+            "repeat_reads_mean": 0.0,
+            "runs": 5,
+            "status_counts": {
+              "ok": 5
+            },
+            "success": {
+              "den": 5,
+              "num": 5,
+              "rate": 1.0
+            },
+            "tool_calls_mean": 2.4,
+            "total_tokens_mean": 36153.0,
+            "turns_mean": 3.4,
+            "uncached_tokens_mean": 3432.2,
+            "unrelated_files_total": 0,
+            "wall_s_mean": 11.73
+          }
+        },
+        "paired": {
+          "gcx-bare": {
+            "discordant": {},
+            "non_inferior": true,
+            "ratios": {
+              "cost_usd": {
+                "ci95": [
+                  0.7526,
+                  1.7363
+                ],
+                "geomean": 1.12,
+                "max": 2.1802,
+                "min": 0.6063,
+                "pairs": 5,
+                "round_geomeans": {
+                  "1": 1.12
+                },
+                "round_stdev": null,
+                "rounds": 1
+              },
+              "total_tokens": {
+                "ci95": [
+                  0.7483,
+                  1.2139
+                ],
+                "geomean": 0.953,
+                "max": 1.4858,
+                "min": 0.6634,
+                "pairs": 5,
+                "round_geomeans": {
+                  "1": 0.953
+                },
+                "round_stdev": null,
+                "rounds": 1
+              },
+              "uncached_tokens": {
+                "ci95": [
+                  0.726,
+                  2.3367
+                ],
+                "geomean": 1.2635,
+                "max": 3.364,
+                "min": 0.574,
+                "pairs": 5,
+                "round_geomeans": {
+                  "1": 1.2635
+                },
+                "round_stdev": null,
+                "rounds": 1
+              }
+            },
+            "success_delta": 0.0
+          }
+        },
+        "runs": 10
+      }
+    },
+    "lane": {
+      "claude-code-unforced": {
+        "arms": {
+          "baseline": {
+            "cost_per_success": 0.02644,
+            "cost_unknown_runs": 0,
+            "cost_usd_mean": 0.02644,
+            "cost_usd_total": 0.13222,
+            "discoverability": null,
+            "false_safe": 0,
+            "patch_lines_mean": null,
+            "repeat_reads_mean": 0.0,
+            "runs": 5,
+            "status_counts": {
+              "ok": 5
+            },
+            "success": {
+              "den": 5,
+              "num": 5,
+              "rate": 1.0
+            },
+            "tool_calls_mean": 2.4,
+            "total_tokens_mean": 36221.2,
+            "turns_mean": 3.4,
+            "uncached_tokens_mean": 4310.0,
+            "unrelated_files_total": 0,
+            "wall_s_mean": 10.12
+          },
+          "gcx-bare": {
+            "cost_per_success": 0.02355,
+            "cost_unknown_runs": 0,
+            "cost_usd_mean": 0.02355,
+            "cost_usd_total": 0.11773,
+            "discoverability": {
+              "adoption": {
+                "den": 5,
+                "num": 0,
+                "rate": 0.0
+              },
+              "connection_success": {
+                "den": 5,
+                "num": 5,
+                "rate": 1.0
+              },
+              "first_position_median": null,
+              "gcx_error_rate": {
+                "den": 0,
+                "num": 0,
+                "rate": null
+              },
+              "not_ready_correct": {
+                "den": 0,
+                "num": 0,
+                "rate": null
+              },
+              "restraint": {
+                "den": 2,
+                "num": 2,
+                "rate": 1.0
+              },
+              "right_tool": {
+                "den": 3,
+                "num": 0,
+                "rate": 0.0
+              },
+              "tokens_before_first_total_median": null,
+              "tokens_before_first_uncached_median": null
+            },
+            "false_safe": 0,
+            "patch_lines_mean": null,
+            "repeat_reads_mean": 0.0,
+            "runs": 5,
+            "status_counts": {
+              "ok": 5
+            },
+            "success": {
+              "den": 5,
+              "num": 5,
+              "rate": 1.0
+            },
+            "tool_calls_mean": 2.4,
+            "total_tokens_mean": 36153.0,
+            "turns_mean": 3.4,
+            "uncached_tokens_mean": 3432.2,
+            "unrelated_files_total": 0,
+            "wall_s_mean": 11.73
+          }
+        },
+        "paired": {
+          "gcx-bare": {
+            "discordant": {},
+            "non_inferior": true,
+            "ratios": {
+              "cost_usd": {
+                "ci95": [
+                  0.7526,
+                  1.7363
+                ],
+                "geomean": 1.12,
+                "max": 2.1802,
+                "min": 0.6063,
+                "pairs": 5,
+                "round_geomeans": {
+                  "1": 1.12
+                },
+                "round_stdev": null,
+                "rounds": 1
+              },
+              "total_tokens": {
+                "ci95": [
+                  0.7483,
+                  1.2139
+                ],
+                "geomean": 0.953,
+                "max": 1.4858,
+                "min": 0.6634,
+                "pairs": 5,
+                "round_geomeans": {
+                  "1": 0.953
+                },
+                "round_stdev": null,
+                "rounds": 1
+              },
+              "uncached_tokens": {
+                "ci95": [
+                  0.726,
+                  2.3367
+                ],
+                "geomean": 1.2635,
+                "max": 3.364,
+                "min": 0.574,
+                "pairs": 5,
+                "round_geomeans": {
+                  "1": 1.2635
+                },
+                "round_stdev": null,
+                "rounds": 1
+              }
+            },
+            "success_delta": 0.0
+          }
+        },
+        "runs": 10
+      }
+    },
+    "language": {
+      "go": {
+        "arms": {
+          "baseline": {
+            "cost_per_success": 0.02694,
+            "cost_unknown_runs": 0,
+            "cost_usd_mean": 0.02694,
+            "cost_usd_total": 0.08083,
+            "discoverability": null,
+            "false_safe": 0,
+            "patch_lines_mean": null,
+            "repeat_reads_mean": 0.0,
+            "runs": 3,
+            "status_counts": {
+              "ok": 3
+            },
+            "success": {
+              "den": 3,
+              "num": 3,
+              "rate": 1.0
+            },
+            "tool_calls_mean": 3.0,
+            "total_tokens_mean": 40951.0,
+            "turns_mean": 4.0,
+            "uncached_tokens_mean": 4234.7,
+            "unrelated_files_total": 0,
+            "wall_s_mean": 10.78
+          },
+          "gcx-bare": {
+            "cost_per_success": 0.02515,
+            "cost_unknown_runs": 0,
+            "cost_usd_mean": 0.02515,
+            "cost_usd_total": 0.07544,
+            "discoverability": {
+              "adoption": {
+                "den": 3,
+                "num": 0,
+                "rate": 0.0
+              },
+              "connection_success": {
+                "den": 3,
+                "num": 3,
+                "rate": 1.0
+              },
+              "first_position_median": null,
+              "gcx_error_rate": {
+                "den": 0,
+                "num": 0,
+                "rate": null
+              },
+              "not_ready_correct": {
+                "den": 0,
+                "num": 0,
+                "rate": null
+              },
+              "restraint": {
+                "den": 1,
+                "num": 1,
+                "rate": 1.0
+              },
+              "right_tool": {
+                "den": 2,
+                "num": 0,
+                "rate": 0.0
+              },
+              "tokens_before_first_total_median": null,
+              "tokens_before_first_uncached_median": null
+            },
+            "false_safe": 0,
+            "patch_lines_mean": null,
+            "repeat_reads_mean": 0.0,
+            "runs": 3,
+            "status_counts": {
+              "ok": 3
+            },
+            "success": {
+              "den": 3,
+              "num": 3,
+              "rate": 1.0
+            },
+            "tool_calls_mean": 3.0,
+            "total_tokens_mean": 41650.7,
+            "turns_mean": 4.0,
+            "uncached_tokens_mean": 3595.3,
+            "unrelated_files_total": 0,
+            "wall_s_mean": 12.59
+          }
+        },
+        "paired": {
+          "gcx-bare": {
+            "discordant": {},
+            "non_inferior": true,
+            "ratios": {
+              "cost_usd": {
+                "ci95": [
+                  0.6063,
+                  1.7585
+                ],
+                "geomean": 0.9773,
+                "max": 1.7585,
+                "min": 0.6063,
+                "pairs": 3,
+                "round_geomeans": {
+                  "1": 0.9773
+                },
+                "round_stdev": null,
+                "rounds": 1
+              },
+              "total_tokens": {
+                "ci95": [
+                  0.6634,
+                  1.4858
+                ],
+                "geomean": 0.901,
+                "max": 1.4858,
+                "min": 0.6634,
+                "pairs": 3,
+                "round_geomeans": {
+                  "1": 0.901
+                },
+                "round_stdev": null,
+                "rounds": 1
+              },
+              "uncached_tokens": {
+                "ci95": [
+                  0.574,
+                  2.2327
+                ],
+                "geomean": 1.0531,
+                "max": 2.2327,
+                "min": 0.574,
+                "pairs": 3,
+                "round_geomeans": {
+                  "1": 1.0531
+                },
+                "round_stdev": null,
+                "rounds": 1
+              }
+            },
+            "success_delta": 0.0
+          }
+        },
+        "runs": 6
+      },
+      "python": {
+        "arms": {
+          "baseline": {
+            "cost_per_success": 0.02569,
+            "cost_unknown_runs": 0,
+            "cost_usd_mean": 0.02569,
+            "cost_usd_total": 0.05139,
+            "discoverability": null,
+            "false_safe": 0,
+            "patch_lines_mean": null,
+            "repeat_reads_mean": 0.0,
+            "runs": 2,
+            "status_counts": {
+              "ok": 2
+            },
+            "success": {
+              "den": 2,
+              "num": 2,
+              "rate": 1.0
+            },
+            "tool_calls_mean": 1.5,
+            "total_tokens_mean": 29126.5,
+            "turns_mean": 2.5,
+            "uncached_tokens_mean": 4423.0,
+            "unrelated_files_total": 0,
+            "wall_s_mean": 9.12
+          },
+          "gcx-bare": {
+            "cost_per_success": 0.02115,
+            "cost_unknown_runs": 0,
+            "cost_usd_mean": 0.02115,
+            "cost_usd_total": 0.04229,
+            "discoverability": {
+              "adoption": {
+                "den": 2,
+                "num": 0,
+                "rate": 0.0
+              },
+              "connection_success": {
+                "den": 2,
+                "num": 2,
+                "rate": 1.0
+              },
+              "first_position_median": null,
+              "gcx_error_rate": {
+                "den": 0,
+                "num": 0,
+                "rate": null
+              },
+              "not_ready_correct": {
+                "den": 0,
+                "num": 0,
+                "rate": null
+              },
+              "restraint": {
+                "den": 1,
+                "num": 1,
+                "rate": 1.0
+              },
+              "right_tool": {
+                "den": 1,
+                "num": 0,
+                "rate": 0.0
+              },
+              "tokens_before_first_total_median": null,
+              "tokens_before_first_uncached_median": null
+            },
+            "false_safe": 0,
+            "patch_lines_mean": null,
+            "repeat_reads_mean": 0.0,
+            "runs": 2,
+            "status_counts": {
+              "ok": 2
+            },
+            "success": {
+              "den": 2,
+              "num": 2,
+              "rate": 1.0
+            },
+            "tool_calls_mean": 1.5,
+            "total_tokens_mean": 27906.5,
+            "turns_mean": 2.5,
+            "uncached_tokens_mean": 3187.5,
+            "unrelated_files_total": 0,
+            "wall_s_mean": 10.44
+          }
+        },
+        "paired": {
+          "gcx-bare": {
+            "discordant": {},
+            "non_inferior": true,
+            "ratios": {
+              "cost_usd": {
+                "ci95": [
+                  0.866,
+                  2.1802
+                ],
+                "geomean": 1.3741,
+                "max": 2.1802,
+                "min": 0.866,
+                "pairs": 2,
+                "round_geomeans": {
+                  "1": 1.3741
+                },
+                "round_stdev": null,
+                "rounds": 1
+              },
+              "total_tokens": {
+                "ci95": [
+                  0.9922,
+                  1.0831
+                ],
+                "geomean": 1.0367,
+                "max": 1.0831,
+                "min": 0.9922,
+                "pairs": 2,
+                "round_geomeans": {
+                  "1": 1.0367
+                },
+                "round_stdev": null,
+                "rounds": 1
+              },
+              "uncached_tokens": {
+                "ci95": [
+                  0.8197,
+                  3.364
+                ],
+                "geomean": 1.6605,
+                "max": 3.364,
+                "min": 0.8197,
+                "pairs": 2,
+                "round_geomeans": {
+                  "1": 1.6605
+                },
+                "round_stdev": null,
+                "rounds": 1
+              }
+            },
+            "success_delta": 0.0
+          }
+        },
+        "runs": 4
+      }
+    },
+    "model": {
+      "claude-sonnet-5-5": {
+        "arms": {
+          "baseline": {
+            "cost_per_success": 0.02644,
+            "cost_unknown_runs": 0,
+            "cost_usd_mean": 0.02644,
+            "cost_usd_total": 0.13222,
+            "discoverability": null,
+            "false_safe": 0,
+            "patch_lines_mean": null,
+            "repeat_reads_mean": 0.0,
+            "runs": 5,
+            "status_counts": {
+              "ok": 5
+            },
+            "success": {
+              "den": 5,
+              "num": 5,
+              "rate": 1.0
+            },
+            "tool_calls_mean": 2.4,
+            "total_tokens_mean": 36221.2,
+            "turns_mean": 3.4,
+            "uncached_tokens_mean": 4310.0,
+            "unrelated_files_total": 0,
+            "wall_s_mean": 10.12
+          },
+          "gcx-bare": {
+            "cost_per_success": 0.02355,
+            "cost_unknown_runs": 0,
+            "cost_usd_mean": 0.02355,
+            "cost_usd_total": 0.11773,
+            "discoverability": {
+              "adoption": {
+                "den": 5,
+                "num": 0,
+                "rate": 0.0
+              },
+              "connection_success": {
+                "den": 5,
+                "num": 5,
+                "rate": 1.0
+              },
+              "first_position_median": null,
+              "gcx_error_rate": {
+                "den": 0,
+                "num": 0,
+                "rate": null
+              },
+              "not_ready_correct": {
+                "den": 0,
+                "num": 0,
+                "rate": null
+              },
+              "restraint": {
+                "den": 2,
+                "num": 2,
+                "rate": 1.0
+              },
+              "right_tool": {
+                "den": 3,
+                "num": 0,
+                "rate": 0.0
+              },
+              "tokens_before_first_total_median": null,
+              "tokens_before_first_uncached_median": null
+            },
+            "false_safe": 0,
+            "patch_lines_mean": null,
+            "repeat_reads_mean": 0.0,
+            "runs": 5,
+            "status_counts": {
+              "ok": 5
+            },
+            "success": {
+              "den": 5,
+              "num": 5,
+              "rate": 1.0
+            },
+            "tool_calls_mean": 2.4,
+            "total_tokens_mean": 36153.0,
+            "turns_mean": 3.4,
+            "uncached_tokens_mean": 3432.2,
+            "unrelated_files_total": 0,
+            "wall_s_mean": 11.73
+          }
+        },
+        "paired": {
+          "gcx-bare": {
+            "discordant": {},
+            "non_inferior": true,
+            "ratios": {
+              "cost_usd": {
+                "ci95": [
+                  0.7526,
+                  1.7363
+                ],
+                "geomean": 1.12,
+                "max": 2.1802,
+                "min": 0.6063,
+                "pairs": 5,
+                "round_geomeans": {
+                  "1": 1.12
+                },
+                "round_stdev": null,
+                "rounds": 1
+              },
+              "total_tokens": {
+                "ci95": [
+                  0.7483,
+                  1.2139
+                ],
+                "geomean": 0.953,
+                "max": 1.4858,
+                "min": 0.6634,
+                "pairs": 5,
+                "round_geomeans": {
+                  "1": 0.953
+                },
+                "round_stdev": null,
+                "rounds": 1
+              },
+              "uncached_tokens": {
+                "ci95": [
+                  0.726,
+                  2.3367
+                ],
+                "geomean": 1.2635,
+                "max": 3.364,
+                "min": 0.574,
+                "pairs": 5,
+                "round_geomeans": {
+                  "1": 1.2635
+                },
+                "round_stdev": null,
+                "rounds": 1
+              }
+            },
+            "success_delta": 0.0
+          }
+        },
+        "runs": 10
+      }
+    },
+    "overall": {
+      "all": {
+        "arms": {
+          "baseline": {
+            "cost_per_success": 0.02644,
+            "cost_unknown_runs": 0,
+            "cost_usd_mean": 0.02644,
+            "cost_usd_total": 0.13222,
+            "discoverability": null,
+            "false_safe": 0,
+            "patch_lines_mean": null,
+            "repeat_reads_mean": 0.0,
+            "runs": 5,
+            "status_counts": {
+              "ok": 5
+            },
+            "success": {
+              "den": 5,
+              "num": 5,
+              "rate": 1.0
+            },
+            "tool_calls_mean": 2.4,
+            "total_tokens_mean": 36221.2,
+            "turns_mean": 3.4,
+            "uncached_tokens_mean": 4310.0,
+            "unrelated_files_total": 0,
+            "wall_s_mean": 10.12
+          },
+          "gcx-bare": {
+            "cost_per_success": 0.02355,
+            "cost_unknown_runs": 0,
+            "cost_usd_mean": 0.02355,
+            "cost_usd_total": 0.11773,
+            "discoverability": {
+              "adoption": {
+                "den": 5,
+                "num": 0,
+                "rate": 0.0
+              },
+              "connection_success": {
+                "den": 5,
+                "num": 5,
+                "rate": 1.0
+              },
+              "first_position_median": null,
+              "gcx_error_rate": {
+                "den": 0,
+                "num": 0,
+                "rate": null
+              },
+              "not_ready_correct": {
+                "den": 0,
+                "num": 0,
+                "rate": null
+              },
+              "restraint": {
+                "den": 2,
+                "num": 2,
+                "rate": 1.0
+              },
+              "right_tool": {
+                "den": 3,
+                "num": 0,
+                "rate": 0.0
+              },
+              "tokens_before_first_total_median": null,
+              "tokens_before_first_uncached_median": null
+            },
+            "false_safe": 0,
+            "patch_lines_mean": null,
+            "repeat_reads_mean": 0.0,
+            "runs": 5,
+            "status_counts": {
+              "ok": 5
+            },
+            "success": {
+              "den": 5,
+              "num": 5,
+              "rate": 1.0
+            },
+            "tool_calls_mean": 2.4,
+            "total_tokens_mean": 36153.0,
+            "turns_mean": 3.4,
+            "uncached_tokens_mean": 3432.2,
+            "unrelated_files_total": 0,
+            "wall_s_mean": 11.73
+          }
+        },
+        "paired": {
+          "gcx-bare": {
+            "discordant": {},
+            "non_inferior": true,
+            "ratios": {
+              "cost_usd": {
+                "ci95": [
+                  0.7526,
+                  1.7363
+                ],
+                "geomean": 1.12,
+                "max": 2.1802,
+                "min": 0.6063,
+                "pairs": 5,
+                "round_geomeans": {
+                  "1": 1.12
+                },
+                "round_stdev": null,
+                "rounds": 1
+              },
+              "total_tokens": {
+                "ci95": [
+                  0.7483,
+                  1.2139
+                ],
+                "geomean": 0.953,
+                "max": 1.4858,
+                "min": 0.6634,
+                "pairs": 5,
+                "round_geomeans": {
+                  "1": 0.953
+                },
+                "round_stdev": null,
+                "rounds": 1
+              },
+              "uncached_tokens": {
+                "ci95": [
+                  0.726,
+                  2.3367
+                ],
+                "geomean": 1.2635,
+                "max": 3.364,
+                "min": 0.574,
+                "pairs": 5,
+                "round_geomeans": {
+                  "1": 1.2635
+                },
+                "round_stdev": null,
+                "rounds": 1
+              }
+            },
+            "success_delta": 0.0
+          }
+        },
+        "runs": 10
+      }
+    },
+    "repo": {
+      "cobra": {
+        "arms": {
+          "baseline": {
+            "cost_per_success": 0.02694,
+            "cost_unknown_runs": 0,
+            "cost_usd_mean": 0.02694,
+            "cost_usd_total": 0.08083,
+            "discoverability": null,
+            "false_safe": 0,
+            "patch_lines_mean": null,
+            "repeat_reads_mean": 0.0,
+            "runs": 3,
+            "status_counts": {
+              "ok": 3
+            },
+            "success": {
+              "den": 3,
+              "num": 3,
+              "rate": 1.0
+            },
+            "tool_calls_mean": 3.0,
+            "total_tokens_mean": 40951.0,
+            "turns_mean": 4.0,
+            "uncached_tokens_mean": 4234.7,
+            "unrelated_files_total": 0,
+            "wall_s_mean": 10.78
+          },
+          "gcx-bare": {
+            "cost_per_success": 0.02515,
+            "cost_unknown_runs": 0,
+            "cost_usd_mean": 0.02515,
+            "cost_usd_total": 0.07544,
+            "discoverability": {
+              "adoption": {
+                "den": 3,
+                "num": 0,
+                "rate": 0.0
+              },
+              "connection_success": {
+                "den": 3,
+                "num": 3,
+                "rate": 1.0
+              },
+              "first_position_median": null,
+              "gcx_error_rate": {
+                "den": 0,
+                "num": 0,
+                "rate": null
+              },
+              "not_ready_correct": {
+                "den": 0,
+                "num": 0,
+                "rate": null
+              },
+              "restraint": {
+                "den": 1,
+                "num": 1,
+                "rate": 1.0
+              },
+              "right_tool": {
+                "den": 2,
+                "num": 0,
+                "rate": 0.0
+              },
+              "tokens_before_first_total_median": null,
+              "tokens_before_first_uncached_median": null
+            },
+            "false_safe": 0,
+            "patch_lines_mean": null,
+            "repeat_reads_mean": 0.0,
+            "runs": 3,
+            "status_counts": {
+              "ok": 3
+            },
+            "success": {
+              "den": 3,
+              "num": 3,
+              "rate": 1.0
+            },
+            "tool_calls_mean": 3.0,
+            "total_tokens_mean": 41650.7,
+            "turns_mean": 4.0,
+            "uncached_tokens_mean": 3595.3,
+            "unrelated_files_total": 0,
+            "wall_s_mean": 12.59
+          }
+        },
+        "paired": {
+          "gcx-bare": {
+            "discordant": {},
+            "non_inferior": true,
+            "ratios": {
+              "cost_usd": {
+                "ci95": [
+                  0.6063,
+                  1.7585
+                ],
+                "geomean": 0.9773,
+                "max": 1.7585,
+                "min": 0.6063,
+                "pairs": 3,
+                "round_geomeans": {
+                  "1": 0.9773
+                },
+                "round_stdev": null,
+                "rounds": 1
+              },
+              "total_tokens": {
+                "ci95": [
+                  0.6634,
+                  1.4858
+                ],
+                "geomean": 0.901,
+                "max": 1.4858,
+                "min": 0.6634,
+                "pairs": 3,
+                "round_geomeans": {
+                  "1": 0.901
+                },
+                "round_stdev": null,
+                "rounds": 1
+              },
+              "uncached_tokens": {
+                "ci95": [
+                  0.574,
+                  2.2327
+                ],
+                "geomean": 1.0531,
+                "max": 2.2327,
+                "min": 0.574,
+                "pairs": 3,
+                "round_geomeans": {
+                  "1": 1.0531
+                },
+                "round_stdev": null,
+                "rounds": 1
+              }
+            },
+            "success_delta": 0.0
+          }
+        },
+        "runs": 6
+      },
+      "requests": {
+        "arms": {
+          "baseline": {
+            "cost_per_success": 0.02569,
+            "cost_unknown_runs": 0,
+            "cost_usd_mean": 0.02569,
+            "cost_usd_total": 0.05139,
+            "discoverability": null,
+            "false_safe": 0,
+            "patch_lines_mean": null,
+            "repeat_reads_mean": 0.0,
+            "runs": 2,
+            "status_counts": {
+              "ok": 2
+            },
+            "success": {
+              "den": 2,
+              "num": 2,
+              "rate": 1.0
+            },
+            "tool_calls_mean": 1.5,
+            "total_tokens_mean": 29126.5,
+            "turns_mean": 2.5,
+            "uncached_tokens_mean": 4423.0,
+            "unrelated_files_total": 0,
+            "wall_s_mean": 9.12
+          },
+          "gcx-bare": {
+            "cost_per_success": 0.02115,
+            "cost_unknown_runs": 0,
+            "cost_usd_mean": 0.02115,
+            "cost_usd_total": 0.04229,
+            "discoverability": {
+              "adoption": {
+                "den": 2,
+                "num": 0,
+                "rate": 0.0
+              },
+              "connection_success": {
+                "den": 2,
+                "num": 2,
+                "rate": 1.0
+              },
+              "first_position_median": null,
+              "gcx_error_rate": {
+                "den": 0,
+                "num": 0,
+                "rate": null
+              },
+              "not_ready_correct": {
+                "den": 0,
+                "num": 0,
+                "rate": null
+              },
+              "restraint": {
+                "den": 1,
+                "num": 1,
+                "rate": 1.0
+              },
+              "right_tool": {
+                "den": 1,
+                "num": 0,
+                "rate": 0.0
+              },
+              "tokens_before_first_total_median": null,
+              "tokens_before_first_uncached_median": null
+            },
+            "false_safe": 0,
+            "patch_lines_mean": null,
+            "repeat_reads_mean": 0.0,
+            "runs": 2,
+            "status_counts": {
+              "ok": 2
+            },
+            "success": {
+              "den": 2,
+              "num": 2,
+              "rate": 1.0
+            },
+            "tool_calls_mean": 1.5,
+            "total_tokens_mean": 27906.5,
+            "turns_mean": 2.5,
+            "uncached_tokens_mean": 3187.5,
+            "unrelated_files_total": 0,
+            "wall_s_mean": 10.44
+          }
+        },
+        "paired": {
+          "gcx-bare": {
+            "discordant": {},
+            "non_inferior": true,
+            "ratios": {
+              "cost_usd": {
+                "ci95": [
+                  0.866,
+                  2.1802
+                ],
+                "geomean": 1.3741,
+                "max": 2.1802,
+                "min": 0.866,
+                "pairs": 2,
+                "round_geomeans": {
+                  "1": 1.3741
+                },
+                "round_stdev": null,
+                "rounds": 1
+              },
+              "total_tokens": {
+                "ci95": [
+                  0.9922,
+                  1.0831
+                ],
+                "geomean": 1.0367,
+                "max": 1.0831,
+                "min": 0.9922,
+                "pairs": 2,
+                "round_geomeans": {
+                  "1": 1.0367
+                },
+                "round_stdev": null,
+                "rounds": 1
+              },
+              "uncached_tokens": {
+                "ci95": [
+                  0.8197,
+                  3.364
+                ],
+                "geomean": 1.6605,
+                "max": 3.364,
+                "min": 0.8197,
+                "pairs": 2,
+                "round_geomeans": {
+                  "1": 1.6605
+                },
+                "round_stdev": null,
+                "rounds": 1
+              }
+            },
+            "success_delta": 0.0
+          }
+        },
+        "runs": 4
+      }
+    },
+    "workflow": {
+      "callers": {
+        "arms": {
+          "baseline": {
+            "cost_per_success": 0.03834,
+            "cost_unknown_runs": 0,
+            "cost_usd_mean": 0.03834,
+            "cost_usd_total": 0.03834,
+            "discoverability": null,
+            "false_safe": 0,
+            "patch_lines_mean": null,
+            "repeat_reads_mean": 0.0,
+            "runs": 1,
+            "status_counts": {
+              "ok": 1
+            },
+            "success": {
+              "den": 1,
+              "num": 1,
+              "rate": 1.0
+            },
+            "tool_calls_mean": 4.0,
+            "total_tokens_mean": 65257.0,
+            "turns_mean": 5.0,
+            "uncached_tokens_mean": 6332.0,
+            "unrelated_files_total": 0,
+            "wall_s_mean": 14.44
+          },
+          "gcx-bare": {
+            "cost_per_success": 0.0218,
+            "cost_unknown_runs": 0,
+            "cost_usd_mean": 0.0218,
+            "cost_usd_total": 0.0218,
+            "discoverability": {
+              "adoption": {
+                "den": 1,
+                "num": 0,
+                "rate": 0.0
+              },
+              "connection_success": {
+                "den": 1,
+                "num": 1,
+                "rate": 1.0
+              },
+              "first_position_median": null,
+              "gcx_error_rate": {
+                "den": 0,
+                "num": 0,
+                "rate": null
+              },
+              "not_ready_correct": {
+                "den": 0,
+                "num": 0,
+                "rate": null
+              },
+              "restraint": {
+                "den": 0,
+                "num": 0,
+                "rate": null
+              },
+              "right_tool": {
+                "den": 1,
+                "num": 0,
+                "rate": 0.0
+              },
+              "tokens_before_first_total_median": null,
+              "tokens_before_first_uncached_median": null
+            },
+            "false_safe": 0,
+            "patch_lines_mean": null,
+            "repeat_reads_mean": 0.0,
+            "runs": 1,
+            "status_counts": {
+              "ok": 1
+            },
+            "success": {
+              "den": 1,
+              "num": 1,
+              "rate": 1.0
+            },
+            "tool_calls_mean": 3.0,
+            "total_tokens_mean": 43920.0,
+            "turns_mean": 4.0,
+            "uncached_tokens_mean": 2836.0,
+            "unrelated_files_total": 0,
+            "wall_s_mean": 10.86
+          }
+        },
+        "paired": {
+          "gcx-bare": {
+            "discordant": {},
+            "non_inferior": true,
+            "ratios": {
+              "cost_usd": {
+                "ci95": null,
+                "geomean": 1.7585,
+                "max": 1.7585,
+                "min": 1.7585,
+                "pairs": 1,
+                "round_geomeans": {
+                  "1": 1.7585
+                },
+                "round_stdev": null,
+                "rounds": 1
+              },
+              "total_tokens": {
+                "ci95": null,
+                "geomean": 1.4858,
+                "max": 1.4858,
+                "min": 1.4858,
+                "pairs": 1,
+                "round_geomeans": {
+                  "1": 1.4858
+                },
+                "round_stdev": null,
+                "rounds": 1
+              },
+              "uncached_tokens": {
+                "ci95": null,
+                "geomean": 2.2327,
+                "max": 2.2327,
+                "min": 2.2327,
+                "pairs": 1,
+                "round_geomeans": {
+                  "1": 2.2327
+                },
+                "round_stdev": null,
+                "rounds": 1
+              }
+            },
+            "success_delta": 0.0
+          }
+        },
+        "runs": 2
+      },
+      "impact": {
+        "arms": {
+          "baseline": {
+            "cost_per_success": 0.02966,
+            "cost_unknown_runs": 0,
+            "cost_usd_mean": 0.02966,
+            "cost_usd_total": 0.05932,
+            "discoverability": null,
+            "false_safe": 0,
+            "patch_lines_mean": null,
+            "repeat_reads_mean": 0.0,
+            "runs": 2,
+            "status_counts": {
+              "ok": 2
+            },
+            "success": {
+              "den": 2,
+              "num": 2,
+              "rate": 1.0
+            },
+            "tool_calls_mean": 2.5,
+            "total_tokens_mean": 30131.0,
+            "turns_mean": 3.5,
+            "uncached_tokens_mean": 4472.5,
+            "unrelated_files_total": 0,
+            "wall_s_mean": 12.87
+          },
+          "gcx-bare": {
+            "cost_per_success": 0.03405,
+            "cost_unknown_runs": 0,
+            "cost_usd_mean": 0.03405,
+            "cost_usd_total": 0.06809,
+            "discoverability": {
+              "adoption": {
+                "den": 2,
+                "num": 0,
+                "rate": 0.0
+              },
+              "connection_success": {
+                "den": 2,
+                "num": 2,
+                "rate": 1.0
+              },
+              "first_position_median": null,
+              "gcx_error_rate": {
+                "den": 0,
+                "num": 0,
+                "rate": null
+              },
+              "not_ready_correct": {
+                "den": 0,
+                "num": 0,
+                "rate": null
+              },
+              "restraint": {
+                "den": 0,
+                "num": 0,
+                "rate": null
+              },
+              "right_tool": {
+                "den": 2,
+                "num": 0,
+                "rate": 0.0
+              },
+              "tokens_before_first_total_median": null,
+              "tokens_before_first_uncached_median": null
+            },
+            "false_safe": 0,
+            "patch_lines_mean": null,
+            "repeat_reads_mean": 0.0,
+            "runs": 2,
+            "status_counts": {
+              "ok": 2
+            },
+            "success": {
+              "den": 2,
+              "num": 2,
+              "rate": 1.0
+            },
+            "tool_calls_mean": 2.5,
+            "total_tokens_mean": 36531.5,
+            "turns_mean": 3.5,
+            "uncached_tokens_mean": 5156.5,
+            "unrelated_files_total": 0,
+            "wall_s_mean": 17.44
+          }
+        },
+        "paired": {
+          "gcx-bare": {
+            "discordant": {},
+            "non_inferior": true,
+            "ratios": {
+              "cost_usd": {
+                "ci95": [
+                  0.866,
+                  0.8755
+                ],
+                "geomean": 0.8707,
+                "max": 0.8755,
+                "min": 0.866,
+                "pairs": 2,
+                "round_geomeans": {
+                  "1": 0.8707
+                },
+                "round_stdev": null,
+                "rounds": 1
+              },
+              "total_tokens": {
+                "ci95": [
+                  0.742,
+                  0.9922
+                ],
+                "geomean": 0.858,
+                "max": 0.9922,
+                "min": 0.742,
+                "pairs": 2,
+                "round_geomeans": {
+                  "1": 0.858
+                },
+                "round_stdev": null,
+                "rounds": 1
+              },
+              "uncached_tokens": {
+                "ci95": [
+                  0.8197,
+                  0.9114
+                ],
+                "geomean": 0.8643,
+                "max": 0.9114,
+                "min": 0.8197,
+                "pairs": 2,
+                "round_geomeans": {
+                  "1": 0.8643
+                },
+                "round_stdev": null,
+                "rounds": 1
+              }
+            },
+            "success_delta": 0.0
+          }
+        },
+        "runs": 4
+      },
+      "restraint": {
+        "arms": {
+          "baseline": {
+            "cost_per_success": 0.01728,
+            "cost_unknown_runs": 0,
+            "cost_usd_mean": 0.01728,
+            "cost_usd_total": 0.03456,
+            "discoverability": null,
+            "false_safe": 0,
+            "patch_lines_mean": null,
+            "repeat_reads_mean": 0.0,
+            "runs": 2,
+            "status_counts": {
+              "ok": 2
+            },
+            "success": {
+              "den": 2,
+              "num": 2,
+              "rate": 1.0
+            },
+            "tool_calls_mean": 1.5,
+            "total_tokens_mean": 27793.5,
+            "turns_mean": 2.5,
+            "uncached_tokens_mean": 3136.5,
+            "unrelated_files_total": 0,
+            "wall_s_mean": 5.2
+          },
+          "gcx-bare": {
+            "cost_per_success": 0.01392,
+            "cost_unknown_runs": 0,
+            "cost_usd_mean": 0.01392,
+            "cost_usd_total": 0.02784,
+            "discoverability": {
+              "adoption": {
+                "den": 2,
+                "num": 0,
+                "rate": 0.0
+              },
+              "connection_success": {
+                "den": 2,
+                "num": 2,
+                "rate": 1.0
+              },
+              "first_position_median": null,
+              "gcx_error_rate": {
+                "den": 0,
+                "num": 0,
+                "rate": null
+              },
+              "not_ready_correct": {
+                "den": 0,
+                "num": 0,
+                "rate": null
+              },
+              "restraint": {
+                "den": 2,
+                "num": 2,
+                "rate": 1.0
+              },
+              "right_tool": {
+                "den": 0,
+                "num": 0,
+                "rate": null
+              },
+              "tokens_before_first_total_median": null,
+              "tokens_before_first_uncached_median": null
+            },
+            "false_safe": 0,
+            "patch_lines_mean": null,
+            "repeat_reads_mean": 0.0,
+            "runs": 2,
+            "status_counts": {
+              "ok": 2
+            },
+            "success": {
+              "den": 2,
+              "num": 2,
+              "rate": 1.0
+            },
+            "tool_calls_mean": 2.0,
+            "total_tokens_mean": 31891.0,
+            "turns_mean": 3.0,
+            "uncached_tokens_mean": 2006.0,
+            "unrelated_files_total": 0,
+            "wall_s_mean": 6.46
+          }
+        },
+        "paired": {
+          "gcx-bare": {
+            "discordant": {},
+            "non_inferior": true,
+            "ratios": {
+              "cost_usd": {
+                "ci95": [
+                  0.6063,
+                  2.1802
+                ],
+                "geomean": 1.1497,
+                "max": 2.1802,
+                "min": 0.6063,
+                "pairs": 2,
+                "round_geomeans": {
+                  "1": 1.1497
+                },
+                "round_stdev": null,
+                "rounds": 1
+              },
+              "total_tokens": {
+                "ci95": [
+                  0.6634,
+                  1.0831
+                ],
+                "geomean": 0.8476,
+                "max": 1.0831,
+                "min": 0.6634,
+                "pairs": 2,
+                "round_geomeans": {
+                  "1": 0.8476
+                },
+                "round_stdev": null,
+                "rounds": 1
+              },
+              "uncached_tokens": {
+                "ci95": [
+                  0.574,
+                  3.364
+                ],
+                "geomean": 1.3895,
+                "max": 3.364,
+                "min": 0.574,
+                "pairs": 2,
+                "round_geomeans": {
+                  "1": 1.3895
+                },
+                "round_stdev": null,
+                "rounds": 1
+              }
+            },
+            "success_delta": 0.0
+          }
+        },
+        "runs": 4
+      }
+    }
+  },
+  "id": "v1-smoke-v076",
+  "min_rounds": 3,
+  "negative_results": [
+    {
+      "arm": "gcx-bare",
+      "detail": "gcx-bare used more total_tokens than baseline (baseline/arm < 1)",
+      "group": "overall=all",
+      "metric": "total_tokens_ratio",
+      "value": 0.953
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "inconclusive: 95% interval [0.726, 2.3367] contains 1.0",
+      "group": "overall=all",
+      "metric": "uncached_tokens_ratio",
+      "value": 1.2635
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "inconclusive: 95% interval [0.7526, 1.7363] contains 1.0",
+      "group": "overall=all",
+      "metric": "cost_usd_ratio",
+      "value": 1.12
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "gcx was available and never used",
+      "group": "overall=all",
+      "metric": "adoption",
+      "value": 0
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "gcx-bare used more total_tokens than baseline (baseline/arm < 1)",
+      "group": "repo=cobra",
+      "metric": "total_tokens_ratio",
+      "value": 0.901
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "inconclusive: 95% interval [0.574, 2.2327] contains 1.0",
+      "group": "repo=cobra",
+      "metric": "uncached_tokens_ratio",
+      "value": 1.0531
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "gcx-bare used more cost_usd than baseline (baseline/arm < 1)",
+      "group": "repo=cobra",
+      "metric": "cost_usd_ratio",
+      "value": 0.9773
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "gcx was available and never used",
+      "group": "repo=cobra",
+      "metric": "adoption",
+      "value": 0
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "inconclusive: 95% interval [0.9922, 1.0831] contains 1.0",
+      "group": "repo=requests",
+      "metric": "total_tokens_ratio",
+      "value": 1.0367
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "inconclusive: 95% interval [0.8197, 3.364] contains 1.0",
+      "group": "repo=requests",
+      "metric": "uncached_tokens_ratio",
+      "value": 1.6605
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "inconclusive: 95% interval [0.866, 2.1802] contains 1.0",
+      "group": "repo=requests",
+      "metric": "cost_usd_ratio",
+      "value": 1.3741
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "gcx was available and never used",
+      "group": "repo=requests",
+      "metric": "adoption",
+      "value": 0
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "gcx-bare used more total_tokens than baseline (baseline/arm < 1)",
+      "group": "language=go",
+      "metric": "total_tokens_ratio",
+      "value": 0.901
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "inconclusive: 95% interval [0.574, 2.2327] contains 1.0",
+      "group": "language=go",
+      "metric": "uncached_tokens_ratio",
+      "value": 1.0531
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "gcx-bare used more cost_usd than baseline (baseline/arm < 1)",
+      "group": "language=go",
+      "metric": "cost_usd_ratio",
+      "value": 0.9773
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "gcx was available and never used",
+      "group": "language=go",
+      "metric": "adoption",
+      "value": 0
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "inconclusive: 95% interval [0.9922, 1.0831] contains 1.0",
+      "group": "language=python",
+      "metric": "total_tokens_ratio",
+      "value": 1.0367
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "inconclusive: 95% interval [0.8197, 3.364] contains 1.0",
+      "group": "language=python",
+      "metric": "uncached_tokens_ratio",
+      "value": 1.6605
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "inconclusive: 95% interval [0.866, 2.1802] contains 1.0",
+      "group": "language=python",
+      "metric": "cost_usd_ratio",
+      "value": 1.3741
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "gcx was available and never used",
+      "group": "language=python",
+      "metric": "adoption",
+      "value": 0
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "gcx was available and never used",
+      "group": "workflow=callers",
+      "metric": "adoption",
+      "value": 0
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "gcx-bare used more total_tokens than baseline (baseline/arm < 1)",
+      "group": "workflow=impact",
+      "metric": "total_tokens_ratio",
+      "value": 0.858
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "gcx-bare used more uncached_tokens than baseline (baseline/arm < 1)",
+      "group": "workflow=impact",
+      "metric": "uncached_tokens_ratio",
+      "value": 0.8643
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "gcx-bare used more cost_usd than baseline (baseline/arm < 1)",
+      "group": "workflow=impact",
+      "metric": "cost_usd_ratio",
+      "value": 0.8707
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "gcx was available and never used",
+      "group": "workflow=impact",
+      "metric": "adoption",
+      "value": 0
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "gcx-bare used more total_tokens than baseline (baseline/arm < 1)",
+      "group": "workflow=restraint",
+      "metric": "total_tokens_ratio",
+      "value": 0.8476
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "inconclusive: 95% interval [0.574, 3.364] contains 1.0",
+      "group": "workflow=restraint",
+      "metric": "uncached_tokens_ratio",
+      "value": 1.3895
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "inconclusive: 95% interval [0.6063, 2.1802] contains 1.0",
+      "group": "workflow=restraint",
+      "metric": "cost_usd_ratio",
+      "value": 1.1497
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "gcx was available and never used",
+      "group": "workflow=restraint",
+      "metric": "adoption",
+      "value": 0
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "gcx-bare used more total_tokens than baseline (baseline/arm < 1)",
+      "group": "client=claude",
+      "metric": "total_tokens_ratio",
+      "value": 0.953
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "inconclusive: 95% interval [0.726, 2.3367] contains 1.0",
+      "group": "client=claude",
+      "metric": "uncached_tokens_ratio",
+      "value": 1.2635
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "inconclusive: 95% interval [0.7526, 1.7363] contains 1.0",
+      "group": "client=claude",
+      "metric": "cost_usd_ratio",
+      "value": 1.12
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "gcx was available and never used",
+      "group": "client=claude",
+      "metric": "adoption",
+      "value": 0
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "gcx-bare used more total_tokens than baseline (baseline/arm < 1)",
+      "group": "model=claude-sonnet-5-5",
+      "metric": "total_tokens_ratio",
+      "value": 0.953
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "inconclusive: 95% interval [0.726, 2.3367] contains 1.0",
+      "group": "model=claude-sonnet-5-5",
+      "metric": "uncached_tokens_ratio",
+      "value": 1.2635
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "inconclusive: 95% interval [0.7526, 1.7363] contains 1.0",
+      "group": "model=claude-sonnet-5-5",
+      "metric": "cost_usd_ratio",
+      "value": 1.12
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "gcx was available and never used",
+      "group": "model=claude-sonnet-5-5",
+      "metric": "adoption",
+      "value": 0
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "gcx-bare used more total_tokens than baseline (baseline/arm < 1)",
+      "group": "lane=claude-code-unforced",
+      "metric": "total_tokens_ratio",
+      "value": 0.953
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "inconclusive: 95% interval [0.726, 2.3367] contains 1.0",
+      "group": "lane=claude-code-unforced",
+      "metric": "uncached_tokens_ratio",
+      "value": 1.2635
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "inconclusive: 95% interval [0.7526, 1.7363] contains 1.0",
+      "group": "lane=claude-code-unforced",
+      "metric": "cost_usd_ratio",
+      "value": 1.12
+    },
+    {
+      "arm": "gcx-bare",
+      "detail": "gcx was available and never used",
+      "group": "lane=claude-code-unforced",
+      "metric": "adoption",
+      "value": 0
+    }
+  ],
+  "non_inferiority_margin": 0.05,
+  "release_grade_harness": false,
+  "traces": [
+    {
+      "aborted": null,
+      "client": "claude",
+      "client_version": "2.1.322 (Claude Code)",
+      "completed_runs": 10,
+      "core_suite_sha256": "e5754f41f3c4a8b9a0ce20d97894fd7430289174782f4281fcf5ddd94b1a2fb1",
+      "created_at": "2026-11-11T09:32:42.613675+00:00",
+      "gcx_sha256": "2987096fa6ec692185533b72b2a473d55784b791e1a770288a38cba8fc609a38",
+      "gcx_version": "gcx 0.7.6",
+      "guide_sha256": "04eadc4b7b5c278deb723573454379d357ba354701dc3ec667c0e3c787e75842",
+      "harness": {
+        "commit": "f24f873659114cf3f1de2c540a91b309ffab3425",
+        "dirty": true
+      },
+      "label": "v1-smoke-v076",
+      "lane": "claude-code-unforced",
+      "logs": {
+        "files": 10,
+        "path": "tools/agent-bench/results/v1-smoke-v076-20261111T093242Z.unforced-logs",
+        "sha256": "e116eed5256a8fd9dce1d62f154638bb94cf963afbe58ca23e45b971ccbd7b60"
+      },
+      "model": "claude-sonnet-5-5",
+      "model_requested": "sonnet",
+      "path": "tools/agent-bench/results/v1-smoke-v076-20261111T093242Z.unforced.jsonl",
+      "planned_runs": 10,
+      "repo_commits": {
+        "cobra": "adbc8813901bba65827259daa8e22ff94ec1f30e",
+        "requests": "f361ead047be5cb873174218582f7d8b9fcd9f49"
+      },
+      "rounds": 1,
+      "seed": 20261111,
+      "sha256": "b4617c7b85ae3c19f867115dd526bc6f8ebac0e668ec39239644442265dc09de",
+      "spent_usd": 0.249951,
+      "suite_sha256": "c243a3c7df9f56bceb767e0853e89279213a2f8a06757cfdd6e017bf3710cbbc",
+      "verification_sha256": null
+    }
+  ],
+  "type": "eval-summary",
+  "variance_ok": false
+}
