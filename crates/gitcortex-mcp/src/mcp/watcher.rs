@@ -30,6 +30,23 @@ fn queue_pending(pending: &mut HashSet<PathBuf>, path: PathBuf, rescan: &AtomicB
     }
 }
 
+/// Bump the epoch before raising, so a concurrent startup clear that misses
+/// the flag still observes the epoch change.
+fn raise_rescan(epoch: &AtomicU64, rescan: &AtomicBool) {
+    epoch.fetch_add(1, Ordering::SeqCst);
+    rescan.store(true, Ordering::SeqCst);
+}
+
+/// Clear the startup rescan unless one was raised since `pre_epoch`; returns
+/// whether a rescan is still needed.
+fn clear_startup_rescan(rescan: &AtomicBool, epoch: &AtomicU64, pre_epoch: u64) -> bool {
+    rescan.store(false, Ordering::SeqCst);
+    if epoch.load(Ordering::SeqCst) != pre_epoch {
+        rescan.store(true, Ordering::SeqCst);
+    }
+    rescan.load(Ordering::SeqCst)
+}
+
 fn indexes_event(kind: EventKind) -> bool {
     matches!(
         kind,
@@ -106,14 +123,14 @@ async fn run_watcher(
             let event = match res {
                 Ok(event) => event,
                 Err(_) => {
-                    callback_rescan.store(true, Ordering::Release);
+                    raise_rescan(&callback_epoch, &callback_rescan);
                     callback_health.store(true, Ordering::Release);
                     callback_pending.store(true, Ordering::Release);
                     return;
                 }
             };
             if event.need_rescan() {
-                callback_rescan.store(true, Ordering::Release);
+                raise_rescan(&callback_epoch, &callback_rescan);
                 callback_health.store(true, Ordering::Release);
                 callback_pending.store(true, Ordering::Release);
             }
@@ -129,7 +146,7 @@ async fn run_watcher(
                         EventKind::Remove(_) | EventKind::Modify(ModifyKind::Name(_))
                     ) && !ignored_path(&path)
                     {
-                        callback_rescan.store(true, Ordering::Release);
+                        raise_rescan(&callback_epoch, &callback_rescan);
                         callback_health.store(true, Ordering::Release);
                         callback_pending.store(true, Ordering::Release);
                     }
@@ -197,12 +214,12 @@ async fn run_watcher(
                 if let Ok(mut active) = branch.lock() {
                     *active = current;
                 }
-                rescan.store(false, Ordering::Release);
+                let needs_rescan = clear_startup_rescan(&rescan, &event_epoch, pre_epoch);
                 events_pending.store(
                     event_epoch.load(Ordering::Acquire) != pre_epoch || !rx.is_empty(),
                     Ordering::Release,
                 );
-                unhealthy.store(rescan.load(Ordering::Acquire), Ordering::Release);
+                unhealthy.store(needs_rescan, Ordering::Release);
             }
         }
     }
@@ -396,7 +413,7 @@ pub(crate) fn apply_disk_batch(
     let mut store = store
         .lock()
         .map_err(|_| anyhow::anyhow!("store mutex poisoned"))?;
-    let _ = super::readiness::remove_overlay_checkpoint(root, branch);
+    super::readiness::remove_overlay_checkpoint(root, branch)?;
     store.bump_mutation_epoch(branch)?;
     store.set_working_tree_dirty(branch, true)?;
     store.apply_diff(branch, &diff)?;
@@ -445,16 +462,21 @@ pub(crate) fn apply_disk_batch(
 
         // Only persist an overlay checkpoint when every dirty in-scope file has
         // been indexed into `snapshots` and no dirty file was skipped due to
-        // size (> 512 KiB) or binary content.
-        let all_changed_indexed = changed_after.len() == snapshots.len()
+        // size (> 512 KiB) or binary content. Bounds are checked before any
+        // file is read under the store lock, and match `verify_overlay_checkpoint`.
+        let mut total_bytes = 0u64;
+        let all_changed_indexed = changed_after.len() <= super::readiness::MAX_OVERLAY_FILES
+            && changed_after.len() == snapshots.len()
             && changed_after.iter().all(|rel| snapshots.contains_key(rel))
             && changed_after.iter().all(|rel| {
                 let full = root.join(rel);
                 match std::fs::symlink_metadata(&full) {
                     Ok(meta) => {
+                        total_bytes = total_bytes.saturating_add(meta.len());
                         meta.is_file()
                             && !meta.file_type().is_symlink()
                             && meta.len() <= super::readiness::MAX_OVERLAY_FILE_BYTES
+                            && total_bytes <= super::readiness::MAX_OVERLAY_TOTAL_BYTES
                             && std::fs::read(&full)
                                 .ok()
                                 .is_some_and(|b| super::readiness::is_indexable_source_bytes(&b))
@@ -508,7 +530,7 @@ pub(crate) fn sync_commit(
             && super::helpers::detect_current_branch(root).as_deref() == Some(branch),
         "checkout changed during commit synchronization"
     );
-    let _ = super::readiness::remove_overlay_checkpoint(root, branch);
+    super::readiness::remove_overlay_checkpoint(root, branch)?;
     store.bump_mutation_epoch(branch)?;
     store.set_working_tree_dirty(branch, true)?;
     store.apply_diff(branch, &diff)?;
@@ -595,6 +617,18 @@ mod tests {
         assert!(!indexes_event(EventKind::Access(
             notify::event::AccessKind::Any
         )));
+    }
+
+    #[test]
+    fn startup_rescan_clear_keeps_a_rescan_raised_after_the_snapshot() {
+        let rescan = AtomicBool::new(true);
+        let epoch = AtomicU64::new(0);
+        let pre = epoch.load(Ordering::Acquire);
+        assert!(!clear_startup_rescan(&rescan, &epoch, pre));
+        rescan.store(true, Ordering::Release);
+        raise_rescan(&epoch, &rescan);
+        assert!(clear_startup_rescan(&rescan, &epoch, pre));
+        assert!(rescan.load(Ordering::Acquire));
     }
 
     #[test]

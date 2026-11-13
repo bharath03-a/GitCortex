@@ -370,3 +370,65 @@ fn gitignored_nodes_from_before_a_restart_do_not_block_certification() {
         let _ = watcher.await;
     });
 }
+
+#[test]
+fn checkpoint_removal_failure_aborts_before_the_graph_is_mutated() {
+    let _stores = lock_stores();
+    let repo = TempRepo::init();
+    let head = commit_file(repo.path(), "a.rs", "pub fn alpha() {}\n", "a");
+    let store = indexed(&repo, &head);
+    let epoch = store
+        .lock()
+        .expect("lock")
+        .mutation_epoch("main")
+        .expect("epoch");
+    // A non-empty directory where the checkpoint lives cannot be removed.
+    let checkpoint = super::readiness::overlay_checkpoint_path(repo.path(), "main");
+    std::fs::create_dir_all(checkpoint.join("blocker")).expect("blocker");
+    std::fs::write(repo.path().join("a.rs"), "pub fn alpha_edited() {}\n").expect("edit");
+    let result = apply_disk_batch(
+        repo.path(),
+        &store,
+        "main",
+        &head,
+        &[repo.path().join("a.rs")],
+        &AtomicU64::new(0),
+        &mut HashMap::new(),
+    );
+    std::fs::remove_dir_all(&checkpoint).expect("cleanup");
+    assert!(result.is_err(), "a stale checkpoint must not be ignored");
+    assert!(has(&store, "alpha"), "graph mutated after a failed removal");
+    assert_eq!(
+        store
+            .lock()
+            .expect("lock")
+            .mutation_epoch("main")
+            .expect("epoch"),
+        epoch
+    );
+}
+
+#[test]
+fn overlay_over_the_total_byte_budget_writes_no_checkpoint() {
+    let _stores = lock_stores();
+    let repo = TempRepo::init();
+    let head = commit_file(repo.path(), "a.rs", "pub fn alpha() {}\n", "a");
+    let store = indexed(&repo, &head);
+    let per_file = (super::readiness::MAX_OVERLAY_FILE_BYTES - 1024) as usize;
+    let count = (super::readiness::MAX_OVERLAY_TOTAL_BYTES as usize / per_file) + 1;
+    let mut rels = Vec::new();
+    for index in 0..count {
+        let rel = format!("big_{index}.rs");
+        let body = format!("pub fn big_{index}() {{}}\n");
+        let padding = "// padding\n".repeat((per_file - body.len()) / 11);
+        std::fs::write(repo.path().join(&rel), format!("{body}{padding}")).expect("write");
+        rels.push(rel);
+    }
+    let rels: Vec<&str> = rels.iter().map(String::as_str).collect();
+    batch(&repo, &store, &head, &rels);
+    assert!(
+        !super::readiness::overlay_checkpoint_path(repo.path(), "main").exists(),
+        "a checkpoint over the byte budget can never verify"
+    );
+    assert_uncertified(&state(&repo, &store));
+}
