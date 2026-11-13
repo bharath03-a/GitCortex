@@ -43,6 +43,40 @@ pub fn daemon_log_path(repo_root: &Path) -> PathBuf {
     branch::data_dir(&repo_id).join("daemon.log")
 }
 
+/// Ask the live graph owner for observed readiness instead of equating an
+/// advisory lock with a healthy watcher. The probe has a bounded timeout.
+pub async fn daemon_readiness(repo_root: &Path) -> Result<serde_json::Value> {
+    use tokio::io::AsyncWriteExt;
+    tokio::time::timeout(Duration::from_secs(3), async {
+        let mut stream = tokio::net::UnixStream::connect(daemon_socket_path(repo_root)).await?;
+        stream.write_all(&[COMPACT_MODE]).await?;
+        let client = ().serve(stream).await?;
+        let response = client
+            .call_tool(
+                rmcp::model::CallToolRequestParams::new("gcx").with_arguments(
+                    serde_json::json!({"action":"graph_stats", "params":{}})
+                        .as_object()
+                        .cloned()
+                        .unwrap_or_default(),
+                ),
+            )
+            .await;
+        client.cancel().await?;
+        let response = response?;
+        anyhow::ensure!(
+            response.is_error != Some(true),
+            "daemon readiness query failed"
+        );
+        let index = response
+            .structured_content
+            .and_then(|data| data.get("index").cloned())
+            .context("daemon did not return index readiness; restart it with the current binary")?;
+        Ok(index)
+    })
+    .await
+    .context("daemon readiness probe timed out")?
+}
+
 /// Own the embedded graph once and multiplex any number of local MCP clients.
 /// Client proxies send one mode byte before the newline-delimited MCP stream.
 pub async fn serve_daemon(repo_root: PathBuf) -> Result<()> {
@@ -152,12 +186,15 @@ fn spawn_client(
 fn spawn_background_services(repo_root: &Path, handler: &GitCortexServer) {
     // The watcher and semantic indexer run once per repository daemon, not once
     // per editor connection.
-    let (watch_store, watch_branch, graph_revision) = handler.store_context();
+    let watch = handler.store_context();
+    let watch_branch = watch.branch;
+    let graph_revision = watch.graph_revision;
     crate::mcp::watcher::spawn_file_watcher(
         repo_root.to_owned(),
-        watch_store,
+        watch.store,
         watch_branch.clone(),
         graph_revision.clone(),
+        watch.unhealthy,
     );
 
     let (sem_arc, store_arc, default_branch) = handler.semantic_context();

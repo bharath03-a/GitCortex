@@ -74,3 +74,4 @@ __pycache__/
 # Favicon copied from assets/icon.svg / assets/favicon.ico at Pages build time
 docs/favicon.svg
 docs/favicon.ico
+.claude/worktrees/

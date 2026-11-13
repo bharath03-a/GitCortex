@@ -1,4 +1,5 @@
 pub mod agent;
+pub(crate) mod audit;
 pub mod centrality;
 pub mod clustering;
 pub(crate) mod git_helpers;
@@ -6,6 +7,7 @@ pub(crate) mod helpers;
 
 pub(crate) mod params;
 pub mod planner;
+pub mod readiness;
 pub mod search;
 pub mod server;
 pub mod subgraph;

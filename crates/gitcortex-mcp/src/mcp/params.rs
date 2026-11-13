@@ -78,7 +78,7 @@ pub struct BranchDiffParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct DetectChangesParams {
-    /// Branch to query (defaults to "main" if omitted).
+    /// Branch to query (defaults to the current checkout).
     pub branch: Option<String>,
 }
 
@@ -287,6 +287,6 @@ pub struct DetectImpactParams {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 pub struct GenerateMapParams {
-    /// Branch to document (defaults to "main").
+    /// Branch to document (defaults to the current checkout).
     pub branch: Option<String>,
 }

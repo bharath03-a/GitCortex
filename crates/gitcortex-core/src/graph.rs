@@ -200,6 +200,11 @@ impl Edge {
 /// Applying a `GraphDiff` to the store brings the persisted graph up to date.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct GraphDiff {
+    /// Git blob IDs of the exact bytes read by the parser. Allows the async
+    /// boundary to verify disk-derived evidence against a committed snapshot.
+    /// `None` records that the source was absent when the batch was read.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_hashes: Vec<(PathBuf, Option<String>)>,
     pub added_nodes: Vec<Node>,
     /// Nodes with stable identity present in both snapshots but changed content
     /// or metadata. Values are the destination-snapshot versions.
@@ -257,6 +262,7 @@ impl GraphDiff {
     /// in parallel and their per-file diffs are combined before a single
     /// store write.
     pub fn merge(&mut self, other: GraphDiff) {
+        self.source_hashes.extend(other.source_hashes);
         self.added_nodes.extend(other.added_nodes);
         self.modified_nodes.extend(other.modified_nodes);
         self.removed_node_ids.extend(other.removed_node_ids);
