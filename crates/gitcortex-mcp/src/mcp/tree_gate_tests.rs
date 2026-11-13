@@ -384,6 +384,51 @@ fn diagnostics_answer_without_waiting_for_an_apply() {
 }
 
 #[test]
+fn graph_stats_returns_indexing_promptly_when_finish_holds_store() {
+    both_modes(|repo, compact| async move {
+        let live = Harness::start(repo, compact).await;
+        let held = hold_store(&live.server);
+        for action in ["graph_stats", "health_report"] {
+            let result = tokio::time::timeout(
+                Duration::from_millis(500),
+                live.client.call_tool(live.request(action, json!({}))),
+            )
+            .await
+            .expect("diagnostics must not block on store mutex held in finish")
+            .expect("call");
+            assert_ne!(result.is_error, Some(true), "{action}: {result:?}");
+            let data = result.structured_content.expect("structured");
+            assert_eq!(data["status"], "index_not_ready", "{action}: {data}");
+            assert_eq!(state(&data), "indexing", "{action}: {data}");
+        }
+        drop(held);
+        live.stop().await;
+    });
+}
+
+#[test]
+fn busy_diagnostic_still_reports_the_requested_target_revision() {
+    both_modes(|repo, compact| async move {
+        let live = Harness::start(repo, compact).await;
+        let feature = git(live.repo.path(), &["rev-parse", "feat/x"]);
+        let held = hold_store(&live.server);
+        for (branch, target) in [("feat/x", feature.as_str()), ("main", live.head.as_str())] {
+            let result = live
+                .client
+                .call_tool(live.request("graph_stats", json!({"branch": branch})))
+                .await
+                .expect("call");
+            let data = result.structured_content.expect("structured");
+            assert_eq!(state(&data), "indexing", "{data}");
+            assert_eq!(data["index"]["branch"], branch, "{data}");
+            assert_eq!(data["index"]["target_revision"], target, "{data}");
+        }
+        drop(held);
+        live.stop().await;
+    });
+}
+
+#[test]
 fn checked_out_branch_never_starts_a_tree_job() {
     both_modes(|repo, compact| async move {
         let live = Harness::start(repo, compact).await;

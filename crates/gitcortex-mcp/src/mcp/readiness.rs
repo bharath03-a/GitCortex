@@ -33,6 +33,9 @@ pub struct OverlayCheckpoint {
     pub head: String,
     pub branch_key: String,
     pub files: BTreeMap<PathBuf, Option<String>>,
+    /// `.gitcortex/ignore` blob hash the overlay was indexed under.
+    #[serde(default)]
+    pub ignore: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -81,6 +84,7 @@ pub fn write_overlay_checkpoint(
         head: head.to_owned(),
         branch_key: sanitize(branch),
         files: files.clone(),
+        ignore: super::ignore_rules::rules_hash(root)?,
     };
     let bytes = serde_json::to_vec(&checkpoint)?;
     if bytes.len() as u64 > MAX_CHECKPOINT_JSON_BYTES {
@@ -149,6 +153,11 @@ pub fn verify_overlay_checkpoint(
     }
     let checkpoint = read_overlay_checkpoint(root, branch)?;
     if checkpoint.head != head || checkpoint.branch_key != sanitize(branch) {
+        return None;
+    }
+    if super::ignore_rules::rules_hash(root).ok()? != checkpoint.ignore
+        || super::ignore_rules::rules_modified(root, head).unwrap_or(true)
+    {
         return None;
     }
     if checkpoint.files.len() != changed.len() {
@@ -277,6 +286,10 @@ pub fn inspect_with_pending(
     let changed = changed_sources(root).ok();
     let clean = changed.as_ref().map(|paths| paths.is_empty());
     let checkout_scope = checkout_branch.as_deref() == Some(branch);
+    let rules_modified = checkout_scope
+        && checkout_revision.as_deref().map_or(true, |head| {
+            super::ignore_rules::rules_modified(root, head).unwrap_or(true)
+        });
     let overlay_verified = checkout_scope
         && !events_pending
         && clean == Some(false)
@@ -299,6 +312,7 @@ pub fn inspect_with_pending(
             }
         }
         _ if persisted_dirty.is_err() => "unavailable",
+        _ if rules_modified => "unverified",
         _ if persisted_dirty.as_ref().copied().unwrap_or(true) => "unverified",
         _ if checkout_scope && events_pending => "unverified",
         _ => "ready",
@@ -363,6 +377,27 @@ pub(crate) fn without_evidence(
         indexed_revision: None,
         working_tree_verified: false,
         next_action,
+    }
+}
+
+/// Readiness while another writer holds the store: no graph evidence, but the
+/// requested branch's commit is still resolved from Git.
+pub(crate) fn store_busy(root: &Path, branch: &str) -> IndexReadiness {
+    IndexReadiness {
+        target_revision: git(
+            root,
+            &[
+                "rev-parse",
+                "--verify",
+                "--end-of-options",
+                &format!("{branch}^{{commit}}"),
+            ],
+        ),
+        ..without_evidence(
+            "indexing",
+            branch,
+            "A branch index is being written to the graph; retry shortly.".to_owned(),
+        )
     }
 }
 

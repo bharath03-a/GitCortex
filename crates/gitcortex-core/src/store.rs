@@ -786,4 +786,17 @@ pub trait GraphStore: Send + Sync {
             "working-tree overlays are unsupported by this backend".to_owned(),
         ))
     }
+
+    /// Monotonic counter bumped whenever `branch`'s graph or indexed revision is
+    /// mutated. Tree jobs snapshot this at `begin` and abort at `finish` if any
+    /// concurrent writer (watcher overlay, `sync_commit`, hook, or `gcx init`)
+    /// touched the key while the store mutex was released.
+    fn mutation_epoch(&self, _branch: &str) -> Result<u64> {
+        Ok(0)
+    }
+
+    /// Advance and persist the per-branch monotonic mutation counter.
+    fn bump_mutation_epoch(&mut self, _branch: &str) -> Result<u64> {
+        Ok(0)
+    }
 }

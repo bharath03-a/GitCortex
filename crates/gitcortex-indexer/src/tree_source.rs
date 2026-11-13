@@ -60,9 +60,12 @@ impl SourceProvider for DiskSource<'_> {
         if self.0.should_ignore(path) {
             return Ok(None);
         }
-        // A symlink fails the whole checkout index: following one could read
-        // outside the repository. Trees differ by design, see `TreeSource::read`.
-        let absolute = self.0.validated_source_path(path)?;
+        // Skipped like a tree symlink: following one could read outside the
+        // repository.
+        let Some(absolute) = self.0.source_path(path)? else {
+            tracing::warn!(path = %path.display(), "skipping source symlink; symlinks are never followed");
+            return Ok(None);
+        };
         fs::read(&absolute)
             .map(Some)
             .map_err(|e| GitCortexError::Parse {
@@ -172,8 +175,7 @@ impl SourceProvider for TreeSource {
         let repo = self.repo()?;
         let tree = repo.find_tree(self.tree).map_err(git)?;
         let entry = tree.get_path(path).map_err(git)?;
-        // A symlink's blob is only its target path and nothing is followed, so
-        // skipping is safe here, unlike on disk where a symlink fails the index.
+        // A symlink's blob is only its target path; it is skipped, as on disk.
         if !is_regular(entry.filemode()) {
             return Ok(None);
         }
@@ -253,6 +255,65 @@ mod tests {
             .added_nodes
             .iter()
             .any(|node| node.file.to_str() == Some("large.rs")));
+    }
+
+    #[test]
+    fn checkout_incremental_reevaluates_paths_when_rules_change() {
+        let root = tempfile::tempdir().unwrap();
+        let git = |args: &[&str]| {
+            let output = Command::new("git")
+                .args(args)
+                .current_dir(root.path())
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{args:?}");
+            String::from_utf8(output.stdout).unwrap().trim().to_owned()
+        };
+        git(&["init"]);
+        git(&["config", "user.name", "Test"]);
+        git(&["config", "user.email", "test@example.test"]);
+        git(&["config", "commit.gpgsign", "false"]);
+        std::fs::create_dir(root.path().join(".gitcortex")).unwrap();
+        std::fs::write(root.path().join(".gitcortex/ignore"), "hidden.rs\n").unwrap();
+        std::fs::write(root.path().join("hidden.rs"), "pub fn hidden() {}\n").unwrap();
+        std::fs::write(root.path().join("kept.rs"), "pub fn kept() {}\n").unwrap();
+        std::fs::write(root.path().join("dropped.rs"), "pub fn dropped() {}\n").unwrap();
+        git(&["add", "."]);
+        git(&["commit", "-m", "base"]);
+        let base = git(&["rev-parse", "HEAD"]);
+        std::fs::write(root.path().join(".gitcortex/ignore"), "dropped.rs\n").unwrap();
+        git(&["commit", "-am", "swap rules"]);
+        let (diff, _) = IncrementalIndexer::new(root.path())
+            .unwrap()
+            .run(Some(&base))
+            .unwrap();
+        assert!(diff
+            .removed_files
+            .iter()
+            .any(|p| p.as_os_str() == "dropped.rs"));
+        assert!(!names(&diff).contains(&"dropped"));
+        assert!(
+            names(&diff).contains(&"hidden"),
+            "unignored file not indexed"
+        );
+
+        // A commit touching only an ignored file still drops its nodes.
+        let base = git(&["rev-parse", "HEAD"]);
+        std::fs::write(root.path().join("dropped.rs"), "pub fn dropped2() {}\n").unwrap();
+        git(&["commit", "-am", "edit ignored"]);
+        let (diff, _) = IncrementalIndexer::new(root.path())
+            .unwrap()
+            .run(Some(&base))
+            .unwrap();
+        assert!(diff
+            .removed_files
+            .iter()
+            .any(|p| p.as_os_str() == "dropped.rs"));
+        assert!(!names(&diff).contains(&"dropped2"));
+        assert!(diff
+            .source_hashes
+            .iter()
+            .all(|(p, _)| p.as_os_str() != "dropped.rs"));
     }
 
     enum Entry<'a> {
@@ -605,7 +666,7 @@ mod tests {
     }
 
     #[test]
-    fn source_symlink_is_skipped_in_tree_but_refused_on_disk() {
+    fn source_symlink_is_skipped_on_disk_and_in_tree() {
         let root = tempfile::tempdir().unwrap();
         let repo = git2::Repository::init(root.path()).unwrap();
         std::fs::write(root.path().join("real.rs"), FN_A).unwrap();
@@ -621,12 +682,21 @@ mod tests {
             .unwrap()
             .to_string();
         let indexer = IncrementalIndexer::new(root.path()).unwrap();
-        let refused = indexer.run(None).expect_err("checkout index refuses");
-        assert!(refused.to_string().contains("symlink"), "{refused}");
-        let refused = indexer
+        let (disk, _) = indexer.run(None).expect("checkout index skips");
+        assert!(names(&disk).contains(&"alpha"));
+        assert!(disk
+            .added_nodes
+            .iter()
+            .all(|n| n.file.as_os_str() != "link.rs"));
+        let live = indexer
             .index_files_from_disk(&[root.path().join("link.rs")])
-            .expect_err("live update refuses");
-        assert!(refused.to_string().contains("symlink"), "{refused}");
+            .expect("live update skips");
+        assert!(live.added_nodes.is_empty());
+        assert!(live.source_hashes.is_empty());
+        assert!(live
+            .removed_files
+            .iter()
+            .any(|p| p.as_os_str() == "link.rs"));
         let (tree, _) = indexer.run_tree(&sha, None).unwrap();
         assert!(names(&tree).contains(&"alpha"));
         assert!(tree

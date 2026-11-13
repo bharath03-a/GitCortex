@@ -4,6 +4,7 @@ pub mod centrality;
 pub mod clustering;
 pub(crate) mod git_helpers;
 pub(crate) mod helpers;
+pub mod ignore_rules;
 
 pub(crate) mod params;
 pub mod planner;
@@ -22,3 +23,5 @@ pub mod tree_jobs;
 pub(crate) mod test_support;
 #[cfg(test)]
 mod tree_gate_tests;
+#[cfg(test)]
+mod watcher_scope_tests;
