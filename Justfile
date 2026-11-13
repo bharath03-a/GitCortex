@@ -89,6 +89,10 @@ bench-test:
     cd tools/agent-bench && python3 -m unittest discover -p "test_*.py"
     cd scripts && python3 -m unittest discover -p "test_*.py"
 
+# Release evidence gate: claims must cite verified eval results (fails closed without a manifest)
+eval-gate:
+    python3 scripts/eval_release_gate.py
+
 # Frontend lint (eslint + tsc)
 viz-lint:
     cd viz && npm run lint
