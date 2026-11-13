@@ -182,6 +182,52 @@ python3 tools/agent-bench/continuous_run.py --gcx /path/to/gcx --label ep \
 `continuous_run.py` refuses to run without a passing, digest-matching
 verification record, and shares the spend cap with the unforced lane.
 
+## Report and release gate
+
+```bash
+python3 tools/agent-bench/eval_report.py <trace.jsonl>... --id <result-id>
+python3 scripts/eval_release_gate.py            # reads tools/agent-bench/eval-release-manifest.json
+```
+
+`eval_report.py` turns retained traces (unforced and continuous) into
+`results/<id>.summary.json` and `<id>.report.md`: the section 4A outcome and
+paired tables and the 4B discoverability tables, each by overall, repo,
+language, workflow, client, model, and lane. Ratios are baseline/arm per paired
+(task, round) with a seeded 95% bootstrap interval and per-round spread;
+`variance_ok` needs 3+ rounds. Every failed, timed-out, or aborted run stays in
+the denominators, and every loss, regression, unused tool, and inconclusive
+interval is listed under "Negative and inconclusive results"; nothing is
+filtered. Raw traces and client logs stay local (`results/` is git-ignored
+except `*.summary.json` and `*.report.md`); the summary carries their sha256.
+
+`scripts/eval_release_gate.py` is fail-closed (no manifest means `ready: false`).
+The manifest pins the candidate and baseline `gcx` sha256 and lists result
+summaries by path and sha256, with a `role` of `candidate` or `baseline`, plus
+the `claims` the release will make:
+
+```json
+{
+  "candidate": {"gcx_sha256": "<64 hex>"},
+  "baseline": {"gcx_sha256": "<64 hex>"},
+  "min_rounds": 3,
+  "results": [{"path": "tools/agent-bench/results/<id>.summary.json", "role": "candidate", "sha256": "<64 hex>"}],
+  "claims": [{"id": "uncached-overall", "result_id": "<id>", "group": "overall/all",
+              "arm": "gcx-guide", "metric": "uncached_tokens_ratio", "op": ">=", "value": 1.0}],
+  "docs": ["docs/benchmarks.html"]
+}
+```
+
+It rejects: checksum mismatches on summaries, raw traces, or logs; a binary
+hash that differs from the manifest; missing provenance; a dirty harness;
+incomplete or under-replicated runs; any false-safe claim; success that is not
+non-inferior overall and in every workflow, lane, language, and repo group;
+overall uncached tokens below 1.0x; claims that do not recompute from the cited
+result; and, in the listed docs, any ratio or percentage claim without a
+`[result: <id>]` citation. Workflow-level uncached losses are printed under
+`losses` for the release notes. Candidate results need both the unforced and the
+continuous lanes, and a baseline result needs the unforced lane (the before/after
+for section 4B).
+
 ## Lanes
 
 1. **Retrieval** (implemented): deterministic, free contract/evidence gate.
