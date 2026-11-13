@@ -48,6 +48,31 @@ impl Differ {
         Ok(commit.id().to_string())
     }
 
+    /// Whether `.gitcortex/ignore` differs between `from_sha` and HEAD.
+    pub fn ignore_rules_changed(&self, from_sha: Option<&str>) -> Result<bool> {
+        let Some(sha) = from_sha else {
+            return Ok(false);
+        };
+        let git = |e: git2::Error| GitCortexError::Git(e.message().to_owned());
+        let rules = |tree: &git2::Tree<'_>| -> Result<Option<git2::Oid>> {
+            match tree.get_path(Path::new(".gitcortex/ignore")) {
+                Ok(entry) => Ok(Some(entry.id())),
+                Err(error) if error.code() == git2::ErrorCode::NotFound => Ok(None),
+                Err(error) => Err(git(error)),
+            }
+        };
+        let head = self
+            .repo
+            .head()
+            .and_then(|h| h.peel_to_tree())
+            .map_err(git)?;
+        let from = git2::Oid::from_str(sha)
+            .and_then(|oid| self.repo.find_commit(oid))
+            .and_then(|commit| commit.tree())
+            .map_err(git)?;
+        Ok(rules(&from)? != rules(&head)?)
+    }
+
     /// Compute which files changed between `from_sha` (exclusive) and HEAD.
     ///
     /// - `from_sha = None` — diff the empty tree against HEAD (first-time index).

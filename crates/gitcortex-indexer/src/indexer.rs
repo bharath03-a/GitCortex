@@ -67,11 +67,27 @@ impl IncrementalIndexer {
             return Ok((GraphDiff::default(), head_sha));
         }
 
-        let changes = differ.changed_files(from_sha, &self.supported_extensions())?;
-        if changes.is_empty() {
+        let extensions = self.supported_extensions();
+        let mut changes = differ.changed_files(from_sha, &extensions)?;
+        // Exclusions can change without any source blob changing, so a rule
+        // change re-evaluates every path, as `TreeSource::changes` does.
+        if differ.ignore_rules_changed(from_sha)? {
+            let reported: HashSet<PathBuf> = changes.iter().map(|c| c.path().to_owned()).collect();
+            let all = differ.changed_files(None, &extensions)?;
+            changes.extend(all.into_iter().filter(|c| !reported.contains(c.path())));
+        }
+        // Excluded files are never read; their nodes are only removed.
+        let (excluded, changes): (Vec<_>, Vec<_>) = changes
+            .into_iter()
+            .partition(|change| self.should_ignore(change.path()));
+        if changes.is_empty() && excluded.is_empty() {
             return Ok((GraphDiff::default(), head_sha));
         }
-        self.run_source(changes, head_sha, from_sha, &DiskSource(self))
+        let (mut diff, head_sha) =
+            self.run_source(changes, head_sha, from_sha, &DiskSource(self))?;
+        diff.removed_files
+            .extend(excluded.into_iter().map(|change| change.path().to_owned()));
+        Ok((diff, head_sha))
     }
 
     /// Index a commit's blobs without reading the checkout or HEAD.

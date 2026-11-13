@@ -255,6 +255,65 @@ mod tests {
             .any(|node| node.file.to_str() == Some("large.rs")));
     }
 
+    #[test]
+    fn checkout_incremental_reevaluates_paths_when_rules_change() {
+        let root = tempfile::tempdir().unwrap();
+        let git = |args: &[&str]| {
+            let output = Command::new("git")
+                .args(args)
+                .current_dir(root.path())
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{args:?}");
+            String::from_utf8(output.stdout).unwrap().trim().to_owned()
+        };
+        git(&["init"]);
+        git(&["config", "user.name", "Test"]);
+        git(&["config", "user.email", "test@example.test"]);
+        git(&["config", "commit.gpgsign", "false"]);
+        std::fs::create_dir(root.path().join(".gitcortex")).unwrap();
+        std::fs::write(root.path().join(".gitcortex/ignore"), "hidden.rs\n").unwrap();
+        std::fs::write(root.path().join("hidden.rs"), "pub fn hidden() {}\n").unwrap();
+        std::fs::write(root.path().join("kept.rs"), "pub fn kept() {}\n").unwrap();
+        std::fs::write(root.path().join("dropped.rs"), "pub fn dropped() {}\n").unwrap();
+        git(&["add", "."]);
+        git(&["commit", "-m", "base"]);
+        let base = git(&["rev-parse", "HEAD"]);
+        std::fs::write(root.path().join(".gitcortex/ignore"), "dropped.rs\n").unwrap();
+        git(&["commit", "-am", "swap rules"]);
+        let (diff, _) = IncrementalIndexer::new(root.path())
+            .unwrap()
+            .run(Some(&base))
+            .unwrap();
+        assert!(diff
+            .removed_files
+            .iter()
+            .any(|p| p.as_os_str() == "dropped.rs"));
+        assert!(!names(&diff).contains(&"dropped"));
+        assert!(
+            names(&diff).contains(&"hidden"),
+            "unignored file not indexed"
+        );
+
+        // A commit touching only an ignored file still drops its nodes.
+        let base = git(&["rev-parse", "HEAD"]);
+        std::fs::write(root.path().join("dropped.rs"), "pub fn dropped2() {}\n").unwrap();
+        git(&["commit", "-am", "edit ignored"]);
+        let (diff, _) = IncrementalIndexer::new(root.path())
+            .unwrap()
+            .run(Some(&base))
+            .unwrap();
+        assert!(diff
+            .removed_files
+            .iter()
+            .any(|p| p.as_os_str() == "dropped.rs"));
+        assert!(!names(&diff).contains(&"dropped2"));
+        assert!(diff
+            .source_hashes
+            .iter()
+            .all(|(p, _)| p.as_os_str() != "dropped.rs"));
+    }
+
     enum Entry<'a> {
         File(&'a str),
         Tree(Vec<(&'a [u8], u32, Entry<'a>)>),
