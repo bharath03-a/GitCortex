@@ -177,8 +177,8 @@ fn run_pipeline(
 
 #[cfg(unix)]
 #[test]
-fn indexing_rejects_source_symlink_outside_repository() {
-    use std::os::unix::fs::symlink;
+fn indexing_skips_source_symlink_outside_repository() {
+    use std::os::unix::fs::{symlink, PermissionsExt};
 
     let repo = tempfile::tempdir().expect("repo tempdir");
     let outside = tempfile::tempdir().expect("outside tempdir");
@@ -186,9 +186,14 @@ fn indexing_rejects_source_symlink_outside_repository() {
     let secret = "pub fn synthetic_secret_do_not_index() {}\n";
     let outside_source = outside.path().join("secret.rs");
     std::fs::write(&outside_source, secret).expect("write synthetic secret");
+    std::fs::write(
+        repo.path().join("kept.rs"),
+        "pub fn kept_beside_link() {}\n",
+    )
+    .expect("write kept");
     symlink(&outside_source, repo.path().join("leak.rs")).expect("create source symlink");
     let status = Command::new("git")
-        .args(["add", "leak.rs"])
+        .args(["add", "leak.rs", "kept.rs"])
         .current_dir(repo.path())
         .status()
         .expect("git add failed");
@@ -199,15 +204,56 @@ fn indexing_rejects_source_symlink_outside_repository() {
         .status()
         .expect("git commit failed");
     assert!(status.success());
+    // Any read through the link would now fail the index instead of skipping.
+    std::fs::set_permissions(&outside_source, std::fs::Permissions::from_mode(0o000))
+        .expect("make target unreadable");
 
     let indexer = IncrementalIndexer::new(repo.path()).expect("indexer");
-    let error = indexer
-        .run(None)
-        .expect_err("an external source symlink must be rejected");
-    assert!(
-        error.to_string().contains("symlink") || error.to_string().contains("outside repository"),
-        "unexpected containment error: {error}"
-    );
+    let checkout = indexer.run(None);
+    let live = indexer.index_files_from_disk(&[repo.path().join("leak.rs")]);
+    std::fs::set_permissions(&outside_source, std::fs::Permissions::from_mode(0o644))
+        .expect("restore target");
+    let (diff, _) = checkout.expect("a source symlink is skipped, not fatal");
+    let live = live.expect("live update skips a source symlink");
+    for diff in [&diff, &live] {
+        assert!(diff
+            .added_nodes
+            .iter()
+            .all(|node| node.name != "synthetic_secret_do_not_index"
+                && node.file != Path::new("leak.rs")));
+        assert!(diff
+            .source_hashes
+            .iter()
+            .all(|(path, _)| path != Path::new("leak.rs")));
+    }
+    assert!(diff
+        .added_nodes
+        .iter()
+        .any(|node| node.name == "kept_beside_link"));
+    assert!(live.removed_files.iter().any(|p| p == Path::new("leak.rs")));
+}
+
+#[cfg(unix)]
+#[test]
+fn live_update_never_reads_through_a_symlinked_directory() {
+    use std::os::unix::fs::{symlink, PermissionsExt};
+
+    let repo = tempfile::tempdir().expect("repo tempdir");
+    let outside = tempfile::tempdir().expect("outside tempdir");
+    init_repo(repo.path());
+    let outside_source = outside.path().join("secret.rs");
+    std::fs::write(&outside_source, "pub fn outside_dir_secret() {}\n").expect("secret");
+    symlink(outside.path(), repo.path().join("src")).expect("symlink dir");
+    std::fs::set_permissions(&outside_source, std::fs::Permissions::from_mode(0o000))
+        .expect("make target unreadable");
+    let result = IncrementalIndexer::new(repo.path())
+        .expect("indexer")
+        .index_files_from_disk(&[repo.path().join("src/secret.rs")]);
+    std::fs::set_permissions(&outside_source, std::fs::Permissions::from_mode(0o644))
+        .expect("restore target");
+    let diff = result.expect("skipped, not read");
+    assert!(diff.added_nodes.is_empty(), "{:?}", diff.added_nodes);
+    assert!(diff.source_hashes.is_empty());
 }
 
 #[test]

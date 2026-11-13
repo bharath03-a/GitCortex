@@ -14,6 +14,7 @@ git2.workspace = true
 gitcortex-core.workspace = true
 ignore.workspace = true
 rayon.workspace = true
+tracing.workspace = true
 tree-sitter.workspace            = true
 tree-sitter-rust.workspace       = true
 tree-sitter-python.workspace     = true

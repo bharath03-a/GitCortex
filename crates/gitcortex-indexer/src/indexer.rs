@@ -594,7 +594,10 @@ impl IncrementalIndexer {
             .is_ignore()
     }
 
-    pub(crate) fn validated_source_path(&self, repo_relative_path: &Path) -> Result<PathBuf> {
+    /// Absolute path of a repository-relative source, or `None` when any
+    /// component is a symlink: links are never followed, so nothing outside
+    /// the repository is read.
+    pub(crate) fn source_path(&self, repo_relative_path: &Path) -> Result<Option<PathBuf>> {
         let mut current = self.repo_root.clone();
         for component in repo_relative_path.components() {
             let Component::Normal(segment) = component else {
@@ -610,13 +613,10 @@ impl IncrementalIndexer {
                     message: error.to_string(),
                 })?;
             if metadata.file_type().is_symlink() {
-                return Err(GitCortexError::Parse {
-                    file: current,
-                    message: "refusing to index a source path containing a symlink".to_owned(),
-                });
+                return Ok(None);
             }
         }
-        Ok(current)
+        Ok(Some(current))
     }
 }
 
@@ -1061,14 +1061,14 @@ mod tests {
         let repo = tempfile::tempdir().expect("repo");
         let indexer = IncrementalIndexer::new(repo.path()).expect("indexer");
         let error = indexer
-            .validated_source_path(Path::new("../secret.rs"))
+            .source_path(Path::new("../secret.rs"))
             .expect_err("parent traversal must fail");
         assert!(error.to_string().contains("repository-relative"));
     }
 
     #[cfg(unix)]
     #[test]
-    fn source_path_rejects_symlinked_parent() {
+    fn source_path_skips_symlinked_parent() {
         use std::os::unix::fs::symlink;
 
         let repo = tempfile::tempdir().expect("repo");
@@ -1077,9 +1077,9 @@ mod tests {
             .expect("write secret");
         symlink(outside.path(), repo.path().join("src")).expect("symlink parent");
         let indexer = IncrementalIndexer::new(repo.path()).expect("indexer");
-        let error = indexer
-            .validated_source_path(Path::new("src/secret.rs"))
-            .expect_err("symlinked parent must fail");
-        assert!(error.to_string().contains("symlink"));
+        let resolved = indexer
+            .source_path(Path::new("src/secret.rs"))
+            .expect("a symlinked parent is skipped, not an error");
+        assert_eq!(resolved, None);
     }
 }
