@@ -180,7 +180,14 @@ fn spawn_client(
     clients.fetch_add(1, Ordering::AcqRel);
     tokio::spawn(async move {
         let result = async {
-            let mode = stream.read_u8().await.context("read MCP client mode")?;
+            let mode = match stream.read_u8().await {
+                Ok(mode) => mode,
+                // A starting daemon probes liveness by connecting and closing.
+                Err(error) if error.kind() == std::io::ErrorKind::UnexpectedEof => {
+                    return Ok(());
+                }
+                Err(error) => return Err(error).context("read MCP client mode"),
+            };
             let compact = match mode {
                 COMPACT_MODE => true,
                 FULL_MODE => false,

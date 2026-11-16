@@ -57,3 +57,38 @@ fn missing_graph_cannot_report_an_empty_successful_tour() {
         "{message}"
     );
 }
+
+#[test]
+fn doctor_reports_unreachable_server() {
+    let root = tempfile::tempdir().expect("repo");
+    let data = tempfile::tempdir().expect("data");
+    assert!(Command::new("git")
+        .args(["init", "-q", "-b", "main"])
+        .current_dir(root.path())
+        .status()
+        .expect("git")
+        .success());
+    // A daemon that holds the graph lock but no longer answers its socket.
+    std::env::set_var("GCX_STORE_PATH", data.path());
+    let repo = root.path().canonicalize().expect("canonical repo");
+    let mut lock = gitcortex_store::branch::RepositoryLock::try_acquire(&repo)
+        .expect("lock")
+        .expect("lock is free");
+    lock.set_owner("pid 999999 (repository daemon)")
+        .expect("owner");
+
+    let output = Command::new(GCX)
+        .arg("doctor")
+        .env("GCX_STORE_PATH", data.path())
+        .env("GCX_DISABLE_SEMANTIC", "1")
+        .current_dir(root.path())
+        .output()
+        .expect("doctor");
+    drop(lock);
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("MCP server unreachable"), "{stderr}");
+    assert!(stderr.contains("kill 999999"), "{stderr}");
+    assert!(stderr.contains("/mcp"), "{stderr}");
+}

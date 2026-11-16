@@ -223,3 +223,152 @@ fn git(repo: &Path, args: &[&str]) {
         .expect("git command");
     assert!(status.success(), "git {args:?} failed");
 }
+
+/// Hold `GCX_STORE_PATH` steady for in-process lock holders in this binary.
+static STORE_ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+struct Fixture {
+    repo: tempfile::TempDir,
+    data: tempfile::TempDir,
+    cache: tempfile::TempDir,
+}
+
+impl Fixture {
+    fn indexed() -> Self {
+        let fixture = Self {
+            repo: tempfile::tempdir().expect("repo tempdir"),
+            data: tempfile::tempdir().expect("data tempdir"),
+            cache: tempfile::tempdir().expect("cache tempdir"),
+        };
+        let repo = fixture.repo.path();
+        git(repo, &["init", "-q"]);
+        git(repo, &["config", "user.email", "test@example.com"]);
+        git(repo, &["config", "user.name", "Test"]);
+        std::fs::write(repo.join("main.rs"), "fn main() {}\n").expect("fixture");
+        git(repo, &["add", "main.rs"]);
+        git(repo, &["commit", "-qm", "initial"]);
+        let init = fixture
+            .gcx()
+            .args(["init", "--editor", "none"])
+            .output()
+            .expect("gcx init");
+        assert!(
+            init.status.success(),
+            "{}",
+            String::from_utf8_lossy(&init.stderr)
+        );
+        fixture
+    }
+
+    fn gcx(&self) -> Command {
+        gcx(self.repo.path(), self.data.path(), self.cache.path())
+    }
+
+    fn client(&self) -> McpClient {
+        McpClient::start(self.repo.path(), self.data.path(), self.cache.path(), false)
+    }
+
+    /// The single per-repository data directory `gcx init` created.
+    fn repo_data_dir(&self) -> std::path::PathBuf {
+        std::fs::read_dir(self.data.path())
+            .expect("data dir")
+            .map(|entry| entry.expect("entry").path())
+            .find(|path| path.is_dir())
+            .expect("repository data dir")
+    }
+
+    fn daemon_pid(&self) -> Option<String> {
+        let owner = std::fs::read_to_string(self.repo_data_dir().join("serve.lock")).ok()?;
+        let pid = owner.strip_prefix("pid ")?.split_whitespace().next()?;
+        owner.contains("repository daemon").then(|| pid.to_owned())
+    }
+}
+
+#[test]
+fn client_connect_survives_daemon_restart() {
+    let fixture = Fixture::indexed();
+    let mut first = fixture.client();
+    assert_eq!(first.initialize_and_list_tools(), ["gcx"]);
+
+    // A crashed daemon leaves its socket file behind; the next client must
+    // replace it rather than connect to a dead endpoint.
+    let pid = fixture.daemon_pid().expect("daemon pid");
+    assert!(Command::new("kill")
+        .args(["-9", &pid])
+        .status()
+        .expect("kill daemon")
+        .success());
+    drop(first.stdin.take());
+    let _ = first.child.wait();
+
+    let mut restarted = fixture.client();
+    assert_eq!(restarted.initialize_and_list_tools(), ["gcx"]);
+    restarted.close();
+
+    // Reconnect around the daemon's idle-exit deadline, when an exiting
+    // daemon can drop a freshly queued connection.
+    for delay_ms in [0, 400, 450, 480, 500, 520, 550, 600, 700, 900] {
+        std::thread::sleep(Duration::from_millis(delay_ms));
+        let mut client = fixture.client();
+        assert_eq!(
+            client.initialize_and_list_tools(),
+            ["gcx"],
+            "reconnect {delay_ms}ms after the previous client left"
+        );
+        client.close();
+    }
+}
+
+#[test]
+fn client_connect_waits_for_a_hook_holding_the_graph() {
+    let fixture = Fixture::indexed();
+    let _env = STORE_ENV
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    std::env::set_var("GCX_STORE_PATH", fixture.data.path());
+    let repo = fixture.repo.path().canonicalize().expect("canonical repo");
+    let mut lock = gitcortex_store::branch::RepositoryLock::try_acquire(&repo)
+        .expect("lock")
+        .expect("lock is free");
+    lock.set_owner("pid 1 (graph operation)").expect("owner");
+    let holder = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(1_500));
+        drop(lock);
+    });
+
+    let mut client = fixture.client();
+    assert_eq!(client.initialize_and_list_tools(), ["gcx"]);
+    client.close();
+    holder.join().expect("lock holder");
+}
+
+#[test]
+fn client_gets_actionable_error_when_daemon_cannot_start() {
+    let fixture = Fixture::indexed();
+    std::fs::write(fixture.repo_data_dir().join("schema_version"), "1").expect("stale schema");
+
+    let started = Instant::now();
+    let mut client = fixture.client();
+    client.send(json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": {"name": "daemon-test", "version": "1"}
+        }
+    }));
+    let reply = client.receive();
+    assert!(
+        started.elapsed() < Duration::from_secs(8),
+        "startup failure took {:?}",
+        started.elapsed()
+    );
+    assert_eq!(reply["id"], 1);
+    let message = reply["error"]["message"].as_str().expect("error message");
+    assert!(message.contains("schema version"), "{message}");
+    assert!(message.contains("gcx doctor"), "{message}");
+    drop(client.stdin.take());
+    assert!(!client.child.wait().expect("proxy exit").success());
+}
