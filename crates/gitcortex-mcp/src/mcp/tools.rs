@@ -2308,6 +2308,20 @@ impl rmcp::ServerHandler for GitCortexServer {
     fn get_tool(&self, name: &str) -> Option<rmcp::model::Tool> {
         self.active_tool_router().get(name).cloned()
     }
+
+    fn get_info(&self) -> rmcp::model::ServerInfo {
+        rmcp::model::ServerInfo::new(
+            rmcp::model::ServerCapabilities::builder()
+                .enable_tools()
+                .enable_prompts()
+                .build(),
+        )
+        .with_server_info(rmcp::model::Implementation::new(
+            "gitcortex",
+            env!("CARGO_PKG_VERSION"),
+        ))
+        .with_instructions(super::guidance::server_instructions(self.compact))
+    }
 }
 
 #[cfg(test)]
