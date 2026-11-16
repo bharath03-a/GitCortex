@@ -366,8 +366,12 @@ impl GitCortexServer {
         Self::tool_router_for_mode(self.compact)
     }
 
-    fn tool_router_for_mode(compact: bool) -> ToolRouter<Self> {
+    pub(crate) fn tool_router_for_mode(compact: bool) -> ToolRouter<Self> {
         let mut router = Self::tool_router();
+        // `#[tool]` only accepts literals; the action table is the one source.
+        if let Some(route) = router.map.get_mut("gcx") {
+            route.attr.description = Some(super::guidance::compact_tool_description().into());
+        }
         if compact {
             for name in [
                 "plan_query",
@@ -413,7 +417,7 @@ impl GitCortexServer {
 impl GitCortexServer {
     /// Compile a natural-language repository question into a safe typed action.
     #[tool(
-        description = "Compile a common repository question into a typed, read-only GitCortex action. \
+        description = "Use when you want to see which typed action a plain-English question maps to before running it. Compile a common repository question into a typed, read-only GitCortex action. \
         Supports callers, callees, symbol definitions, pre-edit impact, type usages, symbol context, and implementors. \
         Unsupported or malformed questions return needs_clarification; no Cypher, SQL, or shell is generated or executed."
     )]
@@ -423,7 +427,7 @@ impl GitCortexServer {
 
     /// Plan and execute one supported repository question through read-only handlers.
     #[tool(
-        description = "Answer a supported repository question in one call using a deterministic typed plan. \
+        description = "Use when you have a plain-English question such as 'who calls X' and want the answer in one call. Answer a supported repository question in one call using a deterministic typed plan. \
         Routes only to read-only callers, callees, exact symbol, pre-edit impact, type-usage, symbol-context, or implementor handlers. \
         Unsupported questions return needs_clarification and are not executed."
     )]
@@ -476,7 +480,7 @@ impl GitCortexServer {
 
     /// Look up all nodes (functions, structs, traits, etc.) by name.
     #[tool(
-        description = "Look up nodes in the code knowledge graph by name. Set fuzzy=true for substring matching (e.g. 'auth' finds 'validate_auth', 'auth_middleware'). Default is exact match."
+        description = "Use when you need where a symbol is defined. Look up nodes in the code knowledge graph by name. Set fuzzy=true for substring matching (e.g. 'auth' finds 'validate_auth', 'auth_middleware'). Default is exact match."
     )]
     fn lookup_symbol(&self, Parameters(p): Parameters<LookupSymbolParams>) -> CallToolResult {
         let branch = self.resolve_branch(p.branch.as_deref());
@@ -524,7 +528,7 @@ impl GitCortexServer {
 
     /// Find all callers of a function or method, with optional multi-hop depth.
     #[tool(
-        description = "Find callers of one exact function or method. Ambiguous short names \
+        description = "Use when asked who calls a function or method, or where it is used. Find callers of one exact function or method. Ambiguous short names \
         return qualified candidates without traversal. Evidence is confidence-ranked, \
         production-before-test, globally budgeted, and includes total coverage. depth=1 \
         (default) is direct; depth=2..5 adds ranked transitive callers."
@@ -553,7 +557,7 @@ impl GitCortexServer {
 
     /// Compute the blast radius of a function before editing it.
     #[tool(
-        description = "Call this BEFORE editing, renaming, or removing a function or method's \
+        description = "Use BEFORE editing, renaming, or removing a function or method's \
         signature or behavior — not just to answer 'who calls this?' after the fact. Returns \
         bounded observed callers within the given hop radius, ranked by confidence and production-before-test, \
         plus a risk_level (LOW/MEDIUM/HIGH/CRITICAL) based on caller count. Use the result to decide \
@@ -585,7 +589,7 @@ impl GitCortexServer {
 
     /// Get a 360° view of a symbol: definition, callers, callees, and type usages.
     #[tool(
-        description = "Get bounded context for a symbol in one call: where it's defined, \
+        description = "Use when you need a symbol's definition, callers, callees, and type users in one call. Get bounded context for a symbol in one call: where it's defined, \
         what calls it (callers), what it calls (callees), and which code references it as a type. \
         Use this instead of chaining lookup_symbol + find_callers separately."
     )]
@@ -607,7 +611,7 @@ impl GitCortexServer {
 
     /// List all symbols defined in a source file, ordered by line number.
     #[tool(
-        description = "List all functions, structs, traits, and other definitions in a source file, ordered by line number."
+        description = "Use when you need a file's outline without reading the whole file. List all functions, structs, traits, and other definitions in a source file, ordered by line number."
     )]
     fn list_definitions(&self, Parameters(p): Parameters<ListDefinitionsParams>) -> CallToolResult {
         let branch = self.resolve_branch(p.branch.as_deref());
@@ -641,7 +645,7 @@ impl GitCortexServer {
 
     /// Aggregate counts for the branch's graph — orientation before exploring.
     #[tool(
-        description = "Get aggregate counts for the code graph: total nodes/edges plus per-kind breakdowns (how many functions, structs, calls edges, etc). Use this first to gauge codebase size and shape before drilling into specific symbols."
+        description = "Use when first sizing up an unfamiliar repo or checking index readiness. Get aggregate counts for the code graph: total nodes/edges plus per-kind breakdowns (how many functions, structs, calls edges, etc)."
     )]
     fn graph_stats(&self, Parameters(p): Parameters<GraphStatsParams>) -> CallToolResult {
         let branch = self.resolve_branch(p.branch.as_deref());
@@ -671,7 +675,7 @@ impl GitCortexServer {
 
     /// Structural search over node attributes (no name needed).
     #[tool(
-        description = "Find symbols by structural attributes rather than name: kind (function/method/struct/route/...), is_async, visibility (pub/pub_crate/private), cyclomatic complexity range, and annotation/decorator (e.g. annotation='Test' finds @Test methods, 'route' finds @app.route handlers, 'derive' finds #[derive(...)]). Use kind='route' to list HTTP routes detected in the codebase (currently Express.js) — each result's 'name' is 'METHOD /path' (e.g. 'GET /users/:id'). Combine filters to answer 'all async methods', 'public structs', 'functions with complexity ≥ 10', 'all test functions', or 'all HTTP routes'. Optional name_contains narrows further (e.g. name_contains='/users' to find routes under a path prefix). Default limit=30."
+        description = "Use when you need symbols by shape, not name: async functions, public structs, tests, HTTP routes. Find symbols by structural attributes rather than name: kind (function/method/struct/route/...), is_async, visibility (pub/pub_crate/private), cyclomatic complexity range, and annotation/decorator (e.g. annotation='Test' finds @Test methods, 'route' finds @app.route handlers, 'derive' finds #[derive(...)]). Use kind='route' to list HTTP routes detected in the codebase (currently Express.js) — each result's 'name' is 'METHOD /path' (e.g. 'GET /users/:id'). Combine filters to answer 'all async methods', 'public structs', 'functions with complexity ≥ 10', 'all test functions', or 'all HTTP routes'. Optional name_contains narrows further (e.g. name_contains='/users' to find routes under a path prefix). Default limit=30."
     )]
     fn ast_search(&self, Parameters(p): Parameters<AstSearchParams>) -> CallToolResult {
         let branch = self.resolve_branch(p.branch.as_deref());
@@ -748,7 +752,7 @@ impl GitCortexServer {
 
     /// Compute the graph diff between two branches.
     #[tool(
-        description = "Show what nodes were added or removed between two branches. Useful for understanding what changed in a feature branch vs main."
+        description = "Use when reviewing a branch: which symbols it adds or removes versus another branch. Show what nodes were added or removed between two branches. Useful for understanding what changed in a feature branch vs main."
     )]
     fn branch_diff_graph(&self, Parameters(p): Parameters<BranchDiffParams>) -> CallToolResult {
         let store = match self.store.lock() {
@@ -808,7 +812,7 @@ impl GitCortexServer {
 
     /// Detect which indexed symbols are affected by current staged (or HEAD) changes.
     #[tool(
-        description = "Map the current git diff (staged changes, or HEAD diff if nothing is staged) \
+        description = "Use before committing or reviewing local edits: changed symbols, their callers, and risk. Map the current git diff (staged changes, or HEAD diff if nothing is staged) \
         to the indexed symbol graph. Returns which functions/structs were changed, their direct callers, \
         and a risk level. Use this before committing to understand blast radius automatically."
     )]
@@ -884,7 +888,7 @@ impl GitCortexServer {
 
     /// Find all callees of a function/method, tracing forward through the call graph.
     #[tool(
-        description = "Find all functions/methods that the named function calls. \
+        description = "Use when you need what a function calls (downstream). Find all functions/methods that the named function calls. \
         Inverse of find_callers — traces forward (downstream). Use depth=1..5 to walk multiple hops. \
         Returns callees grouped by hop distance."
     )]
@@ -929,7 +933,7 @@ impl GitCortexServer {
 
     /// Find all structs/classes that implement a trait or interface.
     #[tool(
-        description = "Find all concrete types (structs, classes) that implement or inherit the named \
+        description = "Use when you need every type that implements a trait or interface. Find all concrete types (structs, classes) that implement or inherit the named \
         trait or interface. Works for Rust traits, Java/TypeScript interfaces, and Go structural types."
     )]
     fn find_implementors(
@@ -968,7 +972,7 @@ impl GitCortexServer {
 
     /// List the in-repo modules a module depends on.
     #[tool(
-        description = "List the in-repo modules a given module depends on, resolved by following its imports to the defining module of each imported symbol. Useful for understanding internal coupling and architecture. Only intra-repo dependencies appear (external/stdlib imports are not graphed)."
+        description = "Use when you need which in-repo modules a module depends on. List the in-repo modules a given module depends on, resolved by following its imports to the defining module of each imported symbol. Useful for understanding internal coupling and architecture. Only intra-repo dependencies appear (external/stdlib imports are not graphed)."
     )]
     fn module_dependencies(
         &self,
@@ -1001,7 +1005,7 @@ impl GitCortexServer {
 
     /// Find functions/methods that use a type in their signature.
     #[tool(
-        description = "Find functions/methods that reference a type as a parameter or return type (follows Uses edges). The type-level analogue of find_callers: answers 'what would break if I change type T's shape'. Returns the using functions/methods."
+        description = "Use before changing a type's fields or shape, to see which functions take or return it. Find functions/methods that reference a type as a parameter or return type (follows Uses edges). The type-level analogue of find_callers: answers 'what would break if I change type T's shape'. Returns the using functions/methods."
     )]
     fn find_type_usages(&self, Parameters(p): Parameters<FindTypeUsagesParams>) -> CallToolResult {
         let branch = self.resolve_branch(p.branch.as_deref());
@@ -1036,7 +1040,7 @@ impl GitCortexServer {
 
     /// Find the exact call sites (caller + line) of a function.
     #[tool(
-        description = "Find every call site of a function: the calling symbol AND the source line of each call. Where find_callers gives only the calling functions, this pinpoints the exact line each call happens on — useful for reviewing or editing every invocation."
+        description = "Use when you must review or edit every call of a function, line by line. Find every call site of a function: the calling symbol AND the source line of each call. Where find_callers gives only the calling functions, this pinpoints the exact line each call happens on — useful for reviewing or editing every invocation."
     )]
     fn get_call_sites(&self, Parameters(p): Parameters<GetCallSitesParams>) -> CallToolResult {
         let branch = self.resolve_branch(p.branch.as_deref());
@@ -1074,7 +1078,7 @@ impl GitCortexServer {
 
     /// Find which files/modules import a given symbol.
     #[tool(
-        description = "Find which files/modules import a given symbol (follows Imports edges). Answers 'who depends on X' at the import level — useful before renaming or moving a symbol. Returns the importing module nodes."
+        description = "Use before renaming or moving a symbol, to see which files import it. Find which files/modules import a given symbol (follows Imports edges). Answers 'who depends on X' at the import level. Returns the importing module nodes."
     )]
     fn find_importers(&self, Parameters(p): Parameters<FindImportersParams>) -> CallToolResult {
         let branch = self.resolve_branch(p.branch.as_deref());
@@ -1109,7 +1113,7 @@ impl GitCortexServer {
 
     /// Map both directions of a type's relationships in one call.
     #[tool(
-        description = "Map a type's full relationship hierarchy in one call: supertypes (the traits/interfaces/classes it implements or extends) AND subtypes (the types that implement or extend it). Where find_implementors gives only the downward direction, this gives both. Works across Rust traits, Java/TypeScript interfaces, and inheritance chains."
+        description = "Use when you need a type's supertypes and subtypes together. Map a type's full relationship hierarchy in one call: supertypes (the traits/interfaces/classes it implements or extends) AND subtypes (the types that implement or extend it). Where find_implementors gives only the downward direction, this gives both. Works across Rust traits, Java/TypeScript interfaces, and inheritance chains."
     )]
     fn type_hierarchy(&self, Parameters(p): Parameters<TypeHierarchyParams>) -> CallToolResult {
         let branch = self.resolve_branch(p.branch.as_deref());
@@ -1143,9 +1147,8 @@ impl GitCortexServer {
 
     /// Find a call path between two symbols in the codebase.
     #[tool(
-        description = "Find a call path from one function to another. Returns the shortest chain of \
-        calls connecting `from` to `to`. Returns an empty array if no path exists within 6 hops. \
-        Most useful for debugging 'how can A reach B?' questions."
+        description = "Use when asked how function A reaches function B across files. Find a call path from one function to another. Returns the shortest chain of \
+        calls connecting `from` to `to`. Returns an empty array if no path exists within 6 hops."
     )]
     fn trace_path(&self, Parameters(p): Parameters<TracePathParams>) -> CallToolResult {
         let branch = self.resolve_branch(p.branch.as_deref());
@@ -1179,9 +1182,8 @@ impl GitCortexServer {
 
     /// Find all indexed symbols that overlap a line range in a file.
     #[tool(
-        description = "List all symbols (functions, structs, etc.) in a source file whose span \
-        overlaps the given line range. Use this to map a stack trace, diff hunk, or grep result \
-        to the symbols responsible."
+        description = "Use when mapping a stack trace, diff hunk, or grep hit to its enclosing symbol. List all symbols (functions, structs, etc.) in a source file whose span \
+        overlaps the given line range."
     )]
     fn list_symbols_in_range(
         &self,
@@ -1222,7 +1224,7 @@ impl GitCortexServer {
 
     /// Find symbols with no callers or type references — potential dead code.
     #[tool(
-        description = "Find symbols that are never called or used as a type anywhere in the indexed \
+        description = "Use when looking for dead code to remove. Find symbols that are never called or used as a type anywhere in the indexed \
         codebase. Investigation leads only: verify source, dynamic uses, and tests before removing or renaming. \
         Pass kind='function' to restrict to functions only."
     )]
@@ -1281,7 +1283,7 @@ impl GitCortexServer {
 
     /// Return a neighbourhood subgraph around a seed symbol.
     #[tool(
-        description = "Return a compact relationship digest for one exact symbol. Ambiguous \
+        description = "Use when you need one symbol's callers, callees, types, and imports in one bounded digest. Return a compact relationship digest for one exact symbol. Ambiguous \
         short names return qualified candidates without traversal. Evidence is ranked into \
         callers/callees/type/import relation buckets with total coverage counts; raw graph \
         arrays are intentionally omitted. Direction='out' downstream, 'in' upstream, or \
@@ -1312,8 +1314,8 @@ impl GitCortexServer {
 
     /// Render a wiki-style markdown summary for a symbol.
     #[tool(
-        description = "Markdown wiki for a symbol: signature, doc-comment, top callers/callees. \
-        Use for deep explanation; use lookup_symbol for a quick definition."
+        description = "Use when you need a deep explanation of one symbol. Markdown wiki for a symbol: signature, doc-comment, top callers/callees. \
+        Use lookup_symbol for a quick definition."
     )]
     fn wiki_symbol(&self, Parameters(p): Parameters<WikiSymbolParams>) -> CallToolResult {
         let branch = self.resolve_branch(p.branch.as_deref());
@@ -1333,7 +1335,7 @@ impl GitCortexServer {
 
     /// Search the graph by name + qualified-name with deterministic ranking.
     #[tool(
-        description = "Search the code graph by name or description. Returns a compact ranked \
+        description = "Use when you know roughly what code does, or part of its name, but not where it is. Search the code graph by name or description. Returns a compact ranked \
         evidence envelope with file/line, signature, optional doc summary, and coverage counts. \
         Optional kind and file fields filter the ranked evidence before pagination. \
         Compact evidence is the default; set include_details=true for signatures and docs. \
@@ -1410,7 +1412,7 @@ impl GitCortexServer {
 
     /// Generate a guided tour through the repo's important symbols.
     #[tool(
-        description = "Generate a guided tour through the codebase. Without a seed, picks the \
+        description = "Use when orienting in an unfamiliar repo or subsystem. Generate a guided tour through the codebase. Without a seed, picks the \
         highest-centrality public functions/structs to give a new contributor an entry path. \
         With a seed, BFS-walks outward from it along call edges. Returns ordered tour steps \
         with rationale per step and a rendered markdown plan. \
@@ -1440,7 +1442,7 @@ impl GitCortexServer {
 
     /// Find high-fan-in "hub" symbols — functions or methods many callers depend on.
     #[tool(
-        description = "Find high-centrality hub symbols (god nodes) — functions/methods with many \
+        description = "Use when looking for over-coupled hub functions. Find high-centrality hub symbols (god nodes) — functions/methods with many \
         inbound Calls edges. Ranked by in-degree descending. Deterministic across re-runs. \
         min_in_degree default 10, limit default 20."
     )]
@@ -1469,7 +1471,7 @@ impl GitCortexServer {
 
     /// Detect code communities via label propagation clustering.
     #[tool(
-        description = "Detect code communities via label-propagation clustering over Contains + \
+        description = "Use when mapping a codebase's subsystems. Detect code communities via label-propagation clustering over Contains + \
         Calls edges. Returns clusters of related symbols, ranked by size. Deterministic across \
         re-runs on the same indexed graph. min_cluster_size default 3, limit default 20."
     )]
@@ -1498,7 +1500,7 @@ impl GitCortexServer {
 
     /// Detect import cycles via Tarjan's SCC algorithm over `Imports` edges.
     #[tool(
-        description = "Detect circular import dependencies via Tarjan SCC on Imports edges. \
+        description = "Use when hunting circular imports. Detect circular import dependencies via Tarjan SCC on Imports edges. \
         Returns each cycle as a list of node IDs. Useful for spotting architectural debt. \
         Skipped when the graph has >10 000 import edges (too large). limit default 20."
     )]
@@ -1546,7 +1548,7 @@ impl GitCortexServer {
 
     /// Composite health report: unused symbols + import cycles + hub nodes.
     #[tool(
-        description = "Generate a severity-ranked health report for the codebase. \
+        description = "Use when asked for a code-health overview. Generate a severity-ranked health report for the codebase. \
         Combines: unused symbol count (DEAD CODE), import cycles (CIRCULAR DEPS), \
         and hub/god nodes with high in-degree (COUPLING RISK). Returns a markdown \
         summary with counts and top offenders. ONE call replaces three separate \
@@ -1683,16 +1685,7 @@ impl GitCortexServer {
     ///
     /// Prefer this tool to keep per-turn schema overhead low. All individual
     /// tools remain available for direct use; this is an additive alias.
-    #[tool(description = "Query the GitCortex code knowledge graph. \
-        action: plan_query | answer_query | lookup_symbol | find_callers | pre_edit_impact | find_callees | find_unused_symbols | \
-        get_subgraph | search_code | start_tour | wiki_symbol | trace_path | \
-        list_definitions | symbol_context | list_symbols_in_range | graph_stats | ast_search | \
-        type_hierarchy | find_importers | find_type_usages | module_dependencies | \
-        get_call_sites | branch_diff_graph | find_god_nodes | find_clusters | find_cycles | health_report. \
-        params: JSON object with the same fields as the individual tool (question/name/function_name/\
-        seed_name/query/kind/file/branch/depth/limit/offset/include_details/direction/\
-        min_in_degree/min_cluster_size as applicable). \
-        Returns identical output to the individual tool.")]
+    #[tool(description = "Compact dispatch; text set from guidance::DISPATCH_ACTIONS.")]
     fn gcx(&self, Parameters(p): Parameters<GcxDispatchParams>) -> CallToolResult {
         let branch_val = p
             .params
@@ -1978,13 +1971,8 @@ impl GitCortexServer {
             }
             other => {
                 return CallToolResult::error(vec![Content::text(format!(
-                    "gcx dispatch: unknown action '{other}'. Valid: plan_query, answer_query, \
-                lookup_symbol, find_callers, pre_edit_impact, \
-                find_callees, find_unused_symbols, get_subgraph, search_code, start_tour, \
-                wiki_symbol, trace_path, list_definitions, symbol_context, list_symbols_in_range, \
-                graph_stats, ast_search, type_hierarchy, find_importers, find_type_usages, \
-                module_dependencies, get_call_sites, find_god_nodes, find_clusters, find_cycles, \
-                health_report"
+                    "gcx dispatch: unknown action '{other}'. Valid: {}",
+                    super::guidance::dispatch_action_names()
                 ))])
             }
         };
