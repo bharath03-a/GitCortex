@@ -2,6 +2,8 @@
 
 **Status:** proposed 2026-11-08. Extends [00](2026-11-05-00-release-program.md) and [07](2026-11-05-07-delivery-orchestration.md). No result below is claimed for code that has not run; every "after" is a target until a pinned run records it.
 
+**Current execution checkpoint:** [2026-11-20 release execution](2026-11-20-09-release-execution.md) updates status, CI gaps, and candidate sequencing. Historical state below is dated 2026-11-08.
+
 ## 1. What ships
 
 | Area | Layers | State 2026-11-08 |
