@@ -1,4 +1,5 @@
 mod cmd;
+pub mod exit;
 pub mod style;
 
 use clap::{Parser, Subcommand, ValueEnum};
@@ -119,12 +120,13 @@ enum Commands {
         #[arg(long, default_value = "text", value_enum)]
         format: BlastFormat,
     },
-    /// Export the knowledge graph as a Markdown map, JSON, or a CLAUDE.md symbol block.
+    /// Export the knowledge graph as a Markdown map, versioned graph JSON, DOT/SVG/GraphML/Cypher/HTML, or a CLAUDE.md symbol block.
     Export {
         /// Branch to export (defaults to current branch).
         #[arg(long)]
         branch: Option<String>,
-        /// Output format: markdown (default codebase map), json (symbols + edges).
+        /// Output format: markdown (default codebase map), json (legacy symbols + edges),
+        /// graph-json (versioned graph v1), dot, svg, graphml, cypher, or html.
         #[arg(long, default_value = "markdown", value_enum)]
         format: cmd::export::ExportFormat,
         /// Upsert a compressed top-symbols table into CLAUDE.md between
@@ -135,6 +137,30 @@ enum Commands {
         /// How many top-ranked symbols to inject with --claude-md.
         #[arg(long, default_value_t = 40)]
         top: usize,
+        /// Optional seed symbol (node id, qualified name, or exact short name) to scope traversal.
+        #[arg(long)]
+        seed: Option<String>,
+        /// Traversal depth from --seed (0–5).
+        #[arg(long, default_value_t = 2, value_parser = clap::value_parser!(u8).range(0..=5))]
+        depth: u8,
+        /// Traversal direction from --seed: up (incoming), down (outgoing), or both.
+        #[arg(long, default_value = "both", value_enum)]
+        direction: cmd::export::ExportDirection,
+        /// Comma-separated edge kinds to traverse and emit (e.g. calls,imports).
+        #[arg(long, value_delimiter = ',')]
+        edge_kinds: Option<Vec<String>>,
+        /// Maximum number of nodes to emit (defaults to 5000).
+        #[arg(long)]
+        max_nodes: Option<usize>,
+        /// Write output to PATH instead of stdout (or instead of `.gitcortex/context.md` for markdown).
+        #[arg(long, value_name = "PATH")]
+        out: Option<std::path::PathBuf>,
+        /// Export even when the branch index is not `ready` (records the state in metadata).
+        #[arg(long)]
+        allow_stale: bool,
+        /// Overwrite non-empty output targets where applicable.
+        #[arg(long)]
+        force: bool,
     },
     /// Show indexed node/edge counts for the current branch.
     Status {
@@ -354,7 +380,28 @@ fn main() {
             format,
             claude_md,
             top,
-        } => cmd::export::run(branch, format, claude_md, top),
+            seed,
+            depth,
+            direction,
+            edge_kinds,
+            max_nodes,
+            out,
+            allow_stale,
+            force,
+        } => cmd::export::run(cmd::export::ExportOptions {
+            branch,
+            format,
+            claude_md,
+            top,
+            seed,
+            depth,
+            direction,
+            edge_kinds,
+            max_nodes,
+            out,
+            allow_stale,
+            force,
+        }),
         Commands::Status { branch } => cmd::status::run(branch),
         Commands::Clean => cmd::clean::run(),
         Commands::Doctor => cmd::doctor::run(),
@@ -363,6 +410,6 @@ fn main() {
 
     if let Err(e) = result {
         eprintln!("error: {e:#}");
-        std::process::exit(1);
+        std::process::exit(exit::exit_code(&e));
     }
 }
