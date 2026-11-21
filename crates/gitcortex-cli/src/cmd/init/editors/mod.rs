@@ -68,3 +68,78 @@ pub fn install_for_editor(
         EditorKind::Codex => codex::install(repo_root, global_editor_config),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cmd::init::guide::{start_marker, CORE_RULES};
+
+    /// (editor, guidance file, marker) for every supported client.
+    fn guide_files() -> Vec<(EditorKind, &'static str, &'static str)> {
+        vec![
+            (EditorKind::ClaudeCode, ".claude/CLAUDE.md", claude::MARKER),
+            (EditorKind::Codex, "AGENTS.md", codex::MARKER),
+            (
+                EditorKind::Antigravity,
+                ".agents/plugins/gitcortex/rules/AGENTS.md",
+                antigravity::MARKER,
+            ),
+            (
+                EditorKind::Cursor,
+                ".cursor/rules/gitcortex.mdc",
+                cursor::MARKER,
+            ),
+            (
+                EditorKind::Copilot,
+                ".github/copilot-instructions.md",
+                copilot::MARKER,
+            ),
+            (EditorKind::Windsurf, ".windsurfrules", windsurf::MARKER),
+        ]
+    }
+
+    #[test]
+    fn editor_guides_share_core_rules() {
+        let repo = tempfile::tempdir().expect("repo");
+        let files = guide_files();
+        assert_eq!(files.len(), EditorKind::all().len());
+        // A stale block from an older release must be replaced, not duplicated.
+        std::fs::write(
+            repo.path().join("AGENTS.md"),
+            format!(
+                "# Team notes\n\n{}\nold guidance\n{}\n",
+                start_marker(codex::MARKER),
+                crate::cmd::init::guide::end_marker(codex::MARKER)
+            ),
+        )
+        .expect("seed legacy block");
+
+        for (editor, _, _) in &files {
+            install_for_editor(editor, repo.path(), false).expect("install");
+        }
+        let first: Vec<String> = files
+            .iter()
+            .map(|(_, path, _)| std::fs::read_to_string(repo.path().join(path)).expect("guide"))
+            .collect();
+        for (editor, _, _) in &files {
+            install_for_editor(editor, repo.path(), false).expect("reinstall");
+        }
+
+        for ((editor, path, marker), before) in files.iter().zip(&first) {
+            let text = std::fs::read_to_string(repo.path().join(path)).expect("guide");
+            assert!(
+                text.contains(CORE_RULES),
+                "{editor:?} {path} lacks core rules"
+            );
+            assert_eq!(
+                text.matches(&start_marker(marker)).count(),
+                1,
+                "{editor:?} {path} block duplicated"
+            );
+            assert_eq!(&text, before, "{editor:?} {path} changed on re-init");
+        }
+        let agents = std::fs::read_to_string(repo.path().join("AGENTS.md")).expect("agents");
+        assert!(agents.starts_with("# Team notes\n"));
+        assert!(!agents.contains("old guidance"));
+    }
+}

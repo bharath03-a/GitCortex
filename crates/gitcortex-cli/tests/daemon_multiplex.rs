@@ -372,3 +372,99 @@ fn client_gets_actionable_error_when_daemon_cannot_start() {
     drop(client.stdin.take());
     assert!(!client.child.wait().expect("proxy exit").success());
 }
+
+/// Run one generated hook script the way an editor does: hook JSON on stdin,
+/// repo as cwd, and only the test binary on PATH as `gcx`.
+fn run_hook(fixture: &Fixture, home: &Path, script: &str, event: &Value) -> std::process::Output {
+    let gcx_dir = Path::new(GCX).parent().expect("gcx dir");
+    let path = format!("{}:/usr/bin:/bin", gcx_dir.display());
+    let mut child = Command::new("sh")
+        .arg(script)
+        .current_dir(fixture.repo.path())
+        .env("HOME", home)
+        .env("PATH", path)
+        .env("GCX_STORE_PATH", fixture.data.path())
+        .env("GCX_CACHE_PATH", fixture.cache.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn hook");
+    child
+        .stdin
+        .take()
+        .expect("hook stdin")
+        .write_all(event.to_string().as_bytes())
+        .expect("write hook input");
+    child.wait_with_output().expect("hook output")
+}
+
+#[test]
+fn generated_hooks_run_successfully() {
+    let fixture = Fixture::indexed();
+    let home = tempfile::tempdir().expect("home");
+    let init = fixture
+        .gcx()
+        .env("HOME", home.path())
+        .args(["init", "--editor", "all"])
+        .output()
+        .expect("gcx init --editor all");
+    assert!(
+        init.status.success(),
+        "{}",
+        String::from_utf8_lossy(&init.stderr)
+    );
+    let scripts = [
+        ".claude/hooks/pre-tool-use/gcx-context.sh",
+        ".codex/hooks/gcx-context.sh",
+        ".agents/plugins/gitcortex/gcx-context.sh",
+    ];
+    let repo = fixture.repo.path();
+    let settings = std::fs::read_to_string(repo.join(".claude/settings.json")).expect("settings");
+    assert!(settings.contains(scripts[0]), "{settings}");
+    let codex = std::fs::read_to_string(repo.join(".codex/hooks.json")).expect("codex hooks");
+    assert!(codex.contains(scripts[1]), "{codex}");
+    for script in scripts {
+        let text = std::fs::read_to_string(repo.join(script)).expect("script");
+        assert!(
+            !text.contains("gcx query context"),
+            "{script} is the broken hook"
+        );
+    }
+
+    let main_rs = repo.join("main.rs").canonicalize().expect("main.rs");
+    let event = json!({
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Read",
+        "cwd": repo,
+        "tool_input": {"file_path": main_rs},
+    });
+    // No running daemon: the hook stays silent and never blocks the read.
+    for script in scripts {
+        let output = run_hook(&fixture, home.path(), script, &event);
+        assert!(output.status.success(), "{script}: {output:?}");
+        assert!(output.stdout.is_empty(), "{script}: {output:?}");
+    }
+
+    let mut client = fixture.client();
+    client.initialize_and_list_tools();
+    for script in scripts {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let reply = loop {
+            let output = run_hook(&fixture, home.path(), script, &event);
+            assert!(output.status.success(), "{script}: {output:?}");
+            if !output.stdout.is_empty() {
+                break serde_json::from_slice::<Value>(&output.stdout).expect("hook JSON");
+            }
+            assert!(Instant::now() < deadline, "{script} never produced context");
+            std::thread::sleep(Duration::from_millis(200));
+        };
+        assert_eq!(reply["hookSpecificOutput"]["hookEventName"], "PreToolUse");
+        let context = reply["hookSpecificOutput"]["additionalContext"]
+            .as_str()
+            .expect("additionalContext");
+        assert!(context.contains("main.rs defines main"), "{context}");
+        assert!(context.contains("pre_edit_impact"), "{context}");
+    }
+    client.close();
+}

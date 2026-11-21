@@ -33,30 +33,12 @@ fn hook_block(command: &str) -> String {
     )
 }
 
-const AGENT_GUIDE: &str = r#"# GitCortex Agent Guide
+const AGENT_GUIDE_HEADING: &str = "# GitCortex Agent Guide\n\n";
 
-This repository has a local GitCortex knowledge graph. When an MCP integration
-is configured with `gcx init --editor <name>`, use its compact `gcx` dispatch
-tool for cross-file structure and verify behavior in source and tests.
-
-## Useful actions
-
-| Action | Purpose |
-|--------|---------|
-| `lookup_symbol` | Locate a function, type, method, or constant by name |
-| `find_callers` | Trace direct and transitive callers |
-| `find_callees` | Trace outgoing calls |
-| `list_definitions` | List symbols defined in a file |
-| `get_subgraph` | Map a bounded symbol neighbourhood |
-| `start_tour` | Get a component-oriented repository overview |
-| `detect_changes` | Relate Git changes to affected symbols |
-
-CLI equivalents are available under `gcx query`; run `gcx query --help` for the
-current command list. Run `gcx hook` if the index appears stale.
-
-The graph is navigation evidence, not a substitute for reading implementation
-and tests before making changes.
-"#;
+/// The guide every editor block shares, as a standalone file.
+pub(crate) fn agent_guide() -> String {
+    format!("{AGENT_GUIDE_HEADING}{}", super::guide::CORE_RULES)
+}
 
 pub fn git_hooks_dir(repo_root: &Path) -> Result<std::path::PathBuf> {
     let output = std::process::Command::new("git")
@@ -247,8 +229,13 @@ pub fn write_agent_guide(repo_root: &Path) -> Result<()> {
     let dir = repo_root.join(".gitcortex");
     fs::create_dir_all(&dir)?;
     let path = dir.join("AGENT_GUIDE.md");
-    if !path.exists() {
-        fs::write(path, AGENT_GUIDE).context("write AGENT_GUIDE.md")?;
+    let current = fs::read_to_string(&path).ok();
+    let ours = current.as_deref().map_or(true, |text| {
+        text.starts_with(AGENT_GUIDE_HEADING.trim_end())
+    });
+    let guide = agent_guide();
+    if ours && current.as_deref() != Some(guide.as_str()) {
+        fs::write(path, guide).context("write AGENT_GUIDE.md")?;
     }
     Ok(())
 }

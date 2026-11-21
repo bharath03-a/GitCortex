@@ -5,6 +5,7 @@ use serde_json::Value;
 
 use super::init::{
     editors::{claude, codex, copilot, windsurf},
+    guide,
     helpers::{home_dir, repo_root, write_atomic},
     universal::{
         ensure_hooks_scope, git_hooks_dir, is_managed_ci_workflow, HOOK_BLOCK_END, HOOK_BLOCK_START,
@@ -40,9 +41,9 @@ pub fn run(
         changes += remove_dir(&repo_root.join(path), dry_run)?;
     }
 
-    changes += remove_text_section(
+    changes += remove_marked_section(
         &repo_root.join(".claude/CLAUDE.md"),
-        claude::CLAUDE_MD_SECTION,
+        claude::MARKER,
         dry_run,
     )?;
     changes += remove_legacy_tail(
@@ -50,7 +51,7 @@ pub fn run(
         "## GitCortex MCP Tools (prefer over grep for code navigation)",
         dry_run,
     )?;
-    changes += remove_text_section(&repo_root.join("AGENTS.md"), codex::AGENTS_SECTION, dry_run)?;
+    changes += remove_marked_section(&repo_root.join("AGENTS.md"), codex::MARKER, dry_run)?;
     changes += remove_legacy_tail(
         &repo_root.join("AGENTS.md"),
         "# GitCortex - Codex Guide",
@@ -66,14 +67,10 @@ pub fn run(
         "mcp_servers.gitcortex",
         dry_run,
     )?;
-    changes += remove_text_section(
-        &repo_root.join(".windsurfrules"),
-        windsurf::WINDSURF_RULES,
-        dry_run,
-    )?;
-    changes += remove_text_section(
+    changes += remove_marked_section(&repo_root.join(".windsurfrules"), windsurf::MARKER, dry_run)?;
+    changes += remove_marked_section(
         &repo_root.join(".github/copilot-instructions.md"),
-        copilot::COPILOT_INSTRUCTIONS,
+        copilot::MARKER,
         dry_run,
     )?;
 
@@ -182,6 +179,31 @@ fn is_empty_hook(content: &str) -> bool {
             || line == "set -e"
             || line.starts_with("export PATH=\"$HOME/.cargo/bin:")
     })
+}
+
+/// Strip a marker-delimited guide block; this also covers older releases'
+/// blocks, which used the same markers with different text.
+fn remove_marked_section(path: &Path, marker: &str, dry_run: bool) -> Result<usize> {
+    let Ok(content) = fs::read_to_string(path) else {
+        return Ok(0);
+    };
+    let Some(updated) = strip_managed_block(
+        &content,
+        &guide::start_marker(marker),
+        &guide::end_marker(marker),
+    ) else {
+        return Ok(0);
+    };
+    show("remove generated section", path);
+    if !dry_run {
+        let remainder = updated.trim();
+        if remainder.is_empty() {
+            fs::remove_file(path)?;
+        } else {
+            write_atomic(path, updated.trim_end())?;
+        }
+    }
+    Ok(1)
 }
 
 fn remove_text_section(path: &Path, section: &str, dry_run: bool) -> Result<usize> {

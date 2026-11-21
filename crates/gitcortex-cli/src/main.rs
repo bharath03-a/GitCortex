@@ -103,6 +103,9 @@ enum Commands {
         #[arg(long)]
         full: bool,
     },
+    /// Internal: answer an editor PreToolUse Read hook from stdin.
+    #[command(name = "__hook-context", hide = true)]
+    HookContext,
     /// Internal repository daemon used to multiplex local MCP clients.
     #[command(name = "__serve-daemon", hide = true)]
     ServeDaemon {
@@ -387,6 +390,7 @@ fn main() {
         Commands::Hook { branch_switch } => cmd::hook::run(branch_switch),
         Commands::Serve { full } => cmd::serve::run(!full),
         Commands::ServeDaemon { repo_root } => cmd::serve::run_daemon(repo_root),
+        Commands::HookContext => cmd::hook_context::run(),
         Commands::Query(q) => cmd::query::run(q),
         Commands::Viz {
             branch,

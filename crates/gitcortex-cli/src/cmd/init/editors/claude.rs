@@ -1,44 +1,19 @@
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
 use std::{fs, path::Path};
 
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
 
+use crate::cmd::init::guide;
 use crate::cmd::init::helpers::{home_dir, require_json_object, write_atomic};
+use crate::cmd::init::read_hook;
 
-pub(crate) const CLAUDE_MD_SECTION: &str = r#"
-<!-- >>> gitcortex claude integration >>> -->
-## GitCortex Knowledge Graph
+pub(crate) const MARKER: &str = "claude integration";
 
-This repo is indexed by [GitCortex](https://github.com/bharath03-a/GitCortex).
-Use the MCP server (`gcx serve`, configured in `.mcp.json`) or these slash commands:
+const EXTRA: &str = "Slash commands: `/gcx-callers <name>`, `/gcx-lookup <name>`, `/gcx-file <path>`, `/gcx-blast-radius`.\n";
 
-- `/gcx-lookup <name>` — find all definitions matching a name
-- `/gcx-callers <name>` — find all callers of a function
-- `/gcx-file <path>` — list all definitions in a file
-- `/gcx-blast-radius` — show blast radius of changes vs main
-<!-- <<< gitcortex claude integration <<< -->
-"#;
-
-const PRE_TOOL_USE_HOOK: &str = r#"#!/usr/bin/env sh
-# GitCortex PreToolUse hook — appends call-graph context when Claude reads a source file.
-set -e
-export PATH="$HOME/.cargo/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
-
-input=$(cat)
-
-# Extract file_path from the JSON input (uses python3 for reliable JSON parsing)
-file_path=$(printf '%s' "$input" | python3 -c \
-  "import sys,json; d=json.load(sys.stdin); print(d.get('tool_input',{}).get('file_path',''))" \
-  2>/dev/null || true)
-
-[ -z "$file_path" ] && exit 0
-command -v gcx >/dev/null 2>&1 || exit 0
-
-# Silent — only prints when the file is indexed; ignored otherwise
-gcx query context "$file_path" 2>/dev/null || true
-"#;
+pub(crate) fn guidance() -> String {
+    guide::managed_block(MARKER, EXTRA)
+}
 
 /// (skill name, one-line description for frontmatter, body). Claude Code
 /// discovers skills at `.claude/skills/<name>/SKILL.md` with YAML
@@ -209,37 +184,19 @@ fn write_skills(repo_root: &Path) -> Result<usize> {
 }
 
 fn update_claude_md(repo_root: &Path) -> Result<()> {
-    let claude_dir = repo_root.join(".claude");
-    fs::create_dir_all(&claude_dir)?;
-    let path = claude_dir.join("CLAUDE.md");
-
-    if path.exists() {
-        let existing = fs::read_to_string(&path)?;
-        if existing.contains("GitCortex Knowledge Graph") {
-            return Ok(());
-        }
-        write_atomic(&path, &format!("{existing}{CLAUDE_MD_SECTION}"))
-            .context("update CLAUDE.md")?;
-    } else {
-        fs::write(&path, CLAUDE_MD_SECTION.trim_start()).context("write CLAUDE.md")?;
-    }
+    let path = repo_root.join(".claude").join("CLAUDE.md");
+    guide::upsert_block(&path, MARKER, &guidance()).context("update CLAUDE.md")?;
     Ok(())
 }
 
 fn write_pre_tool_use_hook(repo_root: &Path) -> Result<()> {
-    let dir = repo_root.join(".claude").join("hooks").join("pre-tool-use");
-    fs::create_dir_all(&dir)?;
-    let path = dir.join("gcx-context.sh");
-    if !path.exists() {
-        fs::write(&path, PRE_TOOL_USE_HOOK).context("write gcx-context.sh")?;
-        #[cfg(unix)]
-        {
-            let mut perms = fs::metadata(&path)?.permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&path, perms)?;
-        }
-    }
-    Ok(())
+    read_hook::install(
+        &repo_root
+            .join(".claude")
+            .join("hooks")
+            .join("pre-tool-use")
+            .join("gcx-context.sh"),
+    )
 }
 
 fn write_claude_settings(repo_root: &Path) -> Result<()> {

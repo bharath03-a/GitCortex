@@ -4,7 +4,9 @@ use anyhow::{Context, Result};
 use serde_json::json;
 
 use super::claude::SKILLS;
+use crate::cmd::init::guide;
 use crate::cmd::init::helpers::{home_dir, require_json_object, write_atomic};
+use crate::cmd::init::read_hook;
 
 /// Antigravity's recommended packaging unit is a "plugin": a namespaced
 /// bundle under `<customization-root>/plugins/<name>/` combining rules,
@@ -14,23 +16,11 @@ use crate::cmd::init::helpers::{home_dir, require_json_object, write_atomic};
 /// `.agents/`, so the plugin lives at `.agents/plugins/gitcortex/`.
 const PLUGIN_DIR: &str = "gitcortex";
 
-pub(crate) const AGENTS_MD_SECTION: &str = r#"<!-- >>> gitcortex antigravity integration >>> -->
-## GitCortex knowledge graph
+pub(crate) const MARKER: &str = "antigravity integration";
 
-This repository is indexed by GitCortex. Run these directly in a terminal,
-or via the `gitcortex` MCP server's compact `gcx` dispatch tool, registered
-automatically by this plugin:
-
-- `gcx query lookup-symbol <name>` locates a definition.
-- `gcx query find-callers <name>` / `gcx query find-callees <name>` trace call relationships.
-- `gcx query get-subgraph <name>` maps a symbol neighbourhood.
-- `gcx query tour` summarizes unfamiliar areas.
-- `gcx blast-radius --base <branch> --head <branch>` assesses change impact.
-
-Treat graph output as navigation evidence and confirm behavior in source and
-tests before editing. If the index is stale, run `gcx hook`.
-<!-- <<< gitcortex antigravity integration <<< -->
-"#;
+pub(crate) fn guidance() -> String {
+    guide::managed_block(MARKER, "")
+}
 
 const PLUGIN_MANIFEST: &str = r#"{
   "name": "gitcortex"
@@ -52,22 +42,6 @@ const HOOKS_JSON_TEMPLATE: &str = r#"{
     ]
   }
 }
-"#;
-
-const PRE_TOOL_USE_HOOK: &str = r#"#!/usr/bin/env sh
-# GitCortex PreToolUse hook — appends call-graph context when a file is read.
-set -e
-export PATH="$HOME/.cargo/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
-
-input=$(cat)
-file_path=$(printf '%s' "$input" | python3 -c \
-  "import sys,json; d=json.load(sys.stdin); print(d.get('tool_input',{}).get('file_path',''))" \
-  2>/dev/null || true)
-
-[ -z "$file_path" ] && exit 0
-command -v gcx >/dev/null 2>&1 || exit 0
-
-gcx query context "$file_path" 2>/dev/null || true
 "#;
 
 pub fn install(repo_root: &Path, global_editor_config: bool) -> Result<()> {
@@ -103,20 +77,8 @@ fn write_plugin_manifest(plugin_dir: &Path) -> Result<()> {
 }
 
 fn write_agents_md(plugin_dir: &Path) -> Result<()> {
-    let dir = plugin_dir.join("rules");
-    fs::create_dir_all(&dir)?;
-    let path = dir.join("AGENTS.md");
-
-    if path.exists() {
-        let existing = fs::read_to_string(&path)?;
-        if existing.contains("GitCortex knowledge graph") {
-            return Ok(());
-        }
-        write_atomic(&path, &format!("{existing}{AGENTS_MD_SECTION}"))
-            .context("update plugin rules/AGENTS.md")?;
-    } else {
-        fs::write(&path, AGENTS_MD_SECTION.trim_start()).context("write plugin rules/AGENTS.md")?;
-    }
+    let path = plugin_dir.join("rules").join("AGENTS.md");
+    guide::upsert_block(&path, MARKER, &guidance()).context("update plugin rules/AGENTS.md")?;
     Ok(())
 }
 
@@ -139,17 +101,7 @@ fn write_skills(plugin_dir: &Path) -> Result<usize> {
 }
 
 fn write_hooks_json(plugin_dir: &Path) -> Result<()> {
-    let hook_path = plugin_dir.join("gcx-context.sh");
-    if !hook_path.exists() {
-        fs::write(&hook_path, PRE_TOOL_USE_HOOK).context("write gcx-context.sh")?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(&hook_path)?.permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&hook_path, perms)?;
-        }
-    }
+    read_hook::install(&plugin_dir.join("gcx-context.sh"))?;
 
     let path = plugin_dir.join("hooks.json");
     if path.exists() {
