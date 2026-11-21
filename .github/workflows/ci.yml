@@ -28,10 +28,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - uses: taiki-e/install-action@v2.85.4
+      - uses: docker://rhysd/actionlint:1.7.12
         with:
-          tool: actionlint
-      - run: actionlint -shellcheck=""
+          args: -shellcheck=
 
   # ── Tier 0: fast static checks (no Rust/Node build) ─────────────────────────
 
