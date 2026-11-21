@@ -96,10 +96,16 @@ def _write_step_log(log_dir: Path, name: str, raw: RawRun) -> str:
 def _step_record(step: Step, raw: RawRun, metrics: TranscriptMetrics, log_rel: str) -> dict[str, Any]:
     body = metrics.to_dict()
     body.pop("events")
+    status = metrics.run_status
+    if raw.timed_out:
+        status = "timeout"
+    elif raw.returncode != 0:
+        status = "client_error"
     return {
         "step": step.id,
         "kind": step.kind,
-        "status": "timeout" if raw.timed_out else metrics.run_status,
+        "status": status,
+        "returncode": raw.returncode,
         "wall_ms": raw.wall_ms,
         "metrics": body,
         "log": log_rel,
@@ -206,7 +212,7 @@ def run_episode(
         "session_id": session,
         "start_sha": start_sha,
         "aborted": aborted,
-        "success": all(finals.values()),
+        "success": aborted is None and all(finals.values()),
         "final_tests": finals,
         "steps_passed": sum(finals.values()),
         "steps_total": len(finals),

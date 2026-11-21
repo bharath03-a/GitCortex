@@ -89,7 +89,11 @@ def build_record(
     metrics = parse_transcript(raw.stdout)
     task = planned.task
     grade = grade_answer(metrics.answer, task.required, task.forbidden, task.dependents_exist)
-    status = "timeout" if raw.timed_out else metrics.run_status
+    status = metrics.run_status
+    if raw.timed_out:
+        status = "timeout"
+    elif raw.returncode != 0:
+        status = "client_error"
     body = metrics.to_dict()
     events = body.pop("events")
     return {

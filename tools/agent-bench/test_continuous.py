@@ -7,6 +7,7 @@ import json
 import subprocess
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
@@ -191,6 +192,18 @@ class SessionTests(unittest.TestCase):
         self.assertFalse(unfixed["success"])
         self.assertEqual(unfixed["final_tests"], {"step1": False})
         self.assertEqual(fixed["patch"]["unrelated_files"], [])
+
+    def test_nonzero_client_exit_aborts_even_after_the_patch_passes_tests(self) -> None:
+        runner = scripted_runner([], fix=True)
+
+        def failed_client(command, cwd, timeout_s):
+            return replace(runner(command, cwd, timeout_s), returncode=1)
+
+        record = self._run(failed_client)
+        self.assertEqual(record["final_tests"], {"step1": True})
+        self.assertFalse(record["success"])
+        self.assertIn("client_error", record["aborted"])
+        self.assertEqual(record["steps"][0]["returncode"], 1)
 
     def test_false_no_dependents_claim_is_recorded(self) -> None:
         wrong = self._run(scripted_runner([], probe_answer="Nothing else calls it; there are no callers."))
