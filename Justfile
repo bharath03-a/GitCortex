@@ -63,7 +63,7 @@ install: build
 
 # ─── Lint / format / test ───────────────────────────────────────────────────
 
-# Run absolutely everything CI runs
+# Run local format, lint, test, and frontend build checks; full CI: .github/workflows/ci.yml
 ci: fmt-check clippy test viz-lint viz-test viz-build
 
 # Auto-fix formatting (Rust + frontend)

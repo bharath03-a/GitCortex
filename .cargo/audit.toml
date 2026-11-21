@@ -1,10 +1,11 @@
 # cargo-audit configuration.
 #
-# Unmaintained (not vulnerable) transitive crates pulled in by the
-# semantic-search stack (fastembed → ort / hf-hub). No upgrade path exists and
-# neither is exploitable, so the warnings are ignored to keep the audit green.
+# Exceptions below document unmaintained transitive dependencies and advisory
+# applicability. Keep aligned with deny.toml.
 [advisories]
 ignore = [
+    "RUSTSEC-2026-0543", # chrono unmaintained (via rmcp); no patched version. Revisit when rmcp replaces chrono; https://rustsec.org/advisories/RUSTSEC-2026-0543.html
+    "RUSTSEC-2026-0462", # rmcp HTTP client only; GitCortex enables server/transport-io, not either affected transport-streamable-http-client feature. Revisit if enabling HTTP clients; https://rustsec.org/advisories/RUSTSEC-2026-0462.html
     "RUSTSEC-2024-0436", # paste — unmaintained (via ort/ML deps)
     "RUSTSEC-2025-0119", # number_prefix — unmaintained (via hf-hub)
     "RUSTSEC-2026-0202", # Fixed in cxx 1.0.195; blocked by kuzu pinning cxx 1.0.138 (Cargo.lock); GitCortex does not use let_cxx_string! directly; https://rustsec.org/advisories/RUSTSEC-2026-0202.html

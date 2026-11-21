@@ -3,8 +3,13 @@ name: CI
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+  # Stacked PRs target stack branches, not only main.
+  pull_request: {}
+  merge_group: {}
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -17,11 +22,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  workflow-lint:
+    name: actions · workflow lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -shellcheck=
+
   # ── Tier 0: fast static checks (no Rust/Node build) ─────────────────────────
 
   typos:
     name: typos · spell check
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       - uses: crate-ci/typos@v1
@@ -29,6 +45,7 @@ jobs:
   shellcheck:
     name: shellcheck · hook scripts
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       # Pinned by SHA (v7.0.1): the floating v7 tag hit an Internal Server
       # Error during GitHub's action-resolution step; the SHA form skips it.
@@ -41,6 +58,7 @@ jobs:
   python-tools:
     name: python · tooling tests
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -62,8 +80,9 @@ jobs:
   # ── Tier 1: build viz once, upload as artifact, reuse everywhere ─────────────
 
   viz-bundle:
-    name: viz · build bundle
+    name: viz · lint + test + build bundle
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -71,11 +90,23 @@ jobs:
           node-version: "20"
           cache: "npm"
           cache-dependency-path: viz/package-lock.json
-      - name: Build viz frontend
+      - name: Check and build viz frontend
         working-directory: viz
         run: |
-          npm install --no-audit --no-fund
+          npm ci --no-audit --no-fund
+          npm run format:check
+          npm run lint
+          npm test
           npm run build
+      - name: Bundle size check (2.5 MB ceiling)
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          size = sum(p.stat().st_size for p in Path("crates/gitcortex-viz/dist-viz").rglob("*") if p.is_file())
+          print(f"Bundle: {size} bytes")
+          if not 0 < size < 2500 * 1024:
+              raise SystemExit("Bundle is empty or exceeds the 2.5 MB ceiling")
+          PY
       - uses: actions/upload-artifact@v7
         with:
           name: viz-dist
@@ -90,6 +121,7 @@ jobs:
   rust-fmt-clippy:
     name: rust · fmt + clippy
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     needs: [viz-bundle]
     steps:
       - uses: actions/checkout@v7
@@ -104,11 +136,12 @@ jobs:
           name: viz-dist
           path: crates/gitcortex-viz/dist-viz/
       - run: cargo fmt --all -- --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
   rust-doc:
     name: rust · doc
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     needs: [viz-bundle]
     steps:
       - uses: actions/checkout@v7
@@ -121,13 +154,14 @@ jobs:
           name: viz-dist
           path: crates/gitcortex-viz/dist-viz/
       - name: cargo doc
-        run: cargo doc --workspace --no-deps --document-private-items
+        run: cargo doc --workspace --locked --no-deps --document-private-items
         env:
           RUSTDOCFLAGS: "-D warnings"
 
   cargo-machete:
     name: rust · unused deps (machete)
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -152,6 +186,7 @@ jobs:
     # Both still gate the merge check individually.
     needs: [viz-bundle]
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -175,11 +210,11 @@ jobs:
       - uses: taiki-e/install-action@v2.85.4
         with:
           tool: nextest
-      - run: cargo build --workspace --all-targets
-      - run: cargo nextest run --workspace
+      - run: cargo build --workspace --locked --all-targets
+      - run: cargo nextest run --workspace --locked
         env:
           NEXTEST_PROFILE: ci
-      - run: cargo test --workspace --doc
+      - run: cargo test --workspace --locked --doc
 
   # Separate job rather than a matrix leg: the macOS runner is ~10× slower, so it
   # is gated to pushes on main. A job-level `if` can read `github` but never
@@ -188,6 +223,7 @@ jobs:
     name: rust · macos-latest · stable
     needs: [viz-bundle]
     runs-on: macos-latest
+    timeout-minutes: 90
     if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@v7
@@ -202,17 +238,18 @@ jobs:
       - uses: taiki-e/install-action@v2.85.4
         with:
           tool: nextest
-      - run: cargo build --workspace --all-targets
-      - run: cargo nextest run --workspace
+      - run: cargo build --workspace --locked --all-targets
+      - run: cargo nextest run --workspace --locked
         env:
           NEXTEST_PROFILE: ci
-      - run: cargo test --workspace --doc
+      - run: cargo test --workspace --locked --doc
 
   # ── Tier 4: coverage ─────────────────────────────────────────────────────────
 
   coverage:
     name: rust · coverage
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     needs: [viz-bundle]
     steps:
       - uses: actions/checkout@v7
@@ -231,7 +268,7 @@ jobs:
           tool: cargo-llvm-cov,nextest
       - name: Run tests with coverage
         run: |
-          cargo llvm-cov nextest --workspace \
+          cargo llvm-cov nextest --workspace --locked \
             --ignore-filename-regex '(tools\.rs|gitcortex-viz/src/lib\.rs)' \
             --lcov --output-path lcov.info
       - uses: codecov/codecov-action@v7
@@ -251,6 +288,7 @@ jobs:
   binary-smoke:
     name: rust · binary smoke test
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     needs: [rust-build-test]
     steps:
       - uses: actions/checkout@v7
@@ -263,11 +301,61 @@ jobs:
         with:
           name: viz-dist
           path: crates/gitcortex-viz/dist-viz/
-      - run: cargo build --release --bin gcx
+      - run: cargo build --release --bin gcx --locked
       - run: ./target/release/gcx --version
       - run: ./target/release/gcx --help
       - name: gcx doctor (outside git repo)
         run: |
-          mkdir /tmp/not-a-repo
-          cd /tmp/not-a-repo
-          $GITHUB_WORKSPACE/target/release/gcx doctor || true
+          cd "$(mktemp -d)"
+          if "$GITHUB_WORKSPACE/target/release/gcx" doctor >doctor.log 2>&1; then
+            cat doctor.log
+            echo "doctor must fail outside a Git repository" >&2
+            exit 1
+          else
+            status=$?
+          fi
+          cat doctor.log
+          test "$status" -eq 1
+          grep -F "not inside a git repository" doctor.log
+          grep -F "cd into a git repo first" doctor.log
+
+  required:
+    name: CI required
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - workflow-lint
+      - typos
+      - shellcheck
+      - python-tools
+      - viz-bundle
+      - rust-fmt-clippy
+      - rust-doc
+      - cargo-machete
+      - rust-build-test
+      - rust-build-test-macos
+      - coverage
+      - binary-smoke
+    steps:
+      - name: Require all applicable checks to pass
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          results = json.loads(os.environ["RESULTS"])
+          failures = {}
+          for job, details in results.items():
+              if job == "rust-build-test-macos" and os.environ["EVENT_NAME"] != "push":
+                  allowed = {"skipped"}
+              else:
+                  allowed = {"success"}
+              if details["result"] not in allowed:
+                  failures[job] = details["result"]
+          if failures:
+              raise SystemExit(f"Required checks did not pass: {failures}")
+          print("All applicable CI checks passed")
+          PY
