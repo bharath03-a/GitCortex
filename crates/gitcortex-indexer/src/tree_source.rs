@@ -424,7 +424,7 @@ mod tests {
             &repo,
             None,
             &[
-                (b"caf\xff.rs", REGULAR, Entry::File(FN_A)),
+                (b"raw\xff.rs", REGULAR, Entry::File(FN_A)),
                 (
                     b"dir\xff",
                     0o040000,
@@ -456,7 +456,7 @@ mod tests {
         );
         let (diff, _) = indexer.run_tree(&second, Some(&first)).unwrap();
         use std::os::unix::ffi::OsStrExt;
-        for gone in [&b"caf\xff.rs"[..], &b"dir\xff/inner.rs"[..]] {
+        for gone in [&b"raw\xff.rs"[..], &b"dir\xff/inner.rs"[..]] {
             assert!(
                 diff.removed_files
                     .iter()

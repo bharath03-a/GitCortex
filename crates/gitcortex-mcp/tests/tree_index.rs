@@ -507,7 +507,7 @@ fn unusual_tree_entries_survive_the_full_apply_path() {
         &[
             (b"legacy.rs", 0o100664, b"pub fn legacy_one() {}\n"),
             (b"private.rs", 0o100600, b"pub fn private_mode() {}\n"),
-            (b"caf\xff.rs", 0o100644, b"pub fn non_utf8() {}\n"),
+            (b"raw\xff.rs", 0o100644, b"pub fn non_utf8() {}\n"),
             (b"link.rs", 0o120000, b"legacy.rs"),
             (b"module.rs", 0o160000, b""),
             (b"typechange.rs", 0o100644, b"pub fn was_regular() {}\n"),
