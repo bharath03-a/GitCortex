@@ -54,3 +54,13 @@ Every in-scope layer is merged with current green checks and reviewed; B8 has no
 - Scripts: 55 tests pass. Existing agent-bench: 50 tests pass with Python 3.12.9 invoked directly; the local pyenv shim was killed when invoked from the benchmark directory. Hosted CI uses setup-python instead.
 - Aggregate gate: 16 cases cover successful, failed, cancelled, and unexpectedly skipped prerequisites across PR, push, merge-group, and manual events.
 - No Rust source changed; the full Rust workspace was not rebuilt for these workflow/documentation edits. Hosted execution, audits, and required-check configuration remain pending.
+
+## Hosted failure triage after first push
+
+PR #109 carries the CI foundation independently on `main`; PR #93 carries this plan and initial benchmark traces. The Codex-only validation pipeline fixed the missing `--locked` on coverage and corrected contribution docs. Hosted execution remains authoritative:
+
+- #109 actionlint installation fails because `taiki-e/install-action@v2.85.4` does not support that Go tool and falls back to a nonexistent Cargo crate. Replace the installation mechanism and re-run the job; local actionlint success does not test installation on a clean runner.
+- #105/#106 Python tests fail because Python 3.12 on the clean runner has no pytest. The continuous hidden-test fixtures invoke it. Declare and install that test dependency in the eval stack; do not weaken the hidden-test assertions.
+- #108 (and lower trust layers) typos rejects the intentionally non-UTF-8 `caf\\xff.rs` fixture token. Preserve the byte-path regression while resolving the false positive.
+- Fresh #109 audit output reports RUSTSEC-2026-0462 (rmcp HTTP response buffering) and RUSTSEC-2026-0544 (libz-sys heap overflow; patched libz-sys >=1.1.33). Resolve compatible upgrades and validate before release. Prior advisory cleanup #92 is not evidence against newly published advisories.
+- Cancelled historical checks are superseded runs, not passes. Re-run current heads after common-base fixes propagate. Do not create more feature stacks before the existing integration backlog is cleared.

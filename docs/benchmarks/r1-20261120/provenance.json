@@ -1,5 +1,5 @@
 {
-  "status": "baseline-only; not release evidence",
+  "status": "exploratory baseline and development measurements; not final release evidence",
   "platform": "macOS-26.5.1-arm64-arm-64bit",
   "machine": "arm64",
   "baseline_tag": "v0.7.6",
@@ -17,5 +17,28 @@
   "failed_tasks": [
     "ripgrep-callers-line-number",
     "gson-callers-begin-array"
+  ],
+  "development_source_commit": "77093a342153de0863ac181f3e7038ab7899f145",
+  "development_failed_tasks": [
+    {
+      "task_id": "ripgrep-impact-line-number",
+      "required_missing": [],
+      "forbidden_found": [],
+      "contract_status": null,
+      "evidence_count": null,
+      "payload_bytes": 5221,
+      "returncode": 0
+    },
+    {
+      "task_id": "requests-architecture-session",
+      "required_missing": [
+        "src/requests/api.py"
+      ],
+      "forbidden_found": [],
+      "contract_status": null,
+      "evidence_count": null,
+      "payload_bytes": 4994,
+      "returncode": 0
+    }
   ]
 }
