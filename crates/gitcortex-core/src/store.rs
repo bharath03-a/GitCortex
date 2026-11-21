@@ -772,4 +772,18 @@ pub trait GraphStore: Send + Sync {
 
     /// Persist the commit SHA after a successful index run.
     fn set_last_indexed_sha(&mut self, branch: &str, sha: &str) -> Result<()>;
+
+    /// Whether this branch contains an unverified working-tree overlay. Kept
+    /// separate from the indexed commit so callers can still use a real SHA.
+    fn working_tree_dirty(&self, _branch: &str) -> Result<bool> {
+        Ok(false)
+    }
+
+    /// Persist overlay uncertainty before applying live edits. Backends without
+    /// overlay support must reject attempts to certify a live update.
+    fn set_working_tree_dirty(&mut self, _branch: &str, _dirty: bool) -> Result<()> {
+        Err(crate::error::GitCortexError::Store(
+            "working-tree overlays are unsupported by this backend".to_owned(),
+        ))
+    }
 }

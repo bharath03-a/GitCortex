@@ -15,6 +15,39 @@ use crate::{AgentOutputFormat, QueryCmd};
 pub fn run(cmd: QueryCmd) -> Result<()> {
     let repo_root = repo_root()?;
     let store = KuzuGraphStore::open(&repo_root).context("failed to open graph store")?;
+    let branch = match &cmd {
+        QueryCmd::LookupSymbol { branch, .. }
+        | QueryCmd::FindCallers { branch, .. }
+        | QueryCmd::ListDefinitions { branch, .. }
+        | QueryCmd::SymbolContext { branch, .. }
+        | QueryCmd::FindCallees { branch, .. }
+        | QueryCmd::FindImplementors { branch, .. }
+        | QueryCmd::TracePath { branch, .. }
+        | QueryCmd::FindUnused { branch, .. }
+        | QueryCmd::GetSubgraph { branch, .. }
+        | QueryCmd::Wiki { branch, .. }
+        | QueryCmd::Search { branch, .. }
+        | QueryCmd::Tour { branch, .. }
+        | QueryCmd::FindGodNodes { branch, .. }
+        | QueryCmd::FindClusters { branch, .. } => branch,
+    };
+    let index = gitcortex_mcp::mcp::readiness::inspect(&repo_root, &store, branch);
+    if matches!(index.state, "missing" | "stale" | "unavailable")
+        || (index.state == "unverified" && matches!(cmd, QueryCmd::FindUnused { .. }))
+    {
+        anyhow::bail!(
+            "index {} on branch '{}': {}",
+            index.state,
+            index.branch,
+            index.next_action
+        );
+    }
+    if index.state != "ready" {
+        eprintln!(
+            "index {} on branch '{}': {}",
+            index.state, index.branch, index.next_action
+        );
+    }
 
     match cmd {
         QueryCmd::LookupSymbol { name, branch } => {
@@ -38,7 +71,7 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
             format,
             branch,
         } => {
-            let response = gitcortex_mcp::mcp::agent::find_callers(
+            let mut response = gitcortex_mcp::mcp::agent::find_callers(
                 &store,
                 &branch,
                 &name,
@@ -48,9 +81,14 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
                     budget_tokens,
                 },
             )?;
+            if index.state == "unverified" {
+                response.risk_level = "UNKNOWN".to_owned();
+                response.answer =
+                    "Observed graph evidence only; working-tree coverage is unverified.".to_owned();
+            }
             match format {
                 AgentOutputFormat::AgentJson => {
-                    println!("{}", serde_json::to_string(&response)?);
+                    print_indexed_json(serde_json::to_value(&response)?, &index);
                 }
                 AgentOutputFormat::Text => print_agent_callers(&response),
             }
@@ -92,7 +130,7 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
             )?;
             match format {
                 AgentOutputFormat::AgentJson => {
-                    println!("{}", serde_json::to_string(&response)?);
+                    print_indexed_json(serde_json::to_value(&response)?, &index);
                 }
                 AgentOutputFormat::Text => print_agent_symbol_context(&response),
             }
@@ -145,7 +183,7 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
             let path = store.trace_path(&branch, &from, &to)?;
             match format {
                 AgentOutputFormat::AgentJson => {
-                    println!("{}", serde_json::to_string(&trace_path_json(&path))?);
+                    print_indexed_json(trace_path_json(&path), &index);
                 }
                 AgentOutputFormat::Text => {
                     if path.is_empty() {
@@ -209,7 +247,7 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
             )?;
             match format {
                 AgentOutputFormat::AgentJson => {
-                    println!("{}", serde_json::to_string(&response)?);
+                    print_indexed_json(serde_json::to_value(&response)?, &index);
                 }
                 AgentOutputFormat::Text => print_agent_subgraph(&response),
             }
@@ -250,7 +288,7 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
                         },
                         budget_tokens,
                     )?;
-                    println!("{}", serde_json::to_string(&response)?);
+                    print_indexed_json(serde_json::to_value(&response)?, &index);
                 }
                 AgentOutputFormat::Text => {
                     if hits.is_empty() {
@@ -368,6 +406,20 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn print_indexed_json(
+    mut data: serde_json::Value,
+    index: &gitcortex_mcp::mcp::readiness::IndexReadiness,
+) {
+    if let Some(object) = data.as_object_mut() {
+        object.insert("index".to_owned(), json!(index));
+        object.insert(
+            "evidence_complete".to_owned(),
+            json!(index.state == "ready"),
+        );
+    }
+    println!("{data}");
 }
 
 fn print_agent_subgraph(response: &gitcortex_mcp::mcp::agent::AgentSubgraphResponse) {

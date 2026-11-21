@@ -43,6 +43,8 @@ gcx query tour --limit 12
 gcx blast-radius --base main --head HEAD --format text
 ```
 
+An empty or stale graph must never be interpreted as evidence that there are no dependencies. Check the queried branch and index readiness, then verify relevant source and tests. Fall back to `rg` immediately when graph coverage is unusable.
+
 If graph queries fail with Kuzu schema or lock errors, fall back to `rg` and note that the local graph store likely needs `gcx clean && gcx init`.
 
 ## Development Commands

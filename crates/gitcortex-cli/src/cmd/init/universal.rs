@@ -142,16 +142,40 @@ pub fn initial_index(repo_root: &Path) -> Result<(usize, usize)> {
     let branch = current_branch(repo_root)?;
     let head_sha = head_sha(repo_root)?;
     let last_sha = store.last_indexed_sha(&branch)?;
+    let dirty_overlay = store.working_tree_dirty(&branch)?;
 
-    if last_sha.as_deref() != Some(head_sha.as_str()) {
+    if dirty_overlay || last_sha.as_deref() != Some(head_sha.as_str()) {
         let indexer = IncrementalIndexer::new(repo_root).context("failed to create indexer")?;
-        let (diff, indexed_head_sha) = indexer
-            .run(last_sha.as_deref())
+        let (mut diff, indexed_head_sha) = indexer
+            .run(if dirty_overlay {
+                None
+            } else {
+                last_sha.as_deref()
+            })
             .context("initial index failed")?;
+        if dirty_overlay {
+            // Explicit init may repair a prior overlay, including untracked
+            // files that disappeared while the daemon was stopped.
+            diff.removed_files.extend(
+                store
+                    .list_all_nodes(&branch)?
+                    .into_iter()
+                    .map(|node| node.file),
+            );
+        }
+        let snapshots = diff.source_hashes.iter().cloned().collect();
+        let verified = gitcortex_mcp::mcp::readiness::snapshots_match_commit(
+            repo_root,
+            &indexed_head_sha,
+            &snapshots,
+        )?;
+        store.set_working_tree_dirty(&branch, true)?;
         store.apply_diff(&branch, &diff).context("apply diff")?;
         store
             .set_last_indexed_sha(&branch, &indexed_head_sha)
             .context("persist sha")?;
+        let dirty = !gitcortex_mcp::mcp::readiness::changed_sources(repo_root)?.is_empty();
+        store.set_working_tree_dirty(&branch, dirty || !verified)?;
     }
 
     let nodes = store.list_all_nodes(&branch)?.len();

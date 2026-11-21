@@ -23,6 +23,17 @@ pub enum BlastFormat {
 pub fn run(base: String, head: String, depth: u8, format: BlastFormat) -> Result<()> {
     let repo_root = repo_root()?;
     let store = KuzuGraphStore::open(&repo_root).context("failed to open graph store")?;
+    for branch in [&base, &head] {
+        let index = gitcortex_mcp::mcp::readiness::inspect(&repo_root, &store, branch);
+        if index.state != "ready" {
+            anyhow::bail!(
+                "index {} on branch '{}': {}",
+                index.state,
+                index.branch,
+                index.next_action
+            );
+        }
+    }
 
     let diff = store
         .branch_diff(&base, &head)

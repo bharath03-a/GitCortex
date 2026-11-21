@@ -304,6 +304,7 @@ impl IncrementalIndexer {
 
         for deleted in to_delete {
             merged.removed_files.push(deleted.path().to_owned());
+            merged.source_hashes.push((deleted.path().to_owned(), None));
         }
 
         // Synthesise Folder and File structural nodes from the file paths of
@@ -329,8 +330,18 @@ impl IncrementalIndexer {
             .filter_map(|p| p.strip_prefix(&self.repo_root).ok().map(|r| r.to_owned()))
             .collect();
 
-        let per_file: Vec<FileIndexResult> =
-            rel_paths.par_iter().map(|p| self.index_file(p)).collect();
+        let per_file: Vec<FileIndexResult> = rel_paths
+            .par_iter()
+            // A removed file still contributes removed_files below. Do not let
+            // one deletion abort indexing the rest of a live-edit batch.
+            .map(|path| {
+                if matches!(fs::symlink_metadata(self.repo_root.join(path)),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound) {
+                    Ok((GraphDiff { source_hashes: vec![(path.clone(), None)], ..GraphDiff::default() },
+                        Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()))
+                } else { self.index_file(path) }
+            })
+            .collect();
 
         let mut merged = GraphDiff::default();
         let mut all_calls: Vec<(NodeId, String, u32)> = Vec::new();
@@ -442,6 +453,21 @@ impl IncrementalIndexer {
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
+    /// Whether a repository-relative source path belongs to this index's
+    /// supported, non-generated scope. Also used for freshness checks.
+    pub fn includes_path(&self, path: &Path) -> bool {
+        !path.components().any(|component| {
+            matches!(
+                component.as_os_str().to_str(),
+                Some(".git" | ".gitcortex" | "target" | "node_modules")
+            )
+        }) && path
+            .extension()
+            .and_then(|value| value.to_str())
+            .is_some_and(|extension| self.supported_extensions().contains(&extension))
+            && !self.should_ignore(path)
+    }
+
     fn supported_extensions(&self) -> Vec<&'static str> {
         vec![
             "rs", "py", "ts", "tsx", "js", "jsx", "mjs", "cjs", "go", "java", "md", "markdown",
@@ -473,8 +499,18 @@ impl IncrementalIndexer {
             message: e.to_string(),
         })?;
 
+        let source_hash = git2::Oid::hash_object(git2::ObjectType::Blob, source.as_bytes())
+            .map_err(|error| GitCortexError::Git(error.to_string()))?;
         if source.len() > 512 * 1024 {
-            return Ok(empty());
+            // Oversized source is intentionally excluded from AST extraction,
+            // but it still existed: never certify it as a deleted file.
+            let mut excluded = empty();
+            excluded.0.removed_files.push(repo_relative_path.to_owned());
+            excluded
+                .0
+                .source_hashes
+                .push((repo_relative_path.to_owned(), Some(source_hash.to_string())));
+            return Ok(excluded);
         }
 
         let parser = match parser_for_path(repo_relative_path) {
@@ -498,6 +534,8 @@ impl IncrementalIndexer {
         } = parsed;
 
         let mut diff = GraphDiff::default();
+        diff.source_hashes
+            .push((repo_relative_path.to_owned(), Some(source_hash.to_string())));
         // Remove old code nodes for this file and old structural nodes for
         // every ancestor folder (they'll be re-synthesised after merging).
         diff.removed_files.push(repo_relative_path.to_owned());
@@ -959,6 +997,37 @@ fn build_ignorer(repo_root: &Path) -> Gitignore {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn disk_batch_retains_valid_edits_when_another_file_was_deleted() {
+        let repo = tempfile::tempdir().expect("repo");
+        fs::write(repo.path().join("kept.rs"), "pub fn kept() {}\n").expect("source");
+        let indexer = IncrementalIndexer::new(repo.path()).expect("indexer");
+        let diff = indexer
+            .index_files_from_disk(&[repo.path().join("deleted.rs"), repo.path().join("kept.rs")])
+            .expect("deletion is an update, not a parse failure");
+        assert!(diff.removed_files.contains(&PathBuf::from("deleted.rs")));
+        assert!(diff.added_nodes.iter().any(|node| node.name == "kept"));
+    }
+
+    #[test]
+    fn oversized_disk_source_has_a_receipt_without_definitions() {
+        let repo = tempfile::tempdir().expect("repo");
+        let path = repo.path().join("large.rs");
+        fs::write(
+            &path,
+            format!("pub fn omitted() {{}}\n{}", "// padding\n".repeat(50_000)),
+        )
+        .expect("source");
+        let diff = IncrementalIndexer::new(repo.path())
+            .expect("indexer")
+            .index_files_from_disk(&[path])
+            .expect("batch");
+        assert!(!diff.added_nodes.iter().any(|node| node.name == "omitted"));
+        assert_eq!(diff.source_hashes.len(), 1);
+        assert_eq!(diff.source_hashes[0].0, Path::new("large.rs"));
+        assert!(diff.removed_files.contains(&PathBuf::from("large.rs")));
+    }
 
     #[test]
     fn source_path_rejects_parent_traversal() {

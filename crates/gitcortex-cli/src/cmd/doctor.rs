@@ -61,10 +61,52 @@ pub fn run() -> Result<()> {
     .unwrap_or(false);
     if server_active {
         ok("graph store owned by active MCP server");
-        ok("index freshness managed by active MCP watcher");
+        let readiness = tokio::runtime::Runtime::new()
+            .map_err(anyhow::Error::from)
+            .and_then(|runtime| {
+                runtime.block_on(gitcortex_mcp::mcp::server::daemon_readiness(&repo_root))
+            });
+        match readiness {
+            Ok(index) if index["state"] == "ready" => {
+                ok("active MCP server verified index readiness")
+            }
+            Ok(index) => fail(
+                &format!(
+                    "active MCP index is {}",
+                    index["state"].as_str().unwrap_or("unverified")
+                ),
+                index["next_action"]
+                    .as_str()
+                    .unwrap_or("inspect source and restart gcx serve"),
+                &mut all_ok,
+            ),
+            Err(error) => fail(
+                &format!("could not verify active MCP freshness: {error}"),
+                "restart gcx serve and rerun gcx doctor",
+                &mut all_ok,
+            ),
+        }
     } else {
         match KuzuGraphStore::open(&repo_root) {
             Ok(store) => {
+                // Persistent overlays survive daemon shutdown. A matching
+                // commit SHA alone does not certify the graph's contents.
+                let scope = current_branch(&repo_root).map(|branch| {
+                    gitcortex_mcp::mcp::readiness::inspect(&repo_root, &store, &branch)
+                });
+                match scope {
+                    Ok(index) if index.state != "ready" => fail(
+                        &format!("index readiness is {}", index.state),
+                        index.next_action,
+                        &mut all_ok,
+                    ),
+                    Err(error) => fail(
+                        &format!("could not verify index scope: {error}"),
+                        "inspect Git HEAD and rerun gcx doctor",
+                        &mut all_ok,
+                    ),
+                    _ => {}
+                }
                 let Some(branch) = required(
                     current_branch(&repo_root),
                     "could not resolve current branch",

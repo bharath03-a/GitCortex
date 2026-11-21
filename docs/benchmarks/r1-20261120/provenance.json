@@ -1,0 +1,44 @@
+{
+  "status": "exploratory baseline and development measurements; not final release evidence",
+  "platform": "macOS-26.5.1-arm64-arm-64bit",
+  "machine": "arm64",
+  "baseline_tag": "v0.7.6",
+  "baseline_commit": "26c5c871ef83ed272cdd6b570d25946c2f0ca71e",
+  "baseline_asset": "https://github.com/bharath03-a/GitCortex/releases/download/v0.7.6/gitcortex-aarch64-apple-darwin.tar.xz",
+  "archive_sha256": "a5d82ff9019b2ceb609a881faef05440b9585a6c4d38b522a3873791dd7275f2",
+  "suite_sha256": "e5754f41f3c4a8b9a0ce20d97894fd7430289174782f4281fcf5ddd94b1a2fb1",
+  "limitations": [
+    "One round only; no variance or performance improvement claims.",
+    "Legacy adapter cannot run impact, architecture, refactor: 15 tasks excluded.",
+    "Legacy output has no ranked JSON evidence; reported ranking zeros are unavailable metrics, not measured zero relevance.",
+    "Index duration includes clean, hook, and status; not isolated parser timing.",
+    "No current-candidate, storage-optimization, memory/CPU, competitor, or agent usefulness results yet."
+  ],
+  "failed_tasks": [
+    "ripgrep-callers-line-number",
+    "gson-callers-begin-array"
+  ],
+  "development_source_commit": "77093a342153de0863ac181f3e7038ab7899f145",
+  "development_failed_tasks": [
+    {
+      "task_id": "ripgrep-impact-line-number",
+      "required_missing": [],
+      "forbidden_found": [],
+      "contract_status": null,
+      "evidence_count": null,
+      "payload_bytes": 5221,
+      "returncode": 0
+    },
+    {
+      "task_id": "requests-architecture-session",
+      "required_missing": [
+        "src/requests/api.py"
+      ],
+      "forbidden_found": [],
+      "contract_status": null,
+      "evidence_count": null,
+      "payload_bytes": 4994,
+      "returncode": 0
+    }
+  ]
+}

@@ -11,11 +11,12 @@ rust-version.workspace = true
 anyhow.workspace = true
 blake3.workspace = true
 fastembed.workspace = true
+git2.workspace = true
 gitcortex-core.workspace = true
 gitcortex-indexer.workspace = true
 gitcortex-store.workspace = true
 notify.workspace = true
-rmcp.workspace = true
+rmcp = { workspace = true, features = ["client"] }
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
