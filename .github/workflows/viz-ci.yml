@@ -9,10 +9,12 @@ on:
       - "viz/**"
       - ".github/workflows/viz-ci.yml"
   pull_request:
-    branches: [main]
     paths:
       - "viz/**"
       - ".github/workflows/viz-ci.yml"
+
+permissions:
+  contents: read
 
 concurrency:
   group: viz-ci-${{ github.workflow }}-${{ github.ref }}
@@ -25,6 +27,7 @@ defaults:
 jobs:
   viz:
     name: viz · lint + test + build
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -35,11 +38,7 @@ jobs:
           cache: "npm"
           cache-dependency-path: viz/package-lock.json
 
-      # `npm install` (not `npm ci`): lightningcss ships per-platform native
-      # binaries as optionalDependencies; `npm ci` from a lockfile generated on
-      # another OS skips the runner's variant (npm/cli#4828). `npm install`
-      # resolves the correct binary for this platform.
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
 
       - name: Prettier --check
         run: npm run format:check

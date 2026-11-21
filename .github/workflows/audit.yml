@@ -1,25 +1,19 @@
 name: Audit
 
-# Supply-chain checks. Runs on dep changes, weekly on a schedule, and on demand.
+# Supply-chain checks on every PR (including stacks), main, weekly, and on demand.
 
 on:
   push:
     branches: [main]
-    paths:
-      - "**/Cargo.toml"
-      - "**/Cargo.lock"
-      - "deny.toml"
-      - ".github/workflows/audit.yml"
-  pull_request:
-    branches: [main]
-    paths:
-      - "**/Cargo.toml"
-      - "**/Cargo.lock"
-      - "deny.toml"
+  pull_request: {}
+  merge_group: {}
   schedule:
     # Mondays 09:00 UTC
     - cron: "0 9 * * 1"
   workflow_dispatch: {}
+
+permissions:
+  contents: read
 
 concurrency:
   group: audit-${{ github.workflow }}-${{ github.ref }}
@@ -28,6 +22,7 @@ concurrency:
 jobs:
   cargo-deny:
     name: cargo-deny
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -38,6 +33,7 @@ jobs:
 
   cargo-audit:
     name: cargo-audit
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -47,6 +43,7 @@ jobs:
 
   npm-audit:
     name: npm audit (viz)
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     defaults:
       run:
