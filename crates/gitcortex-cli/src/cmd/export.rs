@@ -14,8 +14,8 @@ use gitcortex_core::{
 use gitcortex_mcp::mcp::readiness;
 use gitcortex_store::{branch as store_branch, kuzu::KuzuGraphStore};
 use gitcortex_viz::export::{
-    resolve_scope, to_cypher, to_dot, to_graph_json, to_graphml, to_html, to_svg, Direction,
-    ExportMeta, ExportScope, NodeOrder, ScopedGraph, SeedError,
+    resolve_scope, to_cypher, to_dot, to_graph_json, to_graphml, to_html, to_mermaid, to_svg,
+    Direction, ExportMeta, ExportScope, NodeOrder, ScopedGraph, SeedError,
 };
 
 use crate::exit::CliExit;
@@ -34,6 +34,8 @@ pub enum ExportFormat {
     Json,
     /// Versioned `gitcortex.graph` v1 JSON document.
     GraphJson,
+    /// GitHub-compatible Mermaid flowchart (defaults to 100-node cap).
+    Mermaid,
     /// Graphviz DOT format.
     Dot,
     /// Concentric-ring SVG diagram.
@@ -114,6 +116,7 @@ pub fn run(opts: ExportOptions) -> Result<()> {
             emit_output(&json, opts.out.as_deref())
         }
         ExportFormat::GraphJson
+        | ExportFormat::Mermaid
         | ExportFormat::Dot
         | ExportFormat::Svg
         | ExportFormat::Graphml
@@ -124,7 +127,11 @@ pub fn run(opts: ExportOptions) -> Result<()> {
 
 fn run_scoped_export(repo_root: &Path, branch: &str, opts: &ExportOptions) -> Result<()> {
     let edge_kinds = parse_edge_kinds(opts.edge_kinds.as_deref())?;
-    let max_nodes = opts.max_nodes.or(Some(5000));
+    let default_cap = match opts.format {
+        ExportFormat::Mermaid => 100,
+        _ => 5000,
+    };
+    let max_nodes = opts.max_nodes.or(Some(default_cap));
     let scope = ExportScope {
         seed: opts.seed.clone(),
         depth: opts.depth,
@@ -212,6 +219,7 @@ fn run_scoped_export(repo_root: &Path, branch: &str, opts: &ExportOptions) -> Re
             let doc = to_graph_json(&graph, &meta);
             serde_json::to_string_pretty(&doc).context("serialize graph-json")?
         }
+        ExportFormat::Mermaid => to_mermaid(&graph),
         ExportFormat::Dot => to_dot(&graph),
         ExportFormat::Svg => to_svg(&graph),
         ExportFormat::Graphml => to_graphml(&graph),

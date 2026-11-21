@@ -353,3 +353,40 @@ fn out_flag_writes_file_to_disk() {
     let doc: Value = serde_json::from_str(&fs::read_to_string(&target).unwrap()).unwrap();
     assert_eq!(doc["format"], "gitcortex.graph");
 }
+
+#[test]
+fn mermaid_default_cap_100() {
+    let f = Fixture::new();
+    let mut big = String::new();
+    for i in 0..120 {
+        big.push_str(&format!("pub fn fn_{i}() {{}}\n"));
+    }
+    f.write_file("src/many.rs", &big);
+    f.git(&["add", "src/many.rs"]);
+    f.git(&[
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "-m",
+        "add 120 functions",
+    ]);
+    f.init();
+
+    let out = f.run(&["export", "--format", "mermaid"]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let body = stdout(&out);
+    let mut lines = body.lines();
+    assert_eq!(lines.next(), Some("flowchart LR"));
+    let second = lines.next().expect("truncation line");
+    assert!(
+        second.starts_with("%% truncated: showing 100 of "),
+        "expected default 100-node truncation comment, got: {second}"
+    );
+    let node_decls = body
+        .lines()
+        .filter(|line| line.starts_with("  n") && line.contains("[\""))
+        .count();
+    assert_eq!(node_decls, 100);
+}

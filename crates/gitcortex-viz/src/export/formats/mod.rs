@@ -8,6 +8,8 @@ mod graphml;
 pub use graphml::to_graphml;
 mod cypher;
 pub use cypher::to_cypher;
+mod mermaid;
+pub use mermaid::to_mermaid;
 #[cfg(test)]
 pub(crate) use {
     cypher::{cypher_id, cypher_str},
