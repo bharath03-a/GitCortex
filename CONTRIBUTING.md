@@ -87,13 +87,15 @@ Before opening a PR:
 - [ ] `cargo fmt --all` clean
 - [ ] `cargo clippy --workspace --all-targets -- -D warnings` clean
 - [ ] `cargo test --workspace` passes
-- [ ] If you touched `viz/`: `npm run lint && npm run test && npm run build` clean
+- [ ] If you touched `viz/`: `npm run format:check && npm run lint && npm run test && npm run build` clean
 - [ ] If you added a public API: rustdoc comments explain *why*, not just *what*
 - [ ] If you changed user-facing behaviour: updated `README.md` and `CHANGELOG.md`
 - [ ] If you added a workspace member or removed one: `dist-workspace.toml` still valid
 - [ ] Commit messages follow Conventional Commits (`feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`, `ci:`)
 
-`just ci` runs all of the above locally and mirrors what GitHub Actions runs.
+`just ci` runs the local format, lint, test, and frontend build checks. See
+[the CI workflow](.github/workflows/ci.yml) for the full set of automated checks
+and the `CI required` aggregate.
 
 ## Commit message format
 
