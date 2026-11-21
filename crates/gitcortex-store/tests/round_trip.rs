@@ -400,6 +400,48 @@ fn bounded_exact_neighborhood_respects_direction_and_limit() {
 }
 
 #[test]
+fn apply_diff_bumps_mutation_epoch_on_empty_and_incremental_paths() {
+    let (mut store, _dir) = tmp_store();
+    assert_eq!(store.mutation_epoch("main").expect("initial epoch"), 0);
+
+    // First apply hits the empty-table bulk_apply fast path.
+    let first = make_node("alpha", NodeKind::Function, "src/lib.rs", 1);
+    store
+        .apply_diff(
+            "main",
+            &GraphDiff {
+                added_nodes: vec![first],
+                ..Default::default()
+            },
+        )
+        .expect("bulk apply");
+    let after_bulk = store.mutation_epoch("main").expect("epoch after bulk");
+    assert!(
+        after_bulk > 0,
+        "empty-table apply_diff fast path must bump mutation_epoch"
+    );
+
+    // Second apply hits the incremental path.
+    let second = make_node("beta", NodeKind::Function, "src/other.rs", 1);
+    store
+        .apply_diff(
+            "main",
+            &GraphDiff {
+                added_nodes: vec![second],
+                ..Default::default()
+            },
+        )
+        .expect("incremental apply");
+    let after_inc = store
+        .mutation_epoch("main")
+        .expect("epoch after incremental");
+    assert!(
+        after_inc > after_bulk,
+        "incremental apply_diff must advance mutation_epoch ({after_inc} <= {after_bulk})"
+    );
+}
+
+#[test]
 fn branch_diff_detects_added_and_removed_nodes() {
     let (mut store, _dir) = tmp_store();
 

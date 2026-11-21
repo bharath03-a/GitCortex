@@ -32,15 +32,42 @@ pub fn run(branch_switch: bool) -> Result<()> {
         );
     }
 
+    let rules_before = gitcortex_mcp::mcp::ignore_rules::rules_hash(&repo_root).ok();
+    let rules_mismatch = rules_before.as_ref().map_or(true, |rules| {
+        !gitcortex_mcp::mcp::ignore_rules::indexed_rules_match(&repo_root, &branch, rules)
+            .unwrap_or(false)
+    });
     let indexer = IncrementalIndexer::new(&repo_root).context("failed to create indexer")?;
 
-    let (diff, head_sha) = indexer
-        .run(last_sha.as_deref())
+    let (mut diff, head_sha) = indexer
+        .run(if rules_mismatch {
+            None
+        } else {
+            last_sha.as_deref()
+        })
         .context("incremental index failed")?;
+    if rules_mismatch {
+        diff.removed_files.extend(
+            store
+                .list_all_nodes(&branch)?
+                .into_iter()
+                .filter(|node| node.kind != gitcortex_core::schema::NodeKind::Folder)
+                .map(|node| node.file),
+        );
+    }
 
     if diff.is_empty() {
         // Empty commits still advance the indexed revision.
         store.bump_mutation_epoch(&branch)?;
+        if let Some(rules) = rules_before.as_ref() {
+            if gitcortex_mcp::mcp::ignore_rules::rules_hash(&repo_root).ok() == rules_before {
+                gitcortex_mcp::mcp::ignore_rules::persist_indexed_rules(
+                    &repo_root,
+                    &branch,
+                    rules.as_deref(),
+                )?;
+            }
+        }
         store.set_last_indexed_sha(&branch, &head_sha)?;
         let elapsed = t0.elapsed().as_millis();
         eprintln!("gcx  [{branch}]  (no changes)  ({elapsed}ms)");
@@ -56,6 +83,15 @@ pub fn run(branch_switch: bool) -> Result<()> {
     store
         .apply_diff(&branch, &diff)
         .context("failed to apply diff")?;
+    if let Some(rules) = rules_before.as_ref() {
+        if gitcortex_mcp::mcp::ignore_rules::rules_hash(&repo_root).ok() == rules_before {
+            gitcortex_mcp::mcp::ignore_rules::persist_indexed_rules(
+                &repo_root,
+                &branch,
+                rules.as_deref(),
+            )?;
+        }
+    }
     store
         .set_last_indexed_sha(&branch, &head_sha)
         .context("failed to persist sha")?;

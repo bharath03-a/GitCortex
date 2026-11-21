@@ -134,8 +134,10 @@ fn finish_tree_apply(
     // Before writing: a crash mid-apply leaves `.dirty`, and an overlay beside it
     // could certify bytes this job wrote.
     super::readiness::remove_overlay_checkpoint(root, key)?;
+    let tree_rules = super::ignore_rules::committed_rules_hash(root, &plan.sha)?;
     store.bump_mutation_epoch(key)?;
     store.apply_diff(key, &diff)?;
+    super::ignore_rules::persist_indexed_rules(root, key, tree_rules.as_deref())?;
     store.set_last_indexed_sha(key, &plan.sha)?;
     store.set_working_tree_dirty(key, false)?;
     Ok(TreeIndexOutcome {

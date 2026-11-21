@@ -286,10 +286,12 @@ pub fn inspect_with_pending(
     let changed = changed_sources(root).ok();
     let clean = changed.as_ref().map(|paths| paths.is_empty());
     let checkout_scope = checkout_branch.as_deref() == Some(branch);
-    let rules_modified = checkout_scope
-        && checkout_revision.as_deref().map_or(true, |head| {
+    let rules_mismatch = checkout_scope
+        && (checkout_revision.as_deref().map_or(true, |head| {
             super::ignore_rules::rules_modified(root, head).unwrap_or(true)
-        });
+        }) || super::ignore_rules::rules_hash(root).map_or(true, |current| {
+            !super::ignore_rules::indexed_rules_match(root, branch, &current).unwrap_or(false)
+        }));
     let overlay_verified = checkout_scope
         && !events_pending
         && clean == Some(false)
@@ -312,7 +314,7 @@ pub fn inspect_with_pending(
             }
         }
         _ if persisted_dirty.is_err() => "unavailable",
-        _ if rules_modified => "unverified",
+        _ if rules_mismatch => "unverified",
         _ if persisted_dirty.as_ref().copied().unwrap_or(true) => "unverified",
         _ if checkout_scope && events_pending => "unverified",
         _ => "ready",

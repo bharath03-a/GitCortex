@@ -30,18 +30,49 @@ pub fn rules_hash(root: &Path) -> anyhow::Result<Option<String>> {
     ))
 }
 
-/// Whether committed rules at `head` were edited or deleted in the working tree.
-/// Untracked rules (as `gcx init` writes them) are covered by the overlay
-/// checkpoint's recorded hash and the watcher's reconcile instead.
-pub fn rules_modified(root: &Path, head: &str) -> anyhow::Result<bool> {
+/// Blob hash of `.gitcortex/ignore` committed in `rev`'s tree, or `None` when
+/// absent from that commit.
+pub fn committed_rules_hash(root: &Path, rev: &str) -> anyhow::Result<Option<String>> {
     let repo = git2::Repository::open(root)?;
-    let tree = repo.find_commit(git2::Oid::from_str(head)?)?.tree()?;
-    let committed = match tree.get_path(Path::new(IGNORE_FILE)) {
-        Ok(entry) => entry.id().to_string(),
-        Err(error) if error.code() == git2::ErrorCode::NotFound => return Ok(false),
-        Err(error) => return Err(error.into()),
+    let tree = repo.find_commit(git2::Oid::from_str(rev)?)?.tree()?;
+    match tree.get_path(Path::new(IGNORE_FILE)) {
+        Ok(entry) => Ok(Some(entry.id().to_string())),
+        Err(error) if error.code() == git2::ErrorCode::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
+/// Whether committed rules at `head` were edited or deleted in the working tree.
+pub fn rules_modified(root: &Path, head: &str) -> anyhow::Result<bool> {
+    let Some(committed) = committed_rules_hash(root, head)? else {
+        return Ok(false);
     };
     Ok(rules_hash(root)?.as_deref() != Some(committed.as_str()))
+}
+
+/// Persist the `.gitcortex/ignore` rules hash under which `branch` was indexed.
+pub fn persist_indexed_rules(root: &Path, branch: &str, hash: Option<&str>) -> anyhow::Result<()> {
+    let repo_id = gitcortex_store::branch::storage_repo_id(root);
+    gitcortex_store::branch::write_indexed_ignore_hash(&repo_id, branch, hash)?;
+    Ok(())
+}
+
+/// Whether `branch`'s persisted `.ignore` rules marker agrees with `current`.
+///
+/// Legacy stores that predate `.ignore` markers (marker absent) are treated as
+/// matching only when no `.gitcortex/ignore` file is present on disk (`None`),
+/// so an untracked `.gitcortex/ignore` created or edited offline always fails
+/// closed to `unverified`.
+pub fn indexed_rules_match(
+    root: &Path,
+    branch: &str,
+    current: &Option<String>,
+) -> anyhow::Result<bool> {
+    let repo_id = gitcortex_store::branch::storage_repo_id(root);
+    match gitcortex_store::branch::read_indexed_ignore_hash(&repo_id, branch)? {
+        Some(recorded) => Ok(recorded == *current),
+        None => Ok(current.is_none()),
+    }
 }
 
 #[cfg(test)]

@@ -483,3 +483,216 @@ fn hand_written_checkpoint_for_a_nul_file_is_not_certified() {
     assert!((bytes.len() as u64) < super::readiness::MAX_OVERLAY_FILE_BYTES);
     assert_uncertified(&hand_written_checkpoint_state(bytes));
 }
+
+#[test]
+fn untracked_ignore_edited_offline_blocks_clean_checkout_until_reconciled() {
+    let _stores = lock_stores();
+    let repo = TempRepo::init();
+    commit_file(repo.path(), "a.rs", "pub fn alpha() {}\n", "a");
+    let head = commit_file(repo.path(), "b.rs", "pub fn beta() {}\n", "b");
+    let store = indexed(&repo, &head);
+    assert_certified(&state(&repo, &store));
+
+    // Create an untracked `.gitcortex/ignore` offline (no daemon running)
+    // excluding `a.rs`. Working tree has no dirty source files, yet the clean
+    // checkout must NOT report ready while stale `alpha` nodes remain.
+    std::fs::create_dir_all(repo.path().join(".gitcortex")).expect("mkdir");
+    std::fs::write(repo.path().join(".gitcortex/ignore"), "a.rs\n").expect("write ignore");
+    assert_uncertified(&state(&repo, &store));
+
+    // A partial incremental batch cannot certify the clean checkout without a
+    // full reconcile under the updated rules.
+    batch(&repo, &store, &head, &[]);
+    assert_uncertified(&state(&repo, &store));
+
+    // Full reconciliation drops `a.rs` nodes, updates `<branch>.ignore`, and
+    // certifies the clean checkout.
+    let mut snapshots = HashMap::new();
+    reconcile_disk(
+        repo.path(),
+        &store,
+        "main",
+        &head,
+        &AtomicU64::new(0),
+        &mut snapshots,
+    )
+    .expect("reconcile");
+    assert!(!has(&store, "alpha"));
+    assert!(has(&store, "beta"));
+    assert_certified(&state(&repo, &store));
+
+    // Editing or removing the untracked ignore file offline again invalidates
+    // certification until reconciled.
+    std::fs::remove_file(repo.path().join(".gitcortex/ignore")).expect("remove ignore");
+    assert_uncertified(&state(&repo, &store));
+    reconcile_disk(
+        repo.path(),
+        &store,
+        "main",
+        &head,
+        &AtomicU64::new(0),
+        &mut HashMap::new(),
+    )
+    .expect("reconcile after delete");
+    assert!(has(&store, "alpha"));
+    assert!(has(&store, "beta"));
+    assert_certified(&state(&repo, &store));
+}
+
+#[test]
+fn newly_gitignored_untracked_file_is_evicted_from_snapshots_and_overlay_certifies() {
+    let _stores = lock_stores();
+    let repo = TempRepo::init();
+    let head = commit_file(repo.path(), "a.rs", "pub fn alpha() {}\n", "a");
+    let store = indexed(&repo, &head);
+
+    // Dirty checkout with one modified tracked file and one untracked file.
+    std::fs::write(repo.path().join("a.rs"), "pub fn alpha_edited() {}\n").expect("edit a");
+    std::fs::write(repo.path().join("scratch.rs"), "pub fn scratch_fn() {}\n").expect("scratch");
+    let mut snapshots = HashMap::new();
+    apply_disk_batch(
+        repo.path(),
+        &store,
+        "main",
+        &head,
+        &[repo.path().join("a.rs"), repo.path().join("scratch.rs")],
+        &AtomicU64::new(0),
+        &mut snapshots,
+    )
+    .expect("first batch");
+    assert!(has(&store, "scratch_fn"));
+    assert!(snapshots.contains_key(Path::new("scratch.rs")));
+    assert_certified(&state(&repo, &store));
+
+    // Now git-ignore `scratch.rs` while keeping `a.rs` dirty. A subsequent
+    // batch touching `scratch.rs` must drop its nodes AND evict it from
+    // `snapshots` so the remaining dirty overlay stays certified.
+    std::fs::write(repo.path().join(".gitignore"), "scratch.rs\n").expect("gitignore");
+    apply_disk_batch(
+        repo.path(),
+        &store,
+        "main",
+        &head,
+        &[repo.path().join("scratch.rs")],
+        &AtomicU64::new(0),
+        &mut snapshots,
+    )
+    .expect("second batch");
+    assert!(!has(&store, "scratch_fn"));
+    assert!(
+        !snapshots.contains_key(Path::new("scratch.rs")),
+        "newly git-ignored file must be removed from snapshots"
+    );
+    assert!(has(&store, "alpha_edited"));
+    assert_certified(&state(&repo, &store));
+}
+
+#[test]
+fn watcher_rescans_immediately_when_gitignore_changes() {
+    super::test_support::run_async(|repo| async move {
+        let head = commit_file(repo.path(), "a.rs", "pub fn alpha() {}\n", "a");
+        std::fs::create_dir_all(repo.path().join("gen")).expect("mkdir gen");
+        std::fs::write(repo.path().join("gen/extra.rs"), "pub fn extra_fn() {}\n")
+            .expect("write extra");
+        let store = indexed(&repo, &head);
+        let unhealthy = Arc::new(AtomicBool::new(false));
+        let pending = Arc::new(AtomicBool::new(false));
+        let watcher = super::watcher::spawn_file_watcher_with_pending(
+            repo.path().to_owned(),
+            store.clone(),
+            Arc::new(Mutex::new("main".to_owned())),
+            Arc::new(AtomicU64::new(0)),
+            unhealthy.clone(),
+            pending.clone(),
+        );
+        wait_until(Duration::from_secs(10), || {
+            let p = pending.load(Ordering::Acquire);
+            !unhealthy.load(Ordering::Acquire)
+                && has(&store, "extra_fn")
+                && inspect_with_pending(repo.path(), &*store.lock().expect("lock"), "main", p)
+                    .working_tree_verified
+        })
+        .await;
+
+        // Writing `.gitignore` to exclude `gen/` must trigger a rescan and drop
+        // `extra_fn` without touching `gen/extra.rs`.
+        std::fs::write(repo.path().join(".gitignore"), "gen/\n").expect("write gitignore");
+        wait_until(Duration::from_secs(10), || {
+            let p = pending.load(Ordering::Acquire);
+            !unhealthy.load(Ordering::Acquire)
+                && !has(&store, "extra_fn")
+                && inspect_with_pending(repo.path(), &*store.lock().expect("lock"), "main", p)
+                    .working_tree_verified
+        })
+        .await;
+        assert!(has(&store, "alpha"));
+        watcher.abort();
+        let _ = watcher.await;
+    });
+}
+
+#[test]
+fn reconcile_disk_when_recover_and_head_changed_updates_sha_and_drops_deleted_files() {
+    let _stores = lock_stores();
+    let repo = TempRepo::init();
+    commit_file(repo.path(), "a.rs", "pub fn alpha_v1() {}\n", "a v1");
+    let c1 = commit_file(repo.path(), "sub/old.rs", "pub fn old_fn() {}\n", "old");
+    let store = indexed(&repo, &c1);
+    assert!(has(&store, "old_fn"));
+
+    // Advance HEAD to C2: edit a.rs, add b.rs, remove sub/old.rs.
+    std::fs::write(repo.path().join("a.rs"), "pub fn alpha_v2() {}\n").expect("edit a");
+    std::fs::write(repo.path().join("b.rs"), "pub fn beta_v2() {}\n").expect("add b");
+    std::fs::remove_file(repo.path().join("sub/old.rs")).expect("remove old");
+    git(repo.path(), &["add", "-A"]);
+    git(repo.path(), &["commit", "-m", "c2"]);
+    let c2 = git(repo.path(), &["rev-parse", "HEAD"]);
+
+    // Simulate `recover && head_changed`: snapshots cleared, reconcile_disk
+    // runs directly without sync_commit.
+    let mut snapshots = HashMap::new();
+    reconcile_disk(
+        repo.path(),
+        &store,
+        "main",
+        &c2,
+        &AtomicU64::new(0),
+        &mut snapshots,
+    )
+    .expect("reconcile c2");
+    assert_eq!(
+        store
+            .lock()
+            .expect("lock")
+            .last_indexed_sha("main")
+            .expect("sha")
+            .as_deref(),
+        Some(c2.as_str())
+    );
+    assert!(!has(&store, "alpha_v1"));
+    assert!(!has(&store, "old_fn"));
+    assert!(has(&store, "alpha_v2"));
+    assert!(has(&store, "beta_v2"));
+    assert!(
+        files(&store)
+            .iter()
+            .all(|f| f != Path::new("sub") && !f.starts_with(Path::new("sub"))),
+        "deleted directory folder nodes must be pruned during recover+head_changed"
+    );
+    assert_certified(&state(&repo, &store));
+
+    // Also verify dirty working tree at C2 certifies cleanly on recover.
+    std::fs::write(repo.path().join("b.rs"), "pub fn beta_dirty() {}\n").expect("dirty b");
+    snapshots.clear();
+    reconcile_disk(
+        repo.path(),
+        &store,
+        "main",
+        &c2,
+        &AtomicU64::new(0),
+        &mut snapshots,
+    )
+    .expect("reconcile dirty c2");
+    assert!(has(&store, "beta_dirty"));
+    assert_certified(&state(&repo, &store));
+}

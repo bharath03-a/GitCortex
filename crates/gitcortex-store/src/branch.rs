@@ -3,10 +3,36 @@ use std::{
     hash::{DefaultHasher, Hash, Hasher},
     io::{Read, Seek, Write},
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 use directories::BaseDirs;
 use gitcortex_core::error::{GitCortexError, Result};
+
+static ATOMIC_TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Write `content` to `path` via a same-directory temporary file and atomic
+/// rename so concurrent readers never observe a truncated or partial file.
+pub fn write_atomic(path: &Path, content: &[u8]) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let seq = ATOMIC_TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let file_name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "meta".to_owned());
+    let tmp = path.with_file_name(format!(".{file_name}.tmp.{}.{seq}", std::process::id()));
+    if let Err(error) = fs::write(&tmp, content) {
+        let _ = fs::remove_file(&tmp);
+        return Err(GitCortexError::Io(error));
+    }
+    if let Err(error) = fs::rename(&tmp, path) {
+        let _ = fs::remove_file(&tmp);
+        return Err(GitCortexError::Io(error));
+    }
+    Ok(())
+}
 
 // ── Branch name sanitization ──────────────────────────────────────────────────
 
@@ -225,13 +251,10 @@ pub fn read_schema_version(repo_id: &str) -> u32 {
         .unwrap_or(0)
 }
 
-/// Write the schema version marker.
+/// Write the schema version marker atomically.
 pub fn write_schema_version(repo_id: &str, version: u32) -> Result<()> {
     let path = schema_version_path(repo_id);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(&path, version.to_string()).map_err(GitCortexError::Io)
+    write_atomic(&path, version.to_string().as_bytes())
 }
 
 /// Path to the marker recording that the interactive `gcx init` editor
@@ -252,10 +275,7 @@ pub fn has_prompted_for_editor(repo_id: &str) -> bool {
 /// `gcx init --editor <name>` to add an assistant later.
 pub fn mark_editor_prompted(repo_id: &str) -> Result<()> {
     let path = editor_prompt_marker_path(repo_id);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(&path, "").map_err(GitCortexError::Io)
+    write_atomic(&path, b"")
 }
 
 /// Whether a repository data directory contains anything other than its
@@ -312,10 +332,41 @@ pub fn read_last_sha(repo_id: &str, branch: &str) -> Result<Option<String>> {
 
 pub fn write_last_sha(repo_id: &str, branch: &str, sha: &str) -> Result<()> {
     let path = last_sha_path(repo_id, branch);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
+    write_atomic(&path, sha.as_bytes())
+}
+
+/// Path to the persisted `.gitcortex/ignore` rules hash for a specific branch.
+pub fn indexed_ignore_path(repo_id: &str, branch: &str) -> PathBuf {
+    data_dir(repo_id).join(format!("{}.ignore", sanitize(branch)))
+}
+
+/// Read the persisted `.gitcortex/ignore` blob hash under which `branch` was
+/// last indexed:
+/// - `Ok(None)`: no `.ignore` marker file exists (legacy store or direct SHA write).
+/// - `Ok(Some(None))`: indexed with no `.gitcortex/ignore` file present.
+/// - `Ok(Some(Some(oid)))`: indexed with `.gitcortex/ignore` matching `oid`.
+pub fn read_indexed_ignore_hash(repo_id: &str, branch: &str) -> Result<Option<Option<String>>> {
+    let path = indexed_ignore_path(repo_id, branch);
+    match fs::read_to_string(&path) {
+        Ok(raw) => {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() || trimmed == "none" {
+                Ok(Some(None))
+            } else {
+                Ok(Some(Some(trimmed.to_owned())))
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(GitCortexError::Io(e)),
     }
-    fs::write(&path, sha).map_err(GitCortexError::Io)
+}
+
+/// Atomically persist the `.gitcortex/ignore` blob hash under which `branch`
+/// was indexed (`None` when no `.gitcortex/ignore` file was present).
+pub fn write_indexed_ignore_hash(repo_id: &str, branch: &str, hash: Option<&str>) -> Result<()> {
+    let path = indexed_ignore_path(repo_id, branch);
+    let value = hash.unwrap_or("none");
+    write_atomic(&path, value.as_bytes())
 }
 
 /// Path to the monotonic mutation epoch file for a specific branch.
@@ -335,14 +386,11 @@ pub fn read_mutation_epoch(repo_id: &str, branch: &str) -> Result<u64> {
     }
 }
 
-/// Increment and persist the monotonic mutation epoch for `branch`.
+/// Increment and persist the monotonic mutation epoch for `branch` atomically.
 pub fn bump_mutation_epoch(repo_id: &str, branch: &str) -> Result<u64> {
     let next = read_mutation_epoch(repo_id, branch)?.saturating_add(1);
     let path = mutation_epoch_path(repo_id, branch);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(&path, next.to_string()).map_err(GitCortexError::Io)?;
+    write_atomic(&path, next.to_string().as_bytes())?;
     Ok(next)
 }
 
@@ -388,5 +436,20 @@ mod tests {
         let a = repo_id(Path::new("/home/user/proj-a"));
         let b = repo_id(Path::new("/home/user/proj-b"));
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn write_atomic_replaces_content_without_leaving_temp_files() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let target = dir.path().join("main.sha");
+        write_atomic(&target, b"1111111").expect("first write");
+        assert_eq!(fs::read_to_string(&target).expect("read"), "1111111");
+        write_atomic(&target, b"2222222").expect("second write");
+        assert_eq!(fs::read_to_string(&target).expect("read"), "2222222");
+        let entries: Vec<_> = fs::read_dir(dir.path())
+            .expect("read_dir")
+            .map(|e| e.expect("entry").file_name())
+            .collect();
+        assert_eq!(entries, vec![std::ffi::OsString::from("main.sha")]);
     }
 }
