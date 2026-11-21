@@ -269,7 +269,7 @@ jobs:
           tool: cargo-llvm-cov,nextest
       - name: Run tests with coverage
         run: |
-          cargo llvm-cov nextest --workspace \
+          cargo llvm-cov nextest --workspace --locked \
             --ignore-filename-regex '(tools\.rs|gitcortex-viz/src/lib\.rs)' \
             --lcov --output-path lcov.info
       - uses: codecov/codecov-action@v7
