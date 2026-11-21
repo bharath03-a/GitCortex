@@ -2164,10 +2164,23 @@ impl GitCortexServer {
                             == "A branch index is being written to the graph; retry shortly."
                 }));
         if blocked || (diagnostic && store_busy) {
-            let payload = json!({
-                "status": "index_not_ready", "index": index,
-                "message": "Graph coverage cannot support this query. Empty or stale evidence does not establish that there are no dependencies. Inspect source and relevant tests."
-            });
+            let blocking_state = before
+                .iter()
+                .map(|scope| scope.state)
+                .find(|state| *state != "ready")
+                .unwrap_or("unavailable");
+            let mut payload = serde_json::Map::from_iter([
+                ("status".to_owned(), json!("index_not_ready")),
+                ("index".to_owned(), index),
+                (
+                    "message".to_owned(),
+                    json!("Graph coverage cannot support this query. Empty or stale evidence does not establish that there are no dependencies. Inspect source and relevant tests."),
+                ),
+            ]);
+            if let Some(next) = super::guidance::teaching_hint(&action, &payload, blocking_state) {
+                payload.insert("next".to_owned(), json!(next));
+            }
+            let payload = serde_json::Value::Object(payload);
             return Ok(if blocked {
                 CallToolResult::structured_error(payload)
             } else {
@@ -2212,9 +2225,24 @@ impl GitCortexServer {
                 );
             }
         }
+        let effective_state = if unverified {
+            "unverified"
+        } else {
+            before
+                .iter()
+                .map(|scope| scope.state)
+                .find(|state| *state != "ready")
+                .unwrap_or("ready")
+        };
         data.insert("index".to_owned(), index);
         data.insert("graph_generation".to_owned(), json!(generation));
         if result.is_error != Some(true) {
+            if !data.contains_key("next") {
+                if let Some(next) = super::guidance::teaching_hint(&action, &data, effective_state)
+                {
+                    data.insert("next".to_owned(), json!(next));
+                }
+            }
             if let Some(budget_tokens) = self.agent_envelope_budget(&action, &data) {
                 super::agent::enforce_envelope_budget(&mut data, budget_tokens, 0);
             }
