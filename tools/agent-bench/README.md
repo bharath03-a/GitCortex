@@ -53,6 +53,7 @@ a base/head comparison even when the payload shrank.
 Run the tests for the scorer and harness wiring:
 
 ```bash
+python3 -m pip install -r tools/agent-bench/requirements-test.txt
 cd tools/agent-bench && python3 -m unittest discover -p "test_*.py"
 ```
 
