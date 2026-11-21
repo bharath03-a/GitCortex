@@ -40,6 +40,7 @@ def ensure_checkout(repo: Repo, work: Path) -> Path:
 def episode_digest(episode: Episode) -> str:
     """Hash of everything that defines the episode: patches, hidden tests, prompts."""
     digest = hashlib.sha256()
+    digest.update(episode.runner.encode() + b"\0")
     files = [episode.start_patch, *(episode.reference_patch(s) for s in episode.edit_steps)]
     files += sorted(p for p in episode.hidden_dir.rglob("*") if p.is_file())
     for path in files:
@@ -49,12 +50,16 @@ def episode_digest(episode: Episode) -> str:
     return digest.hexdigest()
 
 
+def scoring_digest() -> str:
+    return sha256(HERE / "continuous_env.py")
+
+
 def stray_files(repo: Path) -> list[str]:
     """Hidden-test runs must leave no untracked files in the checkout."""
     return git(repo, "ls-files", "--others", "--exclude-standard").splitlines()
 
 
-def verify_episode(episode: Episode, source: Path, commit: str, scratch: Path) -> dict[str, Any]:
+def verify_episode(episode: Episode, source: Path, commit: str, scratch: Path, repo_url: str | None = None) -> dict[str, Any]:
     dest = scratch / episode.id
     prepare_episode_repo(source, commit, episode, dest)
     edit_steps = episode.edit_steps
@@ -70,7 +75,7 @@ def verify_episode(episode: Episode, source: Path, commit: str, scratch: Path) -
             outcome = run_hidden_tests(dest, episode, step)
             strays += stray_files(dest)
             cell: dict[str, Any] = {
-                "state": state, "step": step.id, "expected_pass": expected, "passed": outcome.passed,
+                **outcome.to_dict(), "state": state, "step": step.id, "expected_pass": expected,
             }
             if outcome.passed != expected:
                 cell["tail"] = outcome.tail
@@ -81,6 +86,8 @@ def verify_episode(episode: Episode, source: Path, commit: str, scratch: Path) -
         "repo": episode.repo,
         "language": episode.language,
         "repo_commit": commit,
+        "repo_url": repo_url,
+        "scoring_sha256": scoring_digest(),
         "episode_sha256": episode_digest(episode),
         "matrix": cells,
         "mismatches": mismatches,
@@ -120,7 +127,7 @@ def main(argv: list[str] | None = None) -> int:
             for episode in episodes:
                 repo = repos[episode.repo]
                 source = ensure_checkout(repo, args.work.resolve())
-                result = verify_episode(episode, source, repo.commit, Path(scratch))
+                result = verify_episode(episode, source, repo.commit, Path(scratch), repo.url)
                 results.append(result)
                 verdict = "OK" if result["ok"] else f"FAILED {result['mismatches'] or result['stray_files']}"
                 print(f"{episode.id}: {verdict}", file=sys.stderr)

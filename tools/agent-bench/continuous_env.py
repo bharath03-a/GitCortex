@@ -8,7 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from bench import BenchError, require_ok, run, run_with_lock_retry
@@ -33,6 +33,12 @@ class TestOutcome:
     passed: bool
     returncode: int
     tail: str
+    stdout: str = ""
+    stderr: str = ""
+    timed_out: bool = False
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 @dataclass(frozen=True)
@@ -100,7 +106,7 @@ def _run_pytest(repo: Path, episode: Episode, step: Step) -> TestOutcome:
             _pytest_command(step), cwd=hidden, env=env, capture_output=True, text=True,
             timeout=TEST_TIMEOUT_S, check=False,
         )
-    return TestOutcome(step.id, done.returncode == 0, done.returncode, _tail(done.stdout + done.stderr))
+    return TestOutcome(step.id, done.returncode == 0, done.returncode, _tail(done.stdout + done.stderr), done.stdout, done.stderr)
 
 
 def _run_gotest(repo: Path, episode: Episode, step: Step) -> TestOutcome:
@@ -117,7 +123,7 @@ def _run_gotest(repo: Path, episode: Episode, step: Step) -> TestOutcome:
     finally:
         for target in copied:
             target.unlink(missing_ok=True)
-    return TestOutcome(step.id, done.returncode == 0, done.returncode, _tail(done.stdout + done.stderr))
+    return TestOutcome(step.id, done.returncode == 0, done.returncode, _tail(done.stdout + done.stderr), done.stdout, done.stderr)
 
 
 def run_hidden_tests(repo: Path, episode: Episode, step: Step) -> TestOutcome:
@@ -125,8 +131,14 @@ def run_hidden_tests(repo: Path, episode: Episode, step: Step) -> TestOutcome:
         if episode.runner == "pytest":
             return _run_pytest(repo, episode, step)
         return _run_gotest(repo, episode, step)
-    except subprocess.TimeoutExpired:
-        return TestOutcome(step.id, False, -1, f"hidden tests timed out after {TEST_TIMEOUT_S}s")
+    except subprocess.TimeoutExpired as error:
+        def text(value: str | bytes | None) -> str:
+            return value.decode(errors="replace") if isinstance(value, bytes) else value or ""
+
+        return TestOutcome(
+            step.id, False, -1, f"hidden tests timed out after {TEST_TIMEOUT_S}s",
+            text(error.stdout), text(error.stderr), True,
+        )
 
 
 def _is_noise(path: str) -> bool:

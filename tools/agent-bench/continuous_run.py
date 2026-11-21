@@ -22,12 +22,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from bench import DEFAULT_WORK, BenchError, sha256
+from bench import DEFAULT_WORK, BenchError, Repo, sha256
 from budget import BudgetExceeded, RunBudget
 from continuous_client import build_step_command, session_id
 from continuous_env import diff_stats, index_repo, prepare_episode_repo, release_index, run_hidden_tests
 from continuous_suite import Episode, Step, load_continuous_suite
-from continuous_verify import DEFAULT_CONTINUOUS_SUITE, HERE, ensure_checkout, episode_digest
+from continuous_verify import DEFAULT_CONTINUOUS_SUITE, HERE, ensure_checkout, episode_digest, scoring_digest
 from unforced_client import ARMS, Arm, RawRun, generate_guide, guide_sha256, installed_guide, run_claude
 from unforced_grade import grade_answer
 from unforced_parse import TranscriptMetrics, parse_transcript, repeat_counts
@@ -70,7 +70,7 @@ def episode_run_id(planned: PlannedEpisode, label: str) -> str:
     return f"{label}:r{planned.round}:{planned.episode.id}:{planned.arm.name}"
 
 
-def check_verification(path: Path, episodes: list[Episode]) -> str:
+def check_verification(path: Path, episodes: list[Episode], repos: dict[str, Repo]) -> str:
     """Refuse to spend on episodes whose hidden tests are not proven. Returns the file sha256."""
     record = json.loads(path.read_text(encoding="utf-8"))
     if not record.get("ok"):
@@ -80,7 +80,13 @@ def check_verification(path: Path, episodes: list[Episode]) -> str:
         entry = verified.get(episode.id)
         if entry is None:
             raise BenchError(f"{episode.id}: no passing verification in {path}")
-        if entry["episode_sha256"] != episode_digest(episode):
+        repo = repos[episode.repo]
+        if any(entry.get(key) != value for key, value in {
+            "repo": repo.name, "repo_url": repo.url, "repo_commit": repo.commit,
+            "scoring_sha256": scoring_digest(),
+        }.items()):
+            raise BenchError(f"{episode.id}: repository or scorer changed since verification; re-run continuous_verify.py")
+        if entry.get("episode_sha256") != episode_digest(episode):
             raise BenchError(f"{episode.id}: episode changed since verification; re-run continuous_verify.py")
     return sha256(path)
 
@@ -157,7 +163,9 @@ def _walk_steps(
         if step.kind == "probe":
             record["grade"] = grade_answer(metrics.answer, step.required, (), dependents_exist=True).to_dict()
         else:
-            record["tests_passed"] = run_hidden_tests(dest, episode, step).passed
+            outcome = run_hidden_tests(dest, episode, step)
+            record["tests_passed"] = outcome.passed
+            record["test_outcome"] = outcome.to_dict()
         offsets.extend([len(events)] * len(metrics.events))
         events.extend(metrics.events)
         steps.append(record)
@@ -184,7 +192,8 @@ def run_episode(
             steps, events, offsets, aborted, budget = _walk_steps(
                 planned, dest, config, budget, runner, session, name, log_dir
             )
-        finals = {s.id: run_hidden_tests(dest, episode, s).passed for s in episode.edit_steps}
+        final_outcomes = {s.id: run_hidden_tests(dest, episode, s).to_dict() for s in episode.edit_steps}
+        finals = {key: value["passed"] for key, value in final_outcomes.items()}
         stats = diff_stats(dest, start_sha)
     finally:
         if arm.gcx:
@@ -214,6 +223,7 @@ def run_episode(
         "aborted": aborted,
         "success": aborted is None and all(finals.values()),
         "final_tests": finals,
+        "final_test_outcomes": final_outcomes,
         "steps_passed": sum(finals.values()),
         "steps_total": len(finals),
         "steps": steps,
@@ -329,7 +339,7 @@ def main(argv: list[str] | None = None, runner: Runner = run_claude) -> int:
             steps = sum(len(p.episode.steps) for p in plan)
             print(f"{len(plan)} episodes, {steps} client calls; hard cap ${budget.max_total_usd:.2f}", file=sys.stderr)
             return 0
-        verification_sha = check_verification(args.verification.resolve(), episodes)
+        verification_sha = check_verification(args.verification.resolve(), episodes, repos)
         work = args.work.resolve()
         sources = {n: (ensure_checkout(repos[n], work), repos[n].commit) for n in {e.repo for e in episodes}}
         guide = generate_guide(args.gcx.resolve()) if any(a.guide for a in {p.arm for p in plan}) else {}

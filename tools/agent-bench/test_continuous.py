@@ -12,9 +12,9 @@ from pathlib import Path
 from unittest import mock
 
 import continuous_run
-from bench import BenchError
+from bench import BenchError, Repo
 from budget import RunBudget
-from continuous_env import apply_patch, diff_stats, prepare_episode_repo, run_hidden_tests
+from continuous_env import TestOutcome, apply_patch, diff_stats, prepare_episode_repo, run_hidden_tests
 from continuous_run import (
     EpisodeConfig,
     PlannedEpisode,
@@ -24,7 +24,7 @@ from continuous_run import (
     run_episode,
 )
 from continuous_suite import Episode, Step, load_continuous_suite
-from continuous_verify import episode_digest, verify_episode
+from continuous_verify import episode_digest, scoring_digest, verify_episode
 from test_unforced_parse import GCX, assistant, init, result, stream, tool_result, tool_use, usage
 from unforced_client import ARMS, RawRun
 
@@ -118,6 +118,31 @@ class EnvAndVerificationTests(unittest.TestCase):
             apply_patch(dest, episode.reference_patch(step))
             self.assertTrue(run_hidden_tests(dest, episode, step).passed)
 
+    def test_hidden_test_output_and_timeout_are_retained_for_both_runners(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source, _, episode = make_mini(Path(tmp))
+            stdout = "x" * 2000
+            for runner in ("pytest", "gotest"):
+                selected = replace(episode, runner=runner)
+                with mock.patch("continuous_env.subprocess.run", return_value=subprocess.CompletedProcess(
+                    [], 2, stdout, "import error",
+                )):
+                    outcome = run_hidden_tests(source, selected, episode.steps[0])
+                self.assertFalse(outcome.passed)
+                self.assertEqual(outcome.returncode, 2)
+                self.assertEqual(outcome.stdout, stdout)
+                self.assertEqual(outcome.stderr, "import error")
+                self.assertFalse(outcome.timed_out)
+                with mock.patch("continuous_env.subprocess.run", side_effect=subprocess.TimeoutExpired(
+                    [], 600, output=b"partial output", stderr=b"partial error",
+                )):
+                    outcome = run_hidden_tests(source, selected, episode.steps[0])
+                self.assertTrue(outcome.timed_out)
+                self.assertFalse(outcome.passed)
+                self.assertEqual(outcome.returncode, -1)
+                self.assertEqual(outcome.stdout, "partial output")
+                self.assertEqual(outcome.stderr, "partial error")
+
     def test_verify_episode_passes_for_a_sound_episode(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             source, commit, episode = make_mini(Path(tmp))
@@ -149,11 +174,23 @@ class EnvAndVerificationTests(unittest.TestCase):
     def test_verification_gate_refuses_unproven_or_changed_episodes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             _, _, episode = make_mini(Path(tmp))
-            entry = {"episode": "mini", "ok": True, "episode_sha256": episode_digest(episode)}
+            repo = Repo("mini", "https://example.invalid/mini", "abc")
+            repos = {"mini": repo}
+            entry = {"episode": "mini", "ok": True, "episode_sha256": episode_digest(episode),
+                     "repo": repo.name, "repo_url": repo.url, "repo_commit": repo.commit,
+                     "scoring_sha256": scoring_digest()}
             good = {"ok": True, "episodes": [entry]}
             path = Path(tmp) / "verify.json"
             path.write_text(json.dumps(good))
-            self.assertEqual(len(check_verification(path, [episode])), 64)
+            self.assertEqual(len(check_verification(path, [episode], repos)), 64)
+            for field in ("repo", "repo_url", "repo_commit", "scoring_sha256"):
+                for value in ("stale", None):
+                    path.write_text(json.dumps({"ok": True, "episodes": [{**entry, field: value}]}))
+                    with self.assertRaises(BenchError):
+                        check_verification(path, [episode], repos)
+            path.write_text(json.dumps(good))
+            with self.assertRaises(BenchError):
+                check_verification(path, [replace(episode, runner="gotest")], repos)
             for bad in (
                 {**good, "ok": False},
                 {"ok": True, "episodes": []},
@@ -161,7 +198,7 @@ class EnvAndVerificationTests(unittest.TestCase):
             ):
                 path.write_text(json.dumps(bad))
                 with self.assertRaises(BenchError):
-                    check_verification(path, [episode])
+                    check_verification(path, [episode], repos)
 
 
 class SessionTests(unittest.TestCase):
@@ -204,6 +241,20 @@ class SessionTests(unittest.TestCase):
         self.assertFalse(record["success"])
         self.assertIn("client_error", record["aborted"])
         self.assertEqual(record["steps"][0]["returncode"], 1)
+
+    def test_step_and_final_scoring_preserve_full_outcomes(self) -> None:
+        for outcome in (
+            TestOutcome("step1", False, 2, "tail", "full stdout", "import error"),
+            TestOutcome("step1", False, -1, "timeout", "partial", "stderr", True),
+        ):
+            with mock.patch.object(continuous_run, "run_hidden_tests", return_value=outcome):
+                record = self._run(scripted_runner([]))
+            self.assertFalse(record["success"])
+            self.assertFalse(record["steps"][0]["tests_passed"])
+            self.assertEqual(record["final_tests"], {"step1": False})
+            self.assertEqual(record["steps"][0]["test_outcome"], outcome.to_dict())
+            self.assertEqual(record["final_test_outcomes"], {"step1": outcome.to_dict()})
+            self.assertEqual(json.loads(json.dumps(record))["final_test_outcomes"]["step1"], outcome.to_dict())
 
     def test_false_no_dependents_claim_is_recorded(self) -> None:
         wrong = self._run(scripted_runner([], probe_answer="Nothing else calls it; there are no callers."))
