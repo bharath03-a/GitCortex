@@ -8,6 +8,63 @@ use std::{
 
 use directories::BaseDirs;
 use gitcortex_core::error::{GitCortexError, Result};
+use serde::{Deserialize, Serialize};
+
+/// Version of the repository storage identity scheme.
+///
+/// External checkpoint and cache consumers include this value in their cache
+/// keys so an identity scheme change cleanly invalidates older checkpoints.
+pub const IDENTITY_VERSION: u32 = 1;
+
+// ── Branch key classification ────────────────────────────────────────────────
+
+/// Classification of a branch/snapshot key stored inside a repository graph.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BranchKind {
+    /// Normal symbolic branch ref (e.g. `main`, `feat/auth`).
+    Branch,
+    /// Worktree detached-HEAD snapshot key (short SHA or `detached_<wt>_<sha>`).
+    Detached,
+    /// Immutable commit-tree snapshot keyed by a full 40- or 64-char hex SHA.
+    Commit,
+}
+
+fn is_lower_hex(s: &str) -> bool {
+    !s.is_empty() && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+/// Extract the 8-hex-character worktree id from a `detached_<wt>_<sha>` key,
+/// if present.
+pub fn detached_worktree_id(name: &str) -> Option<String> {
+    let rest = name.strip_prefix("detached_")?;
+    let (wt, sha) = rest.split_once('_')?;
+    if wt.len() == 8 && is_lower_hex(wt) && !sha.is_empty() && is_lower_hex(sha) {
+        Some(wt.to_owned())
+    } else {
+        None
+    }
+}
+
+/// Classify a graph key into [`BranchKind`]. This is the single authoritative
+/// classifier used by branch registration and garbage collection.
+///
+/// - Full 40- or 64-char lowercase hex object ids → [`BranchKind::Commit`].
+/// - `detached_<8hex>_<short_sha>` or pre-worktree short lowercase hex SHAs
+///   (7..40 chars) → [`BranchKind::Detached`].
+/// - Everything else → [`BranchKind::Branch`].
+pub fn key_kind(name: &str) -> BranchKind {
+    if (name.len() == 40 || name.len() == 64) && is_lower_hex(name) {
+        return BranchKind::Commit;
+    }
+    if detached_worktree_id(name).is_some() {
+        return BranchKind::Detached;
+    }
+    if (7..40).contains(&name.len()) && is_lower_hex(name) {
+        return BranchKind::Detached;
+    }
+    BranchKind::Branch
+}
 
 static ATOMIC_TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -104,6 +161,52 @@ pub fn storage_repo_id(repo_root: &Path) -> String {
     } else {
         stable
     }
+}
+
+/// Resolve the Git common directory for `repo_root` using filesystem inspection
+/// (without `git2` or spawning a subprocess).
+///
+/// - Normal checkout: `<root>/.git` directory.
+/// - Linked worktree / submodule: `<root>/.git` file pointing to `gitdir:`,
+///   following `<gitdir>/commondir` when present.
+/// - Bare repo or non-git directory: falls back to canonicalized `repo_root`.
+pub fn resolve_git_common_dir(repo_root: &Path) -> PathBuf {
+    let canonical_root = fs::canonicalize(repo_root).unwrap_or_else(|_| repo_root.to_path_buf());
+    let dot_git = canonical_root.join(".git");
+    if dot_git.is_dir() {
+        return fs::canonicalize(&dot_git).unwrap_or(dot_git);
+    }
+    if dot_git.is_file() {
+        if let Ok(contents) = fs::read_to_string(&dot_git) {
+            if let Some(raw_gitdir) = contents
+                .lines()
+                .find_map(|line| line.trim().strip_prefix("gitdir:"))
+            {
+                let gitdir_rel = PathBuf::from(raw_gitdir.trim());
+                let gitdir = if gitdir_rel.is_absolute() {
+                    gitdir_rel
+                } else {
+                    canonical_root.join(gitdir_rel)
+                };
+                let canonical_gitdir = fs::canonicalize(&gitdir).unwrap_or(gitdir);
+                let commondir_file = canonical_gitdir.join("commondir");
+                if let Ok(common_raw) = fs::read_to_string(&commondir_file) {
+                    let common_trimmed = common_raw.trim();
+                    if !common_trimmed.is_empty() {
+                        let common_rel = PathBuf::from(common_trimmed);
+                        let common = if common_rel.is_absolute() {
+                            common_rel
+                        } else {
+                            canonical_gitdir.join(common_rel)
+                        };
+                        return fs::canonicalize(&common).unwrap_or(common);
+                    }
+                }
+                return canonical_gitdir;
+            }
+        }
+    }
+    canonical_root
 }
 
 // ── Platform data and cache paths ─────────────────────────────────────────────
@@ -230,6 +333,18 @@ pub fn models_dir() -> PathBuf {
 /// Path to the single KuzuDB file for a repo (all branches, namespaced by table prefix).
 pub fn db_path(repo_id: &str) -> PathBuf {
     data_dir(repo_id).join("graph.kuzu")
+}
+
+/// KuzuDB payload files inside an explicit store directory (`graph.kuzu` and
+/// its write-ahead log `graph.kuzu.wal`). Single source of truth shared by
+/// data-dir inventory and compaction.
+pub fn payload_files_in_dir(dir: &Path) -> [PathBuf; 2] {
+    [dir.join("graph.kuzu"), dir.join("graph.kuzu.wal")]
+}
+
+/// KuzuDB payload files for `repo_id` (`graph.kuzu` and `graph.kuzu.wal`).
+pub fn payload_files(repo_id: &str) -> [PathBuf; 2] {
+    payload_files_in_dir(&data_dir(repo_id))
 }
 
 /// Path to the last-indexed SHA file for a specific branch.

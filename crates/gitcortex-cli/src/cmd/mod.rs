@@ -9,6 +9,7 @@ pub mod query;
 pub mod serve;
 pub mod serve_lock;
 pub mod status;
+pub mod storage;
 pub mod update;
 
 pub mod index;

@@ -1400,6 +1400,8 @@ dependencies = [
  "fs2",
  "gitcortex-core",
  "kuzu",
+ "serde",
+ "serde_json",
  "tempfile",
  "tracing",
 ]

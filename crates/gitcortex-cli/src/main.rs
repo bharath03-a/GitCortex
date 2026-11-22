@@ -191,6 +191,9 @@ enum Commands {
         #[arg(long)]
         branch: Option<String>,
     },
+    /// Inspect and maintain local GitCortex graph storage.
+    #[command(subcommand)]
+    Storage(cmd::storage::StorageCmd),
     /// Wipe the graph store for this repo so a fresh full index can run.
     Clean,
     /// Diagnose setup issues: hooks, store, index freshness, MCP registration.
@@ -427,6 +430,7 @@ fn main() {
             force,
         }),
         Commands::Status { branch } => cmd::status::run(branch),
+        Commands::Storage(s) => cmd::storage::run(s),
         Commands::Clean => cmd::clean::run(),
         Commands::Doctor => cmd::doctor::run(),
         Commands::Update => cmd::update::run(),
