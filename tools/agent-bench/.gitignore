@@ -1,3 +1,7 @@
-results/
+# Raw traces and client logs stay local (they carry machine paths); only
+# normalized summaries and their reports are committed so claims can cite them.
+results/*
+!results/*.summary.json
+!results/*.report.md
 __pycache__/
 *.pyc
