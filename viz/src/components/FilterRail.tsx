@@ -112,11 +112,11 @@ export function FilterRail({
   const flags: Flag[] = ["async", "unsafe"];
 
   return (
-    <aside className="flex w-[288px] shrink-0 flex-col border-r border-(--color-border-subtle) bg-(--color-void-deep)">
-      <div className="flex h-14 items-center justify-between border-b border-(--color-border-subtle) px-4">
+    <aside className="flex min-h-0 w-[288px] shrink-0 flex-col border-r border-(--color-border-subtle) bg-(--color-void-deep)">
+      <div className="flex min-h-14 shrink-0 items-center py-2 justify-between border-b border-(--color-border-subtle) px-4">
         <div>
-          <div className="text-[12px] font-semibold tracking-[-0.01em]">Graph workspace</div>
-          <div className="font-mono text-[9px] text-(--color-text-dim)">
+          <div className="text-ui-xs font-heading">Graph workspace</div>
+          <div className="text-ui-xs text-(--color-text-dim)">
             {visibleNodeCount.toLocaleString()} visible ·{" "}
             {(data?.nodes.length ?? 0).toLocaleString()} loaded
           </div>
@@ -131,7 +131,7 @@ export function FilterRail({
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-3 py-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
         <SectionLabel>Workspace</SectionLabel>
         <div className="grid grid-cols-2 gap-2">
           <ModeButton
@@ -158,9 +158,9 @@ export function FilterRail({
               key={mode}
               onClick={() => onDensityChange(mode)}
               title={`${DENSITY_LABEL[mode]} — ${DENSITY_DESCRIPTION[mode]}`}
-              className={`rounded-md px-1.5 py-1.5 text-[10px] transition-colors ${
+              className={`rounded-md px-1.5 py-1.5 text-ui-xs transition-colors ${
                 density === mode
-                  ? "bg-(--color-void-deep) font-semibold text-(--color-accent)"
+                  ? "bg-(--color-void-deep) font-heading text-(--color-accent-text)"
                   : "bg-(--color-elevated) text-(--color-text-muted) hover:bg-(--color-void-deep) hover:text-(--color-text-primary)"
               }`}
             >
@@ -215,7 +215,7 @@ export function FilterRail({
 
         {insightLens === "changes" && hotFiles && hotFiles.length > 0 && (
           <div className="mt-3 rounded-md border border-(--color-accent)/20 bg-(--color-accent-soft) p-2">
-            <div className="mb-1.5 flex items-center justify-between px-1 font-mono text-[9px] font-semibold tracking-wider text-(--color-accent) uppercase">
+            <div className="mb-1.5 flex items-center justify-between px-1 text-ui-xs font-heading text-(--color-accent-text)">
               <span>Most changed</span>
               <span>commits</span>
             </div>
@@ -224,15 +224,15 @@ export function FilterRail({
                 <li
                   key={file.path}
                   title={`${file.path} · +${file.additions} / −${file.deletions}`}
-                  className="flex items-center gap-2 rounded px-1.5 py-1 text-[10px] hover:bg-(--color-void-deep)/70"
+                  className="flex items-center gap-2 rounded px-1.5 py-1 text-ui-xs hover:bg-(--color-void-deep)/70"
                 >
-                  <span className="w-3 shrink-0 font-mono text-(--color-text-dim)">
+                  <span className="min-w-5 shrink-0 text-right text-(--color-text-dim)">
                     {index + 1}
                   </span>
-                  <span className="flex-1 truncate font-mono text-(--color-text-muted)">
+                  <span className="min-w-0 flex-1 truncate font-mono text-(--color-text-muted)">
                     {file.path}
                   </span>
-                  <span className="shrink-0 font-mono font-semibold text-(--color-accent)">
+                  <span className="shrink-0 font-heading text-(--color-accent-text)">
                     {file.touches}
                   </span>
                 </li>
@@ -242,7 +242,7 @@ export function FilterRail({
         )}
 
         <div className="my-5 h-px bg-(--color-border-subtle)" />
-        <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold tracking-[0.12em] text-(--color-text-dim) uppercase">
+        <div className="mb-2 flex items-center gap-2 text-ui-xs font-heading text-(--color-text-dim)">
           <SlidersHorizontal className="size-3" /> Advanced filters
         </div>
 
@@ -331,9 +331,7 @@ function SectionLabel({
   className?: string;
 }) {
   return (
-    <div
-      className={`mb-2 text-[9px] font-semibold tracking-[0.15em] text-(--color-text-dim) uppercase ${className}`}
-    >
+    <div className={`mb-2 text-ui-xs font-heading text-(--color-text-dim) ${className}`}>
       {children}
     </div>
   );
@@ -364,9 +362,11 @@ function ModeButton({
           : "border-(--color-border-subtle) bg-(--color-void-deep) hover:border-(--color-border-strong) hover:bg-(--color-elevated)"
       }`}
     >
-      <span className={active ? "text-(--color-accent)" : "text-(--color-text-muted)"}>{icon}</span>
-      <span className="mt-2 block text-[11px] font-medium">{title}</span>
-      <span className="block truncate text-[9px] text-(--color-text-dim)">{description}</span>
+      <span className={active ? "text-(--color-accent-text)" : "text-(--color-text-muted)"}>
+        {icon}
+      </span>
+      <span className="mt-2 block break-words text-ui-base font-medium">{title}</span>
+      <span className="block break-words text-ui-base text-(--color-text-dim)">{description}</span>
     </button>
   );
 }
@@ -388,12 +388,12 @@ function InsightButton({
 }) {
   const activeTone =
     tone === "hot"
-      ? "border-(--color-accent)/30 bg-(--color-accent-soft) text-(--color-accent)"
+      ? "border-(--color-accent)/30 bg-(--color-accent-soft) text-(--color-accent-text)"
       : tone === "cyan"
-        ? "border-[#167A86]/30 bg-[#167A86]/8 text-[#167A86]"
+        ? "border-[#167A86]/30 bg-[#167A86]/8 text-(--color-accent-text)"
         : tone === "purple"
-          ? "border-[#6B4CA8]/30 bg-[#6B4CA8]/8 text-[#6B4CA8]"
-          : "border-[#8A6D28]/30 bg-[#8A6D28]/8 text-[#8A6D28]";
+          ? "border-[#6B4CA8]/30 bg-[#6B4CA8]/8 text-(--color-accent-text)"
+          : "border-[#8A6D28]/30 bg-[#8A6D28]/8 text-(--color-warn)";
   return (
     <button
       onClick={onClick}
@@ -405,8 +405,10 @@ function InsightButton({
     >
       <span className="shrink-0">{icon}</span>
       <span className="min-w-0 flex-1">
-        <span className="block text-[11px] font-medium">{title}</span>
-        <span className="block truncate text-[9px] opacity-65">{description}</span>
+        <span className="block break-words text-ui-base font-medium">{title}</span>
+        <span className="block break-words text-ui-base text-(--color-text-dim)">
+          {description}
+        </span>
       </span>
       <span
         className={`size-1.5 rounded-full ${active ? "bg-current" : "bg-(--color-border-strong)"}`}
@@ -426,9 +428,9 @@ function FilterSection({
 }) {
   return (
     <details className="group border-b border-(--color-border-subtle)/70 py-1.5">
-      <summary className="flex cursor-pointer list-none items-center justify-between rounded-md px-1 py-1.5 text-[11px] text-(--color-text-muted) hover:text-(--color-text-primary)">
+      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 rounded-md px-1 py-1.5 text-ui-base text-(--color-text-muted) hover:text-(--color-text-primary)">
         <span>{title}</span>
-        <span className="font-mono text-[9px] text-(--color-text-dim)">{summary}</span>
+        <span className="text-ui-base text-(--color-text-dim)">{summary}</span>
       </summary>
       <div className="space-y-0.5 pb-2 pt-1">{children}</div>
     </details>
@@ -462,10 +464,10 @@ function FilterRow({
         className={swatchKind === "dot" ? "size-2 rounded-full" : "h-0.5 w-3 rounded"}
         style={{ background: swatchColor }}
       />
-      <span className="flex-1 truncate text-[10px] capitalize text-(--color-text-muted)">
+      <span className="min-w-0 flex-1 break-words text-ui-base capitalize text-(--color-text-muted)">
         {label}
       </span>
-      <span className="font-mono text-[9px] text-(--color-text-dim)">{count}</span>
+      <span className="text-ui-xs text-(--color-text-dim)">{count}</span>
     </label>
   );
 }

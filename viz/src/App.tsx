@@ -455,7 +455,7 @@ export default function App() {
               onClick={() => setRailOpen(true)}
               title="Open graph workspace ([ )"
               aria-label="Open graph workspace"
-              className="graph-panel absolute top-4 left-4 z-10 flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-(--color-text-muted) hover:text-(--color-accent)"
+              className="graph-panel absolute top-4 left-4 z-10 flex items-center gap-2 rounded-md px-2.5 py-1.5 text-ui-base font-medium text-(--color-text-muted) hover:text-(--color-accent-text)"
             >
               <PanelLeftOpen className="size-3.5" />
               Workspace
@@ -464,11 +464,11 @@ export default function App() {
           {error && (
             <div className="absolute inset-0 flex items-center justify-center p-6">
               <div className="graph-panel max-w-[560px] rounded-lg border-(--color-bad)/25 p-5">
-                <div className="mb-1 text-[13px] font-semibold text-(--color-bad)">
+                <div className="mb-1 text-ui-sm font-heading text-(--color-bad)">
                   The graph could not be loaded
                 </div>
-                <p className="mb-3 text-[11px] text-(--color-text-muted)">{error}</p>
-                <div className="rounded-md border border-(--color-border-subtle) bg-(--color-elevated) px-3 py-2 font-mono text-[10px] text-(--color-text-primary)">
+                <p className="mb-3 text-ui-base text-(--color-text-muted)">{error}</p>
+                <div className="rounded-md border border-(--color-border-subtle) bg-(--color-elevated) px-3 py-2 font-mono text-ui-base text-(--color-text-primary)">
                   gcx hook
                 </div>
               </div>
@@ -496,7 +496,7 @@ export default function App() {
                   fallback={
                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-(--color-text-muted)">
                       <span className="size-5 animate-spin rounded-full border-2 border-(--color-border-subtle) border-t-(--color-accent)" />
-                      <span className="font-mono text-[10px]">Preparing accelerated renderer…</span>
+                      <span className="text-ui-base">Preparing accelerated renderer…</span>
                     </div>
                   }
                 >
@@ -522,28 +522,28 @@ export default function App() {
             )}
           {data && !error && data.nodes.length === 0 && rawData && rawData.nodes.length === 0 && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center text-(--color-text-muted)">
-              <div className="text-[15px] font-semibold">No indexed symbols on this branch</div>
-              <div className="font-mono text-xs">
-                Run <span className="text-(--color-text-primary)">gcx hook</span> (or
-                <span className="text-(--color-text-primary)"> gcx init</span>) to index this
-                repository, then refresh.
+              <div className="text-ui-lg font-heading">No indexed symbols on this branch</div>
+              <div className="text-ui-base">
+                Run <span className="font-mono text-(--color-text-primary)">gcx hook</span> (or
+                <span className="font-mono text-(--color-text-primary)"> gcx init</span>) to index
+                this repository, then refresh.
               </div>
             </div>
           )}
           {data && !error && data.nodes.length === 0 && rawData && rawData.nodes.length > 0 && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center text-(--color-text-muted)">
-              <div className="text-[15px] font-semibold">
+              <div className="text-ui-lg font-heading">
                 {rawData.nodes.length.toLocaleString()} indexed, none match "
                 {DENSITY_LABEL[density]}"
               </div>
-              <div className="font-mono text-xs">
+              <div className="text-ui-base">
                 This scope only shows symbols with a semantic edge (calls, implements, inherits,
                 uses, throws). Repos with no such edges yet — e.g. docs-only — need a broader scope.
               </div>
               <button
                 type="button"
                 onClick={() => setDensity("all")}
-                className="mt-2 rounded-md border border-(--color-border-subtle) px-3 py-1.5 font-mono text-xs text-(--color-text-primary) hover:border-(--color-accent)"
+                className="mt-2 rounded-md border border-(--color-border-subtle) px-3 py-1.5 text-ui-base text-(--color-text-primary) hover:border-(--color-accent)"
               >
                 Switch to All indexed
               </button>
@@ -552,11 +552,11 @@ export default function App() {
           {!data && !error && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-(--color-text-muted)">
               <span className="size-5 animate-spin rounded-full border-2 border-(--color-border-subtle) border-t-(--color-accent)" />
-              <span className="font-mono text-[10px]">Reading graph manifest…</span>
+              <span className="text-ui-base">Reading graph manifest…</span>
             </div>
           )}
           {data && loadProgress && loadProgress.stage !== "complete" && (
-            <div className="graph-panel animate-fade-in absolute bottom-4 left-4 z-20 w-[320px] rounded-md p-3 font-mono text-[10px]">
+            <div className="graph-panel animate-fade-in absolute bottom-4 left-4 z-20 w-[320px] rounded-md p-3 text-ui-base">
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-(--color-text-primary)">Loading {loadProgress.stage}</span>
                 <span className="text-(--color-text-dim)">
@@ -581,7 +581,7 @@ export default function App() {
             </div>
           )}
           {viewMode === "investigate" && selected && (
-            <div className="graph-panel animate-fade-in absolute top-4 right-4 z-10 flex items-center gap-2 rounded-md px-3 py-2 font-mono text-[10px]">
+            <div className="graph-panel animate-fade-in absolute top-4 right-4 z-10 flex items-center gap-2 rounded-md px-3 py-2 text-ui-base">
               <span className="size-2 rounded-full bg-(--color-accent)" />
               <span>Investigation · {selected.name}</span>
               {focusLimitReached && <span className="text-(--color-warn)">first 500 edges</span>}
@@ -594,7 +594,7 @@ export default function App() {
             </div>
           )}
           {diffOverlay && viewMode === "atlas" && (
-            <div className="graph-panel animate-fade-in absolute top-4 right-4 z-10 flex items-center gap-3 rounded-md px-3 py-2 font-mono text-[10px]">
+            <div className="graph-panel animate-fade-in absolute top-4 right-4 z-10 flex items-center gap-3 rounded-md px-3 py-2 text-ui-base">
               <span className="text-(--color-text-dim)">
                 {diffOverlay.base} ↔ {diffOverlay.head}
               </span>
@@ -609,12 +609,12 @@ export default function App() {
             </div>
           )}
           {insightSummary && viewMode === "atlas" && !diffOverlay && (
-            <div className="graph-panel animate-fade-in absolute top-4 right-4 z-10 flex items-center gap-2 rounded-md px-3 py-2 font-mono text-[9px]">
+            <div className="graph-panel animate-fade-in absolute top-4 right-4 z-10 flex items-center gap-2 rounded-md px-3 py-2 text-ui-base">
               <span className="size-2 rounded-full bg-(--color-accent)" />
               <span className="text-(--color-text-muted)">{insightSummary}</span>
               <button
                 onClick={() => setInsightLens(null)}
-                className="ml-1 text-(--color-text-dim) hover:text-(--color-accent)"
+                className="ml-1 text-(--color-text-dim) hover:text-(--color-accent-text)"
               >
                 clear
               </button>

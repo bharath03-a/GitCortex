@@ -26,27 +26,32 @@ export function Header({
   onToggleTheme,
 }: Props) {
   return (
-    <header className="relative z-50 flex h-[60px] shrink-0 items-center gap-4 border-b border-(--color-border-subtle) bg-(--color-void-deep)/95 px-5 backdrop-blur-xl">
+    <header className="relative z-50 flex min-h-[72px] flex-wrap py-2 shrink-0 items-center gap-4 border-b border-(--color-border-subtle) bg-(--color-void-deep)/95 px-5 backdrop-blur-xl">
       <div className="flex min-w-[220px] shrink-0 items-center gap-3">
         <BrandMark />
-        <div className="leading-none">
-          <div className="text-[14px] font-semibold tracking-[-0.025em]">GitCortex</div>
-          <div className="mt-1.5 font-mono text-[8px] font-semibold tracking-[0.16em] text-(--color-text-dim) uppercase">
+        <div className="min-w-0 leading-ui">
+          <div className="text-ui-base font-heading">GitCortex</div>
+          <div
+            title={repoName ?? "Local code atlas"}
+            className="mt-1.5 max-w-[260px] truncate text-ui-xs font-heading text-(--color-text-dim)"
+          >
             {repoName ? `${repoName} · local code atlas` : "Local code atlas"}
           </div>
         </div>
-        <span className="ml-1 rounded-full bg-(--color-accent-soft) px-2 py-1 font-mono text-[8px] font-semibold tracking-[0.08em] text-(--color-accent) uppercase">
+        <span className="ml-1 rounded-full bg-(--color-accent-soft) px-2 py-1 text-ui-xs font-heading text-(--color-accent-text)">
           live
         </span>
       </div>
 
       <button
         onClick={onSearch}
-        className="group mx-auto flex h-9 w-full max-w-[620px] items-center gap-2.5 rounded-md border border-(--color-border-subtle) bg-(--color-elevated)/70 px-3 text-(--color-text-muted) shadow-[0_1px_2px_rgba(20,20,26,0.03)] transition-colors hover:border-(--color-border-strong) hover:bg-(--color-void-deep) hover:text-(--color-text-primary)"
+        className="group mx-auto flex h-9 min-w-0 flex-1 basis-[240px] max-w-[620px] items-center gap-2.5 rounded-md border border-(--color-border-subtle) bg-(--color-elevated)/70 px-3 text-(--color-text-muted) shadow-[0_1px_2px_rgba(20,20,26,0.03)] transition-colors hover:border-(--color-border-strong) hover:bg-(--color-void-deep) hover:text-(--color-text-primary)"
       >
-        <Search className="size-3.5 shrink-0 text-(--color-accent)" />
-        <span className="flex-1 text-left text-[12px]">Find a symbol, file, or qualified name</span>
-        <kbd className="rounded border border-(--color-border-subtle) bg-(--color-void-deep) px-1.5 py-0.5 font-mono text-[9px] text-(--color-text-dim)">
+        <Search className="size-3.5 shrink-0 text-(--color-accent-text)" />
+        <span className="min-w-0 flex-1 text-left text-ui-base">
+          Find a symbol, file, or qualified name
+        </span>
+        <kbd className="rounded border border-(--color-border-subtle) bg-(--color-void-deep) px-1.5 py-0.5 text-ui-xs text-(--color-text-dim)">
           ⌘ K
         </kbd>
       </button>
@@ -62,7 +67,7 @@ export function Header({
           onClick={onToggleTheme}
           title={`Use ${theme === "light" ? "dark" : "light"} theme`}
           aria-label={`Use ${theme === "light" ? "dark" : "light"} theme`}
-          className="rounded-md border border-transparent p-2 text-(--color-text-muted) transition-colors hover:border-(--color-border-subtle) hover:bg-(--color-elevated) hover:text-(--color-accent)"
+          className="rounded-md border border-transparent p-2 text-(--color-text-muted) transition-colors hover:border-(--color-border-subtle) hover:bg-(--color-elevated) hover:text-(--color-accent-text)"
         >
           {theme === "light" ? <Moon className="size-4" /> : <Sun className="size-4" />}
         </button>
