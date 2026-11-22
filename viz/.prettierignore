@@ -4,3 +4,5 @@ node_modules
 *.tsbuildinfo
 package-lock.json
 bench-fixtures
+test-results
+playwright-report

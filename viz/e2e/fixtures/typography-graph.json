@@ -1,0 +1,205 @@
+{
+  "branch": "main",
+  "repo_name": "gitcortex-typography-fixture",
+  "last_sha": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+  "branches": ["main", "feat/readable-typography"],
+  "nodes": [
+    {
+      "id": "fn::blast_radius",
+      "name": "compute_blast_radius",
+      "kind": "function",
+      "file": "crates/gitcortex-cli/src/cmd/query/very_long_nested_directory_name/blast_radius_analyzer.rs",
+      "start_line": 42,
+      "end_line": 128,
+      "qualified_name": "gitcortex::cmd::query::very_long_nested_directory_name::blast_radius_analyzer::compute_blast_radius",
+      "loc": 87,
+      "visibility": "pub",
+      "is_async": true,
+      "is_unsafe": false
+    },
+    {
+      "id": "fn::run_query",
+      "name": "run_query_command",
+      "kind": "function",
+      "file": "crates/gitcortex-cli/src/cmd/query/mod.rs",
+      "start_line": 18,
+      "end_line": 64,
+      "qualified_name": "gitcortex::cmd::query::run_query_command",
+      "loc": 47,
+      "visibility": "pub",
+      "is_async": false,
+      "is_unsafe": false
+    },
+    {
+      "id": "fn::resolve_ref",
+      "name": "resolve_symbolic_git_ref",
+      "kind": "function",
+      "file": "crates/gitcortex-cli/src/cmd/query/refs.rs",
+      "start_line": 10,
+      "end_line": 58,
+      "qualified_name": "gitcortex::cmd::query::refs::resolve_symbolic_git_ref",
+      "loc": 49,
+      "visibility": "pub_crate",
+      "is_async": false,
+      "is_unsafe": false
+    },
+    {
+      "id": "struct::store",
+      "name": "KuzuGraphStore",
+      "kind": "struct",
+      "file": "crates/gitcortex-store/src/kuzu/mod.rs",
+      "start_line": 22,
+      "end_line": 94,
+      "qualified_name": "gitcortex_store::kuzu::KuzuGraphStore",
+      "loc": 73,
+      "visibility": "pub",
+      "is_async": false,
+      "is_unsafe": false
+    },
+    {
+      "id": "fn::open_store",
+      "name": "open_with_schema_policy",
+      "kind": "function",
+      "file": "crates/gitcortex-store/src/kuzu/mod.rs",
+      "start_line": 110,
+      "end_line": 185,
+      "qualified_name": "gitcortex_store::kuzu::KuzuGraphStore::open_with_schema_policy",
+      "loc": 76,
+      "visibility": "pub",
+      "is_async": false,
+      "is_unsafe": true
+    },
+    {
+      "id": "fn::inspect_readiness",
+      "name": "inspect_branch_readiness",
+      "kind": "function",
+      "file": "crates/gitcortex-store/src/readiness.rs",
+      "start_line": 15,
+      "end_line": 88,
+      "qualified_name": "gitcortex_store::readiness::inspect_branch_readiness",
+      "loc": 74,
+      "visibility": "pub",
+      "is_async": false,
+      "is_unsafe": false
+    },
+    {
+      "id": "fn::acquire_lock",
+      "name": "acquire_repository_lock",
+      "kind": "function",
+      "file": "crates/gitcortex-store/src/lock.rs",
+      "start_line": 12,
+      "end_line": 55,
+      "qualified_name": "gitcortex_store::lock::acquire_repository_lock",
+      "loc": 44,
+      "visibility": "pub",
+      "is_async": false,
+      "is_unsafe": false
+    },
+    {
+      "id": "fn::mcp_dispatch",
+      "name": "dispatch_mcp_request",
+      "kind": "function",
+      "file": "crates/gitcortex-mcp/src/mcp/server.rs",
+      "start_line": 80,
+      "end_line": 150,
+      "qualified_name": "gitcortex_mcp::mcp::server::dispatch_mcp_request",
+      "loc": 71,
+      "visibility": "pub",
+      "is_async": true,
+      "is_unsafe": false
+    },
+    {
+      "id": "fn::symbol_context",
+      "name": "fetch_symbol_context",
+      "kind": "function",
+      "file": "crates/gitcortex-mcp/src/mcp/tools/symbol_context.rs",
+      "start_line": 24,
+      "end_line": 96,
+      "qualified_name": "gitcortex_mcp::mcp::tools::symbol_context::fetch_symbol_context",
+      "loc": 73,
+      "visibility": "pub",
+      "is_async": true,
+      "is_unsafe": false
+    },
+    {
+      "id": "fn::unused_helper",
+      "name": "legacy_unused_helper",
+      "kind": "function",
+      "file": "crates/gitcortex-mcp/src/mcp/tools/legacy.rs",
+      "start_line": 5,
+      "end_line": 21,
+      "qualified_name": "gitcortex_mcp::mcp::tools::legacy::legacy_unused_helper",
+      "loc": 17,
+      "visibility": "private",
+      "is_async": false,
+      "is_unsafe": false
+    }
+  ],
+  "edges": [
+    {
+      "src": "fn::run_query",
+      "dst": "fn::blast_radius",
+      "kind": "calls",
+      "confidence": "resolved"
+    },
+    { "src": "fn::run_query", "dst": "fn::resolve_ref", "kind": "calls", "confidence": "resolved" },
+    {
+      "src": "fn::blast_radius",
+      "dst": "fn::open_store",
+      "kind": "calls",
+      "confidence": "resolved"
+    },
+    {
+      "src": "fn::blast_radius",
+      "dst": "fn::inspect_readiness",
+      "kind": "calls",
+      "confidence": "resolved"
+    },
+    { "src": "fn::open_store", "dst": "struct::store", "kind": "uses", "confidence": "extracted" },
+    {
+      "src": "fn::open_store",
+      "dst": "fn::acquire_lock",
+      "kind": "calls",
+      "confidence": "resolved"
+    },
+    {
+      "src": "fn::mcp_dispatch",
+      "dst": "fn::symbol_context",
+      "kind": "calls",
+      "confidence": "resolved"
+    },
+    {
+      "src": "fn::mcp_dispatch",
+      "dst": "fn::blast_radius",
+      "kind": "calls",
+      "confidence": "resolved"
+    },
+    {
+      "src": "fn::symbol_context",
+      "dst": "fn::open_store",
+      "kind": "calls",
+      "confidence": "resolved"
+    },
+    {
+      "src": "fn::symbol_context",
+      "dst": "fn::inspect_readiness",
+      "kind": "calls",
+      "confidence": "resolved"
+    },
+    {
+      "src": "fn::inspect_readiness",
+      "dst": "struct::store",
+      "kind": "uses",
+      "confidence": "extracted"
+    }
+  ],
+  "hot_files": [
+    {
+      "path": "crates/gitcortex-cli/src/cmd/query/very_long_nested_directory_name/blast_radius_analyzer.rs",
+      "touches": 9,
+      "additions": 240,
+      "deletions": 42,
+      "last_changed": 1730000000
+    }
+  ]
+}

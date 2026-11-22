@@ -75,3 +75,7 @@ __pycache__/
 docs/favicon.svg
 docs/favicon.ico
 .claude/worktrees/
+
+# Playwright visual gate artifacts
+viz/test-results/
+viz/playwright-report/

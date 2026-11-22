@@ -8,7 +8,18 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import globals from "globals";
 
 export default tseslint.config(
-  { ignores: ["dist", "node_modules", "../dist-viz", "vitest.config.ts", "vite.config.ts"] },
+  {
+    ignores: [
+      "dist",
+      "node_modules",
+      "../dist-viz",
+      "vitest.config.ts",
+      "vite.config.ts",
+      "playwright.config.ts",
+      "test-results",
+      "playwright-report",
+    ],
+  },
   // JS files (configs, scripts): plain recommended, no type info
   {
     files: ["**/*.{js,mjs,cjs}"],
