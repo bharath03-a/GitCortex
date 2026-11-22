@@ -1,0 +1,223 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/bharath03-a/GitCortex/blob/main/docs/schemas/gitcortex-graph-v1.schema.json",
+  "title": "GitCortex Graph Export v1",
+  "description": "Versioned, store-independent code graph export containing symbol metadata and relationships only (never source text).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "schema_version", "meta", "nodes", "edges"],
+  "properties": {
+    "format": {
+      "type": "string",
+      "const": "gitcortex.graph"
+    },
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gcx_version",
+        "repo",
+        "branch",
+        "commit",
+        "readiness",
+        "generated_at",
+        "scope",
+        "truncated",
+        "total_nodes",
+        "total_edges"
+      ],
+      "properties": {
+        "gcx_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repo": {
+          "type": "string",
+          "minLength": 1
+        },
+        "branch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "commit": {
+          "type": ["string", "null"]
+        },
+        "readiness": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generated_at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["seed", "depth", "direction", "edge_kinds", "max_nodes"],
+          "properties": {
+            "seed": {
+              "type": ["string", "null"]
+            },
+            "depth": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 5
+            },
+            "direction": {
+              "type": "string",
+              "enum": ["up", "down", "both"]
+            },
+            "edge_kinds": {
+              "type": ["array", "null"],
+              "items": {
+                "$ref": "#/$defs/edge_kind"
+              }
+            },
+            "max_nodes": {
+              "type": ["integer", "null"],
+              "minimum": 0
+            }
+          }
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "total_nodes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_edges": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "qualified_name",
+          "kind",
+          "file",
+          "start_line",
+          "end_line",
+          "visibility",
+          "is_async",
+          "is_unsafe"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string"
+          },
+          "qualified_name": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/$defs/node_kind"
+          },
+          "file": {
+            "type": "string"
+          },
+          "start_line": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "end_line": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "visibility": {
+            "type": "string",
+            "enum": ["pub", "pub_crate", "private"]
+          },
+          "is_async": {
+            "type": "boolean"
+          },
+          "is_unsafe": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source", "target", "kind", "line", "confidence"],
+        "properties": {
+          "source": {
+            "type": "string",
+            "minLength": 1
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "$ref": "#/$defs/edge_kind"
+          },
+          "line": {
+            "type": ["integer", "null"],
+            "minimum": 0
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["extracted", "resolved", "inferred"]
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "node_kind": {
+      "type": "string",
+      "enum": [
+        "folder",
+        "file",
+        "module",
+        "struct",
+        "enum",
+        "trait",
+        "interface",
+        "type_alias",
+        "function",
+        "method",
+        "property",
+        "constant",
+        "macro",
+        "annotation",
+        "enum_member",
+        "section",
+        "route"
+      ]
+    },
+    "edge_kind": {
+      "type": "string",
+      "enum": [
+        "contains",
+        "calls",
+        "implements",
+        "inherits",
+        "uses",
+        "imports",
+        "annotated",
+        "throws",
+        "references",
+        "handled_by"
+      ]
+    }
+  }
+}
