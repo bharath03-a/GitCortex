@@ -1,9 +1,14 @@
-use std::path::PathBuf;
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Result};
 use clap::Subcommand;
 use gitcortex_store::{
-    branch,
+    branch::{self, BranchKind},
+    kuzu::{BranchGcReport, KuzuGraphStore},
+    meta::BranchEntry,
     usage::{
         apply_prune, inspect_repo_dir, plan_prune, scan_store_root, PrunePolicy, RepoStatus,
         RepoUsage,
@@ -38,6 +43,12 @@ pub enum StorageCmd {
         #[arg(long)]
         apply: bool,
     },
+    /// Garbage-collect deleted branches and stale detached snapshots (dry-run by default).
+    Gc {
+        /// Drop the eligible branch tables and sidecars (without `--apply`, only prints the plan).
+        #[arg(long)]
+        apply: bool,
+    },
 }
 
 pub fn run(cmd: StorageCmd) -> Result<()> {
@@ -49,6 +60,7 @@ pub fn run(cmd: StorageCmd) -> Result<()> {
             unknown_older_than,
             apply,
         } => run_prune(orphaned, backups, unknown_older_than, apply),
+        StorageCmd::Gc { apply } => run_gc(apply),
     }
 }
 
@@ -207,6 +219,181 @@ fn run_prune(
         for path in &report.skipped_locked {
             println!("  {}", path.display());
         }
+    }
+    Ok(())
+}
+
+struct GitKeepState {
+    local_branches: HashSet<String>,
+    /// `(worktree_id_8hex, full_head_sha)` for each currently detached worktree.
+    detached_heads: Vec<(String, String)>,
+}
+
+impl GitKeepState {
+    fn load(repo_root: &Path) -> Result<Self> {
+        let refs_out = std::process::Command::new("git")
+            .args(["for-each-ref", "--format=%(refname:short)", "refs/heads"])
+            .current_dir(repo_root)
+            .output()
+            .context("git for-each-ref failed")?;
+        if !refs_out.status.success() {
+            anyhow::bail!("git for-each-ref refs/heads failed");
+        }
+        let local_branches: HashSet<String> = String::from_utf8(refs_out.stdout)?
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(ToOwned::to_owned)
+            .collect();
+
+        let wt_out = std::process::Command::new("git")
+            .args(["worktree", "list", "--porcelain"])
+            .current_dir(repo_root)
+            .output()
+            .context("git worktree list failed")?;
+        let mut detached_heads = Vec::new();
+        if wt_out.status.success() {
+            let text = String::from_utf8_lossy(&wt_out.stdout);
+            let mut cur_path: Option<PathBuf> = None;
+            let mut cur_head: Option<String> = None;
+            let mut cur_detached = false;
+            let flush = |path: &mut Option<PathBuf>,
+                         head: &mut Option<String>,
+                         detached: &mut bool,
+                         out: &mut Vec<(String, String)>| {
+                if *detached {
+                    if let (Some(p), Some(h)) = (path.take(), head.take()) {
+                        out.push((branch::worktree_id(&p), h));
+                    }
+                }
+                *path = None;
+                *head = None;
+                *detached = false;
+            };
+            for line in text.lines() {
+                let line = line.trim();
+                if line.is_empty() {
+                    flush(
+                        &mut cur_path,
+                        &mut cur_head,
+                        &mut cur_detached,
+                        &mut detached_heads,
+                    );
+                } else if let Some(p) = line.strip_prefix("worktree ") {
+                    cur_path = Some(PathBuf::from(p));
+                } else if let Some(h) = line.strip_prefix("HEAD ") {
+                    cur_head = Some(h.to_owned());
+                } else if line == "detached" {
+                    cur_detached = true;
+                }
+            }
+            flush(
+                &mut cur_path,
+                &mut cur_head,
+                &mut cur_detached,
+                &mut detached_heads,
+            );
+        }
+
+        Ok(Self {
+            local_branches,
+            detached_heads,
+        })
+    }
+
+    fn should_keep(&self, entry: &BranchEntry) -> bool {
+        match entry.kind {
+            BranchKind::Commit => true,
+            BranchKind::Branch => self.local_branches.contains(&entry.name),
+            BranchKind::Detached => {
+                if let Some(wt_id) = entry.worktree_id.as_deref() {
+                    let short_sha = entry
+                        .name
+                        .strip_prefix(&format!("detached_{wt_id}_"))
+                        .unwrap_or(&entry.name);
+                    self.detached_heads
+                        .iter()
+                        .any(|(id, sha)| id == wt_id && sha.starts_with(short_sha))
+                } else {
+                    self.detached_heads
+                        .iter()
+                        .any(|(_, sha)| sha.starts_with(&entry.name))
+                }
+            }
+        }
+    }
+}
+
+/// Run branch GC against an already-open store (used by `gcx hook --branch-switch`).
+pub(crate) fn run_gc_on_store(
+    repo_root: &Path,
+    store: &mut KuzuGraphStore,
+) -> Result<BranchGcReport> {
+    let state = GitKeepState::load(repo_root)?;
+    let report = store.prune_branches(&|entry| state.should_keep(entry))?;
+    Ok(report)
+}
+
+fn run_gc(apply: bool) -> Result<()> {
+    let repo_root = current_repo_root()?;
+    let state = GitKeepState::load(&repo_root)?;
+
+    let Some(mut store) = KuzuGraphStore::try_open_if_unlocked(&repo_root, "storage gc")? else {
+        println!(
+            "{}",
+            paint(
+                hint_style(),
+                "Skipped branch GC: repository graph store is currently locked by another process."
+            )
+        );
+        return Ok(());
+    };
+
+    let report = if apply {
+        store.prune_branches(&|entry| state.should_keep(entry))?
+    } else {
+        store.plan_prune_branches(&|entry| state.should_keep(entry))?
+    };
+
+    if report.dropped.is_empty() {
+        println!(
+            "{}",
+            paint(
+                hint_style(),
+                &format!(
+                    "Nothing to garbage-collect ({} branch(es) kept).",
+                    report.kept
+                )
+            )
+        );
+    } else {
+        for name in &report.dropped {
+            println!("  {} {}", paint(header_style(), "drop"), name);
+        }
+        if apply {
+            println!(
+                "\n{} dropped {} branch(es), kept {}.",
+                paint(header_style(), "gc:"),
+                report.dropped.len(),
+                report.kept,
+            );
+        } else {
+            println!(
+                "\n{} would drop {} branch(es), keep {}. Re-run with `--apply` to drop.",
+                paint(header_style(), "dry-run:"),
+                report.dropped.len(),
+                report.kept,
+            );
+        }
+    }
+
+    if !report.unregistered.is_empty() {
+        println!(
+            "{} {} unregistered pre-registry table(s) left untouched: {}",
+            paint(hint_style(), "note:"),
+            report.unregistered.len(),
+            report.unregistered.join(", "),
+        );
     }
     Ok(())
 }

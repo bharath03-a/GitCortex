@@ -771,6 +771,16 @@ fn reconcile_reference_names(
 
 // ── KuzuGraphStore ────────────────────────────────────────────────────────────
 
+/// Outcome of planning or executing [`KuzuGraphStore::prune_branches`].
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct BranchGcReport {
+    pub dropped: Vec<String>,
+    pub kept: usize,
+    /// Pre-registry Kuzu table keys not present in `branches.json`; reported
+    /// for visibility and never dropped automatically.
+    pub unregistered: Vec<String>,
+}
+
 /// Local KuzuDB-backed implementation of [`GraphStore`].
 ///
 /// One database file per repo (`graph.kuzu`), with per-branch node/edge tables
@@ -845,6 +855,122 @@ impl KuzuGraphStore {
     /// Storage directory identifier for this open store.
     pub fn repo_id(&self) -> &str {
         &self.repo_id
+    }
+
+    /// Try to open the graph store without failing when another process holds
+    /// the repository lock. Returns `Ok(None)` if the lock is currently held.
+    pub fn try_open_if_unlocked(repo_root: &Path, operation: &str) -> Result<Option<Self>> {
+        let Some(mut lock) = branch::RepositoryLock::try_acquire(repo_root)? else {
+            return Ok(None);
+        };
+        lock.set_owner(&format!("pid {} ({operation})", std::process::id()))?;
+        Self::open_with_schema_policy(repo_root, false, Some(lock)).map(Some)
+    }
+
+    /// List sanitized branch keys currently present as tables in the Kuzu DB.
+    pub fn list_branch_tables(&self) -> Result<Vec<String>> {
+        let conn = self.conn()?;
+        db_schema::list_branch_table_keys(&conn)
+    }
+
+    /// Dry-run branch garbage collection using `keep`.
+    ///
+    /// [`branch::BranchKind::Commit`] entries are always retained regardless of
+    /// what `keep` returns. Pre-registry Kuzu tables (keys absent from
+    /// `branches.json`) are reported in `unregistered` and never dropped.
+    pub fn plan_prune_branches(
+        &self,
+        keep: &dyn Fn(&crate::meta::BranchEntry) -> bool,
+    ) -> Result<BranchGcReport> {
+        let entries = crate::meta::read_branch_registry(&self.repo_id)?;
+        let registered_keys: HashSet<&str> = entries.iter().map(|e| e.key.as_str()).collect();
+        let conn = self.conn()?;
+        let table_keys = db_schema::list_branch_table_keys(&conn)?;
+        let unregistered = table_keys
+            .into_iter()
+            .filter(|k| !registered_keys.contains(k.as_str()))
+            .collect();
+
+        let mut dropped = Vec::new();
+        let mut kept = 0usize;
+        for entry in &entries {
+            if entry.kind == branch::BranchKind::Commit || keep(entry) {
+                kept += 1;
+            } else {
+                dropped.push(entry.name.clone());
+            }
+        }
+        Ok(BranchGcReport {
+            dropped,
+            kept,
+            unregistered,
+        })
+    }
+
+    /// Drop Kuzu tables, sidecars (`{key}.sha`, `{key}.dirty`,
+    /// `embeddings_{key}.bin`), and registry entries for every registered branch
+    /// where `keep` returns `false`.
+    ///
+    /// [`branch::BranchKind::Commit`] entries are ALWAYS retained (both default
+    /// and explicit GC preserve commit snapshots). Pre-registry Kuzu tables not
+    /// present in `branches.json` are reported in `unregistered` and left
+    /// untouched.
+    pub fn prune_branches(
+        &mut self,
+        keep: &dyn Fn(&crate::meta::BranchEntry) -> bool,
+    ) -> Result<BranchGcReport> {
+        let entries = crate::meta::read_branch_registry(&self.repo_id)?;
+        let registered_keys: HashSet<&str> = entries.iter().map(|e| e.key.as_str()).collect();
+        let mut conn = self.conn()?;
+        let table_keys = db_schema::list_branch_table_keys(&conn)?;
+        let unregistered = table_keys
+            .into_iter()
+            .filter(|k| !registered_keys.contains(k.as_str()))
+            .collect();
+
+        let dir = branch::data_dir(&self.repo_id);
+        let mut retained = Vec::with_capacity(entries.len());
+        let mut dropped = Vec::new();
+        let mut dropped_keys = Vec::new();
+
+        for entry in entries {
+            if entry.kind == branch::BranchKind::Commit || keep(&entry) {
+                retained.push(entry);
+            } else {
+                db_schema::drop_branch(&mut conn, &entry.key)?;
+                for sidecar in [
+                    dir.join(format!("{}.sha", entry.key)),
+                    dir.join(format!("{}.dirty", entry.key)),
+                    dir.join(format!("{}.overlay", entry.key)),
+                    dir.join(format!("{}.ignore", entry.key)),
+                    dir.join(format!("{}.epoch", entry.key)),
+                    dir.join(format!("embeddings_{}.bin", entry.key)),
+                ] {
+                    if let Err(err) = std::fs::remove_file(&sidecar) {
+                        if err.kind() != std::io::ErrorKind::NotFound {
+                            return Err(GitCortexError::Io(err));
+                        }
+                    }
+                }
+                dropped.push(entry.name);
+                dropped_keys.push(entry.key);
+            }
+        }
+
+        if !dropped.is_empty() {
+            crate::meta::write_branch_registry(&self.repo_id, &retained)?;
+            if let Ok(mut set) = self.registered_branches.write() {
+                for key in &dropped_keys {
+                    set.remove(key);
+                }
+            }
+        }
+
+        Ok(BranchGcReport {
+            dropped,
+            kept: retained.len(),
+            unregistered,
+        })
     }
 
     fn open_with_schema_policy(

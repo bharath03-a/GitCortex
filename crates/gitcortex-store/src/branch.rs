@@ -141,6 +141,14 @@ pub fn repo_id(repo_root: &Path) -> String {
     digest.to_hex()[..16].to_owned()
 }
 
+/// Derive a stable 8-hex-character worktree identifier from a canonicalized
+/// worktree root path.
+pub fn worktree_id(repo_root: &Path) -> String {
+    let canonical = fs::canonicalize(repo_root).unwrap_or_else(|_| repo_root.to_path_buf());
+    let digest = blake3::hash(canonical.to_string_lossy().as_bytes());
+    digest.to_hex()[..8].to_owned()
+}
+
 fn legacy_repo_id(repo_root: &Path) -> String {
     let mut hasher = DefaultHasher::new();
     repo_root.to_string_lossy().hash(&mut hasher);
