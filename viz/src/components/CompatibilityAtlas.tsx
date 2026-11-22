@@ -29,7 +29,7 @@ export function CompatibilityAtlas({
       <div className="mx-auto max-w-[1280px]">
         <div className="graph-panel mb-5 flex flex-wrap items-center justify-between gap-4 rounded-lg p-4">
           <div className="flex items-start gap-3">
-            <div className="rounded-md bg-(--color-accent-soft) p-2 text-(--color-accent)">
+            <div className="rounded-md bg-(--color-accent-soft) p-2 text-(--color-accent-text)">
               {variant === "compatibility" ? (
                 <Cpu className="size-4" />
               ) : (
@@ -37,42 +37,42 @@ export function CompatibilityAtlas({
               )}
             </div>
             <div>
-              <div className="text-[13px] font-semibold">
+              <div className="text-ui-lg font-heading">
                 {variant === "compatibility" ? "Compatibility atlas" : "Repository atlas"}
               </div>
-              <p className="mt-0.5 text-[11px] text-(--color-text-muted)">
+              <p className="mt-0.5 text-ui-base leading-ui text-(--color-text-muted)">
                 {variant === "compatibility"
                   ? "WebGL acceleration is unavailable. Repository groups and exact symbol access remain active without running a large CPU force simulation."
                   : "A semantic overview keeps the repository legible. Search remains complete, and the exact symbol graph is available on demand."}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={onSearch}
-              className="flex items-center gap-2 rounded-md border border-(--color-border-subtle) bg-(--color-elevated) px-3 py-2 text-[11px] text-(--color-text-muted) hover:border-(--color-border-strong) hover:text-(--color-text-primary)"
+              className="flex items-center gap-2 rounded-md border border-(--color-border-subtle) bg-(--color-elevated) px-3 py-2 text-ui-sm font-label text-(--color-text-muted) hover:border-(--color-border-strong) hover:text-(--color-text-primary)"
             >
               <Search className="size-3.5" /> Search all symbols
             </button>
             <button
               onClick={onUseWebGl}
-              className="rounded-md border border-(--color-border-subtle) px-3 py-2 font-mono text-[10px] text-(--color-text-dim) hover:text-(--color-accent)"
+              className="rounded-md border border-(--color-border-subtle) px-3 py-2 text-ui-sm font-label text-(--color-text-muted) hover:text-(--color-accent-text)"
             >
-              {variant === "compatibility" ? "retry WebGL" : "open symbol graph"}
+              {variant === "compatibility" ? "Retry WebGL" : "Open symbol graph"}
             </button>
           </div>
         </div>
 
-        <div className="mb-3 flex items-end justify-between gap-4">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <div className="font-mono text-[9px] font-semibold tracking-[0.14em] text-(--color-text-dim) uppercase">
+            <div className="text-ui-xs font-heading tracking-heading text-(--color-text-dim)">
               Repository structure
             </div>
-            <div className="mt-1 text-[15px] font-semibold">
+            <div className="mt-1 text-ui-lg font-heading">
               {groups.length.toLocaleString()} architecture groups
             </div>
           </div>
-          <div className="font-mono text-[9px] text-(--color-text-dim)">
+          <div className="text-ui-xs text-(--color-text-dim)">
             {data.nodes.length.toLocaleString()} symbols · {data.edges.length.toLocaleString()}{" "}
             relations
           </div>
@@ -84,7 +84,7 @@ export function CompatibilityAtlas({
           ))}
         </div>
         {groups.length > shownGroups.length && (
-          <div className="mt-4 rounded-md border border-(--color-border-subtle) p-3 text-center font-mono text-[10px] text-(--color-text-dim)">
+          <div className="mt-4 rounded-md border border-(--color-border-subtle) p-3 text-center text-ui-base text-(--color-text-dim)">
             Showing the 120 largest groups. Search covers all {groups.length.toLocaleString()}{" "}
             groups.
           </div>
@@ -117,23 +117,25 @@ function GroupCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <Boxes className="size-4 shrink-0 text-(--color-accent)" />
-          <h3 className="truncate font-mono text-[11px] font-semibold">{group.name}</h3>
+          <Boxes className="size-4 shrink-0 text-(--color-accent-text)" />
+          <h3 title={group.name} className="break-all font-mono text-ui-sm font-heading">
+            {group.name}
+          </h3>
         </div>
-        <span className="shrink-0 rounded-full bg-(--color-elevated) px-2 py-1 font-mono text-[8px] text-(--color-text-dim)">
+        <span className="shrink-0 rounded-full bg-(--color-elevated) px-2 py-1 text-ui-xs text-(--color-text-dim)">
           {group.nodes.length.toLocaleString()} symbols
         </span>
       </div>
-      <div className="mt-3 grid grid-cols-3 gap-2 border-y border-(--color-border-subtle) py-2.5 font-mono text-[9px]">
-        <Metric label="relations" value={group.relations} />
-        <Metric label="boundary" value={group.boundaryRelations} />
+      <div className="mt-3 grid grid-cols-3 gap-2 border-y border-(--color-border-subtle) py-2.5">
+        <Metric label="Relations" value={group.relations} />
+        <Metric label="Boundary" value={group.boundaryRelations} />
         <Metric label="LOC" value={group.loc} />
       </div>
       <div className="mt-3 flex min-h-5 flex-wrap gap-1.5">
         {topKinds.map(([kind, count]) => (
           <span
             key={kind}
-            className="rounded border border-(--color-border-subtle) bg-(--color-elevated) px-1.5 py-0.5 font-mono text-[8px] text-(--color-text-muted)"
+            className="rounded border border-(--color-border-subtle) bg-(--color-elevated) px-1.5 py-0.5 text-ui-xs text-(--color-text-muted)"
           >
             {KIND_LABEL[kind] ?? kind} {count}
           </span>
@@ -144,12 +146,12 @@ function GroupCard({
           <button
             key={node.id}
             onClick={() => onSelect(node)}
-            className={`flex w-full items-center justify-between gap-3 rounded px-2 py-1.5 text-left font-mono text-[9px] hover:bg-(--color-elevated) ${
-              selected?.id === node.id ? "bg-(--color-accent-soft) text-(--color-accent)" : ""
+            className={`flex w-full items-center justify-between gap-3 rounded px-2 py-1.5 text-left hover:bg-(--color-elevated) ${
+              selected?.id === node.id ? "bg-(--color-accent-soft) text-(--color-accent-text)" : ""
             }`}
           >
-            <span className="truncate">{node.name}</span>
-            <span className="shrink-0 text-[8px] text-(--color-text-dim)">{node.kind}</span>
+            <span className="min-w-0 flex-1 truncate font-mono text-ui-sm">{node.name}</span>
+            <span className="shrink-0 text-ui-xs text-(--color-text-dim)">{node.kind}</span>
           </button>
         ))}
       </div>
@@ -160,8 +162,10 @@ function GroupCard({
 function Metric({ label, value }: { label: string; value: number }) {
   return (
     <div>
-      <div className="text-(--color-text-primary)">{value.toLocaleString()}</div>
-      <div className="mt-0.5 text-[8px] text-(--color-text-dim)">{label}</div>
+      <div className="text-ui-sm font-heading text-(--color-text-primary)">
+        {value.toLocaleString()}
+      </div>
+      <div className="mt-0.5 text-ui-xs text-(--color-text-dim)">{label}</div>
     </div>
   );
 }

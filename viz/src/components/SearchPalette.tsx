@@ -81,9 +81,9 @@ export function SearchPalette({ data, onClose, onSelect }: Props) {
             onChange={(e) => onQueryChange(e.target.value)}
             onKeyDown={onKey}
             placeholder="Search every symbol in the active branch…"
-            className="flex-1 bg-transparent font-mono text-[12px] text-(--color-text-primary) placeholder:font-sans placeholder:text-(--color-text-dim) focus:outline-none"
+            className="min-w-0 flex-1 bg-transparent font-mono text-ui-base text-(--color-text-primary) placeholder:font-sans placeholder:text-(--color-text-dim) focus:outline-none"
           />
-          <kbd className="rounded border border-(--color-border-subtle) bg-(--color-void-deep) px-1.5 py-0.5 font-mono text-[9px] text-(--color-text-dim)">
+          <kbd className="rounded border border-(--color-border-subtle) bg-(--color-void-deep) px-1.5 py-0.5 text-ui-xs text-(--color-text-dim)">
             esc
           </kbd>
         </div>
@@ -96,7 +96,7 @@ export function SearchPalette({ data, onClose, onSelect }: Props) {
           {results.length === 0 && (
             <li
               role="presentation"
-              className="px-4 py-6 text-center text-[12px] text-(--color-text-dim)"
+              className="px-4 py-6 text-center text-ui-base text-(--color-text-dim)"
             >
               <span aria-live="polite">No matches</span>
             </li>
@@ -120,11 +120,14 @@ export function SearchPalette({ data, onClose, onSelect }: Props) {
                   className="size-2 shrink-0 rounded-full"
                   style={{ background: KIND_COLOR[n.kind] ?? "#888" }}
                 />
-                <span className="flex-1 truncate font-mono text-[12px]">{n.name}</span>
-                <span className="shrink-0 text-[10px] tracking-widest text-(--color-text-dim) uppercase">
+                <span className="min-w-0 flex-1 truncate font-mono text-ui-sm">{n.name}</span>
+                <span className="shrink-0 text-ui-xs text-(--color-text-dim)">
                   {KIND_LABEL[n.kind] ?? n.kind}
                 </span>
-                <span className="shrink-0 truncate font-mono text-[10px] text-(--color-text-dim)">
+                <span
+                  title={n.file}
+                  className="max-w-[40%] shrink-0 truncate font-mono text-ui-xs text-(--color-text-dim)"
+                >
                   {n.file.split("/").slice(-2).join("/")}
                 </span>
               </button>

@@ -26,7 +26,7 @@ const VISIBILITY_LABEL: Record<string, string> = {
 const RISK_TONE: Record<string, string> = {
   LOW: "text-(--color-good) bg-[#2F6F5E]/10",
   MEDIUM: "text-(--color-warn) bg-[#8A6D28]/10",
-  HIGH: "text-(--color-accent) bg-(--color-accent-soft)",
+  HIGH: "text-(--color-accent-text) bg-(--color-accent-soft)",
   CRITICAL: "text-(--color-bad) bg-[#B84B42]/10",
 };
 
@@ -68,26 +68,25 @@ export function Inspector({
   const fileRel = node.file.split("/").slice(-4).join("/");
 
   return (
-    <aside className="animate-fade-in flex w-[376px] shrink-0 flex-col border-l border-(--color-border-subtle) bg-(--color-void-deep)">
-      <div className="flex items-start justify-between border-b border-(--color-border-subtle) p-4.5">
+    <aside className="animate-fade-in flex w-[376px] max-w-[90vw] shrink-0 flex-col border-l border-(--color-border-subtle) bg-(--color-void-deep)">
+      <div className="flex items-start justify-between gap-2 border-b border-(--color-border-subtle) p-4.5">
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex items-center gap-2">
-            <span className="size-2.5 rounded-full" style={{ background: color }} />
-            <span className="text-[10px] tracking-widest text-(--color-text-dim) uppercase">
+            <span className="size-2.5 shrink-0 rounded-full" style={{ background: color }} />
+            <span className="text-ui-xs font-heading tracking-heading text-(--color-text-dim)">
               {KIND_LABEL[node.kind] ?? node.kind}
             </span>
           </div>
-          <h2 className="truncate font-mono text-[14px] font-semibold tracking-[-0.02em]">
-            {node.name}
-          </h2>
+          <h2 className="break-words font-mono text-ui-base font-heading">{node.name}</h2>
           {node.qualified_name && node.qualified_name !== node.name && (
-            <div className="mt-1 truncate font-mono text-[11px] text-(--color-text-muted)">
+            <div className="mt-1 break-all font-mono text-ui-xs text-(--color-text-muted)">
               {node.qualified_name}
             </div>
           )}
         </div>
         <button
           onClick={onClose}
+          aria-label="Close inspector"
           className="rounded-md p-1 text-(--color-text-muted) hover:text-(--color-text-primary)"
         >
           <X className="size-4" />
@@ -98,12 +97,12 @@ export function Inspector({
         <a
           href={`vscode://file/${encodeURI(node.file)}:${node.start_line}`}
           title="Open in VS Code / Cursor"
-          className="mb-2 flex items-center gap-1 font-mono text-[11px] text-(--color-text-muted) hover:text-(--color-accent)"
+          className="mb-2 flex items-start gap-1.5 text-(--color-text-muted) hover:text-(--color-accent-text)"
         >
-          <span className="truncate">
-            {fileRel}:{node.start_line}–{node.end_line}
+          <span className="min-w-0 flex-1 break-all font-mono text-ui-xs">
+            {`${fileRel}:${node.start_line}–${node.end_line}`}
           </span>
-          <ExternalLink className="size-3 shrink-0" />
+          <ExternalLink className="mt-0.5 size-3.5 shrink-0" />
         </a>
         <div className="flex flex-wrap gap-1.5">
           <Badge>{VISIBILITY_LABEL[node.visibility] ?? node.visibility}</Badge>
@@ -116,23 +115,23 @@ export function Inspector({
             </Badge>
           )}
         </div>
-        <div className="mt-3 flex items-center gap-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <span
             id="neighborhood-label"
-            className="text-[10px] tracking-widest text-(--color-text-dim) uppercase"
+            className="text-ui-xs font-heading tracking-heading text-(--color-text-dim)"
           >
-            neighborhood
+            Neighborhood
           </span>
-          <div role="radiogroup" aria-labelledby="neighborhood-label" className="flex gap-2">
+          <div role="radiogroup" aria-labelledby="neighborhood-label" className="flex gap-1.5">
             {[1, 2, 3].map((d) => (
               <button
                 key={d}
                 role="radio"
                 aria-checked={depth === d}
                 onClick={() => onDepthChange(d)}
-                className={`rounded px-1.5 py-0.5 font-mono text-[10px] transition-colors ${
+                className={`rounded px-2 py-0.5 text-ui-xs font-label transition-colors ${
                   depth === d
-                    ? "bg-(--color-accent-soft) text-(--color-accent)"
+                    ? "bg-(--color-accent-soft) text-(--color-accent-text)"
                     : "text-(--color-text-muted) hover:text-(--color-text-primary)"
                 }`}
               >
@@ -226,11 +225,11 @@ function DeepCallersPanel({
 
   if (loading)
     return (
-      <div className="px-2 py-4 text-[12px] text-(--color-text-muted)">
+      <div className="px-2 py-4 text-ui-base text-(--color-text-muted)">
         Tracing callers up to depth {depth}…
       </div>
     );
-  if (error) return <div className="px-2 py-4 text-[12px] text-(--color-bad)">{error}</div>;
+  if (error) return <div className="px-2 py-4 text-ui-base text-(--color-bad)">{error}</div>;
   if (!result) return null;
 
   const total = result.hops.reduce((acc, h) => acc + h.nodes.length, 0);
@@ -238,11 +237,11 @@ function DeepCallersPanel({
 
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between">
-        <div className="text-[10px] tracking-widest text-(--color-text-dim) uppercase">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="text-ui-xs font-heading tracking-heading text-(--color-text-dim)">
           {total} affected · depth {result.depth}
         </div>
-        <span className={`rounded px-2 py-0.5 font-mono text-[10px] ${tone}`}>
+        <span className={`rounded px-2 py-0.5 text-ui-xs font-label ${tone}`}>
           {result.risk_level}
         </span>
       </div>
@@ -250,7 +249,7 @@ function DeepCallersPanel({
         <NodeList key={h.hop} title={`Hop ${h.hop}`} nodes={h.nodes} onSelect={onSelect} />
       ))}
       {result.truncated && (
-        <div className="rounded border border-[#8A6D28]/20 bg-[#8A6D28]/8 px-2 py-1.5 text-[11px] text-(--color-warn)">
+        <div className="rounded border border-[#8A6D28]/20 bg-[#8A6D28]/8 px-2.5 py-2 text-ui-base text-(--color-warn)">
           Showing the first 500 affected symbols.
         </div>
       )}
@@ -260,7 +259,7 @@ function DeepCallersPanel({
 }
 
 function EmptyHint({ label = "No connections in current view" }: { label?: string }) {
-  return <div className="px-2 py-6 text-center text-[12px] text-(--color-text-dim)">{label}</div>;
+  return <div className="px-2 py-6 text-center text-ui-base text-(--color-text-dim)">{label}</div>;
 }
 
 function TabBtn({
@@ -283,7 +282,7 @@ function TabBtn({
       aria-selected={active}
       aria-controls={panelId}
       onClick={onClick}
-      className={`px-3 py-2 text-[12px] transition-colors ${
+      className={`px-3 py-2 text-ui-sm font-label transition-colors ${
         active
           ? "border-b-2 border-(--color-accent) text-(--color-text-primary)"
           : "text-(--color-text-muted) hover:text-(--color-text-primary)"
@@ -303,13 +302,13 @@ function Badge({
 }) {
   const cls =
     tone === "accent"
-      ? "bg-(--color-accent-soft) text-(--color-accent)"
+      ? "bg-(--color-accent-soft) text-(--color-accent-text)"
       : tone === "warn"
         ? "bg-[#8A6D28]/10 text-(--color-warn)"
         : tone === "hot"
-          ? "bg-(--color-accent-soft) text-(--color-accent)"
+          ? "bg-(--color-accent-soft) text-(--color-accent-text)"
           : "bg-(--color-elevated) text-(--color-text-muted)";
-  return <span className={`rounded px-1.5 py-0.5 font-mono text-[10px] ${cls}`}>{children}</span>;
+  return <span className={`rounded px-1.5 py-0.5 text-ui-xs font-label ${cls}`}>{children}</span>;
 }
 
 function NodeList({
@@ -324,9 +323,9 @@ function NodeList({
   if (nodes.length === 0) return null;
   return (
     <section className="mb-4">
-      <h3 className="mb-1.5 flex items-center justify-between text-[10px] font-semibold tracking-widest text-(--color-text-dim) uppercase">
+      <h3 className="mb-1.5 flex items-center justify-between text-ui-xs font-heading tracking-heading text-(--color-text-dim)">
         <span>{title}</span>
-        <span className="font-mono text-(--color-text-dim)">{nodes.length}</span>
+        <span className="text-ui-xs text-(--color-text-dim)">{nodes.length}</span>
       </h3>
       <ul className="space-y-0.5">
         {nodes.slice(0, 30).map((n) => (
@@ -339,13 +338,13 @@ function NodeList({
                 className="size-1.5 shrink-0 rounded-full"
                 style={{ background: KIND_COLOR[n.kind] ?? "#888" }}
               />
-              <span className="flex-1 truncate font-mono text-[11px]">{n.name}</span>
-              <ChevronRight className="size-3 text-(--color-text-dim)" />
+              <span className="min-w-0 flex-1 truncate font-mono text-ui-sm">{n.name}</span>
+              <ChevronRight className="size-3.5 shrink-0 text-(--color-text-dim)" />
             </button>
           </li>
         ))}
         {nodes.length > 30 && (
-          <li className="px-2 py-1 text-[11px] text-(--color-text-dim)">
+          <li className="px-2 py-1 text-ui-xs text-(--color-text-dim)">
             +{nodes.length - 30} more
           </li>
         )}
