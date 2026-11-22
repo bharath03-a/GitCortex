@@ -9,7 +9,7 @@ use dialoguer::{
 use gitcortex_store::branch;
 use indicatif::{ProgressBar, ProgressStyle};
 
-mod detect;
+pub(crate) mod detect;
 pub mod editors;
 pub(crate) mod helpers;
 pub(crate) mod universal;

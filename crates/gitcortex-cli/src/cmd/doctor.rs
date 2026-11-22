@@ -138,7 +138,7 @@ pub fn run() -> Result<()> {
                 match (store.last_indexed_sha(&branch), head_sha(&repo_root)) {
                     (Ok(Some(indexed)), Ok(head)) if indexed == head => {
                         ok(&format!(
-                            "index is current  (HEAD {})",
+                            "indexed commit matches HEAD ({}) — working-tree edits checked separately",
                             &head[..7.min(head.len())]
                         ));
                     }
@@ -222,114 +222,225 @@ fn check_hook(hooks_dir: &Path, hook: &str, all_ok: &mut bool) {
     }
 }
 
-type EditorCheck = (&'static str, Box<dyn Fn() -> bool>);
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct EditorRegistration {
+    path: PathBuf,
+    command: String,
+    args: Vec<String>,
+}
+
+fn is_gcx_command(command: &str) -> bool {
+    let trimmed = command.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    let file_name = Path::new(trimmed)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(trimmed);
+    file_name.eq_ignore_ascii_case("gcx") || file_name.eq_ignore_ascii_case("gcx.exe")
+}
+
+fn is_serve_args(args: &[String]) -> bool {
+    args.first().map(String::as_str) == Some("serve")
+}
+
+fn inspect_editor_config(
+    path: &Path,
+    editor: &super::init::editors::EditorKind,
+) -> Result<Option<EditorRegistration>> {
+    use super::init::editors::EditorKind;
+    use anyhow::Context;
+
+    if !path.exists() {
+        return Ok(None);
+    }
+    let text = std::fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+
+    match editor {
+        EditorKind::Codex => {
+            let value: toml::Value = toml::from_str(&text)
+                .with_context(|| format!("parse TOML config {}", path.display()))?;
+            let Some(entry) = value
+                .get("mcp_servers")
+                .and_then(|v| v.as_table())
+                .and_then(|t| t.get("gitcortex"))
+                .and_then(|v| v.as_table())
+            else {
+                return Ok(None);
+            };
+            let Some(command) = entry.get("command").and_then(|v| v.as_str()) else {
+                return Ok(None);
+            };
+            let Some(raw_args) = entry.get("args").and_then(|v| v.as_array()) else {
+                return Ok(None);
+            };
+            let mut args = Vec::with_capacity(raw_args.len());
+            for item in raw_args {
+                let Some(s) = item.as_str() else {
+                    return Ok(None);
+                };
+                args.push(s.to_owned());
+            }
+            if !is_gcx_command(command) || !is_serve_args(&args) {
+                return Ok(None);
+            }
+            Ok(Some(EditorRegistration {
+                path: path.to_path_buf(),
+                command: command.to_owned(),
+                args,
+            }))
+        }
+        EditorKind::ClaudeCode
+        | EditorKind::Cursor
+        | EditorKind::Windsurf
+        | EditorKind::Copilot
+        | EditorKind::Antigravity => {
+            let value: serde_json::Value = serde_json::from_str(&text)
+                .with_context(|| format!("parse JSON config {}", path.display()))?;
+            if !value.is_object() {
+                anyhow::bail!("{} must contain a JSON object", path.display());
+            }
+            let pointer = match editor {
+                EditorKind::Copilot => "/servers/gitcortex",
+                _ => "/mcpServers/gitcortex",
+            };
+            let Some(entry) = value.pointer(pointer).and_then(|v| v.as_object()) else {
+                return Ok(None);
+            };
+            let Some(command) = entry.get("command").and_then(|v| v.as_str()) else {
+                return Ok(None);
+            };
+            let Some(raw_args) = entry.get("args").and_then(|v| v.as_array()) else {
+                return Ok(None);
+            };
+            let mut args = Vec::with_capacity(raw_args.len());
+            for item in raw_args {
+                let Some(s) = item.as_str() else {
+                    return Ok(None);
+                };
+                args.push(s.to_owned());
+            }
+            if !is_gcx_command(command) || !is_serve_args(&args) {
+                return Ok(None);
+            }
+            Ok(Some(EditorRegistration {
+                path: path.to_path_buf(),
+                command: command.to_owned(),
+                args,
+            }))
+        }
+    }
+}
+
+fn editor_candidate_paths(
+    repo_root: &Path,
+    home: Option<&Path>,
+    editor: &super::init::editors::EditorKind,
+) -> Vec<(&'static str, PathBuf)> {
+    use super::init::editors::EditorKind;
+
+    let mut paths = Vec::new();
+    match editor {
+        EditorKind::ClaudeCode => {
+            paths.push(("local", repo_root.join(".mcp.json")));
+            if let Some(h) = home {
+                paths.push(("global", h.join(".claude.json")));
+            }
+        }
+        EditorKind::Cursor => {
+            paths.push(("local", repo_root.join(".cursor").join("mcp.json")));
+        }
+        EditorKind::Windsurf => {
+            if let Some(h) = home {
+                paths.push((
+                    "global",
+                    h.join(".codeium").join("windsurf").join("mcp_config.json"),
+                ));
+            }
+        }
+        EditorKind::Copilot => {
+            paths.push(("local", repo_root.join(".vscode").join("mcp.json")));
+        }
+        EditorKind::Antigravity => {
+            paths.push((
+                "local",
+                repo_root
+                    .join(".agents")
+                    .join("plugins")
+                    .join("gitcortex")
+                    .join("mcp_config.json"),
+            ));
+            if let Some(h) = home {
+                paths.push(("global", h.join(".antigravity").join("mcp.json")));
+            }
+        }
+        EditorKind::Codex => {
+            paths.push(("local", repo_root.join(".codex").join("config.toml")));
+        }
+    }
+    paths
+}
 
 fn check_editor_mcp(repo_root: &Path) {
+    use super::init::editors::{editor_flag, EditorKind};
+
     let home = dirs_home();
-
-    let editors: &[EditorCheck] = &[
-        (
-            "Claude Code",
-            Box::new({
-                let home = home.clone();
-                let root = repo_root.to_path_buf();
-                move || {
-                    file_contains(&root.join(".mcp.json"), "gitcortex")
-                        || home
-                            .as_ref()
-                            .map(|h| {
-                                let p = h.join(".claude.json");
-                                p.exists()
-                                    && std::fs::read_to_string(&p)
-                                        .map(|s| s.contains("gcx"))
-                                        .unwrap_or(false)
-                            })
-                            .unwrap_or(false)
-                }
-            }),
-        ),
-        (
-            "Cursor",
-            Box::new({
-                let root = repo_root.to_path_buf();
-                move || file_contains(&root.join(".cursor/mcp.json"), "gitcortex")
-            }),
-        ),
-        (
-            "Windsurf",
-            Box::new({
-                let home = home.clone();
-                move || {
-                    home.as_ref()
-                        .map(|h| {
-                            file_contains(&h.join(".codeium/windsurf/mcp_config.json"), "gitcortex")
-                        })
-                        .unwrap_or(false)
-                }
-            }),
-        ),
-        (
-            "Antigravity",
-            Box::new({
-                let home = home.clone();
-                move || {
-                    home.as_ref()
-                        .map(|h| file_contains(&h.join(".antigravity/mcp.json"), "gitcortex"))
-                        .unwrap_or(false)
-                }
-            }),
-        ),
-        (
-            "Agy CLI",
-            Box::new({
-                let home = home.clone();
-                move || {
-                    home.as_ref()
-                        .map(|h| {
-                            file_contains(&h.join(".gemini/config/mcp_config.json"), "gitcortex")
-                        })
-                        .unwrap_or(false)
-                }
-            }),
-        ),
-        (
-            "Copilot",
-            Box::new({
-                let root = repo_root.to_path_buf();
-                move || file_contains(&root.join(".vscode/mcp.json"), "gitcortex")
-            }),
-        ),
-        (
-            "Codex",
-            Box::new({
-                let root = repo_root.to_path_buf();
-                move || file_contains(&root.join(".codex/config.toml"), "mcp_servers.gitcortex")
-            }),
-        ),
-    ];
-
     let mut any_registered = false;
-    for (name, check) in editors {
-        if check() {
-            ok(&format!("assistant configured  ({name})"));
+
+    for editor in EditorKind::all() {
+        let candidates = editor_candidate_paths(repo_root, home.as_deref(), &editor);
+        let mut found: Option<(&'static str, EditorRegistration)> = None;
+        let mut parse_errors: Vec<(PathBuf, anyhow::Error)> = Vec::new();
+
+        for (scope, path) in candidates {
+            match inspect_editor_config(&path, &editor) {
+                Ok(Some(reg)) => {
+                    found = Some((scope, reg));
+                    break;
+                }
+                Ok(None) => {}
+                Err(err) => {
+                    parse_errors.push((path, err));
+                }
+            }
+        }
+
+        if let Some((scope, reg)) = found {
+            ok(&format!(
+                "{} registration found ({scope}, {}: {} {} — reload editor; registration alone does not confirm an active connection)",
+                editor.display_name(),
+                reg.path.display(),
+                reg.command,
+                reg.args.join(" "),
+            ));
             any_registered = true;
         } else {
+            for (path, err) in parse_errors {
+                info(&format!(
+                    "{} config malformed at {} ({err})",
+                    editor.display_name(),
+                    path.display()
+                ));
+            }
+            let token = editor_flag(&editor);
+            let hint = if matches!(editor, EditorKind::Windsurf) {
+                format!("gcx init --editor {token} --global-editor-config")
+            } else {
+                format!("gcx init --editor {token}")
+            };
             info(&format!(
-                "assistant not configured for {name}  (run: gcx init --editor {})",
-                name.to_ascii_lowercase().replace(' ', "-")
+                "assistant not configured for {}  (run: {hint})",
+                editor.display_name()
             ));
         }
     }
 
     if !any_registered {
-        info("assistant not configured (optional; run: gcx init --editor <name>)");
+        info(
+            "no assistant registered (optional; accepted --editor tokens: claude, cursor, windsurf, copilot, antigravity, codex, all)",
+        );
     }
-}
-
-fn file_contains(path: &Path, needle: &str) -> bool {
-    std::fs::read_to_string(path)
-        .map(|content| content.contains(needle))
-        .unwrap_or(false)
 }
 
 fn ok(msg: &str) {
@@ -385,7 +496,12 @@ fn find_repo_root() -> Option<PathBuf> {
         .ok()?;
     if output.status.success() {
         let s = String::from_utf8(output.stdout).ok()?;
-        Some(PathBuf::from(s.trim()))
+        let trimmed = s.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(PathBuf::from(trimmed))
+        }
     } else {
         None
     }
@@ -439,6 +555,10 @@ fn dirs_home() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cmd::init::{
+        detect::parse_editor_flag,
+        editors::{editor_flag, EditorKind},
+    };
 
     #[test]
     fn required_error_marks_doctor_unhealthy() {
@@ -453,5 +573,29 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
         assert!(current_branch(temp.path()).is_err());
         assert!(head_sha(temp.path()).is_err());
+    }
+
+    #[test]
+    fn editor_flags_round_trip_through_parser() {
+        for editor in EditorKind::all() {
+            let parsed = parse_editor_flag(editor_flag(&editor)).expect("canonical flag parses");
+            assert_eq!(parsed, vec![editor]);
+        }
+    }
+
+    #[test]
+    fn absolute_gcx_command_path_is_accepted() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join(".mcp.json");
+        std::fs::write(
+            &path,
+            r#"{"mcpServers":{"gitcortex":{"command":"/usr/local/bin/gcx","args":["serve"]}}}"#,
+        )
+        .unwrap();
+        let reg = inspect_editor_config(&path, &EditorKind::ClaudeCode)
+            .expect("valid JSON")
+            .expect("registration found");
+        assert_eq!(reg.command, "/usr/local/bin/gcx");
+        assert_eq!(reg.args, vec!["serve"]);
     }
 }
