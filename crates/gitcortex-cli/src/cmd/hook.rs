@@ -1,11 +1,11 @@
-use std::{path::PathBuf, time::Instant};
+use std::time::Instant;
 
 use anyhow::{Context, Result};
 use gitcortex_core::store::GraphStore;
 use gitcortex_indexer::IncrementalIndexer;
 use gitcortex_store::kuzu::KuzuGraphStore;
 
-use crate::cmd::{export, serve_lock};
+use crate::cmd::{export, init::helpers::repo_root, serve_lock};
 
 pub fn run(branch_switch: bool) -> Result<()> {
     let t0 = Instant::now();
@@ -85,16 +85,6 @@ pub fn run(branch_switch: bool) -> Result<()> {
     export::refresh_if_exists(&repo_root, &store, &branch);
 
     Ok(())
-}
-
-fn repo_root() -> Result<PathBuf> {
-    let output = std::process::Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-        .context("git rev-parse failed")?;
-    Ok(PathBuf::from(
-        String::from_utf8(output.stdout)?.trim().to_owned(),
-    ))
 }
 
 fn current_branch(repo_root: &std::path::Path) -> Result<String> {

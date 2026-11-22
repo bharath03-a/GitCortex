@@ -1,9 +1,7 @@
-use std::path::PathBuf;
-
 use anyhow::{Context, Result};
 use gitcortex_store::branch;
 
-use super::serve_lock;
+use super::{init::helpers::repo_root, serve_lock};
 
 /// Wipe the entire graph store for this repo (all branches).
 /// The next `gcx hook` or `gcx init` will perform a full re-index.
@@ -23,14 +21,4 @@ pub fn run() -> Result<()> {
     println!("cleaned: {}", data_dir.display());
     println!("run `gcx init` or make a commit to trigger a fresh full index");
     Ok(())
-}
-
-fn repo_root() -> Result<PathBuf> {
-    let output = std::process::Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-        .context("git rev-parse failed")?;
-    Ok(PathBuf::from(
-        String::from_utf8(output.stdout)?.trim().to_owned(),
-    ))
 }

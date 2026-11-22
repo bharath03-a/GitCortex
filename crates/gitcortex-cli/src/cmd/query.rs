@@ -13,7 +13,7 @@ use crate::style::{
 use crate::{AgentOutputFormat, QueryCmd};
 
 pub fn run(cmd: QueryCmd) -> Result<()> {
-    let repo_root = repo_root()?;
+    let repo_root = crate::cmd::init::helpers::repo_root()?;
     let store = KuzuGraphStore::open(&repo_root).context("failed to open graph store")?;
     let branch = match &cmd {
         QueryCmd::LookupSymbol { branch, .. }
@@ -628,14 +628,4 @@ fn parse_node_kind(s: &str) -> Option<NodeKind> {
         "section" => Some(NodeKind::Section),
         _ => None,
     }
-}
-
-fn repo_root() -> Result<PathBuf> {
-    let out = std::process::Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-        .context("git rev-parse failed")?;
-    Ok(PathBuf::from(
-        String::from_utf8(out.stdout)?.trim().to_owned(),
-    ))
 }

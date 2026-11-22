@@ -170,16 +170,7 @@ async fn connect_or_start(repo_root: &Path) -> Result<UnixStream> {
 }
 
 fn repo_root() -> Result<PathBuf> {
-    let out = Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-        .context("git rev-parse failed")?;
-    if !out.status.success() {
-        anyhow::bail!("not inside a Git repository");
-    }
-    Ok(PathBuf::from(
-        String::from_utf8(out.stdout)?.trim().to_owned(),
-    ))
+    crate::cmd::init::helpers::repo_root()
 }
 
 #[cfg(test)]
