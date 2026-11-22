@@ -765,17 +765,25 @@ pub struct KuzuGraphStore {
     _repository_lock: Option<branch::RepositoryLock>,
 }
 
+fn busy_lock_message(owner: &str) -> String {
+    if owner.is_empty() {
+        return "repository graph is busy (owner unknown); retry after current command completes or stop active `gcx` processes".to_owned();
+    }
+    if owner.contains("(viz)") {
+        format!("repository graph is busy ({owner}); stop `gcx viz` with Ctrl-C, then retry")
+    } else if owner.contains("(repository daemon)") {
+        format!(
+            "repository graph is busy ({owner}); close editor MCP sessions (or wait for the daemon), then retry"
+        )
+    } else {
+        format!("repository graph is busy ({owner}); retry after current command completes")
+    }
+}
+
 fn acquire_repository_lock(repo_root: &Path, operation: &str) -> Result<branch::RepositoryLock> {
     let mut lock = branch::RepositoryLock::try_acquire(repo_root)?.ok_or_else(|| {
         let owner = branch::repository_lock_owner(repo_root);
-        GitCortexError::Store(format!(
-            "repository graph is active{}; close editor MCP sessions and stop `gcx viz`, then retry",
-            if owner.is_empty() {
-                String::new()
-            } else {
-                format!(" ({owner})")
-            }
-        ))
+        GitCortexError::Store(busy_lock_message(&owner))
     })?;
     lock.set_owner(&format!("pid {} ({operation})", std::process::id()))?;
     Ok(lock)
@@ -795,6 +803,13 @@ impl KuzuGraphStore {
     /// Open the graph as the shared local MCP owner.
     pub fn open_for_daemon(repo_root: &Path) -> Result<Self> {
         let lock = acquire_repository_lock(repo_root, "repository daemon")?;
+        Self::open_with_schema_policy(repo_root, false, Some(lock))
+    }
+
+    /// Open the graph for `gcx viz`, recording the `viz` owner so contending
+    /// CLI readers report actionable Ctrl-C recovery guidance.
+    pub fn open_for_viz(repo_root: &Path) -> Result<Self> {
+        let lock = acquire_repository_lock(repo_root, "viz")?;
         Self::open_with_schema_policy(repo_root, false, Some(lock))
     }
 
