@@ -20,9 +20,74 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: codeql · path filter
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      languages: ${{ steps.matrix.outputs.languages }}
+    steps:
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            actions:
+              - '.github/**'
+            javascript-typescript:
+              - 'viz/**'
+              - '.github/workflows/codeql.yml'
+            python:
+              - 'scripts/**'
+              - 'tools/**'
+              - '.github/workflows/codeql.yml'
+            rust:
+              - 'crates/**'
+              - 'tests/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - '.cargo/**'
+              - '.github/workflows/codeql.yml'
+              - '.github/actions/**'
+      - id: matrix
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          ACTIONS_CHANGED: ${{ steps.filter.outputs.actions }}
+          JS_CHANGED: ${{ steps.filter.outputs.javascript-typescript }}
+          PY_CHANGED: ${{ steps.filter.outputs.python }}
+          RUST_CHANGED: ${{ steps.filter.outputs.rust }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+
+          if os.environ["EVENT_NAME"] != "pull_request":
+              langs = ["actions", "javascript-typescript", "python", "rust"]
+          else:
+              langs = []
+              if os.environ.get("ACTIONS_CHANGED") == "true":
+                  langs.append("actions")
+              if os.environ.get("JS_CHANGED") == "true":
+                  langs.append("javascript-typescript")
+              if os.environ.get("PY_CHANGED") == "true":
+                  langs.append("python")
+              if os.environ.get("RUST_CHANGED") == "true":
+                  langs.append("rust")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"languages={json.dumps(langs)}\n")
+          print(f"Selected CodeQL languages: {langs}")
+          PY
+
   analyze:
     name: codeql · ${{ matrix.language }}
+    needs: [changes]
+    if: needs.changes.outputs.languages != '[]'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       security-events: write
@@ -30,9 +95,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [actions, javascript-typescript, python, rust]
+        language: ${{ fromJson(needs.changes.outputs.languages) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # CodeQL's Rust extractor runs cargo build scripts during LoadManifest;
+      # prebuilt libkuzu.so + rust-cache eliminates the ~16 min KuzuDB C++ build.
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
+        if: matrix.language == 'rust'
+        with:
+          toolchain: "1.95"
+      - uses: ./.github/actions/setup-libkuzu
+        if: matrix.language == 'rust'
+        with:
+          append-rpath: "false"
+      - uses: Swatinem/rust-cache@v2
+        if: matrix.language == 'rust'
+        with:
+          shared-key: "ubuntu-codeql-rust"
+          cache-on-failure: true
       - uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
