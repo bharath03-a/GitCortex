@@ -43,6 +43,17 @@ impl EditorKind {
     }
 }
 
+pub(crate) fn editor_flag(editor: &EditorKind) -> &'static str {
+    match editor {
+        EditorKind::ClaudeCode => "claude",
+        EditorKind::Cursor => "cursor",
+        EditorKind::Windsurf => "windsurf",
+        EditorKind::Copilot => "copilot",
+        EditorKind::Antigravity => "antigravity",
+        EditorKind::Codex => "codex",
+    }
+}
+
 pub fn install_for_editor(
     editor: &EditorKind,
     repo_root: &Path,
