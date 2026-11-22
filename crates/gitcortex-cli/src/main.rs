@@ -25,8 +25,24 @@ fn default_branch() -> String {
         .unwrap_or_else(|| "main".to_owned())
 }
 
+const FIRST_ANSWER_HELP: &str = "\
+First-answer path (replace <fragment> and <symbol> with names from your repo):
+  1. gcx query search <fragment>          Find matching symbols
+  2. gcx query symbol-context <symbol>    Inspect definition, callers, callees, usages
+  3. gcx query find-callers <symbol>      Check callers before editing
+
+Setup:
+  gcx init --editor none                  CLI-only setup (non-TTY default)
+  gcx init --editor <token>               Configure an editor (claude, cursor, windsurf, copilot, antigravity, codex, all)
+  gcx doctor                              Verify hooks, store, readiness, and registrations";
+
 #[derive(Parser)]
-#[command(name = "gcx", version, about = "GitCortex knowledge-graph CLI")]
+#[command(
+    name = "gcx",
+    version,
+    about = "GitCortex knowledge-graph CLI",
+    after_help = FIRST_ANSWER_HELP
+)]
 struct Cli {
     /// When to emit ANSI colour: auto (TTY only), always, never.
     /// Also respects NO_COLOR, CLICOLOR=0, TERM=dumb when set to auto.
@@ -45,7 +61,8 @@ enum Commands {
         #[arg(long)]
         ci: bool,
         /// Editor to configure: none, auto, claude, cursor, windsurf, copilot, antigravity, codex, all.
-        /// No editor configuration is written unless this flag is supplied.
+        /// In an interactive TTY on first run, omitting --editor opens a one-time chooser;
+        /// in non-TTY / CI runs it stays CLI-only (none) unless --editor is passed.
         #[arg(long, value_name = "EDITOR")]
         editor: Option<String>,
         /// Permit changes to editor configuration outside this repository.
@@ -91,7 +108,7 @@ enum Commands {
         repo_root: std::path::PathBuf,
     },
     /// One-shot query commands — useful for manual testing.
-    #[command(subcommand)]
+    #[command(subcommand, after_help = FIRST_ANSWER_HELP)]
     Query(QueryCmd),
     /// Visualise the knowledge graph in the browser or as DOT output.
     Viz {
@@ -106,11 +123,15 @@ enum Commands {
         port: u16,
     },
     /// Show the blast radius of changes between two branches.
+    ///
+    /// `--base` defaults to the current checkout branch. To compare a feature
+    /// branch against a different target branch, pass `--base <target> --head HEAD`
+    /// explicitly (for example: `gcx blast-radius --base main --head HEAD`).
     BlastRadius {
-        /// Base branch (the target you're merging into).
+        /// Base branch (defaults to the current checkout branch; pass `--base main` to compare against main).
         #[arg(long, default_value_t = default_branch())]
         base: String,
-        /// Head branch (the branch with changes).
+        /// Head branch or ref (defaults to HEAD).
         #[arg(long, default_value = "HEAD")]
         head: String,
         /// BFS depth for transitive caller discovery.
