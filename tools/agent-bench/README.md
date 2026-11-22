@@ -53,6 +53,7 @@ a base/head comparison even when the payload shrank.
 Run the tests for the scorer and harness wiring:
 
 ```bash
+python3 -m pip install -r tools/agent-bench/requirements-test.txt
 cd tools/agent-bench && python3 -m unittest discover -p "test_*.py"
 ```
 
@@ -165,6 +166,22 @@ runner refuses to start a run it cannot afford, and a run with no reported cost
 (timeout, crash) is charged its full cap. `--max-runs` bounds run count.
 `--dry-run` prints the plan and spends nothing. Only `--client claude` is
 supported: `codex exec` does not expose ad-hoc MCP tools.
+
+## Continuous-coding episodes (does gcx help finish multi-step work?)
+
+Multi-step episodes on pinned repos, one persistent Claude Code session each,
+scored by hidden behavioral tests. Details, the verification matrix, and
+caveats: `docs/benchmarks/continuous-episodes-v1.md`.
+
+```bash
+python3 tools/agent-bench/continuous_verify.py          # free; proves tests fail at start, pass on reference
+python3 tools/agent-bench/continuous_run.py --gcx /path/to/gcx --label ep \
+  --verification tools/agent-bench/results/continuous-verify-<ts>.json \
+  --arms baseline,gcx-guide --rounds 3 --max-total-usd 20
+```
+
+`continuous_run.py` refuses to run without a passing, digest-matching
+verification record, and shares the spend cap with the unforced lane.
 
 ## Lanes
 

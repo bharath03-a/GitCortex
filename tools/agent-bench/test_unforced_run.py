@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from dataclasses import replace
 from collections import Counter
 from pathlib import Path
 
@@ -210,6 +211,16 @@ class CapEnforcementTests(unittest.TestCase):
         self.assertAlmostEqual(after.spent_usd, 0.4)
         self.assertIsNotNone(stop)
         self.assertEqual(len(calls), 3)
+
+    def test_nonzero_client_exit_cannot_report_success_from_a_success_event(self) -> None:
+        runner = fake_runner(0.05, [])
+
+        def failed_client(command, cwd, timeout_s):
+            return replace(runner(command, cwd, timeout_s), returncode=1)
+
+        out, _ = self._execute(RunBudget(5.0, 1.0), failed_client, plan_size=1)
+        self.assertFalse(out[0][0]["success"])
+        self.assertEqual(out[0][0]["status"], "client_error")
 
     def test_record_carries_adoption_grade_and_provenance_fields(self) -> None:
         calls: list[list[str]] = []

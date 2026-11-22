@@ -190,6 +190,11 @@ def _repeats(events: list[ToolEvent]) -> tuple[int, int]:
     return repeat_reads, repeat_commands
 
 
+def repeat_counts(events: list[ToolEvent] | tuple[ToolEvent, ...]) -> tuple[int, int]:
+    """(repeat reads, repeat commands) over any event sequence, e.g. a whole multi-step session."""
+    return _repeats(list(events))
+
+
 def _classify(result: dict[str, Any] | None, answer: str) -> tuple[str, str | None]:
     if result is None:
         return "no_result", None
