@@ -546,6 +546,8 @@ def command_run(args: argparse.Namespace) -> int:
         raise BenchError("no tasks selected")
 
     work = args.work.resolve()
+    # Child gcx processes inherit this, keeping indexes inside --work.
+    os.environ["GCX_STORE_PATH"] = str(work / "store")
     adapter = RetrievalAdapter(gcx) if args.adapter == "retrieval" else LegacyRetrievalAdapter(gcx)
     repo_dirs: dict[str, Path] = {}
     index_seconds: dict[str, float] = {}
