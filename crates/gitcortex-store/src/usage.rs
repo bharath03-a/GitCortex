@@ -326,3 +326,195 @@ pub fn scan_store_root(root: &Path) -> Result<Vec<RepoUsage>> {
     repos.sort_by(|a, b| a.repo_id.cmp(&b.repo_id));
     Ok(repos)
 }
+
+// ── Storage pruning (`gcx storage prune`) ────────────────────────────────────
+
+/// Policy controlling which store entries [`plan_prune`] selects for removal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PrunePolicy {
+    /// Remove stores whose `worktree_root` no longer exists while its parent does.
+    pub orphaned: bool,
+    /// Remove historical `*.bak-*` dirs and leftover `graph.kuzu.pre-compact-*` payloads.
+    pub backups: bool,
+    /// Remove `Unknown` (metadata-less) stores whose `graph.kuzu` mtime is at
+    /// least this many days old. `None` never selects `Unknown` stores.
+    pub unknown_older_than_days: Option<u32>,
+}
+
+impl Default for PrunePolicy {
+    fn default() -> Self {
+        Self {
+            orphaned: true,
+            backups: true,
+            unknown_older_than_days: None,
+        }
+    }
+}
+
+/// Dry-run plan produced by [`plan_prune`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrunePlan {
+    pub items: Vec<(RepoUsage, &'static str)>,
+    pub bytes: u64,
+}
+
+/// Outcome returned by [`apply_prune`].
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct PruneReport {
+    pub removed: u64,
+    pub skipped_locked: Vec<PathBuf>,
+}
+
+fn is_pre_compact_leftover(file_name: &str) -> bool {
+    file_name
+        .strip_prefix("graph.kuzu.pre-compact-")
+        .map(|rest| !rest.is_empty())
+        .unwrap_or(false)
+}
+
+fn unknown_dir_reference_mtime(dir: &Path) -> Option<std::time::SystemTime> {
+    let graph = dir.join("graph.kuzu");
+    if let Ok(meta) = fs::metadata(&graph) {
+        if let Ok(modified) = meta.modified() {
+            return Some(modified);
+        }
+    }
+    fs::metadata(dir).ok().and_then(|m| m.modified().ok())
+}
+
+fn is_older_than_days(mtime: std::time::SystemTime, days: u32, now: std::time::SystemTime) -> bool {
+    let threshold = std::time::Duration::from_secs(u64::from(days).saturating_mul(86_400));
+    match now.duration_since(mtime) {
+        Ok(age) => age >= threshold,
+        Err(_) => false,
+    }
+}
+
+/// Compute a dry-run [`PrunePlan`] for `root` under `policy`. Never deletes files.
+pub fn plan_prune(root: &Path, policy: &PrunePolicy) -> Result<PrunePlan> {
+    let now = std::time::SystemTime::now();
+    let repos = scan_store_root(root)?;
+    let mut items: Vec<(RepoUsage, &'static str)> = Vec::new();
+    let mut bytes = 0u64;
+
+    for repo in repos {
+        match repo.status {
+            RepoStatus::Orphaned if policy.orphaned => {
+                bytes = bytes.saturating_add(repo.bytes);
+                items.push((repo, "orphaned"));
+                continue;
+            }
+            RepoStatus::Backup if policy.backups => {
+                bytes = bytes.saturating_add(repo.bytes);
+                items.push((repo, "backup"));
+                continue;
+            }
+            RepoStatus::Unknown => {
+                if let Some(days) = policy.unknown_older_than_days {
+                    if let Some(mtime) = unknown_dir_reference_mtime(&repo.dir) {
+                        if is_older_than_days(mtime, days, now) {
+                            bytes = bytes.saturating_add(repo.bytes);
+                            items.push((repo, "unknown"));
+                            continue;
+                        }
+                    }
+                }
+            }
+            RepoStatus::Unreachable => {
+                // Never prune unreachable stores (e.g., unmounted volumes).
+                continue;
+            }
+            RepoStatus::Active | RepoStatus::Orphaned | RepoStatus::Backup => {}
+        }
+
+        if !policy.backups {
+            continue;
+        }
+
+        // Only prune leftover `graph.kuzu.pre-compact-*` payloads when a live
+        // `graph.kuzu` is present so crash-recovery backups are never destroyed.
+        if !repo.dir.join("graph.kuzu").exists() {
+            continue;
+        }
+        let Ok(entries) = fs::read_dir(&repo.dir) else {
+            continue;
+        };
+        let mut leftovers = Vec::new();
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name_str = name.to_string_lossy();
+            if is_pre_compact_leftover(&name_str) {
+                leftovers.push(entry.path());
+            }
+        }
+        leftovers.sort();
+        for path in leftovers {
+            let size = dir_size_bytes(&path);
+            bytes = bytes.saturating_add(size);
+            items.push((
+                RepoUsage {
+                    repo_id: repo.repo_id.clone(),
+                    dir: path,
+                    bytes: size,
+                    meta: None,
+                    status: RepoStatus::Backup,
+                    branches: Vec::new(),
+                },
+                "pre-compact backup",
+            ));
+        }
+    }
+
+    Ok(PrunePlan { items, bytes })
+}
+
+fn try_lock_store_dir(store_dir: &Path) -> Result<Option<Option<fs::File>>> {
+    let lock_path = store_dir.join("serve.lock");
+    if !lock_path.exists() {
+        return Ok(Some(None));
+    }
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&lock_path)?;
+    match fs2::FileExt::try_lock_exclusive(&file) {
+        Ok(()) => Ok(Some(Some(file))),
+        Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
+        Err(err) => Err(GitCortexError::Io(err)),
+    }
+}
+
+/// Execute a [`PrunePlan`], skipping any target whose repository `serve.lock`
+/// is currently held by another process.
+pub fn apply_prune(plan: &PrunePlan) -> Result<PruneReport> {
+    let mut report = PruneReport::default();
+
+    for (usage, _reason) in &plan.items {
+        let target = &usage.dir;
+        let meta = match fs::symlink_metadata(target) {
+            Ok(m) => m,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(err) => return Err(GitCortexError::Io(err)),
+        };
+
+        let store_dir = if meta.is_dir() {
+            target.as_path()
+        } else {
+            target.parent().unwrap_or(target.as_path())
+        };
+
+        let Some(_lock_guard) = try_lock_store_dir(store_dir)? else {
+            report.skipped_locked.push(target.clone());
+            continue;
+        };
+
+        if meta.is_dir() {
+            fs::remove_dir_all(target)?;
+        } else {
+            fs::remove_file(target)?;
+        }
+        report.removed = report.removed.saturating_add(usage.bytes);
+    }
+
+    Ok(report)
+}
