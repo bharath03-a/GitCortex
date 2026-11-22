@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns">
+  <key id="name" for="node" attr.name="name" attr.type="string"/>
+  <key id="kind" for="node" attr.name="kind" attr.type="string"/>
+  <key id="file" for="node" attr.name="file" attr.type="string"/>
+  <key id="qname" for="node" attr.name="qualified_name" attr.type="string"/>
+  <key id="line" for="node" attr.name="start_line" attr.type="int"/>
+  <key id="ekind" for="edge" attr.name="kind" attr.type="string"/>
+  <graph id="gitcortex-main" edgedefault="directed">
+    <node id="2598a175-2a19-5d0c-8fc0-5d7c56b0b483">
+      <data key="name">&quot;x&lt;script&gt;`|&quot;&lt;/script&gt;λ</data>
+      <data key="kind">function</data>
+      <data key="file">tests/integration/fixtures/sample.rs</data>
+      <data key="qname">sample::function_0</data>
+      <data key="line">1</data>
+    </node>
+    <node id="3e49f44d-3c03-59c4-a88b-c5c9b3bcd140">
+      <data key="name">function_1</data>
+      <data key="kind">function</data>
+      <data key="file">tests/integration/fixtures/sample.rs</data>
+      <data key="qname">sample::function_1</data>
+      <data key="line">2</data>
+    </node>
+    <node id="8fbc0cfc-0efd-574c-803e-6518a3384aaa">
+      <data key="name">function_2</data>
+      <data key="kind">function</data>
+      <data key="file">tests/integration/fixtures/sample.rs</data>
+      <data key="qname">sample::function_2</data>
+      <data key="line">3</data>
+    </node>
+    <node id="c666d9fa-d801-59be-b8d9-79e491566390">
+      <data key="name">function_3</data>
+      <data key="kind">function</data>
+      <data key="file">tests/integration/fixtures/sample.rs</data>
+      <data key="qname">sample::function_3</data>
+      <data key="line">4</data>
+    </node>
+    <node id="08db6c11-db36-5002-bc44-b802705909df">
+      <data key="name">sample</data>
+      <data key="kind">module</data>
+      <data key="file">sample.rs</data>
+      <data key="qname">sample</data>
+      <data key="line">1</data>
+    </node>
+    <node id="4c9d203f-4915-591a-83e2-6b167d824259">
+      <data key="name">Greeter</data>
+      <data key="kind">trait</data>
+      <data key="file">sample.rs</data>
+      <data key="qname">crate::Greeter</data>
+      <data key="line">1</data>
+    </node>
+    <node id="f42cf851-5de5-5cd6-8bdd-19293be765a0">
+      <data key="name">Hello</data>
+      <data key="kind">struct</data>
+      <data key="file">sample.rs</data>
+      <data key="qname">crate::Hello</data>
+      <data key="line">5</data>
+    </node>
+    <node id="6ac25e01-c743-5012-9154-bbabd27cb257">
+      <data key="name">greet</data>
+      <data key="kind">method</data>
+      <data key="file">sample.rs</data>
+      <data key="qname">crate::Hello::greet</data>
+      <data key="line">10</data>
+    </node>
+    <node id="15309f2e-98f6-51bf-97d1-93b5be5e5851">
+      <data key="name">make_greeting</data>
+      <data key="kind">function</data>
+      <data key="file">sample.rs</data>
+      <data key="qname">crate::make_greeting</data>
+      <data key="line">15</data>
+    </node>
+    <edge id="e0" source="2598a175-2a19-5d0c-8fc0-5d7c56b0b483" target="3e49f44d-3c03-59c4-a88b-c5c9b3bcd140">
+      <data key="ekind">calls</data>
+    </edge>
+    <edge id="e1" source="3e49f44d-3c03-59c4-a88b-c5c9b3bcd140" target="8fbc0cfc-0efd-574c-803e-6518a3384aaa">
+      <data key="ekind">calls</data>
+    </edge>
+    <edge id="e2" source="8fbc0cfc-0efd-574c-803e-6518a3384aaa" target="c666d9fa-d801-59be-b8d9-79e491566390">
+      <data key="ekind">calls</data>
+    </edge>
+    <edge id="e3" source="f42cf851-5de5-5cd6-8bdd-19293be765a0" target="4c9d203f-4915-591a-83e2-6b167d824259">
+      <data key="ekind">implements</data>
+    </edge>
+    <edge id="e4" source="f42cf851-5de5-5cd6-8bdd-19293be765a0" target="6ac25e01-c743-5012-9154-bbabd27cb257">
+      <data key="ekind">contains</data>
+    </edge>
+  </graph>
+</graphml>

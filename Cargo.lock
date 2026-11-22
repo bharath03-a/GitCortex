@@ -1340,10 +1340,12 @@ dependencies = [
  "axum",
  "clap",
  "gitcortex-core",
+ "gitcortex-indexer",
  "gitcortex-store",
  "open",
  "serde",
  "serde_json",
+ "sha2",
  "tokio",
  "tracing",
 ]
