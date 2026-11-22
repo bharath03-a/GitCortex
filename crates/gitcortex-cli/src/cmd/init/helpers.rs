@@ -10,12 +10,11 @@ pub fn repo_root() -> Result<PathBuf> {
         .args(["rev-parse", "--show-toplevel"])
         .output()
         .context("git rev-parse failed — are you inside a git repository?")?;
-    if !output.status.success() {
-        anyhow::bail!("not inside a git repository");
+    let root = String::from_utf8(output.stdout)?.trim().to_owned();
+    if !output.status.success() || root.is_empty() {
+        anyhow::bail!("not inside a git repository; cd <repository> and retry");
     }
-    Ok(PathBuf::from(
-        String::from_utf8(output.stdout)?.trim().to_owned(),
-    ))
+    Ok(PathBuf::from(root))
 }
 
 /// Replace a text file atomically while retaining its existing permissions.

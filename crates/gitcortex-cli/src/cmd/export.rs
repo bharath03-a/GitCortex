@@ -656,16 +656,7 @@ fn render_node(
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 fn repo_root() -> Result<PathBuf> {
-    let out = std::process::Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-        .context("git rev-parse failed")?;
-    if !out.status.success() {
-        anyhow::bail!("not inside a git repository");
-    }
-    Ok(PathBuf::from(
-        String::from_utf8(out.stdout)?.trim().to_owned(),
-    ))
+    crate::cmd::init::helpers::repo_root()
 }
 
 fn current_branch(repo_root: &Path) -> Result<String> {

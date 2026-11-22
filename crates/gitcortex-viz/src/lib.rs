@@ -1115,20 +1115,42 @@ async fn list_local_branches_async() -> Result<Vec<String>> {
 
 // ─── DOT export (sync — called from `run` before tokio runtime exists) ────────
 
+fn repo_root_in(dir: Option<&std::path::Path>) -> Result<PathBuf> {
+    let mut cmd = std::process::Command::new("git");
+    cmd.args(["rev-parse", "--show-toplevel"]);
+    if let Some(d) = dir {
+        cmd.current_dir(d);
+    }
+    let out = cmd.output().context("git rev-parse failed")?;
+    let root = String::from_utf8(out.stdout)?.trim().to_owned();
+    if !out.status.success() || root.is_empty() {
+        anyhow::bail!("not inside a git repository; cd <repository> and retry");
+    }
+    Ok(PathBuf::from(root))
+}
+
 fn repo_root() -> Result<PathBuf> {
-    let out = std::process::Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-        .context("git rev-parse failed")?;
-    Ok(PathBuf::from(
-        String::from_utf8(out.stdout)?.trim().to_owned(),
-    ))
+    repo_root_in(None)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::export::formats::{cypher_id, cypher_str, escape_script_payload, svg_escape};
+
+    #[test]
+    fn repo_root_rejects_outside_git_repository() {
+        let dir =
+            std::env::temp_dir().join(format!("gitcortex-viz-outside-repo-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let err = repo_root_in(Some(&dir)).expect_err("non-git dir must fail");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            err.to_string().contains("cd <repository>"),
+            "unexpected error: {err}"
+        );
+    }
 
     #[test]
     fn weighted_risk_band_preserves_uniform_extracted_bands() {
