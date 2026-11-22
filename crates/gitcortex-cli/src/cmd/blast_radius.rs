@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use gitcortex_core::{
@@ -10,6 +10,7 @@ use gitcortex_core::{
 use gitcortex_store::kuzu::KuzuGraphStore;
 use serde_json::{json, Value};
 
+use crate::exit::CliExit;
 use gitcortex_core::graph::NodeId;
 
 #[derive(clap::ValueEnum, Clone, Debug)]
@@ -22,27 +23,32 @@ pub enum BlastFormat {
 
 pub fn run(base: String, head: String, depth: u8, format: BlastFormat) -> Result<()> {
     let repo_root = repo_root()?;
+    for reference in [&base, &head] {
+        verify_ref(&repo_root, reference)?;
+    }
+
     let store = KuzuGraphStore::open(&repo_root).context("failed to open graph store")?;
-    for branch in [&base, &head] {
+    let base_key = resolve_graph_key(&repo_root, &store, &base)?;
+    let head_key = resolve_graph_key(&repo_root, &store, &head)?;
+
+    for branch in [&base_key, &head_key] {
         let index = gitcortex_mcp::mcp::readiness::inspect(&repo_root, &store, branch);
         if index.state != "ready" {
-            anyhow::bail!(
+            return Err(anyhow::Error::new(CliExit::NotReady).context(format!(
                 "index {} on branch '{}': {}",
-                index.state,
-                index.branch,
-                index.next_action
-            );
+                index.state, index.branch, index.next_action
+            )));
         }
     }
 
     let diff = store
-        .branch_diff(&base, &head)
+        .branch_diff(&base_key, &head_key)
         .context("branch diff failed")?;
     let base_nodes = store
-        .list_all_nodes(&base)
+        .list_all_nodes(&base_key)
         .context("list base nodes failed")?;
     let all_nodes = store
-        .list_all_nodes(&head)
+        .list_all_nodes(&head_key)
         .context("list head nodes failed")?;
     let changed_nodes = changed_nodes_from_diff(diff, &base_nodes, &all_nodes);
 
@@ -65,10 +71,10 @@ pub fn run(base: String, head: String, depth: u8, format: BlastFormat) -> Result
     }
 
     let base_edges = store
-        .list_all_edges(&base)
+        .list_all_edges(&base_key)
         .context("list base edges failed")?;
     let all_edges = store
-        .list_all_edges(&head)
+        .list_all_edges(&head_key)
         .context("list head edges failed")?;
 
     // node_id → Node lookup
@@ -376,17 +382,133 @@ fn node_to_json(n: &Node) -> Value {
     })
 }
 
+fn git_output(root: &Path, args: &[&str]) -> Result<std::process::Output> {
+    std::process::Command::new("git")
+        .args(args)
+        .current_dir(root)
+        .output()
+        .with_context(|| format!("git {} failed", args.first().copied().unwrap_or("")))
+}
+
+fn verify_ref(root: &Path, reference: &str) -> Result<()> {
+    let out = git_output(
+        root,
+        &[
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            &format!("{reference}^{{commit}}"),
+        ],
+    )?;
+    if !out.status.success() {
+        return Err(anyhow::Error::new(CliExit::InvalidInput)
+            .context(format!("invalid git ref '{reference}'")));
+    }
+    Ok(())
+}
+
+/// Chase chained symbolic refs (up to 8 hops) to their canonical target ref.
+fn chase_symbolic_ref(root: &Path, start: &str) -> Option<String> {
+    let mut current = start.to_owned();
+    let mut resolved_any = false;
+    for _ in 0..8 {
+        let out = git_output(root, &["symbolic-ref", "--quiet", &current]).ok()?;
+        if !out.status.success() {
+            break;
+        }
+        let next = String::from_utf8(out.stdout).ok()?.trim().to_owned();
+        if next.is_empty() || next == current {
+            break;
+        }
+        current = next;
+        resolved_any = true;
+    }
+    resolved_any.then_some(current)
+}
+
+/// Resolve a user-supplied Git ref into the canonical graph key stored in Kuzu:
+/// - Attached `HEAD` and symbolic ref aliases -> canonical local branch name.
+/// - Distinct local branches pointing at the same commit keep their own branch name.
+/// - Detached `HEAD` and commit SHAs -> full 40-char SHA if indexed under full SHA,
+///   else matching short SHA if indexed under the detached checkout convention,
+///   else full 40-char SHA (never certifying an unindexed key).
+fn resolve_graph_key(root: &Path, store: &dyn GraphStore, reference: &str) -> Result<String> {
+    if reference == "HEAD" {
+        if let Some(target) = chase_symbolic_ref(root, "HEAD") {
+            if let Some(branch) = target.strip_prefix("refs/heads/") {
+                return Ok(branch.to_owned());
+            }
+        }
+        return resolve_commit_graph_key(root, store, "HEAD");
+    }
+
+    let local_ref = if reference.starts_with("refs/heads/") {
+        Some(reference.to_owned())
+    } else {
+        let candidate = format!("refs/heads/{reference}");
+        let exists = git_output(root, &["show-ref", "--verify", "--quiet", &candidate])
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        let is_sym = git_output(root, &["symbolic-ref", "--quiet", &candidate])
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        (exists || is_sym).then_some(candidate)
+    };
+
+    if let Some(full_ref) = local_ref {
+        let canonical = chase_symbolic_ref(root, &full_ref).unwrap_or(full_ref);
+        if let Some(branch) = canonical.strip_prefix("refs/heads/") {
+            return Ok(branch.to_owned());
+        }
+    }
+
+    resolve_commit_graph_key(root, store, reference)
+}
+
+fn resolve_commit_graph_key(
+    root: &Path,
+    store: &dyn GraphStore,
+    reference: &str,
+) -> Result<String> {
+    let full_out = git_output(
+        root,
+        &[
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            &format!("{reference}^{{commit}}"),
+        ],
+    )?;
+    if !full_out.status.success() {
+        return Err(anyhow::Error::new(CliExit::InvalidInput)
+            .context(format!("invalid git ref '{reference}'")));
+    }
+    let full_sha = String::from_utf8(full_out.stdout)?.trim().to_owned();
+    if matches!(store.last_indexed_sha(&full_sha), Ok(Some(_))) {
+        return Ok(full_sha);
+    }
+    let short_out = git_output(root, &["rev-parse", "--short", &full_sha])?;
+    if short_out.status.success() {
+        let short_sha = String::from_utf8(short_out.stdout)?.trim().to_owned();
+        if !short_sha.is_empty()
+            && matches!(store.last_indexed_sha(&short_sha), Ok(Some(ref sha)) if sha == &full_sha)
+        {
+            return Ok(short_sha);
+        }
+    }
+    Ok(full_sha)
+}
+
 fn repo_root() -> Result<PathBuf> {
     let out = std::process::Command::new("git")
         .args(["rev-parse", "--show-toplevel"])
         .output()
         .context("git rev-parse failed")?;
-    if !out.status.success() {
-        anyhow::bail!("not inside a git repository");
+    let root = String::from_utf8(out.stdout)?.trim().to_owned();
+    if !out.status.success() || root.is_empty() {
+        anyhow::bail!("not inside a git repository; cd <repository> and retry");
     }
-    Ok(PathBuf::from(
-        String::from_utf8(out.stdout)?.trim().to_owned(),
-    ))
+    Ok(PathBuf::from(root))
 }
 
 #[cfg(test)]
