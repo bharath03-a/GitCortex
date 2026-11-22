@@ -21,7 +21,7 @@
 @font-face {
   font-family: "Space Grotesk";
   font-style: normal;
-  font-weight: 600 700;
+  font-weight: 600;
   font-display: swap;
   src: url("../../node_modules/@fontsource/space-grotesk/files/space-grotesk-latin-600-normal.woff2")
     format("woff2");
@@ -55,6 +55,20 @@
 }
 
 @theme {
+  --text-ui-xs: 12px;
+  --text-ui-sm: 13px;
+  --text-ui-base: 14px;
+  --text-ui-lg: 16px;
+  --text-ui-title: 18px;
+  --text-graph-label: 13px;
+  --leading-ui: 1.45;
+  --leading-heading: 1.25;
+  --font-weight-ui: 400;
+  --font-weight-label: 500;
+  --font-weight-heading: 600;
+  --tracking-ui: 0;
+  --tracking-heading: 0.02em;
+
   /* GitCortex product palette — shared with the technical datasheet. */
   --color-void: #fcfcfa;
   --color-void-deep: #ffffff;
@@ -63,14 +77,17 @@
   --color-border-subtle: #e5e4de;
   --color-border-strong: #cbc9c0;
   --color-text-primary: #14141a;
-  --color-text-muted: #55555f;
-  --color-text-dim: #7a7a84;
+  --color-text-muted: #484852;
+  --color-text-dim: #53535d;
+  /* Accent/accent-deep are decorative. F7/F8 guard legacy component text
+     migration to accent-text and verify rendered contrast. */
   --color-accent: #c4633f;
   --color-accent-deep: #a84d2d;
+  --color-accent-text: #87341a;
   --color-accent-soft: rgba(196, 99, 63, 0.1);
-  --color-good: #2f6f5e;
-  --color-warn: #8a6d28;
-  --color-bad: #b84b42;
+  --color-good: #245c4c;
+  --color-warn: #654911;
+  --color-bad: #91312a;
 }
 
 :root,
@@ -94,14 +111,15 @@
   --color-border-subtle: #2c313a;
   --color-border-strong: #464d59;
   --color-text-primary: #f0eee8;
-  --color-text-muted: #b5b1a8;
-  --color-text-dim: #81858f;
+  --color-text-muted: #c7c3ba;
+  --color-text-dim: #b9bdc7;
   --color-accent: #e17b54;
   --color-accent-deep: #f08d66;
+  --color-accent-text: #ffba97;
   --color-accent-soft: rgba(225, 123, 84, 0.14);
-  --color-good: #72b69f;
-  --color-warn: #d2ac5c;
-  --color-bad: #df756c;
+  --color-good: #93d4bd;
+  --color-warn: #f0c877;
+  --color-bad: #ffada4;
   --shadow-float: 0 1px 2px rgba(0, 0, 0, 0.32), 0 22px 54px -24px rgba(0, 0, 0, 0.85);
   --canvas-grid-minor: rgba(238, 236, 230, 0.025);
   --canvas-grid-major: rgba(225, 123, 84, 0.045);
@@ -122,13 +140,41 @@ body,
   overflow: hidden;
 }
 
-* {
-  box-sizing: border-box;
+body,
+#root {
+  font-size: var(--text-ui-base);
+  font-weight: var(--font-weight-ui);
+  line-height: var(--leading-ui);
+  letter-spacing: var(--tracking-ui);
 }
 
-button,
-input {
-  font-family: inherit;
+@layer base {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-sans);
+    font-weight: var(--font-weight-heading);
+    line-height: var(--leading-heading);
+    letter-spacing: var(--tracking-heading);
+    text-transform: none;
+  }
+
+  /* Controls inherit the 14px/1.45 UI baseline; utilities may override both. */
+  button,
+  input,
+  select,
+  textarea {
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+  }
+}
+
+* {
+  box-sizing: border-box;
 }
 
 button {
@@ -136,8 +182,7 @@ button {
 }
 
 .font-mono,
-code,
-kbd {
+code {
   font-family: var(--font-mono);
 }
 
@@ -221,12 +266,21 @@ kbd {
 
 .graph-point-label {
   color: var(--color-text-primary) !important;
-  background: color-mix(in srgb, var(--color-void-deep) 90%, transparent) !important;
+  background: var(--color-void-deep) !important;
   border: 1px solid var(--color-border-subtle);
   border-radius: 4px;
   padding: 2px 5px;
   font-family: var(--font-mono);
-  font-weight: 500;
+  /* Cosmograph pointLabelFontSize wins; this is the CSS fallback. */
+  font-size: var(--text-graph-label);
+  font-weight: var(--font-weight-label);
+  line-height: 1.35;
+  letter-spacing: 0;
+  text-shadow:
+    1px 0 var(--color-void-deep),
+    -1px 0 var(--color-void-deep),
+    0 1px var(--color-void-deep),
+    0 -1px var(--color-void-deep);
   box-shadow: 0 2px 8px var(--cluster-label-shadow);
   backdrop-filter: blur(8px);
 }
