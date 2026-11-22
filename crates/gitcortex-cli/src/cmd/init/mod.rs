@@ -91,11 +91,16 @@ pub fn run(
         style::paint(style::hint_style(), &format!("({ms}ms)"))
     );
     print_field("Graph", &format!("{nodes} nodes | {edges} edges"));
-    print_field("Hooks", &format!("{hooks} git hooks installed"));
+    let hooks_summary = if hooks == 0 {
+        "0 added; existing hooks retained".to_owned()
+    } else {
+        format!("{hooks} git hooks installed")
+    };
+    print_field("Hooks", &hooks_summary);
     if editor_names.is_empty() {
         print_field(
             "Editors",
-            "none (use `gcx init --editor <name>` to configure one)",
+            "none (accepted tokens: claude, cursor, windsurf, copilot, antigravity, codex, all)",
         );
     } else {
         print_field("Editors", &editor_names.join(", "));
@@ -114,8 +119,58 @@ pub fn run(
     if ci {
         print_field("CI", ".github/workflows/gcx-blast-radius.yml");
     }
+    print_next_steps(&editor_names, &repo_root)?;
     println!();
 
+    Ok(())
+}
+
+fn print_next_steps(editor_names: &[&str], repo_root: &std::path::Path) -> Result<()> {
+    println!();
+    print_field(
+        "Try next",
+        "gcx query search <fragment>  (then `gcx query symbol-context <symbol>` or `gcx query find-callers <symbol>`)",
+    );
+    print_field(
+        "",
+        "Replace <fragment> and <symbol> with a real symbol from this repository.",
+    );
+    if !editor_names.is_empty() {
+        print_field(
+            "Editors",
+            "review generated integration files (`git status`), then trust or reload the workspace in your editor.",
+        );
+        print_field(
+            "Readiness",
+            "uncommitted edits (including Markdown docs) leave the working tree `unverified` until committed or re-indexed.",
+        );
+    }
+    if let Ok(dirty) = gitcortex_mcp::mcp::readiness::changed_sources(repo_root) {
+        if !dirty.is_empty() {
+            let preview: Vec<String> = dirty
+                .iter()
+                .take(3)
+                .map(|p| p.display().to_string())
+                .collect();
+            let suffix = if dirty.len() > 3 {
+                format!(" (+{} more)", dirty.len() - 3)
+            } else {
+                String::new()
+            };
+            print_field(
+                "Unverified",
+                &format!(
+                    "{}{} — working-tree changes stay `unverified` until committed",
+                    preview.join(", "),
+                    suffix
+                ),
+            );
+        }
+    }
+    print_field(
+        "Health",
+        "run `gcx doctor` to check setup, or `gcx deinit` to remove hooks and editor files.",
+    );
     Ok(())
 }
 

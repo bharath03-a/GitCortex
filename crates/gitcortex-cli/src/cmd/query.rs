@@ -548,6 +548,18 @@ fn print_agent_symbol_context(response: &gitcortex_mcp::mcp::agent::AgentSymbolC
         paint(header_style(), "[GitCortex]"),
         paint(hint_style(), &response.answer)
     );
+    if let Some(symbol) = &response.symbol {
+        println!(
+            "  {} {} {}  {}",
+            paint(header_style(), "definition:"),
+            paint(kind_style_from_str(&symbol.kind), &symbol.kind),
+            paint(name_style(), &symbol.qualified_name),
+            paint(
+                path_style(),
+                &format!("{}:{}", symbol.file, symbol.start_line)
+            )
+        );
+    }
     if !response.candidates.is_empty() {
         println!("  {}", paint(header_style(), "qualified candidates:"));
         for candidate in &response.candidates {
