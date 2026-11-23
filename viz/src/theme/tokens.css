@@ -273,7 +273,7 @@ code {
   font-family: var(--font-mono);
   /* Cosmograph pointLabelFontSize wins; this is the CSS fallback. */
   font-size: var(--text-graph-label);
-  font-weight: var(--font-weight-label);
+  font-weight: var(--font-weight-label) !important;
   line-height: 1.35;
   letter-spacing: 0;
   text-shadow:
@@ -283,6 +283,14 @@ code {
     0 -1px var(--color-void-deep);
   box-shadow: 0 2px 8px var(--cluster-label-shadow);
   backdrop-filter: blur(8px);
+}
+
+/* Cosmograph injects a runtime <style> with `.cosmographLabelBase` at (0,1,0)
+   forcing `font-weight: 400 !important` and `line-height: 1 !important` after
+   our stylesheet loads. Raise specificity to (0,2,0) so our tokens win. */
+.graph-point-label.graph-point-label {
+  font-weight: var(--font-weight-label) !important;
+  line-height: 1.35 !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
