@@ -3,9 +3,49 @@ use std::time::Instant;
 use anyhow::{Context, Result};
 use gitcortex_core::store::GraphStore;
 use gitcortex_indexer::IncrementalIndexer;
-use gitcortex_store::kuzu::KuzuGraphStore;
+use gitcortex_store::{kuzu::KuzuGraphStore, meta};
 
-use crate::cmd::{export, init::helpers::repo_root, serve_lock};
+use crate::cmd::{export, init::helpers::repo_root, serve_lock, storage};
+
+fn maybe_run_daily_branch_gc(repo_root: &std::path::Path, store: &mut KuzuGraphStore) {
+    let gc_t0 = Instant::now();
+    let repo_id = store.repo_id().to_owned();
+    if !meta::branch_gc_due_now(&repo_id) {
+        if std::env::var_os("GCX_TIMING").is_some() {
+            eprintln!(
+                "[gcx-timing] hook branch_gc skipped (not due, {}ms)",
+                gc_t0.elapsed().as_millis()
+            );
+        }
+        return;
+    }
+
+    match storage::run_gc_on_store(repo_root, store) {
+        Ok(report) => {
+            if let Err(err) = meta::mark_branch_gc_now(&repo_id) {
+                tracing::debug!("failed to record last_branch_gc: {err}");
+            }
+            if std::env::var_os("GCX_TIMING").is_some() {
+                eprintln!(
+                    "[gcx-timing] hook branch_gc ran: dropped={} kept={} ({}ms)",
+                    report.dropped.len(),
+                    report.kept,
+                    gc_t0.elapsed().as_millis()
+                );
+            }
+            if !report.dropped.is_empty() {
+                tracing::info!(
+                    dropped = report.dropped.len(),
+                    kept = report.kept,
+                    "automatic daily branch GC completed"
+                );
+            }
+        }
+        Err(err) => {
+            tracing::debug!("automatic daily branch GC skipped: {err:#}");
+        }
+    }
+}
 
 pub fn run(branch_switch: bool) -> Result<()> {
     let t0 = Instant::now();
@@ -24,6 +64,10 @@ pub fn run(branch_switch: bool) -> Result<()> {
 
     let branch = current_branch(&repo_root)?;
     let mut store = KuzuGraphStore::open(&repo_root).context("failed to open graph store")?;
+
+    if branch_switch {
+        maybe_run_daily_branch_gc(&repo_root, &mut store);
+    }
 
     let last_sha = store.last_indexed_sha(&branch)?;
     if store.working_tree_dirty(&branch)? {

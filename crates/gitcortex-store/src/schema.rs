@@ -107,3 +107,42 @@ pub fn ensure_branch(conn: &mut Connection, branch: &str) -> Result<()> {
 
     Ok(())
 }
+
+/// Drop the edge, reference, and node tables for `key` (or raw branch name).
+///
+/// Drops `_edges` and `_references` before `_nodes` (Kuzu requires relationship
+/// tables referencing a node table to be dropped first). Idempotent: missing
+/// tables are silently ignored.
+pub fn drop_branch(conn: &mut Connection, key: &str) -> Result<()> {
+    let nt = node_table(key);
+    let et = edge_table(key);
+    let rt = reference_table(key);
+
+    for table in [et, rt, nt] {
+        if let Err(err) = conn.query(&format!("DROP TABLE IF EXISTS {table}")) {
+            let msg = err.to_string();
+            if !msg.to_ascii_lowercase().contains("does not exist") {
+                return Err(GitCortexError::Store(format!("drop table {table}: {msg}")));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// List sanitized branch keys that currently have a `{key}_nodes` table in Kuzu.
+pub fn list_branch_table_keys(conn: &Connection) -> Result<Vec<String>> {
+    let mut rows = conn
+        .query("CALL show_tables() RETURN name")
+        .map_err(|e| GitCortexError::Store(format!("list tables: {e}")))?;
+    let mut keys = Vec::new();
+    for row in rows.by_ref() {
+        if let Some(kuzu::Value::String(name)) = row.first() {
+            if let Some(key) = name.strip_suffix("_nodes") {
+                keys.push(key.to_owned());
+            }
+        }
+    }
+    keys.sort();
+    keys.dedup();
+    Ok(keys)
+}

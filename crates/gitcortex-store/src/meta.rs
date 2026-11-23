@@ -231,3 +231,47 @@ pub fn ensure_branch_registered(repo_id: &str, branch_name: &str) -> Result<()> 
 pub fn record_branch_indexed(repo_id: &str, branch_name: &str) -> Result<()> {
     upsert_branch(repo_id, build_branch_entry(branch_name, now_unix_secs()))
 }
+
+// ── Automatic branch GC timestamp (`last_branch_gc`) ─────────────────────────
+
+/// Minimum interval (in seconds) between automatic hook branch-GC runs (24 hours).
+pub const BRANCH_GC_INTERVAL_SECS: u64 = 86_400;
+
+/// Path to `{data_dir}/last_branch_gc`.
+pub fn last_branch_gc_path(repo_id: &str) -> PathBuf {
+    branch::data_dir(repo_id).join("last_branch_gc")
+}
+
+/// Read the Unix timestamp of the last automatic branch GC run, if any.
+pub fn read_last_branch_gc(repo_id: &str) -> Option<u64> {
+    fs::read_to_string(last_branch_gc_path(repo_id))
+        .ok()
+        .and_then(|s| s.trim().parse::<u64>().ok())
+}
+
+/// Write the Unix timestamp of the last automatic branch GC run.
+pub fn write_last_branch_gc(repo_id: &str, now: u64) -> Result<()> {
+    let path = last_branch_gc_path(repo_id);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&path, format!("{now}\n")).map_err(GitCortexError::Io)
+}
+
+/// Whether automatic hook branch GC is due at Unix time `now`.
+pub fn branch_gc_due(repo_id: &str, now: u64) -> bool {
+    match read_last_branch_gc(repo_id) {
+        None => true,
+        Some(last) => now.saturating_sub(last) >= BRANCH_GC_INTERVAL_SECS,
+    }
+}
+
+/// Whether automatic hook branch GC is due right now.
+pub fn branch_gc_due_now(repo_id: &str) -> bool {
+    branch_gc_due(repo_id, now_unix_secs())
+}
+
+/// Record the current time as the last automatic branch GC run.
+pub fn mark_branch_gc_now(repo_id: &str) -> Result<()> {
+    write_last_branch_gc(repo_id, now_unix_secs())
+}
