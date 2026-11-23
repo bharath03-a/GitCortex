@@ -174,7 +174,7 @@ class UsabilityDocsTests(unittest.TestCase):
 
         documented_viz_formats: set[str] = set()
         viz_format_re = re.compile(
-            r"gcx viz(?:\s+(?:--[a-z-]+(?:\s+[^\s`|;&>]+)?))*?\s+--format\s+([a-z0-9-]+)"
+            r"\bgcx viz\b[^`\n|;&>]*--format\s+([a-z0-9-]+)"
         )
         for path, text in all_docs.items():
             self.assertNotIn(
@@ -194,8 +194,9 @@ class UsabilityDocsTests(unittest.TestCase):
         self.assertNotIn("`mermaid`", viz_section.split("**Embedded")[0])
 
         expected_shipped = {"web", "html", "dot", "svg", "graphml", "cypher"}
-        self.assertTrue(
-            documented_viz_formats <= expected_shipped,
+        self.assertLessEqual(
+            documented_viz_formats,
+            expected_shipped,
             f"unexpected documented viz formats: {documented_viz_formats - expected_shipped}",
         )
 
@@ -212,7 +213,7 @@ class UsabilityDocsTests(unittest.TestCase):
                 self.assertEqual(cli_formats, expected_shipped)
                 self.assertNotIn("mermaid", cli_formats)
                 self.assertIn("CDN", viz_help)
-                self.assertTrue(documented_viz_formats <= cli_formats)
+                self.assertLessEqual(documented_viz_formats, cli_formats)
 
     def test_base_and_branch_defaults_match_help(self) -> None:
         reference = self._read("docs/REFERENCE.md")
