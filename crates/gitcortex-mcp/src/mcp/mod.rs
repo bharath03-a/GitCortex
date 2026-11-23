@@ -3,6 +3,7 @@ pub(crate) mod audit;
 pub mod centrality;
 pub mod clustering;
 pub(crate) mod git_helpers;
+pub mod guidance;
 pub(crate) mod helpers;
 pub mod ignore_rules;
 
