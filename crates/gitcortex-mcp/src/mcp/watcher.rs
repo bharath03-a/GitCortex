@@ -38,12 +38,31 @@ fn indexes_event(kind: EventKind) -> bool {
 
 /// Keep ingress and pending sets bounded. A dropped event triggers explicit
 /// reconciliation; it is never treated as a successful incremental update.
+#[cfg(test)]
 pub fn spawn_file_watcher(
     repo_root: PathBuf,
     store_arc: Arc<Mutex<KuzuGraphStore>>,
     branch: Arc<Mutex<String>>,
     graph_revision: Arc<AtomicU64>,
     unhealthy: Arc<AtomicBool>,
+) -> tokio::task::JoinHandle<()> {
+    spawn_file_watcher_with_pending(
+        repo_root,
+        store_arc,
+        branch,
+        graph_revision,
+        unhealthy,
+        Arc::new(AtomicBool::new(false)),
+    )
+}
+
+pub fn spawn_file_watcher_with_pending(
+    repo_root: PathBuf,
+    store_arc: Arc<Mutex<KuzuGraphStore>>,
+    branch: Arc<Mutex<String>>,
+    graph_revision: Arc<AtomicU64>,
+    unhealthy: Arc<AtomicBool>,
+    events_pending: Arc<AtomicBool>,
 ) -> tokio::task::JoinHandle<()> {
     unhealthy.store(true, Ordering::Release);
     tokio::spawn(async move {
@@ -53,10 +72,12 @@ pub fn spawn_file_watcher(
             branch,
             graph_revision,
             unhealthy.clone(),
+            events_pending.clone(),
         )
         .await
         {
             unhealthy.store(true, Ordering::Release);
+            events_pending.store(true, Ordering::Release);
             warn!("file watcher stopped: {error}");
         }
     })
@@ -68,11 +89,13 @@ async fn run_watcher(
     branch: Arc<Mutex<String>>,
     graph_revision: Arc<AtomicU64>,
     unhealthy: Arc<AtomicBool>,
+    events_pending: Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
     let (tx, mut rx) = mpsc::channel::<PathBuf>(MAX_PENDING);
     let rescan = Arc::new(AtomicBool::new(true));
     let callback_rescan = rescan.clone();
     let callback_health = unhealthy.clone();
+    let callback_pending = events_pending.clone();
     let event_epoch = Arc::new(AtomicU64::new(0));
     let callback_epoch = event_epoch.clone();
     let mut watcher: RecommendedWatcher =
@@ -82,12 +105,14 @@ async fn run_watcher(
                 Err(_) => {
                     callback_rescan.store(true, Ordering::Release);
                     callback_health.store(true, Ordering::Release);
+                    callback_pending.store(true, Ordering::Release);
                     return;
                 }
             };
             if event.need_rescan() {
                 callback_rescan.store(true, Ordering::Release);
                 callback_health.store(true, Ordering::Release);
+                callback_pending.store(true, Ordering::Release);
             }
             if !indexes_event(event.kind) {
                 return;
@@ -103,11 +128,12 @@ async fn run_watcher(
                     {
                         callback_rescan.store(true, Ordering::Release);
                         callback_health.store(true, Ordering::Release);
+                        callback_pending.store(true, Ordering::Release);
                     }
                     continue;
                 }
                 callback_epoch.fetch_add(1, Ordering::AcqRel);
-                callback_health.store(true, Ordering::Release);
+                callback_pending.store(true, Ordering::Release);
                 if tx.try_send(path).is_err() {
                     callback_rescan.store(true, Ordering::Release);
                     callback_health.store(true, Ordering::Release);
@@ -127,6 +153,53 @@ async fn run_watcher(
     let mut observed_disk: HashMap<PathBuf, Option<(u64, Option<std::time::SystemTime>)>> =
         HashMap::new();
     let mut last_probe = Instant::now();
+
+    // On daemon restart, if the persisted store already holds a dirty overlay
+    // whose checkpoint matches HEAD and the current changed source bytes on
+    // disk, recertify immediately without running a redundant full re-index.
+    if let (Some(current), Some(head)) = (
+        super::helpers::detect_current_branch(&repo_root),
+        git(&repo_root, &["rev-parse", "--verify", "HEAD"]),
+    ) {
+        let pre_epoch = event_epoch.load(Ordering::Acquire);
+        let recertified = store_arc.lock().ok().and_then(|store| {
+            let last = store.last_indexed_sha(&current).ok().flatten()?;
+            let dirty = store.working_tree_dirty(&current).ok()?;
+            if last != head || !dirty {
+                return None;
+            }
+            let changed = super::readiness::changed_sources(&repo_root).ok()?;
+            let cp =
+                super::readiness::verify_overlay_checkpoint(&repo_root, &current, &head, &changed)?;
+            Some((changed, cp))
+        });
+        if let Some((changed, cp)) = recertified {
+            if event_epoch.load(Ordering::Acquire) == pre_epoch && rx.is_empty() {
+                for (rel, hash) in cp.files {
+                    snapshots.insert(rel, hash);
+                }
+                for relative in changed {
+                    let path = repo_root.join(relative);
+                    let stamp = std::fs::symlink_metadata(&path)
+                        .ok()
+                        .map(|metadata| (metadata.len(), metadata.modified().ok()));
+                    observed_disk.insert(path, stamp);
+                }
+                snapshot_limit = snapshots.len().saturating_add(MAX_PENDING);
+                previous_scope = Some((current.clone(), head));
+                if let Ok(mut active) = branch.lock() {
+                    *active = current;
+                }
+                rescan.store(false, Ordering::Release);
+                events_pending.store(
+                    event_epoch.load(Ordering::Acquire) != pre_epoch || !rx.is_empty(),
+                    Ordering::Release,
+                );
+                unhealthy.store(rescan.load(Ordering::Acquire), Ordering::Release);
+            }
+        }
+    }
+
     let mut tick = interval(Duration::from_millis(DEBOUNCE_MS));
     tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
     loop {
@@ -135,6 +208,7 @@ async fn run_watcher(
                 let Some(path) = path else { break; };
                 first_event.get_or_insert_with(Instant::now);
                 last_event = Instant::now();
+                events_pending.store(true, Ordering::Release);
                 queue_pending(&mut pending, path, &rescan);
                 if rescan.load(Ordering::Acquire) { unhealthy.store(true, Ordering::Release); }
             }
@@ -162,10 +236,18 @@ async fn run_watcher(
                             for relative in paths {
                                 let path = repo_root.join(relative);
                                 let stamp = std::fs::symlink_metadata(&path).ok().map(|metadata| (metadata.len(), metadata.modified().ok()));
-                                if observed_disk.get(&path) != Some(&stamp) { queue_pending(&mut pending, path.clone(), &rescan); }
+                                if observed_disk.get(&path) != Some(&stamp) {
+                                    events_pending.store(true, Ordering::Release);
+                                    queue_pending(&mut pending, path.clone(), &rescan);
+                                }
                                 observed.insert(path, stamp);
                             }
-                            for old in observed_disk.keys() { if !observed.contains_key(old) { queue_pending(&mut pending, old.clone(), &rescan); } }
+                            for old in observed_disk.keys() {
+                                if !observed.contains_key(old) {
+                                    events_pending.store(true, Ordering::Release);
+                                    queue_pending(&mut pending, old.clone(), &rescan);
+                                }
+                            }
                             observed_disk = observed;
                             if !pending.is_empty() { first_event.get_or_insert_with(Instant::now); }
                         }
@@ -176,7 +258,10 @@ async fn run_watcher(
                 let due = due || first_event.is_some_and(|first: Instant| first.elapsed() >= Duration::from_millis(MAX_BATCH_MS));
                 let recover = rescan.swap(false, Ordering::AcqRel) || branch_changed;
                 if !recover && !due && !head_changed { continue; }
-                unhealthy.store(true, Ordering::Release);
+                events_pending.store(true, Ordering::Release);
+                if recover || head_changed {
+                    unhealthy.store(true, Ordering::Release);
+                }
                 let epoch = event_epoch.load(Ordering::Acquire);
                 if recover { snapshots.clear(); }
                 let result = if recover {
@@ -197,11 +282,16 @@ async fn run_watcher(
                         previous_scope = Some(scope);
                         if let Ok(mut active) = branch.lock() { *active = current; }
                         pending.clear(); first_event = None;
+                        let more_events = event_epoch.load(Ordering::Acquire) != epoch || !rx.is_empty();
+                        let needs_rescan = rescan.load(Ordering::Acquire);
+                        events_pending.store(needs_rescan || more_events, Ordering::Release);
                         // Never clear an overflow that arrived while applying.
-                        unhealthy.store(rescan.load(Ordering::Acquire) || event_epoch.load(Ordering::Acquire) != epoch || !rx.is_empty(), Ordering::Release);
+                        unhealthy.store(needs_rescan, Ordering::Release);
                     }
                     Err(error) => {
                         rescan.store(true, Ordering::Release);
+                        events_pending.store(true, Ordering::Release);
+                        unhealthy.store(true, Ordering::Release);
                         warn!("watcher update failed; evidence remains degraded: {error}");
                     }
                 }
@@ -266,7 +356,7 @@ fn reconcile_disk(
     apply_disk_batch(root, store, branch, head, &paths, revision, snapshots)
 }
 
-fn apply_disk_batch(
+pub(crate) fn apply_disk_batch(
     root: &Path,
     store: &Arc<Mutex<KuzuGraphStore>>,
     branch: &str,
@@ -276,21 +366,34 @@ fn apply_disk_batch(
     snapshots: &mut HashMap<PathBuf, Option<String>>,
 ) -> anyhow::Result<()> {
     let indexer = IncrementalIndexer::new(root)?;
+    let in_scope_paths: Vec<PathBuf> = paths
+        .iter()
+        .filter(|abs| {
+            abs.strip_prefix(root)
+                .ok()
+                .is_some_and(|rel| indexer.includes_path(rel))
+        })
+        .cloned()
+        .collect();
     let clean_before = super::readiness::changed_sources(root)?.is_empty();
-    let diff = indexer.index_files_from_disk(paths)?;
+    let diff = indexer.index_files_from_disk(&in_scope_paths)?;
     anyhow::ensure!(
         super::helpers::detect_current_branch(root).as_deref() == Some(branch)
             && git(root, &["rev-parse", "--verify", "HEAD"]).as_deref() == Some(head),
         "checkout changed while indexing"
     );
-    let clean = super::readiness::changed_sources(root)?.is_empty();
+    let changed_after = super::readiness::changed_sources(root)?;
+    let clean = changed_after.is_empty();
     let mut store = store
         .lock()
         .map_err(|_| anyhow::anyhow!("store mutex poisoned"))?;
+    let _ = super::readiness::remove_overlay_checkpoint(root, branch);
     store.set_working_tree_dirty(branch, true)?;
     store.apply_diff(branch, &diff)?;
     for (path, hash) in &diff.source_hashes {
-        snapshots.insert(path.clone(), hash.clone());
+        if indexer.includes_path(path) {
+            snapshots.insert(path.clone(), hash.clone());
+        }
     }
     let verified = clean_before && clean && snapshots_match_commit(root, head, snapshots)?;
     // Persist uncertainty across daemon restarts and historical branch queries.
@@ -299,6 +402,64 @@ fn apply_disk_batch(
     store.set_working_tree_dirty(branch, !verified)?;
     if verified {
         snapshots.clear();
+        super::readiness::remove_overlay_checkpoint(root, branch)?;
+    } else if !clean {
+        let changed_set: HashSet<&PathBuf> = changed_after.iter().collect();
+        let repo = git2::Repository::open(root)?;
+        let tree = repo.find_commit(git2::Oid::from_str(head)?)?.tree()?;
+        // Prune snapshots for paths that match the committed HEAD tree (for
+        // example after a startup reconcile_disk or a completed revert), while
+        // retaining any path whose indexed snapshot differs from HEAD.
+        let mut to_remove = Vec::new();
+        for (path, snap_hash) in snapshots.iter() {
+            if !changed_set.contains(path) {
+                let committed = match tree.get_path(path) {
+                    Ok(entry) => Some(entry.id().to_string()),
+                    Err(error) if error.code() == git2::ErrorCode::NotFound => None,
+                    Err(error) => return Err(error.into()),
+                };
+                if &committed == snap_hash {
+                    to_remove.push(path.clone());
+                }
+            }
+        }
+        for path in to_remove {
+            snapshots.remove(&path);
+        }
+
+        // Only persist an overlay checkpoint when every dirty in-scope file has
+        // been indexed into `snapshots` and no dirty file was skipped due to
+        // size (> 512 KiB) or binary content.
+        let all_changed_indexed = changed_after.len() == snapshots.len()
+            && changed_after.iter().all(|rel| snapshots.contains_key(rel))
+            && changed_after.iter().all(|rel| {
+                let full = root.join(rel);
+                match std::fs::symlink_metadata(&full) {
+                    Ok(meta) => {
+                        meta.is_file()
+                            && !meta.file_type().is_symlink()
+                            && meta.len() <= super::readiness::MAX_OVERLAY_FILE_BYTES
+                            && std::fs::read(&full)
+                                .ok()
+                                .is_some_and(|b| super::readiness::is_indexable_source_bytes(&b))
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                        matches!(snapshots.get(rel), Some(None))
+                    }
+                    Err(_) => false,
+                }
+            });
+        if all_changed_indexed {
+            let files: std::collections::BTreeMap<PathBuf, Option<String>> = snapshots
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
+            super::readiness::write_overlay_checkpoint(root, branch, head, &files)?;
+        } else {
+            super::readiness::remove_overlay_checkpoint(root, branch)?;
+        }
+    } else {
+        super::readiness::remove_overlay_checkpoint(root, branch)?;
     }
     revision.fetch_add(1, Ordering::Release);
     anyhow::ensure!(
@@ -331,6 +492,7 @@ fn sync_commit(
             && super::helpers::detect_current_branch(root).as_deref() == Some(branch),
         "checkout changed during commit synchronization"
     );
+    let _ = super::readiness::remove_overlay_checkpoint(root, branch);
     store.set_working_tree_dirty(branch, true)?;
     store.apply_diff(branch, &diff)?;
     for (path, hash) in &diff.source_hashes {
