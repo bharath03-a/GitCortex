@@ -564,10 +564,10 @@ pub fn get_subgraph<S: GraphStore + ?Sized>(
     evidence.sort_by(|a, b| {
         relation_rank(&a.relation)
             .cmp(&relation_rank(&b.relation))
+            .then_with(|| a.is_test.cmp(&b.is_test))
             .then_with(|| {
                 confidence_label_rank(&a.confidence).cmp(&confidence_label_rank(&b.confidence))
             })
-            .then_with(|| a.is_test.cmp(&b.is_test))
             .then_with(|| a.file.cmp(&b.file))
             .then_with(|| a.qualified_name.cmp(&b.qualified_name))
     });
@@ -753,8 +753,12 @@ pub fn symbol_context<S: GraphStore + ?Sized>(
     }
     for bucket in [&mut callers, &mut callees, &mut used_by] {
         bucket.sort_by(|a, b| {
-            a.file
-                .cmp(&b.file)
+            a.is_test
+                .cmp(&b.is_test)
+                .then_with(|| {
+                    confidence_label_rank(&a.confidence).cmp(&confidence_label_rank(&b.confidence))
+                })
+                .then_with(|| a.file.cmp(&b.file))
                 .then_with(|| a.qualified_name.cmp(&b.qualified_name))
         });
     }
@@ -793,25 +797,27 @@ pub fn symbol_context<S: GraphStore + ?Sized>(
 }
 
 fn apply_symbol_context_budget(response: &mut AgentSymbolContextResponse, budget_tokens: usize) {
-    let budget_bytes = budget_tokens * 4;
-    while (!response.used_by.is_empty()
-        || !response.callees.is_empty()
-        || !response.callers.is_empty())
-        && serde_json::to_vec(response)
-            .map(|bytes| bytes.len() > budget_bytes)
-            .unwrap_or(false)
-    {
+    let budget_bytes = budget_tokens.saturating_mul(4);
+    loop {
+        response.coverage.returned =
+            response.callers.len() + response.callees.len() + response.used_by.len();
+        response.coverage.truncated = response.coverage.returned < response.coverage.total;
+        if serialized_json_len(response)
+            .map(|len| len <= budget_bytes)
+            .unwrap_or(true)
+        {
+            break;
+        }
         if !response.used_by.is_empty() {
             response.used_by.pop();
         } else if !response.callees.is_empty() {
             response.callees.pop();
-        } else {
+        } else if !response.callers.is_empty() {
             response.callers.pop();
+        } else {
+            break;
         }
     }
-    response.coverage.returned =
-        response.callers.len() + response.callees.len() + response.used_by.len();
-    response.coverage.truncated = response.coverage.returned < response.coverage.total;
 }
 
 fn relation_label(kind: &EdgeKind, direction: &str) -> &'static str {
@@ -1090,30 +1096,264 @@ fn truncate_utf8_bytes(mut value: String, limit: usize) -> String {
     }
 }
 
-fn apply_subgraph_budget(response: &mut AgentSubgraphResponse, budget_tokens: usize) {
-    let budget_bytes = budget_tokens * 4;
-    while !response.evidence.is_empty()
-        && serde_json::to_vec(response)
-            .map(|bytes| bytes.len() > budget_bytes)
-            .unwrap_or(false)
+struct ByteCounter(usize);
+
+impl std::io::Write for ByteCounter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0 = self.0.saturating_add(buf.len());
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+fn serialized_json_len<T: Serialize + ?Sized>(value: &T) -> Option<usize> {
+    let mut counter = ByteCounter(0);
+    serde_json::to_writer(&mut counter, value).ok()?;
+    Some(counter.0)
+}
+
+fn fits_byte_budget<T: Serialize + ?Sized>(
+    value: &T,
+    budget_bytes: usize,
+    trailing_bytes: usize,
+) -> bool {
+    serialized_json_len(value)
+        .map(|len| len.saturating_add(trailing_bytes) <= budget_bytes)
+        .unwrap_or(true)
+}
+
+fn truncate_json_string_field(
+    object: &mut serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    limit: usize,
+) {
+    if let Some(serde_json::Value::String(value)) = object.get_mut(key) {
+        let taken = std::mem::take(value);
+        *value = truncate_utf8_bytes(taken, limit);
+    }
+}
+
+fn clear_json_string_field(object: &mut serde_json::Map<String, serde_json::Value>, key: &str) {
+    if let Some(serde_json::Value::String(value)) = object.get_mut(key) {
+        value.clear();
+    }
+}
+
+/// Enforce `budget_tokens` (`payload_bytes <= budget_tokens * 4`, equivalently
+/// `(payload_bytes + 3) / 4 <= budget_tokens`) against the final serialized
+/// JSON object AFTER wrapper metadata (such as `index`, `evidence_complete`,
+/// `graph_generation`, and `warning`) has been injected.
+///
+/// `trailing_bytes` accounts for framing added by the caller when writing the
+/// payload (e.g. `1` for the trailing newline emitted by CLI `println!`, `0`
+/// for MCP JSON strings).
+pub fn enforce_envelope_budget(
+    data: &mut serde_json::Map<String, serde_json::Value>,
+    budget_tokens: usize,
+    trailing_bytes: usize,
+) {
+    let budget_bytes = budget_tokens.max(MIN_BUDGET_TOKENS).saturating_mul(4);
+    if fits_byte_budget(data, budget_bytes, trailing_bytes) {
+        return;
+    }
+
+    let is_search = data.get("evidence").and_then(|v| v.as_array()).is_some()
+        && data.get("coverage").and_then(|c| c.get("offset")).is_some();
+
+    if is_search {
+        let offset = data
+            .get("coverage")
+            .and_then(|c| c.get("offset"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as usize;
+        let total = data
+            .get("coverage")
+            .and_then(|c| c.get("total"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as usize;
+        let mut compaction_stage = 0u8;
+        loop {
+            let returned = data
+                .get("evidence")
+                .and_then(|v| v.as_array())
+                .map_or(0, Vec::len);
+            let next = offset.saturating_add(returned);
+            let truncated = next < total;
+            if let Some(cov) = data.get_mut("coverage").and_then(|v| v.as_object_mut()) {
+                cov.insert("returned".to_owned(), serde_json::json!(returned));
+                cov.insert("truncated".to_owned(), serde_json::json!(truncated));
+                if truncated {
+                    cov.insert("next_offset".to_owned(), serde_json::json!(next));
+                } else {
+                    cov.remove("next_offset");
+                }
+            }
+            if truncated {
+                data.insert(
+                    "next_action".to_owned(),
+                    serde_json::json!(format!("Request the next search page with offset={next}.")),
+                );
+            } else if total > 0 {
+                data.remove("next_action");
+            }
+
+            if fits_byte_budget(data, budget_bytes, trailing_bytes) {
+                return;
+            }
+
+            if returned > 1 {
+                if let Some(ev) = data.get_mut("evidence").and_then(|v| v.as_array_mut()) {
+                    ev.pop();
+                }
+                continue;
+            }
+            if returned == 1 && compaction_stage == 0 {
+                if let Some(item) = data
+                    .get_mut("evidence")
+                    .and_then(|v| v.as_array_mut())
+                    .and_then(|ev| ev.first_mut())
+                    .and_then(|v| v.as_object_mut())
+                {
+                    clear_json_string_field(item, "signature");
+                    item.remove("doc");
+                    truncate_json_string_field(item, "symbol", 64);
+                    truncate_json_string_field(item, "qualified_name", 64);
+                    truncate_json_string_field(item, "kind", 16);
+                    truncate_json_string_field(item, "file", 64);
+                }
+                truncate_json_string_field(data, "answer", 128);
+                truncate_json_string_field(data, "query", 64);
+                compaction_stage = 1;
+                continue;
+            }
+            if returned == 1 && compaction_stage == 1 {
+                if let Some(item) = data
+                    .get_mut("evidence")
+                    .and_then(|v| v.as_array_mut())
+                    .and_then(|ev| ev.first_mut())
+                    .and_then(|v| v.as_object_mut())
+                {
+                    clear_json_string_field(item, "symbol");
+                    clear_json_string_field(item, "qualified_name");
+                    clear_json_string_field(item, "kind");
+                    clear_json_string_field(item, "file");
+                    clear_json_string_field(item, "signature");
+                    item.remove("doc");
+                }
+                clear_json_string_field(data, "answer");
+                clear_json_string_field(data, "query");
+                compaction_stage = 2;
+                continue;
+            }
+            return;
+        }
+    }
+
+    if data.get("evidence").and_then(|v| v.as_array()).is_some() {
+        let total = data
+            .get("coverage")
+            .and_then(|c| c.get("total").or_else(|| c.get("direct_relations")))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as usize;
+        loop {
+            let returned = data
+                .get("evidence")
+                .and_then(|v| v.as_array())
+                .map_or(0, Vec::len);
+            if let Some(cov) = data.get_mut("coverage").and_then(|v| v.as_object_mut()) {
+                cov.insert("returned".to_owned(), serde_json::json!(returned));
+                cov.insert("truncated".to_owned(), serde_json::json!(returned < total));
+            }
+            if fits_byte_budget(data, budget_bytes, trailing_bytes) || returned == 0 {
+                return;
+            }
+            if let Some(ev) = data.get_mut("evidence").and_then(|v| v.as_array_mut()) {
+                ev.pop();
+            } else {
+                return;
+            }
+        }
+    }
+
+    if data.get("callers").and_then(|v| v.as_array()).is_some()
+        && data.get("callees").and_then(|v| v.as_array()).is_some()
+        && data.get("used_by").and_then(|v| v.as_array()).is_some()
     {
+        let total = data
+            .get("coverage")
+            .and_then(|c| c.get("total"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as usize;
+        loop {
+            let callers_len = data
+                .get("callers")
+                .and_then(|v| v.as_array())
+                .map_or(0, Vec::len);
+            let callees_len = data
+                .get("callees")
+                .and_then(|v| v.as_array())
+                .map_or(0, Vec::len);
+            let used_by_len = data
+                .get("used_by")
+                .and_then(|v| v.as_array())
+                .map_or(0, Vec::len);
+            let returned = callers_len + callees_len + used_by_len;
+            if let Some(cov) = data.get_mut("coverage").and_then(|v| v.as_object_mut()) {
+                cov.insert("returned".to_owned(), serde_json::json!(returned));
+                cov.insert("truncated".to_owned(), serde_json::json!(returned < total));
+            }
+            if fits_byte_budget(data, budget_bytes, trailing_bytes) || returned == 0 {
+                return;
+            }
+            let popped = if used_by_len > 0 {
+                data.get_mut("used_by")
+                    .and_then(|v| v.as_array_mut())
+                    .and_then(Vec::pop)
+                    .is_some()
+            } else if callees_len > 0 {
+                data.get_mut("callees")
+                    .and_then(|v| v.as_array_mut())
+                    .and_then(Vec::pop)
+                    .is_some()
+            } else {
+                data.get_mut("callers")
+                    .and_then(|v| v.as_array_mut())
+                    .and_then(Vec::pop)
+                    .is_some()
+            };
+            if !popped {
+                return;
+            }
+        }
+    }
+}
+
+fn apply_subgraph_budget(response: &mut AgentSubgraphResponse, budget_tokens: usize) {
+    let budget_bytes = budget_tokens.saturating_mul(4);
+    loop {
+        response.coverage.returned = response.evidence.len();
+        response.coverage.truncated =
+            response.coverage.returned < response.coverage.direct_relations;
+        if fits_byte_budget(response, budget_bytes, 0) || response.evidence.is_empty() {
+            break;
+        }
         response.evidence.pop();
     }
-    response.coverage.returned = response.evidence.len();
-    response.coverage.truncated = response.coverage.returned < response.coverage.direct_relations;
 }
 
 fn apply_budget(response: &mut AgentCallersResponse, budget_tokens: usize) {
-    let budget_bytes = budget_tokens * 4;
-    while !response.evidence.is_empty()
-        && serde_json::to_vec(response)
-            .map(|bytes| bytes.len() > budget_bytes)
-            .unwrap_or(false)
-    {
+    let budget_bytes = budget_tokens.saturating_mul(4);
+    loop {
+        response.coverage.returned = response.evidence.len();
+        response.coverage.truncated = response.coverage.returned < response.coverage.total;
+        if fits_byte_budget(response, budget_bytes, 0) || response.evidence.is_empty() {
+            break;
+        }
         response.evidence.pop();
     }
-    response.coverage.returned = response.evidence.len();
-    response.coverage.truncated = response.coverage.returned < response.coverage.total;
 }
 
 #[cfg(test)]
@@ -1189,5 +1429,276 @@ mod tests {
         let (score, band) = weighted_risk_band(3, 0, 3);
         assert!((score - 3.9).abs() < 0.001);
         assert_eq!(band, "MEDIUM");
+    }
+
+    fn realistic_index_envelope() -> serde_json::Value {
+        serde_json::json!({
+            "branch": "gcx-bench",
+            "checkout_branch": "gcx-bench",
+            "checkout_revision": "227381db0ee83dfa4341f1e27ff9617c0f5ad992",
+            "indexed_revision": "227381db0ee83dfa4341f1e27ff9617c0f5ad992",
+            "next_action": "Verify source and tests; ignored, oversized, unsupported, and dynamic code can be absent from the static graph.",
+            "state": "ready",
+            "target_revision": "227381db0ee83dfa4341f1e27ff9617c0f5ad992",
+            "working_tree_verified": true
+        })
+    }
+
+    #[test]
+    fn enforce_envelope_budget_caps_callers_subgraph_context_and_search() {
+        // 1. Callers (mirrors ripgrep-impact-line-number at 1200 tokens)
+        let mut callers = AgentCallersResponse {
+            status: AgentStatus::Ok,
+            answer:
+                "55 caller(s) within 2 hop(s) of 'crate::Searcher::line_number' — change risk HIGH."
+                    .to_owned(),
+            query: "crate::Searcher::line_number".to_owned(),
+            branch: "gcx-bench".to_owned(),
+            depth: 2,
+            risk_level: "HIGH".to_owned(),
+            symbol: Some(SymbolCandidate {
+                id: "8f103bfc-34b8-509d-9899-c2bee5a7be97".to_owned(),
+                name: "line_number".to_owned(),
+                qualified_name: "crate::Searcher::line_number".to_owned(),
+                kind: "method".to_owned(),
+                file: "crates/searcher/src/searcher/mod.rs".to_owned(),
+                start_line: 857,
+                visibility: "pub".to_owned(),
+            }),
+            candidates: Vec::new(),
+            evidence: (0..25)
+                .map(|i| CallerEvidence {
+                    hop: 1,
+                    symbol: format!("caller_{i}"),
+                    qualified_name: format!("crate::tests::caller_{i}"),
+                    kind: "function".to_owned(),
+                    file: "crates/searcher/src/searcher/glue.rs".to_owned(),
+                    line: 100 + i as u32,
+                    signature: format!("fn caller_{i}(arg: &Searcher) -> Result<()>"),
+                    confidence: "inferred".to_owned(),
+                    is_test: false,
+                })
+                .collect(),
+            coverage: Coverage {
+                total: 55,
+                returned: 0,
+                truncated: false,
+                confidence_mix: ConfidenceMix {
+                    extracted: 1,
+                    resolved: 0,
+                    inferred: 54,
+                },
+            },
+            next_action: None,
+        };
+        apply_budget(&mut callers, 1200);
+        let mut map = serde_json::to_value(&callers)
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .clone();
+        map.insert("index".to_owned(), realistic_index_envelope());
+        map.insert("evidence_complete".to_owned(), serde_json::json!(true));
+        enforce_envelope_budget(&mut map, 1200, 1);
+        let payload_bytes = serde_json::Value::Object(map.clone()).to_string().len() + 1;
+        assert!(
+            payload_bytes.div_ceil(4) <= 1200,
+            "callers payload_bytes={payload_bytes} exceeded 1200 tokens"
+        );
+        let returned = map["evidence"].as_array().unwrap().len();
+        assert!(returned >= 1, "minimum evidence must be preserved");
+        assert_eq!(map["coverage"]["returned"], returned);
+        assert_eq!(map["coverage"]["truncated"], true);
+
+        // 2. Subgraph at 400 tokens
+        let mut subgraph = AgentSubgraphResponse {
+            status: AgentStatus::Ok,
+            answer: "Direct relationships for 'Session': contains=19, used_by=2.".to_owned(),
+            query: "Session".to_owned(),
+            branch: "gcx-bench".to_owned(),
+            depth: 1,
+            direction: "both".to_owned(),
+            symbol: Some(SymbolCandidate {
+                id: "b8d887e9-4024-5f40-8ea7-afb08316e499".to_owned(),
+                name: "Session".to_owned(),
+                qualified_name: "Session".to_owned(),
+                kind: "struct".to_owned(),
+                file: "src/requests/sessions.py".to_owned(),
+                start_line: 395,
+                visibility: "pub".to_owned(),
+            }),
+            candidates: Vec::new(),
+            relation_counts: std::collections::BTreeMap::from([
+                ("contains".to_owned(), 19),
+                ("used_by".to_owned(), 2),
+            ]),
+            evidence: (0..12)
+                .map(|i| RelationEvidence {
+                    relation: if i == 0 { "used_by" } else { "contains" }.to_owned(),
+                    direction: if i == 0 { "in" } else { "out" }.to_owned(),
+                    symbol: format!("method_{i}"),
+                    qualified_name: format!("Session.method_{i}"),
+                    kind: "method".to_owned(),
+                    file: "src/requests/sessions.py".to_owned(),
+                    line: 400 + i as u32,
+                    confidence: "extracted".to_owned(),
+                    is_test: false,
+                })
+                .collect(),
+            coverage: NeighborhoodCoverage {
+                graph_nodes: 277,
+                graph_edges: 1539,
+                direct_relations: 21,
+                returned: 0,
+                truncated: false,
+            },
+            next_action: None,
+        };
+        apply_subgraph_budget(&mut subgraph, 400);
+        let mut map = serde_json::to_value(&subgraph)
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .clone();
+        map.insert("index".to_owned(), realistic_index_envelope());
+        map.insert("evidence_complete".to_owned(), serde_json::json!(true));
+        enforce_envelope_budget(&mut map, 400, 1);
+        let payload_bytes = serde_json::Value::Object(map.clone()).to_string().len() + 1;
+        assert!(
+            payload_bytes.div_ceil(4) <= 400,
+            "subgraph payload_bytes={payload_bytes} exceeded 400 tokens"
+        );
+        let returned = map["evidence"].as_array().unwrap().len();
+        assert!(returned >= 1);
+        assert_eq!(map["coverage"]["returned"], returned);
+        assert_eq!(map["coverage"]["truncated"], true);
+
+        // 3. SymbolContext at 800 tokens
+        let mut ctx = AgentSymbolContextResponse {
+            status: AgentStatus::Ok,
+            answer: "'Session' has 10 caller(s), 5 callee(s), 5 usage site(s).".to_owned(),
+            query: "Session".to_owned(),
+            branch: "gcx-bench".to_owned(),
+            symbol: None,
+            candidates: Vec::new(),
+            callers: (0..10)
+                .map(|i| RelationEvidence {
+                    relation: "called_by".to_owned(),
+                    direction: "in".to_owned(),
+                    symbol: format!("caller_{i}"),
+                    qualified_name: format!("mod::caller_{i}"),
+                    kind: "function".to_owned(),
+                    file: "src/caller.rs".to_owned(),
+                    line: 10 + i as u32,
+                    confidence: "resolved".to_owned(),
+                    is_test: false,
+                })
+                .collect(),
+            callees: (0..5)
+                .map(|i| RelationEvidence {
+                    relation: "calls".to_owned(),
+                    direction: "out".to_owned(),
+                    symbol: format!("callee_{i}"),
+                    qualified_name: format!("mod::callee_{i}"),
+                    kind: "function".to_owned(),
+                    file: "src/callee.rs".to_owned(),
+                    line: 10 + i as u32,
+                    confidence: "resolved".to_owned(),
+                    is_test: false,
+                })
+                .collect(),
+            used_by: (0..5)
+                .map(|i| RelationEvidence {
+                    relation: "used_by".to_owned(),
+                    direction: "in".to_owned(),
+                    symbol: format!("user_{i}"),
+                    qualified_name: format!("mod::user_{i}"),
+                    kind: "function".to_owned(),
+                    file: "src/user.rs".to_owned(),
+                    line: 10 + i as u32,
+                    confidence: "inferred".to_owned(),
+                    is_test: false,
+                })
+                .collect(),
+            coverage: Coverage {
+                total: 20,
+                returned: 0,
+                truncated: false,
+                confidence_mix: ConfidenceMix::default(),
+            },
+            next_action: None,
+        };
+        apply_symbol_context_budget(&mut ctx, 800);
+        let mut map = serde_json::to_value(&ctx)
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .clone();
+        map.insert("index".to_owned(), realistic_index_envelope());
+        map.insert("evidence_complete".to_owned(), serde_json::json!(true));
+        enforce_envelope_budget(&mut map, 800, 1);
+        let payload_bytes = serde_json::Value::Object(map.clone()).to_string().len() + 1;
+        assert!(
+            payload_bytes.div_ceil(4) <= 800,
+            "symbol_context payload_bytes={payload_bytes} exceeded 800 tokens"
+        );
+        let returned = map["callers"].as_array().unwrap().len()
+            + map["callees"].as_array().unwrap().len()
+            + map["used_by"].as_array().unwrap().len();
+        assert!(returned >= 1);
+        assert_eq!(map["coverage"]["returned"], returned);
+        assert_eq!(map["coverage"]["truncated"], true);
+
+        // 4. Search at 600 tokens (including pagination next_offset & next_action)
+        let mut search = AgentSearchResponse {
+            status: AgentStatus::Ok,
+            answer: "15 ranked symbol match(es) across 5 file(s).".to_owned(),
+            query: "Searcher".to_owned(),
+            semantic_available: false,
+            file_count: 5,
+            evidence: (0..12)
+                .map(|i| SearchEvidence {
+                    symbol: format!("Searcher_{i}"),
+                    qualified_name: format!("crate::searcher::Searcher_{i}"),
+                    kind: "struct".to_owned(),
+                    file: format!("crates/searcher/src/searcher/file_{i}.rs"),
+                    line: 20 + i as u32,
+                    signature: format!("pub struct Searcher_{i}<M: Matcher>"),
+                    doc: None,
+                    score: 100 - i,
+                })
+                .collect(),
+            coverage: SearchCoverage {
+                total: 15,
+                returned: 0,
+                truncated: false,
+                offset: 0,
+                next_offset: None,
+            },
+            next_action: None,
+        };
+        apply_search_budget(&mut search, 600).unwrap();
+        let mut map = serde_json::to_value(&search)
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .clone();
+        map.insert("index".to_owned(), realistic_index_envelope());
+        map.insert("evidence_complete".to_owned(), serde_json::json!(true));
+        enforce_envelope_budget(&mut map, 600, 1);
+        let payload_bytes = serde_json::Value::Object(map.clone()).to_string().len() + 1;
+        assert!(
+            payload_bytes.div_ceil(4) <= 600,
+            "search payload_bytes={payload_bytes} exceeded 600 tokens"
+        );
+        let returned = map["evidence"].as_array().unwrap().len();
+        assert!(returned >= 1);
+        assert_eq!(map["coverage"]["returned"], returned);
+        assert_eq!(map["coverage"]["truncated"], true);
+        assert_eq!(map["coverage"]["next_offset"], returned);
+        assert!(map["next_action"]
+            .as_str()
+            .unwrap()
+            .contains(&format!("offset={returned}")));
     }
 }

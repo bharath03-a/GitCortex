@@ -88,7 +88,11 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
             }
             match format {
                 AgentOutputFormat::AgentJson => {
-                    print_indexed_json(serde_json::to_value(&response)?, &index);
+                    print_indexed_json(
+                        serde_json::to_value(&response)?,
+                        &index,
+                        Some(budget_tokens),
+                    );
                 }
                 AgentOutputFormat::Text => print_agent_callers(&response),
             }
@@ -130,7 +134,11 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
             )?;
             match format {
                 AgentOutputFormat::AgentJson => {
-                    print_indexed_json(serde_json::to_value(&response)?, &index);
+                    print_indexed_json(
+                        serde_json::to_value(&response)?,
+                        &index,
+                        Some(budget_tokens),
+                    );
                 }
                 AgentOutputFormat::Text => print_agent_symbol_context(&response),
             }
@@ -183,7 +191,7 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
             let path = store.trace_path(&branch, &from, &to)?;
             match format {
                 AgentOutputFormat::AgentJson => {
-                    print_indexed_json(trace_path_json(&path), &index);
+                    print_indexed_json(trace_path_json(&path), &index, None);
                 }
                 AgentOutputFormat::Text => {
                     if path.is_empty() {
@@ -247,7 +255,11 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
             )?;
             match format {
                 AgentOutputFormat::AgentJson => {
-                    print_indexed_json(serde_json::to_value(&response)?, &index);
+                    print_indexed_json(
+                        serde_json::to_value(&response)?,
+                        &index,
+                        Some(budget_tokens),
+                    );
                 }
                 AgentOutputFormat::Text => print_agent_subgraph(&response),
             }
@@ -288,7 +300,11 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
                         },
                         budget_tokens,
                     )?;
-                    print_indexed_json(serde_json::to_value(&response)?, &index);
+                    print_indexed_json(
+                        serde_json::to_value(&response)?,
+                        &index,
+                        Some(budget_tokens),
+                    );
                 }
                 AgentOutputFormat::Text => {
                     if hits.is_empty() {
@@ -408,18 +424,31 @@ pub fn run(cmd: QueryCmd) -> Result<()> {
     Ok(())
 }
 
-fn print_indexed_json(
+fn format_indexed_json(
     mut data: serde_json::Value,
     index: &gitcortex_mcp::mcp::readiness::IndexReadiness,
-) {
+    budget_tokens: Option<usize>,
+) -> String {
     if let Some(object) = data.as_object_mut() {
         object.insert("index".to_owned(), json!(index));
         object.insert(
             "evidence_complete".to_owned(),
             json!(index.state == "ready"),
         );
+        if let Some(budget) = budget_tokens {
+            // Account for the trailing newline printed by `println!`.
+            gitcortex_mcp::mcp::agent::enforce_envelope_budget(object, budget, 1);
+        }
     }
-    println!("{data}");
+    data.to_string()
+}
+
+fn print_indexed_json(
+    data: serde_json::Value,
+    index: &gitcortex_mcp::mcp::readiness::IndexReadiness,
+    budget_tokens: Option<usize>,
+) {
+    println!("{}", format_indexed_json(data, index, budget_tokens));
 }
 
 fn print_agent_subgraph(response: &gitcortex_mcp::mcp::agent::AgentSubgraphResponse) {
@@ -639,5 +668,77 @@ fn parse_node_kind(s: &str) -> Option<NodeKind> {
         "annotation" => Some(NodeKind::Annotation),
         "section" => Some(NodeKind::Section),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gitcortex_mcp::mcp::readiness::IndexReadiness;
+
+    fn sample_index(state: &'static str) -> IndexReadiness {
+        IndexReadiness {
+            state,
+            branch: "gcx-bench".to_owned(),
+            checkout_branch: Some("gcx-bench".to_owned()),
+            checkout_revision: Some("227381db0ee83dfa4341f1e27ff9617c0f5ad992".to_owned()),
+            target_revision: Some("227381db0ee83dfa4341f1e27ff9617c0f5ad992".to_owned()),
+            indexed_revision: Some("227381db0ee83dfa4341f1e27ff9617c0f5ad992".to_owned()),
+            working_tree_verified: state == "ready",
+            next_action: "Verify source and tests; ignored, oversized, unsupported, and dynamic code can be absent from the static graph.".to_owned(),
+        }
+    }
+
+    #[test]
+    fn format_indexed_json_enforces_budget_including_envelope_and_newline() {
+        let evidence: Vec<_> = (0..30)
+            .map(|i| {
+                json!({
+                    "hop": 1,
+                    "symbol": format!("caller_{i}"),
+                    "qualified_name": format!("crate::tests::caller_{i}"),
+                    "kind": "function",
+                    "file": "crates/searcher/src/searcher/glue.rs",
+                    "line": 100 + i,
+                    "signature": format!("fn caller_{i}(searcher: &Searcher) -> Result<()>"),
+                    "confidence": "inferred",
+                    "is_test": false,
+                })
+            })
+            .collect();
+        let raw = json!({
+            "status": "ok",
+            "answer": "30 caller(s) within 2 hop(s) of 'crate::Searcher::line_number' — change risk HIGH.",
+            "query": "crate::Searcher::line_number",
+            "branch": "gcx-bench",
+            "depth": 2,
+            "risk_level": "HIGH",
+            "evidence": evidence,
+            "coverage": {
+                "total": 30,
+                "returned": 30,
+                "truncated": false,
+                "confidence_mix": { "extracted": 1, "resolved": 0, "inferred": 29 }
+            }
+        });
+
+        for (state, budget_tokens) in [("ready", 1200usize), ("ready", 400), ("unverified", 600)] {
+            let index = sample_index(state);
+            let rendered = format_indexed_json(raw.clone(), &index, Some(budget_tokens));
+            // `println!` appends 1 trailing newline byte.
+            let payload_bytes = rendered.len() + 1;
+            let tokens_est = payload_bytes.div_ceil(4);
+            assert!(
+                tokens_est <= budget_tokens,
+                "state={state} budget={budget_tokens}: payload_bytes={payload_bytes} tokens_est={tokens_est}"
+            );
+            let parsed: serde_json::Value = serde_json::from_str(&rendered).unwrap();
+            assert_eq!(parsed["index"]["state"], state);
+            assert_eq!(parsed["evidence_complete"], state == "ready");
+            let returned = parsed["evidence"].as_array().unwrap().len();
+            assert!(returned >= 1, "must retain at least 1 evidence item");
+            assert_eq!(parsed["coverage"]["returned"], returned);
+            assert_eq!(parsed["coverage"]["truncated"], returned < 30);
+        }
     }
 }

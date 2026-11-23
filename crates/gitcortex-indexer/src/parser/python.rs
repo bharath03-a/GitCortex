@@ -597,7 +597,11 @@ impl<'src> FileVisitor<'src> {
             if child.kind() == "call" {
                 if let Some(callee) = self.callee_name(child) {
                     let line = child.start_position().row as u32 + 1;
-                    self.record_call(caller_id.clone(), callee, line);
+                    let is_self_or_cls_attr = self.is_self_or_cls_method_call(child);
+                    self.record_call(caller_id.clone(), callee, line, is_self_or_cls_attr);
+                }
+                if let Some(func) = child.child_by_field_name("function") {
+                    self.collect_calls(func, caller_id);
                 }
                 if let Some(args) = child.child_by_field_name("arguments") {
                     self.collect_calls(args, caller_id);
@@ -619,14 +623,46 @@ impl<'src> FileVisitor<'src> {
         }
     }
 
-    fn record_call(&mut self, caller_id: NodeId, callee_name: String, line: u32) {
+    fn is_self_or_cls_method_call(&self, call_node: TsNode<'_>) -> bool {
+        let Some(func) = call_node.child_by_field_name("function") else {
+            return false;
+        };
+        if func.kind() != "attribute" {
+            return false;
+        }
+        let Some(obj) = func.child_by_field_name("object") else {
+            return false;
+        };
+        obj.kind() == "identifier" && matches!(self.text(obj), "self" | "cls")
+    }
+
+    fn record_call(
+        &mut self,
+        caller_id: NodeId,
+        callee_name: String,
+        line: u32,
+        is_self_or_cls_attr: bool,
+    ) {
         if callee_name.is_empty() {
             return;
         }
         if let Some(callee_id) = self.fn_index.get(&callee_name).cloned() {
             self.edges.push(Edge::call(caller_id, callee_id, line));
+        } else if !is_self_or_cls_attr && self.class_index.contains_key(&callee_name) {
+            self.deferred_uses.push((caller_id, callee_name));
         } else {
-            self.deferred_calls.push((caller_id, callee_name, line));
+            self.deferred_calls
+                .push((caller_id.clone(), callee_name.clone(), line));
+            // Python has no `new` keyword: `Session()` and `sessions.Session()`
+            // parse identically to function calls. Record class-like callees as
+            // deferred `Uses` so class instantiations resolve to `Struct`/
+            // `Interface` targets identically on full and incremental indexes.
+            if !is_self_or_cls_attr
+                && !is_builtin_type(&callee_name)
+                && looks_like_class_name(&callee_name)
+            {
+                self.deferred_uses.push((caller_id, callee_name));
+            }
         }
     }
 
@@ -795,6 +831,16 @@ fn is_builtin_type(name: &str) -> bool {
             | "staticmethod"
             | "classmethod"
     )
+}
+
+/// Returns true for Python identifiers following PEP 8 class naming
+/// (`Session`, `_InternalSession`), skipping lowercase function/method calls
+/// so `deferred_uses` is not bloated by ordinary method invocations.
+fn looks_like_class_name(name: &str) -> bool {
+    name.trim_start_matches('_')
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_uppercase())
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -1259,6 +1305,80 @@ mod tests {
         assert!(
             names.contains(&"path"),
             "expected leaf 'path' from 'import os.path', got: {names:?}"
+        );
+    }
+
+    #[test]
+    fn class_instantiation_emits_deferred_uses() {
+        let src = "\
+from . import sessions
+
+def request(method, url):
+    with sessions.Session() as session:
+        return session.request(method, url)
+
+def chained():
+    return sessions.Session().get('https://example.com')
+
+def direct():
+    return Session()
+";
+        let (nodes, _, _, uses, _, _) = parse_full(src);
+        let fn_id = |name: &str| {
+            nodes
+                .iter()
+                .find(|n| n.kind == NodeKind::Function && n.name == name)
+                .unwrap_or_else(|| panic!("missing function {name}"))
+                .id
+                .clone()
+        };
+        for caller in ["request", "chained", "direct"] {
+            let cid = fn_id(caller);
+            assert!(
+                uses.iter()
+                    .any(|(src_id, target)| src_id == &cid && target == "Session"),
+                "expected deferred_uses from {caller} to Session, got: {uses:?}"
+            );
+        }
+        assert!(
+            !uses.iter().any(|(_, target)| target == "get"),
+            "lowercase method call must not pollute deferred_uses: {uses:?}"
+        );
+    }
+
+    #[test]
+    fn same_file_class_instantiation_and_self_calls_behave_consistently() {
+        let src = "\
+class Session:
+    def run(self):
+        self.Build()
+
+def make_session():
+    return Session()
+";
+        let (nodes, _, _, uses, _, _) = parse_full(src);
+        let make_id = nodes
+            .iter()
+            .find(|n| n.kind == NodeKind::Function && n.name == "make_session")
+            .expect("make_session")
+            .id
+            .clone();
+        let run_id = nodes
+            .iter()
+            .find(|n| n.kind == NodeKind::Method && n.name == "run")
+            .expect("run")
+            .id
+            .clone();
+        assert!(
+            uses.iter()
+                .any(|(src_id, target)| src_id == &make_id && target == "Session"),
+            "expected deferred_uses from make_session to Session, got: {uses:?}"
+        );
+        assert!(
+            !uses
+                .iter()
+                .any(|(src_id, target)| src_id == &run_id && target == "Build"),
+            "self.Build() method call must not emit deferred_uses: {uses:?}"
         );
     }
 }
