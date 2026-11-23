@@ -1,14 +1,10 @@
 //! Shared synchronous commit indexing and bounded daemon scheduling.
 use super::helpers::detect_current_branch;
-use gitcortex_core::{
-    graph::{GraphDiff, Node, NodeId},
-    schema::NodeKind,
-    store::GraphStore,
-};
+use gitcortex_core::{graph::GraphDiff, store::GraphStore};
 use gitcortex_indexer::IncrementalIndexer;
 use gitcortex_store::{branch::sanitize, kuzu::KuzuGraphStore};
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeSet, HashMap},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -92,6 +88,7 @@ struct TreeApply {
     sha: String,
     previous: Option<String>,
     baseline: Option<String>,
+    epoch: u64,
 }
 
 fn begin_tree_apply(
@@ -103,37 +100,19 @@ fn begin_tree_apply(
     // SHA is not a trustworthy incremental baseline.
     let dirty = store.working_tree_dirty(key)?;
     let previous = store.last_indexed_sha(key)?;
+    let epoch = store.mutation_epoch(key)?;
     store.set_working_tree_dirty(key, true)?;
     Ok(TreeApply {
         sha,
         baseline: previous.clone().filter(|_| !dirty),
         previous,
+        epoch,
     })
 }
 
 fn tree_diff(root: &Path, plan: &TreeApply) -> anyhow::Result<GraphDiff> {
     let (diff, _) = IncrementalIndexer::new(root)?.run_tree(&plan.sha, plan.baseline.as_deref())?;
     Ok(diff)
-}
-
-/// `apply_diff` keeps folder nodes across updates, so a folder with no source
-/// left under it has to be removed by id.
-fn stale_folders(persisted: &[Node], diff: &GraphDiff) -> Vec<NodeId> {
-    let is_folder = |node: &&Node| node.kind == NodeKind::Folder;
-    let removed: HashSet<&Path> = diff.removed_files.iter().map(PathBuf::as_path).collect();
-    let live: HashSet<&Path> = persisted
-        .iter()
-        .filter(|node| !removed.contains(node.file.as_path()))
-        .chain(&diff.added_nodes)
-        .filter(|node| !is_folder(node))
-        .flat_map(|node| node.file.ancestors().skip(1))
-        .collect();
-    persisted
-        .iter()
-        .filter(is_folder)
-        .filter(|node| !live.contains(node.file.as_path()))
-        .map(|node| node.id.clone())
-        .collect()
 }
 
 fn finish_tree_apply(
@@ -143,20 +122,19 @@ fn finish_tree_apply(
     plan: TreeApply,
     mut diff: GraphDiff,
 ) -> anyhow::Result<TreeIndexOutcome> {
-    let rebuild = plan.baseline.is_none();
-    if rebuild || diff.source_hashes.iter().any(|(_, hash)| hash.is_none()) {
-        let persisted = store.list_all_nodes(key)?;
-        if rebuild {
-            // Full rebuild: drop files absent from the target tree too.
-            let files: BTreeSet<PathBuf> = persisted.iter().map(|n| n.file.clone()).collect();
-            diff.removed_files.extend(files);
-        }
-        let stale = stale_folders(&persisted, &diff);
-        diff.removed_node_ids.extend(stale);
+    if plan.baseline.is_none() {
+        // Full rebuild: drop files absent from the target tree too.
+        let files: BTreeSet<PathBuf> = store
+            .list_all_nodes(key)?
+            .into_iter()
+            .map(|n| n.file)
+            .collect();
+        diff.removed_files.extend(files);
     }
     // Before writing: a crash mid-apply leaves `.dirty`, and an overlay beside it
     // could certify bytes this job wrote.
     super::readiness::remove_overlay_checkpoint(root, key)?;
+    store.bump_mutation_epoch(key)?;
     store.apply_diff(key, &diff)?;
     store.set_last_indexed_sha(key, &plan.sha)?;
     store.set_working_tree_dirty(key, false)?;
@@ -180,10 +158,10 @@ fn checkout_owns_key(root: &Path, key: &str) -> anyhow::Result<bool> {
 /// reports `indexing` instead of queuing behind them (see `before_finish`).
 ///
 /// Returns `None`, leaving the key untouched, when the key is checked out or
-/// its SHA moved after `begin`: the watcher wrote it, and this job's commit or
-/// baseline no longer describes it. A checkout that lands after the final check
-/// is safe because the watcher reconciles every source on a branch change, and
-/// waits on this lock to do so.
+/// its SHA or mutation epoch changed after `begin`: the watcher wrote it, and
+/// this job's commit or baseline no longer describes it. A checkout that lands
+/// after the final check is safe because the watcher reconciles every source on
+/// a branch change, and waits on this lock to do so.
 fn apply_tree_index_shared<G>(
     root: &Path,
     store: &Mutex<KuzuGraphStore>,
@@ -209,7 +187,10 @@ fn apply_tree_index_shared<G>(
     let diff = tree_diff(root, &plan)?;
     let _finishing = before_finish();
     let mut store = lock()?;
-    if checkout_owns_key(root, key)? || store.last_indexed_sha(key)? != plan.previous {
+    if checkout_owns_key(root, key)?
+        || store.last_indexed_sha(key)? != plan.previous
+        || store.mutation_epoch(key)? != plan.epoch
+    {
         return Ok(None);
     }
     finish_tree_apply(root, &mut *store, key, plan, diff).map(Some)
@@ -624,14 +605,102 @@ mod tests {
     }
 
     #[test]
+    fn finish_aborts_after_transient_checkout_with_overlay() {
+        let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let race = key_race();
+        {
+            let mut store = race.store.lock().expect("store");
+            apply_tree_index(race.repo.path(), &mut *store, "X", &race.s1).expect("seed X at s1");
+        }
+        let outcome = apply_tree_index_shared(race.repo.path(), &race.store, "X", &race.s1, || {
+            git(race.repo.path(), &["switch", "X"]);
+            race.settle_overlay_on_x(&race.s1, "extra.rs", "pub fn overlay_only() {}\n");
+            git(race.repo.path(), &["switch", "main"]);
+        })
+        .expect("job");
+        assert!(
+            outcome.is_none(),
+            "finish must abort when transient checkout applied an overlay on X"
+        );
+        let store = race.store.lock().expect("store");
+        assert!(
+            store.working_tree_dirty("X").expect("dirty"),
+            "transient overlay must remain dirty rather than certified clean at s1"
+        );
+        assert!(
+            !store
+                .lookup_symbol("X", "overlay_only", false)
+                .expect("q")
+                .is_empty(),
+            "overlay symbol written during transient checkout still present in dirty graph"
+        );
+    }
+
+    #[test]
+    fn finish_aborts_when_sync_commit_mutated_graph_without_sha() {
+        let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let race = key_race();
+        {
+            let mut store = race.store.lock().expect("store");
+            apply_tree_index(race.repo.path(), &mut *store, "X", &race.s1).expect("seed X at s1");
+        }
+        let outcome = apply_tree_index_shared(race.repo.path(), &race.store, "X", &race.s1, || {
+            git(race.repo.path(), &["switch", "X"]);
+            let s2 = commit_file(
+                race.repo.path(),
+                "b.rs",
+                "pub fn from_sync_commit() {}\n",
+                "s2",
+            );
+            let mut snapshots = HashMap::new();
+            crate::mcp::watcher::sync_commit(
+                race.repo.path(),
+                &race.store,
+                "X",
+                &s2,
+                true,
+                &mut snapshots,
+            )
+            .expect("sync_commit");
+            git(race.repo.path(), &["switch", "main"]);
+            let revision = std::sync::atomic::AtomicU64::new(0);
+            crate::mcp::watcher::apply_disk_batch(
+                race.repo.path(),
+                &race.store,
+                "X",
+                &s2,
+                &[],
+                &revision,
+                &mut snapshots,
+            )
+            .expect_err("apply_disk_batch must fail after switching away from X");
+        })
+        .expect("job");
+        assert!(
+            outcome.is_none(),
+            "finish must abort when sync_commit mutated X's graph without advancing last_indexed_sha"
+        );
+        let store = race.store.lock().expect("store");
+        assert!(
+            store.working_tree_dirty("X").expect("dirty"),
+            "X must remain dirty after interrupted sync_commit"
+        );
+    }
+
+    #[test]
     fn overlay_written_during_the_job_does_not_outlive_its_apply() {
         let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let race = key_race();
         race.overlay_then_leave_checkout();
         let outcome = apply_tree_index_shared(race.repo.path(), &race.store, "X", &race.s1, || {
-            git(race.repo.path(), &["switch", "X"]);
-            race.settle_overlay_on_x(&race.s1, "extra.rs", "pub fn overlay_only() {}\n");
-            git(race.repo.path(), &["switch", "main"]);
+            let hash = blake3::hash(b"pub fn overlay_only() {}\n")
+                .to_hex()
+                .to_string();
+            let files = std::collections::BTreeMap::from([(PathBuf::from("extra.rs"), Some(hash))]);
+            assert!(
+                readiness::write_overlay_checkpoint(race.repo.path(), "X", &race.s1, &files)
+                    .expect("write overlay")
+            );
         })
         .expect("job");
         assert!(outcome.is_some());

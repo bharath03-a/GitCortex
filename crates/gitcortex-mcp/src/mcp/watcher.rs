@@ -19,12 +19,32 @@ const DEBOUNCE_MS: u64 = 500;
 const MAX_BATCH_MS: u64 = 1_000;
 const MAX_PENDING: usize = 4096;
 
+/// Rules file hash; `None` when it could not be read safely.
+type RulesHash = Option<Option<String>>;
+
 fn queue_pending(pending: &mut HashSet<PathBuf>, path: PathBuf, rescan: &AtomicBool) {
     if pending.contains(&path) || pending.len() < MAX_PENDING {
         pending.insert(path);
     } else {
         rescan.store(true, Ordering::Release);
     }
+}
+
+/// Bump the epoch before raising, so a concurrent startup clear that misses
+/// the flag still observes the epoch change.
+fn raise_rescan(epoch: &AtomicU64, rescan: &AtomicBool) {
+    epoch.fetch_add(1, Ordering::SeqCst);
+    rescan.store(true, Ordering::SeqCst);
+}
+
+/// Clear the startup rescan unless one was raised since `pre_epoch`; returns
+/// whether a rescan is still needed.
+fn clear_startup_rescan(rescan: &AtomicBool, epoch: &AtomicU64, pre_epoch: u64) -> bool {
+    rescan.store(false, Ordering::SeqCst);
+    if epoch.load(Ordering::SeqCst) != pre_epoch {
+        rescan.store(true, Ordering::SeqCst);
+    }
+    rescan.load(Ordering::SeqCst)
 }
 
 fn indexes_event(kind: EventKind) -> bool {
@@ -103,14 +123,14 @@ async fn run_watcher(
             let event = match res {
                 Ok(event) => event,
                 Err(_) => {
-                    callback_rescan.store(true, Ordering::Release);
+                    raise_rescan(&callback_epoch, &callback_rescan);
                     callback_health.store(true, Ordering::Release);
                     callback_pending.store(true, Ordering::Release);
                     return;
                 }
             };
             if event.need_rescan() {
-                callback_rescan.store(true, Ordering::Release);
+                raise_rescan(&callback_epoch, &callback_rescan);
                 callback_health.store(true, Ordering::Release);
                 callback_pending.store(true, Ordering::Release);
             }
@@ -126,7 +146,7 @@ async fn run_watcher(
                         EventKind::Remove(_) | EventKind::Modify(ModifyKind::Name(_))
                     ) && !ignored_path(&path)
                     {
-                        callback_rescan.store(true, Ordering::Release);
+                        raise_rescan(&callback_epoch, &callback_rescan);
                         callback_health.store(true, Ordering::Release);
                         callback_pending.store(true, Ordering::Release);
                     }
@@ -153,6 +173,9 @@ async fn run_watcher(
     let mut observed_disk: HashMap<PathBuf, Option<(u64, Option<std::time::SystemTime>)>> =
         HashMap::new();
     let mut last_probe = Instant::now();
+    // `.gitcortex/ignore` hash the graph was last reconciled under; events in
+    // `.gitcortex/` are not delivered, so rule edits are detected by polling.
+    let mut applied_rules: Option<RulesHash> = None;
 
     // On daemon restart, if the persisted store already holds a dirty overlay
     // whose checkpoint matches HEAD and the current changed source bytes on
@@ -175,6 +198,7 @@ async fn run_watcher(
         });
         if let Some((changed, cp)) = recertified {
             if event_epoch.load(Ordering::Acquire) == pre_epoch && rx.is_empty() {
+                applied_rules = Some(Some(cp.ignore.clone()));
                 for (rel, hash) in cp.files {
                     snapshots.insert(rel, hash);
                 }
@@ -190,12 +214,12 @@ async fn run_watcher(
                 if let Ok(mut active) = branch.lock() {
                     *active = current;
                 }
-                rescan.store(false, Ordering::Release);
+                let needs_rescan = clear_startup_rescan(&rescan, &event_epoch, pre_epoch);
                 events_pending.store(
                     event_epoch.load(Ordering::Acquire) != pre_epoch || !rx.is_empty(),
                     Ordering::Release,
                 );
-                unhealthy.store(rescan.load(Ordering::Acquire), Ordering::Release);
+                unhealthy.store(needs_rescan, Ordering::Release);
             }
         }
     }
@@ -256,7 +280,9 @@ async fn run_watcher(
                     last_probe = Instant::now();
                 }
                 let due = due || first_event.is_some_and(|first: Instant| first.elapsed() >= Duration::from_millis(MAX_BATCH_MS));
-                let recover = rescan.swap(false, Ordering::AcqRel) || branch_changed;
+                let rules = super::ignore_rules::rules_hash(&repo_root).ok();
+                let rules_changed = applied_rules.as_ref().is_some_and(|applied| applied != &rules);
+                let recover = rescan.swap(false, Ordering::AcqRel) || branch_changed || rules_changed;
                 if !recover && !due && !head_changed { continue; }
                 events_pending.store(true, Ordering::Release);
                 if recover || head_changed {
@@ -280,6 +306,7 @@ async fn run_watcher(
                         if recover { snapshot_limit = snapshots.len().saturating_add(MAX_PENDING); }
                         else if snapshots.len() > snapshot_limit { rescan.store(true, Ordering::Release); }
                         previous_scope = Some(scope);
+                        applied_rules = Some(rules);
                         if let Ok(mut active) = branch.lock() { *active = current; }
                         pending.clear(); first_event = None;
                         let more_events = event_epoch.load(Ordering::Acquire) != epoch || !rx.is_empty();
@@ -312,7 +339,7 @@ fn git(root: &Path, args: &[&str]) -> Option<String> {
         .then(|| String::from_utf8_lossy(&out.stdout).trim().to_owned())
 }
 
-fn reconcile_disk(
+pub(crate) fn reconcile_disk(
     root: &Path,
     store: &Arc<Mutex<KuzuGraphStore>>,
     branch: &str,
@@ -365,18 +392,17 @@ pub(crate) fn apply_disk_batch(
     revision: &AtomicU64,
     snapshots: &mut HashMap<PathBuf, Option<String>>,
 ) -> anyhow::Result<()> {
+    let rules_before = super::ignore_rules::rules_hash(root).ok();
     let indexer = IncrementalIndexer::new(root)?;
-    let in_scope_paths: Vec<PathBuf> = paths
-        .iter()
-        .filter(|abs| {
-            abs.strip_prefix(root)
-                .ok()
-                .is_some_and(|rel| indexer.includes_path(rel))
-        })
-        .cloned()
-        .collect();
+    let (git_ignored, indexable) = split_git_ignored(root, paths)?;
     let clean_before = super::readiness::changed_sources(root)?.is_empty();
-    let diff = indexer.index_files_from_disk(&in_scope_paths)?;
+    // Every path goes to the indexer, which drops nodes of files its rules now
+    // exclude; git-ignored files are never indexed, only removed.
+    let diff = {
+        let mut diff = indexer.index_files_from_disk(&indexable)?;
+        diff.removed_files.extend(git_ignored);
+        diff
+    };
     anyhow::ensure!(
         super::helpers::detect_current_branch(root).as_deref() == Some(branch)
             && git(root, &["rev-parse", "--verify", "HEAD"]).as_deref() == Some(head),
@@ -387,7 +413,8 @@ pub(crate) fn apply_disk_batch(
     let mut store = store
         .lock()
         .map_err(|_| anyhow::anyhow!("store mutex poisoned"))?;
-    let _ = super::readiness::remove_overlay_checkpoint(root, branch);
+    super::readiness::remove_overlay_checkpoint(root, branch)?;
+    store.bump_mutation_epoch(branch)?;
     store.set_working_tree_dirty(branch, true)?;
     store.apply_diff(branch, &diff)?;
     for (path, hash) in &diff.source_hashes {
@@ -395,7 +422,13 @@ pub(crate) fn apply_disk_batch(
             snapshots.insert(path.clone(), hash.clone());
         }
     }
-    let verified = clean_before && clean && snapshots_match_commit(root, head, snapshots)?;
+    // Certify only bytes indexed under rules that held for the whole batch and
+    // that HEAD's committed rules (if any) still agree with.
+    let rules_settled = rules_before.is_some()
+        && super::ignore_rules::rules_hash(root).ok() == rules_before
+        && !super::ignore_rules::rules_modified(root, head).unwrap_or(true);
+    let verified =
+        rules_settled && clean_before && clean && snapshots_match_commit(root, head, snapshots)?;
     // Persist uncertainty across daemon restarts and historical branch queries.
     // A dirty graph is useful evidence, but cannot justify a safety conclusion.
     store.set_last_indexed_sha(branch, head)?;
@@ -429,16 +462,21 @@ pub(crate) fn apply_disk_batch(
 
         // Only persist an overlay checkpoint when every dirty in-scope file has
         // been indexed into `snapshots` and no dirty file was skipped due to
-        // size (> 512 KiB) or binary content.
-        let all_changed_indexed = changed_after.len() == snapshots.len()
+        // size (> 512 KiB) or binary content. Bounds are checked before any
+        // file is read under the store lock, and match `verify_overlay_checkpoint`.
+        let mut total_bytes = 0u64;
+        let all_changed_indexed = changed_after.len() <= super::readiness::MAX_OVERLAY_FILES
+            && changed_after.len() == snapshots.len()
             && changed_after.iter().all(|rel| snapshots.contains_key(rel))
             && changed_after.iter().all(|rel| {
                 let full = root.join(rel);
                 match std::fs::symlink_metadata(&full) {
                     Ok(meta) => {
+                        total_bytes = total_bytes.saturating_add(meta.len());
                         meta.is_file()
                             && !meta.file_type().is_symlink()
                             && meta.len() <= super::readiness::MAX_OVERLAY_FILE_BYTES
+                            && total_bytes <= super::readiness::MAX_OVERLAY_TOTAL_BYTES
                             && std::fs::read(&full)
                                 .ok()
                                 .is_some_and(|b| super::readiness::is_indexable_source_bytes(&b))
@@ -449,7 +487,7 @@ pub(crate) fn apply_disk_batch(
                     Err(_) => false,
                 }
             });
-        if all_changed_indexed {
+        if rules_settled && all_changed_indexed {
             let files: std::collections::BTreeMap<PathBuf, Option<String>> = snapshots
                 .iter()
                 .map(|(k, v)| (k.clone(), v.clone()))
@@ -470,7 +508,7 @@ pub(crate) fn apply_disk_batch(
     Ok(())
 }
 
-fn sync_commit(
+pub(crate) fn sync_commit(
     root: &Path,
     store: &Arc<Mutex<KuzuGraphStore>>,
     branch: &str,
@@ -492,13 +530,37 @@ fn sync_commit(
             && super::helpers::detect_current_branch(root).as_deref() == Some(branch),
         "checkout changed during commit synchronization"
     );
-    let _ = super::readiness::remove_overlay_checkpoint(root, branch);
+    super::readiness::remove_overlay_checkpoint(root, branch)?;
+    store.bump_mutation_epoch(branch)?;
     store.set_working_tree_dirty(branch, true)?;
     store.apply_diff(branch, &diff)?;
     for (path, hash) in &diff.source_hashes {
         snapshots.insert(path.clone(), hash.clone());
     }
     Ok(())
+}
+
+/// Split `(untracked git-ignored repo-relative paths, other absolute paths)`.
+/// Status never reports untracked ignored files, so indexing them (`.venv/`,
+/// `.next/`) would leave overlay evidence that can never be certified. Tracked
+/// files stay indexed even when an ignore pattern matches them.
+fn split_git_ignored(
+    root: &Path,
+    paths: &[PathBuf],
+) -> anyhow::Result<(Vec<PathBuf>, Vec<PathBuf>)> {
+    let repo = git2::Repository::open(root)?;
+    let index = repo.index()?;
+    let mut ignored = Vec::new();
+    let mut kept = Vec::new();
+    for path in paths {
+        match path.strip_prefix(root) {
+            Ok(rel) if index.get_path(rel, 0).is_none() && repo.status_should_ignore(rel)? => {
+                ignored.push(rel.to_owned());
+            }
+            _ => kept.push(path.clone()),
+        }
+    }
+    Ok((ignored, kept))
 }
 
 use super::readiness::snapshots_match_commit;
@@ -555,6 +617,18 @@ mod tests {
         assert!(!indexes_event(EventKind::Access(
             notify::event::AccessKind::Any
         )));
+    }
+
+    #[test]
+    fn startup_rescan_clear_keeps_a_rescan_raised_after_the_snapshot() {
+        let rescan = AtomicBool::new(true);
+        let epoch = AtomicU64::new(0);
+        let pre = epoch.load(Ordering::Acquire);
+        assert!(!clear_startup_rescan(&rescan, &epoch, pre));
+        rescan.store(true, Ordering::Release);
+        raise_rescan(&epoch, &rescan);
+        assert!(clear_startup_rescan(&rescan, &epoch, pre));
+        assert!(rescan.load(Ordering::Acquire));
     }
 
     #[test]
@@ -744,5 +818,68 @@ mod tests {
         wait_for(&store, "main", "companion", &["feature_only"]).await;
         watcher.abort();
         let _ = watcher.await;
+    }
+
+    #[test]
+    fn watcher_prunes_vanished_nested_folders_and_keeps_surviving_sibling() {
+        use crate::mcp::test_support::{commit_file, TempRepo, STORE_LOCK};
+        use gitcortex_core::schema::NodeKind;
+        let _guard = STORE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let repo = TempRepo::init();
+        commit_file(
+            repo.path(),
+            "parent/sibling/stay.rs",
+            "pub fn stay() {}\n",
+            "stay",
+        );
+        let head = commit_file(
+            repo.path(),
+            "parent/vanish/deep/inner/gone.rs",
+            "pub fn gone() {}\n",
+            "gone",
+        );
+        let store = Arc::new(Mutex::new(
+            KuzuGraphStore::open(repo.path()).expect("store"),
+        ));
+        let mut snapshots = HashMap::new();
+        let revision = AtomicU64::new(0);
+        reconcile_disk(
+            repo.path(),
+            &store,
+            "main",
+            &head,
+            &revision,
+            &mut snapshots,
+        )
+        .expect("initial reconcile");
+        let gone_path = repo.path().join("parent/vanish/deep/inner/gone.rs");
+        std::fs::remove_dir_all(repo.path().join("parent/vanish")).expect("remove vanish dir");
+        apply_disk_batch(
+            repo.path(),
+            &store,
+            "main",
+            &head,
+            &[gone_path],
+            &revision,
+            &mut snapshots,
+        )
+        .expect("watcher batch after dir removal");
+        let folders: Vec<PathBuf> = {
+            let guard = store.lock().expect("store");
+            let mut f: Vec<PathBuf> = guard
+                .list_all_nodes("main")
+                .expect("nodes")
+                .into_iter()
+                .filter(|n| n.kind == NodeKind::Folder)
+                .map(|n| n.file)
+                .collect();
+            f.sort();
+            f
+        };
+        assert_eq!(
+            folders,
+            vec![PathBuf::from("parent"), PathBuf::from("parent/sibling")],
+            "vanished nested folders must be pruned while surviving sibling folder remains"
+        );
     }
 }

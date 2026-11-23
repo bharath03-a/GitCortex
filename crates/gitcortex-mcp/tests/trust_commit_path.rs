@@ -127,3 +127,19 @@ fn after_callee_added_later() {
     index_hook_path(&repo, &mut store, "main");
     assert_matches_rebuild(&repo, &store, "main");
 }
+#[test]
+fn after_delete_last_file_in_directory() {
+    let repo = TestRepo::new();
+    repo.write("keep/surviving.rs", "pub fn surviving() {}\n");
+    repo.write("parent/sibling/stay.rs", "pub fn stay() {}\n");
+    repo.write("parent/vanish/deep/inner/gone.rs", "pub fn gone() {}\n");
+    repo.write("standalone_dir/last.rs", "pub fn last() {}\n");
+    repo.commit("initial");
+    let mut store = KuzuGraphStore::open(repo.root()).unwrap();
+    index_hook_path(&repo, &mut store, "main");
+    repo.remove("standalone_dir/last.rs");
+    repo.remove("parent/vanish/deep/inner/gone.rs");
+    repo.commit("delete last files in directories");
+    index_hook_path(&repo, &mut store, "main");
+    assert_matches_rebuild(&repo, &store, "main");
+}

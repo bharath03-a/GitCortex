@@ -542,15 +542,26 @@ async fn further_edit_after_checkpoint_returns_unverified_until_settled() {
     })
     .await;
 
-    // Further edit invalidates the checkpoint immediately on the next inspect
-    // before the 500ms debounce window elapses.
+    // Further edit invalidates the checkpoint on the next inspect. A slow call
+    // can land after the watcher settled; it may then be ready only if the
+    // stale symbol is gone and the new bytes are served.
     live.repo.write("a.rs", "pub fn second_edit() {}\n");
     let immediate = live.lookup("first_edit").await;
-    assert_eq!(state(&immediate), "unverified", "{immediate}");
-    assert_eq!(
-        immediate["index"]["working_tree_verified"], false,
-        "{immediate}"
-    );
+    match state(&immediate) {
+        "unverified" => assert_eq!(
+            immediate["index"]["working_tree_verified"], false,
+            "{immediate}"
+        ),
+        "ready" => {
+            assert!(items(&immediate).is_empty(), "stale ready: {immediate}");
+            let current = live.lookup("second_edit").await;
+            assert!(
+                !items(&current).is_empty() && is_ready(&current),
+                "{current}"
+            );
+        }
+        other => panic!("unexpected state {other}: {immediate}"),
+    }
 
     let resettled = live
         .wait_for("second_edit", "second edit settle", |data| {
