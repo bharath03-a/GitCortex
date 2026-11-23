@@ -34,11 +34,34 @@ impl Drop for SocketGuard {
     }
 }
 
-/// Socket used by the machine-local repository daemon. The stable repository
-/// ID keeps the path short enough for Unix-domain socket limits.
+const MAX_UNIX_SOCKET_PATH_BYTES: usize = 96;
+const MAX_FALLBACK_SOCKET_DIR_BYTES: usize = 64;
+
+/// Socket used by the machine-local repository daemon. Uses `<data_dir>/mcp.sock`
+/// when it fits within Unix `sun_path` limits, and falls back to a short
+/// deterministic path keyed by the store path otherwise.
 pub fn daemon_socket_path(repo_root: &Path) -> PathBuf {
     let repo_id = branch::storage_repo_id(repo_root);
-    branch::data_dir(&repo_id).join("mcp.sock")
+    socket_path_for_data_dir(&branch::data_dir(&repo_id))
+}
+
+fn socket_path_for_data_dir(data_dir: &Path) -> PathBuf {
+    let default_path = data_dir.join("mcp.sock");
+    if default_path.as_os_str().as_encoded_bytes().len() <= MAX_UNIX_SOCKET_PATH_BYTES {
+        return default_path;
+    }
+    let digest = blake3::hash(default_path.as_os_str().as_encoded_bytes());
+    let short_id = &digest.to_hex()[..16];
+    let base = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .filter(|dir| dir.as_os_str().as_encoded_bytes().len() <= MAX_FALLBACK_SOCKET_DIR_BYTES)
+        .or_else(|| {
+            let tmp = std::env::temp_dir();
+            (tmp.as_os_str().as_encoded_bytes().len() <= MAX_FALLBACK_SOCKET_DIR_BYTES)
+                .then_some(tmp)
+        })
+        .unwrap_or_else(|| PathBuf::from("/tmp"));
+    base.join(format!("gcx-{short_id}.sock"))
 }
 
 pub fn daemon_log_path(repo_root: &Path) -> PathBuf {
@@ -108,7 +131,16 @@ pub async fn serve_daemon(repo_root: PathBuf) -> Result<()> {
     if let Some(parent) = socket_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    if socket_path.exists() {
+    if let Ok(meta) = std::fs::symlink_metadata(&socket_path) {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::FileTypeExt;
+            anyhow::ensure!(
+                meta.file_type().is_socket(),
+                "refusing to overwrite non-socket path {}",
+                socket_path.display()
+            );
+        }
         std::fs::remove_file(&socket_path)
             .with_context(|| format!("remove stale socket {}", socket_path.display()))?;
     }
@@ -513,5 +545,23 @@ mod tests {
             assert!(idling.handler.has_active_tree_job());
             drop(idling.permit);
         });
+    }
+
+    #[test]
+    fn long_data_dir_socket_path_fits_unix_limit() {
+        let short = Path::new("/tmp/gcx/abc123");
+        assert_eq!(socket_path_for_data_dir(short), short.join("mcp.sock"));
+
+        let long_a = PathBuf::from(format!("/tmp/{}/repo_a", "nested_dir_".repeat(12)));
+        let long_b = PathBuf::from(format!("/tmp/{}/repo_b", "nested_dir_".repeat(12)));
+        let sock_a = socket_path_for_data_dir(&long_a);
+        let sock_b = socket_path_for_data_dir(&long_b);
+        assert!(
+            sock_a.as_os_str().as_encoded_bytes().len() <= MAX_UNIX_SOCKET_PATH_BYTES,
+            "fallback socket path too long: {}",
+            sock_a.display()
+        );
+        assert_eq!(sock_a, socket_path_for_data_dir(&long_a));
+        assert_ne!(sock_a, sock_b);
     }
 }
