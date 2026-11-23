@@ -17,7 +17,7 @@ from continuous_suite import Episode, Step
 AUTHOR = ["-c", "user.email=bench@example.invalid", "-c", "user.name=bench"]
 TEST_TIMEOUT_S = 600
 TAIL_CHARS = 1500
-NOISE_PATHS = (".gitcortex", ".claude", "__pycache__", ".pytest_cache")
+NOISE_PATHS = (".gitcortex", ".claude", ".codex", "__pycache__", ".pytest_cache")
 TEST_FILE = re.compile(r"(_test\.go$|(^|/)test_[^/]*\.py$|(^|/)tests?/)")
 INDEX_CONFIG = (
     '[index]\nlanguages = ["rust", "go", "python", "typescript", "java"]\n'

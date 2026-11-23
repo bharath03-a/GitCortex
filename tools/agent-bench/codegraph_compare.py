@@ -297,7 +297,12 @@ Question: {q}"""
     return parsed
 
 
-def run_codegraph_arm_codex(task, repo_dir: Path, log_path: Path) -> ArmResult:
+def build_codegraph_codex_command(
+    task,
+    repo_dir: Path,
+    model: str = "gpt-5.4-mini",
+    reasoning: str = "low",
+) -> list[str]:
     cmd = codegraph_command(task)
     exact = shlex.join(cmd)
     q = question(task)
@@ -315,21 +320,32 @@ Rules:
 - Do not edit files. Keep the final answer concise and cite repository-relative files.
 
 Question: {q}"""
-    command = [
+    return [
         "codex",
         "exec",
         "--json",
         "--ephemeral",
+        "--ignore-user-config",
         "--ignore-rules",
         "--dangerously-bypass-approvals-and-sandbox",
         "-m",
-        "gpt-5.4-mini",
+        model,
         "-c",
-        'model_reasoning_effort="low"',
+        f"model_reasoning_effort={json.dumps(reasoning)}",
         "-C",
         str(repo_dir),
         prompt,
     ]
+
+
+def run_codegraph_arm_codex(
+    task,
+    repo_dir: Path,
+    log_path: Path,
+    model: str = "gpt-5.4-mini",
+    reasoning: str = "low",
+) -> ArmResult:
+    command = build_codegraph_codex_command(task, repo_dir, model=model, reasoning=reasoning)
     try:
         result = subprocess.run(
             command,
@@ -437,31 +453,46 @@ Question: {q}"""
     return parsed
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--client", choices=["claude", "codex", "agy"], default="claude")
     parser.add_argument("--gcx", type=Path, default=DEFAULT_GCX)
-    args = parser.parse_args()
+    parser.add_argument("--baseline-source", type=Path, default=None)
+    parser.add_argument("--out", type=Path, default=None)
+    parser.add_argument("--model", default=None)
+    parser.add_argument("--reasoning", default="low")
+    parser.add_argument("--repos-dir", type=Path, default=REPOS_DIR)
+    args = parser.parse_args(argv)
 
-    _, repos, tasks = load_suite(SUITE_PATH)
+    _, _, tasks = load_suite(SUITE_PATH)
     by_id = {t.id: t for t in tasks}
-    baseline_source = find_baseline_source(args.client)
+    baseline_source = args.baseline_source or find_baseline_source(args.client)
     check_baseline_freshness(baseline_source, args.gcx)
     existing = load_existing_arms(baseline_source)
     missing = [tid for tid in TASK_IDS if tid not in existing]
     if missing:
         raise SystemExit(f"baseline file {baseline_source} is missing task ids: {missing}")
 
-    output = RESULTS_DIR / f"codegraph-compare-{args.client}.jsonl"
-    logs = RESULTS_DIR / f"codegraph-compare-{args.client}-logs"
+    output = args.out or (RESULTS_DIR / f"codegraph-compare-{args.client}.jsonl")
+    logs = output.with_suffix("").with_name(output.stem + "-logs")
     logs.mkdir(parents=True, exist_ok=True)
+    output.parent.mkdir(parents=True, exist_ok=True)
 
     results = []
     for index, task_id in enumerate(TASK_IDS, 1):
         task = by_id[task_id]
-        repo_dir = REPOS_DIR / task.repo
+        repo_dir = args.repos_dir / task.repo
         print(f"[{index}/{len(TASK_IDS)}] {task_id}", file=sys.stderr)
-        codegraph_arm = run_codegraph_arm(args.client, task, repo_dir, logs / f"{task_id}-codegraph.jsonl")
+        if args.client == "codex":
+            codegraph_arm = run_codegraph_arm_codex(
+                task,
+                repo_dir,
+                logs / f"{task_id}-codegraph.jsonl",
+                model=args.model or "gpt-5.4-mini",
+                reasoning=args.reasoning,
+            )
+        else:
+            codegraph_arm = run_codegraph_arm(args.client, task, repo_dir, logs / f"{task_id}-codegraph.jsonl")
         baseline_arm = existing[task_id]["baseline"]
         gcx_arm = existing[task_id]["gcx"]
         print(

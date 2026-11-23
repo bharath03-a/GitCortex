@@ -63,5 +63,44 @@ class AgyPermissionsConfigTests(unittest.TestCase):
             self.assertFalse(path.exists())
 
 
+class CodexArmIsolationTests(unittest.TestCase):
+    def test_run_codex_arm_passes_ignore_user_config(self) -> None:
+        import subprocess
+        import tempfile
+        from dataclasses import dataclass
+        from pathlib import Path
+        from unittest import mock
+
+        @dataclass
+        class StubTask:
+            id: str = "cobra-impact-add-command"
+            repo: str = "cobra"
+            action: str = "impact"
+            query: str = "AddCommand"
+            required: tuple[str, ...] = ("command.go",)
+            forbidden: tuple[str, ...] = ()
+
+        seen: list[list[str]] = []
+
+        def fake_run(cmd, **kwargs):
+            seen.append(cmd)
+            stdout = "\n".join([
+                json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": "command.go"}}),
+                json.dumps({"type": "turn.completed", "usage": {"input_tokens": 100, "cached_input_tokens": 0, "output_tokens": 10}}),
+            ])
+            return subprocess.CompletedProcess(cmd, 0, stdout, "")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(agent_run.subprocess, "run", side_effect=fake_run):
+                res = agent_run.run_codex_arm(
+                    StubTask(), Path(tmp), "gpt-5.4-mini", "low", ["/opt/gcx", "query", "impact", "AddCommand"],
+                    "/opt/gcx", "baseline", Path(tmp) / "log.jsonl",
+                )
+        self.assertFalse(res.error)
+        self.assertEqual(len(seen), 1)
+        for flag in ("--json", "--ephemeral", "--ignore-user-config", "--ignore-rules", "--dangerously-bypass-approvals-and-sandbox"):
+            self.assertIn(flag, seen[0])
+
+
 if __name__ == "__main__":
     unittest.main()

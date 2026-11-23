@@ -191,6 +191,54 @@ class SummaryTests(unittest.TestCase):
         self.assertTrue(row.false_safe)
         self.assertEqual(row.workflow, "cross-module-debug")
 
+    def test_codex_unforced_and_continuous_traces_load_and_render(self) -> None:
+        codex_unforced_runs = []
+        for rnd in (1, 2, 3):
+            b = run("cobra-impact-add-command", "cobra", "graph", "baseline", rnd, total=1000, uncached=200, cost=None)
+            b["metrics"]["model"] = "gpt-5.4-mini"
+            g = run(
+                "cobra-impact-add-command", "cobra", "graph", "gcx-guide", rnd, total=500, uncached=100, cost=None,
+                adopted=True, calls=1, first=1, connected=True,
+            )
+            g["metrics"]["model"] = "gpt-5.4-mini"
+            codex_unforced_runs.extend([b, g])
+
+        codex_episode = {
+            "type": "episode", "episode": "requests-auth-redirect", "repo": "requests", "language": "python",
+            "family": "cross-module-debug", "arm": "gcx-guide", "round": 1, "success": True, "aborted": None,
+            "false_no_dependents": False,
+            "steps": [{"metrics": {"gcx_connected": True, "model": "gpt-5.4-mini"}}],
+            "patch": {"insertions": 2, "deletions": 1, "unrelated_files": []},
+            "metrics": {"cost_usd": None, "total_tokens": 900, "uncached_tokens": 400, "wall_ms": 1500, "turns": 3,
+                        "tool_calls": 4, "gcx_calls": 1, "gcx_errors": 0, "adopted": True,
+                        "first_gcx_position": 2, "repeat_reads": 0},
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            p_unforced = write_trace(Path(tmp), codex_unforced_runs, label="codex-u", lane="codex-unforced")
+            # Override client/model in meta to codex
+            raw_u = [json.loads(line) for line in p_unforced.read_text().splitlines()]
+            raw_u[0].update(client="codex", client_version="codex-cli 0.171.0", model_requested="gpt-5.4-mini")
+            p_unforced.write_text("\n".join(json.dumps(x) for x in raw_u) + "\n")
+
+            p_cont = write_trace(Path(tmp), [codex_episode], label="codex-c", lane="codex-continuous")
+            raw_c = [json.loads(line) for line in p_cont.read_text().splitlines()]
+            raw_c[0].update(client="codex", client_version="codex-cli 0.171.0", model_requested="gpt-5.4-mini")
+            p_cont.write_text("\n".join(json.dumps(x) for x in raw_c) + "\n")
+
+            t_u = load_trace(p_unforced)
+            t_c = load_trace(p_cont)
+            self.assertEqual(t_c.rows[0].patch_lines, 3)
+            self.assertEqual(t_c.rows[0].lane, "codex-continuous")
+            summary = build_summary([t_u, t_c], "codex-unit")
+            self.assertIn("codex", summary["groups"]["client"])
+            self.assertIn("codex-unforced", summary["groups"]["lane"])
+            self.assertIn("codex-continuous", summary["groups"]["lane"])
+            self.assertIn("gpt-5.4-mini", summary["groups"]["model"])
+            self.assertIsNone(summary["groups"]["overall"]["all"]["arms"]["gcx-guide"]["cost_per_success"])
+            md = render_markdown(summary)
+            self.assertIn("codex-unforced", md)
+            self.assertIn("codex-continuous", md)
+
 
 class RenderTests(unittest.TestCase):
     def test_markdown_has_tables_banner_and_negative_section(self) -> None:

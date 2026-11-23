@@ -219,5 +219,24 @@ class CountRunCommandCallsTest(unittest.TestCase):
         self.assertEqual(codegraph_calls, 1)
 
 
+class BuildCodegraphCodexCommandTest(unittest.TestCase):
+    def test_codex_command_includes_ignore_user_config_and_isolation_flags(self) -> None:
+        from codegraph_compare import build_codegraph_codex_command
+
+        class TaskStub:
+            action = "callers"
+            query = "QuerySet.filter"
+            repo = "django"
+
+        repo_dir = Path("/tmp/repos/django")
+        cmd = build_codegraph_codex_command(TaskStub(), repo_dir, model="gpt-5.4-mini", reasoning="low")
+        self.assertEqual(cmd[:2], ["codex", "exec"])
+        for flag in ("--json", "--ephemeral", "--ignore-user-config", "--ignore-rules", "--dangerously-bypass-approvals-and-sandbox"):
+            self.assertIn(flag, cmd)
+        self.assertEqual(cmd[cmd.index("-m") + 1], "gpt-5.4-mini")
+        self.assertEqual(cmd[cmd.index("-C") + 1], str(repo_dir))
+        self.assertIn("codegraph callers filter", cmd[-1])
+
+
 if __name__ == "__main__":
     unittest.main()

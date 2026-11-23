@@ -25,6 +25,8 @@ from bench import DEFAULT_WORK, BenchError, prepare_repo, sha256
 from budget import BudgetExceeded, RunBudget
 from unforced_client import (
     ARMS,
+    DEFAULT_MODEL_BY_CLIENT,
+    SUPPORTED_CLIENTS,
     Arm,
     RawRun,
     build_command,
@@ -32,6 +34,7 @@ from unforced_client import (
     guide_sha256,
     installed_guide,
     run_claude,
+    runner_for_client,
 )
 from unforced_grade import grade_answer
 from unforced_parse import parse_transcript
@@ -40,6 +43,11 @@ from unforced_suite import UnforcedTask, load_unforced_suite
 HERE = Path(__file__).resolve().parent
 DEFAULT_UNFORCED_SUITE = HERE / "unforced-suite.toml"
 DEFAULT_ARMS = ("baseline", "gcx-bare", "gcx-guide")
+DEFAULT_CODEX_BUDGET_USD = 10000.0
+LANE_BY_CLIENT = {
+    "claude": "claude-code-unforced",
+    "codex": "codex-unforced",
+}
 Runner = Callable[[list[str], Path, int], RawRun]
 
 
@@ -51,6 +59,7 @@ class RunConfig:
     timeout_s: int
     seed: int
     label: str
+    client: str = "claude"
 
 
 @dataclass(frozen=True)
@@ -86,7 +95,7 @@ def run_id(planned: PlannedRun, label: str) -> str:
 def build_record(
     planned: PlannedRun, config: RunConfig, raw: RawRun, cap: float, log_rel: str
 ) -> dict[str, Any]:
-    metrics = parse_transcript(raw.stdout)
+    metrics = parse_transcript(raw.stdout, client=config.client, model=config.model)
     task = planned.task
     grade = grade_answer(metrics.answer, task.required, task.forbidden, task.dependents_exist)
     status = metrics.run_status
@@ -143,7 +152,14 @@ def execute_plan(
         cap = budget.next_run_cap()
         repo_dir = repo_dirs[planned.task.repo]
         command = build_command(
-            planned.arm, planned.task.prompt, config.model, config.effort, config.gcx, cap
+            planned.arm,
+            planned.task.prompt,
+            config.model,
+            config.effort,
+            config.gcx,
+            cap,
+            client=config.client,
+            cwd=repo_dir if config.client == "codex" else None,
         )
         scope = installed_guide(repo_dir, guide) if planned.arm.guide else contextlib.nullcontext()
         with scope:
@@ -167,17 +183,31 @@ def harness_commit() -> dict[str, Any]:
     return {"commit": git("rev-parse", "HEAD"), "dirty": bool(git("status", "--porcelain", "--", str(HERE)))}
 
 
+def _isolation_meta(client: str) -> dict[str, Any]:
+    if client == "codex":
+        return {
+            "ignore_user_config": True,
+            "ignore_rules": True,
+            "ephemeral": True,
+        }
+    return {
+        "setting_sources": "project,local",
+        "slash_commands_disabled": True,
+        "auto_memory_disabled": True,
+    }
+
+
 def build_meta(
     args: argparse.Namespace, suite_path: Path, core_path: Path, repos: dict[str, Any],
     repo_names: list[str], guide: dict[str, str], plan: list[PlannedRun], budget: RunBudget,
 ) -> dict[str, Any]:
     return {
         "type": "meta",
-        "lane": "claude-code-unforced",
+        "lane": LANE_BY_CLIENT[args.client],
         "label": args.label,
         "created_at": datetime.now(UTC).isoformat(),
-        "client": "claude",
-        "client_version": tool_version(["claude", "--version"]),
+        "client": args.client,
+        "client_version": tool_version([args.client, "--version"]),
         "model_requested": args.model,
         "reasoning": args.reasoning,
         "gcx_path": str(args.gcx.resolve()),
@@ -189,11 +219,7 @@ def build_meta(
         "repo_commits": {name: repos[name].commit for name in repo_names},
         "guide_sha256": guide_sha256(guide),
         "harness": harness_commit(),
-        "isolation": {
-            "setting_sources": "project,local",
-            "slash_commands_disabled": True,
-            "auto_memory_disabled": True,
-        },
+        "isolation": _isolation_meta(args.client),
         "seed": args.seed,
         "rounds": args.rounds,
         "arms": list(args.arms),
@@ -208,8 +234,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--suite", type=Path, default=DEFAULT_UNFORCED_SUITE)
     p.add_argument("--gcx", type=Path, required=True, help="gcx binary under test (candidate or baseline)")
     p.add_argument("--work", type=Path, default=DEFAULT_WORK)
-    p.add_argument("--client", default="claude")
-    p.add_argument("--model", default="sonnet")
+    p.add_argument("--client", choices=list(SUPPORTED_CLIENTS), default="claude")
+    p.add_argument("--model", default=None)
     p.add_argument("--reasoning", default="low")
     p.add_argument("--label", required=True)
     p.add_argument("--rounds", type=int, default=1)
@@ -219,14 +245,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--task", action="append")
     p.add_argument("--reuse-index", action="store_true")
     p.add_argument("--timeout", type=int, default=600, help="seconds per run")
-    p.add_argument("--max-total-usd", type=float, required=True, help="hard spend cap for the whole run")
+    p.add_argument("--max-total-usd", type=float, default=None, help="hard spend cap for the whole run (required for claude)")
     p.add_argument("--max-run-usd", type=float, default=1.0, help="hard cap handed to each client run")
     p.add_argument("--max-runs", type=int)
     p.add_argument("--dry-run", action="store_true", help="print the plan and spend nothing")
     p.add_argument("--output", type=Path)
     args = p.parse_args(argv)
-    if args.client != "claude":
-        p.error("the unforced lane supports --client claude only: `codex exec` does not expose ad-hoc MCP tools")
+    if args.model is None:
+        args.model = DEFAULT_MODEL_BY_CLIENT[args.client]
+    if args.max_total_usd is None:
+        if args.client == "claude":
+            p.error("--max-total-usd is required for --client claude")
+        args.max_total_usd = DEFAULT_CODEX_BUDGET_USD
     unknown = [a for a in args.arms if a not in ARMS]
     if unknown:
         p.error(f"unknown arms {unknown}; choose from {sorted(ARMS)}")
@@ -251,7 +281,7 @@ def print_progress(record: dict[str, Any], budget: RunBudget) -> None:
     )
 
 
-def main(argv: list[str] | None = None, runner: Runner = run_claude) -> int:
+def main(argv: list[str] | None = None, runner: Runner | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     try:
         suite_path = args.suite.resolve()
@@ -272,8 +302,17 @@ def main(argv: list[str] | None = None, runner: Runner = run_claude) -> int:
         work = args.work.resolve()
         repo_names = list(dict.fromkeys(t.repo for t in tasks))
         repo_dirs = {n: prepare_repo(repos[n], work, args.gcx.resolve(), args.reuse_index)[0] for n in repo_names}
-        guide = generate_guide(args.gcx.resolve())
-        config = RunConfig(args.model, args.reasoning, args.gcx.resolve(), args.timeout, args.seed, args.label)
+        guide = generate_guide(args.gcx.resolve(), client=args.client)
+        config = RunConfig(
+            args.model,
+            args.reasoning,
+            args.gcx.resolve(),
+            args.timeout,
+            args.seed,
+            args.label,
+            client=args.client,
+        )
+        active_runner = runner or runner_for_client(args.client)
         output = args.output or HERE / "results" / f"{args.label}-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}.unforced.jsonl"
         output.parent.mkdir(parents=True, exist_ok=True)
         log_dir = output.with_name(output.stem + "-logs")
@@ -282,7 +321,7 @@ def main(argv: list[str] | None = None, runner: Runner = run_claude) -> int:
         with output.open("w", encoding="utf-8") as handle:
             emit(handle, build_meta(args, suite_path, core_path, repos, repo_names, guide, plan, budget))
             try:
-                for record, budget in execute_plan(plan, repo_dirs, config, budget, runner, guide, log_dir):
+                for record, budget in execute_plan(plan, repo_dirs, config, budget, active_runner, guide, log_dir):
                     emit(handle, record)
                     completed += 1
                     print_progress(record, budget)

@@ -28,12 +28,27 @@ from continuous_client import build_step_command, session_id
 from continuous_env import diff_stats, index_repo, prepare_episode_repo, release_index, run_hidden_tests
 from continuous_suite import Episode, Step, load_continuous_suite
 from continuous_verify import DEFAULT_CONTINUOUS_SUITE, HERE, ensure_checkout, episode_digest, scoring_digest
-from unforced_client import ARMS, Arm, RawRun, generate_guide, guide_sha256, installed_guide, run_claude
+from unforced_client import (
+    ARMS,
+    DEFAULT_MODEL_BY_CLIENT,
+    SUPPORTED_CLIENTS,
+    Arm,
+    RawRun,
+    generate_guide,
+    guide_sha256,
+    installed_guide,
+    run_claude,
+    runner_for_client,
+)
 from unforced_grade import grade_answer
-from unforced_parse import TranscriptMetrics, parse_transcript, repeat_counts
-from unforced_run import DEFAULT_ARMS, arm_order, harness_commit, tool_version
+from unforced_parse import TranscriptMetrics, extract_codex_thread_id, parse_transcript, repeat_counts
+from unforced_run import DEFAULT_ARMS, DEFAULT_CODEX_BUDGET_USD, arm_order, harness_commit, tool_version
 
 HIDDEN_PEEK = re.compile(r"hidden_step|/hidden/|episodes/|reference-step|start\.patch")
+LANE_BY_CLIENT = {
+    "claude": "claude-code-continuous",
+    "codex": "codex-continuous",
+}
 Runner = Callable[[list[str], Path, int], RawRun]
 
 
@@ -45,6 +60,7 @@ class EpisodeConfig:
     timeout_s: int
     seed: int
     label: str
+    client: str = "claude"
 
 
 @dataclass(frozen=True)
@@ -143,21 +159,31 @@ def _aggregate(steps: list[dict[str, Any]], events: list[Any], offsets: list[int
 def _walk_steps(
     planned: PlannedEpisode, dest: Path, config: EpisodeConfig, budget: RunBudget,
     runner: Runner, session: str, name: str, log_dir: Path,
-) -> tuple[list[dict[str, Any]], list[Any], list[int], str | None, RunBudget]:
+) -> tuple[list[dict[str, Any]], list[Any], list[int], str | None, RunBudget, str]:
     episode, arm = planned.episode, planned.arm
     steps: list[dict[str, Any]] = []
     events: list[Any] = []
     offsets: list[int] = []
+    active_session = session
     for position, step in enumerate(episode.steps):
         try:
             cap = budget.next_run_cap()
         except BudgetExceeded as stop:
-            return steps, events, offsets, f"before step {step.id}: {stop}", budget
+            return steps, events, offsets, f"before step {step.id}: {stop}", budget, active_session
         command = build_step_command(
-            arm, step.prompt, config.model, config.effort, config.gcx, cap, session, position == 0
+            arm,
+            step.prompt,
+            config.model,
+            config.effort,
+            config.gcx,
+            cap,
+            active_session,
+            position == 0,
+            client=config.client,
+            cwd=dest if config.client == "codex" else None,
         )
         raw = runner(command, dest, config.timeout_s)
-        metrics = parse_transcript(raw.stdout)
+        metrics = parse_transcript(raw.stdout, client=config.client, model=config.model)
         budget = budget.charge(metrics.cost_usd, cap)
         record = _step_record(step, raw, metrics, _write_step_log(log_dir, f"{name}-{step.id}", raw))
         if step.kind == "probe":
@@ -170,8 +196,21 @@ def _walk_steps(
         events.extend(metrics.events)
         steps.append(record)
         if record["status"] != "ok":
-            return steps, events, offsets, f"step {step.id} ended with status {record['status']}", budget
-    return steps, events, offsets, None, budget
+            return steps, events, offsets, f"step {step.id} ended with status {record['status']}", budget, active_session
+        if config.client == "codex" and position == 0:
+            thread_id = extract_codex_thread_id(raw.stdout)
+            if thread_id:
+                active_session = thread_id
+            elif len(episode.steps) > 1:
+                return (
+                    steps,
+                    events,
+                    offsets,
+                    f"step {step.id} did not emit a Codex thread_id for resume",
+                    budget,
+                    active_session,
+                )
+    return steps, events, offsets, None, budget, active_session
 
 
 def run_episode(
@@ -189,7 +228,7 @@ def run_episode(
             index_repo(dest, config.gcx)
         scope = installed_guide(dest, guide) if arm.guide else contextlib.nullcontext()
         with scope:
-            steps, events, offsets, aborted, budget = _walk_steps(
+            steps, events, offsets, aborted, budget, active_session = _walk_steps(
                 planned, dest, config, budget, runner, session, name, log_dir
             )
         final_outcomes = {s.id: run_hidden_tests(dest, episode, s).to_dict() for s in episode.edit_steps}
@@ -218,7 +257,7 @@ def run_episode(
         "round": planned.round,
         "order_index": planned.order_index,
         "seed": config.seed,
-        "session_id": session,
+        "session_id": active_session,
         "start_sha": start_sha,
         "aborted": aborted,
         "success": aborted is None and all(finals.values()),
@@ -256,6 +295,12 @@ def execute_episodes(
         yield record, budget
 
 
+def _isolation_meta(client: str) -> dict[str, Any]:
+    if client == "codex":
+        return {"ignore_user_config": True, "ignore_rules": True, "ephemeral": False}
+    return {"setting_sources": "project,local", "slash_commands_disabled": True, "auto_memory_disabled": True}
+
+
 def build_meta(
     args: argparse.Namespace, suite_path: Path, core_path: Path, repos: dict[str, Any],
     episodes: list[Episode], guide: dict[str, str], plan: list[PlannedEpisode],
@@ -264,11 +309,11 @@ def build_meta(
     names = sorted({e.repo for e in episodes})
     return {
         "type": "meta",
-        "lane": "claude-code-continuous",
+        "lane": LANE_BY_CLIENT[args.client],
         "label": args.label,
         "created_at": datetime.now(UTC).isoformat(),
-        "client": "claude",
-        "client_version": tool_version(["claude", "--version"]),
+        "client": args.client,
+        "client_version": tool_version([args.client, "--version"]),
         "model_requested": args.model,
         "reasoning": args.reasoning,
         "gcx_path": str(args.gcx.resolve()),
@@ -282,7 +327,7 @@ def build_meta(
         "verification_sha256": verification_sha,
         "guide_sha256": guide_sha256(guide) if guide else None,
         "harness": harness_commit(),
-        "isolation": {"setting_sources": "project,local", "slash_commands_disabled": True, "auto_memory_disabled": True},
+        "isolation": _isolation_meta(args.client),
         "seed": args.seed,
         "rounds": args.rounds,
         "arms": list(args.arms),
@@ -297,8 +342,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--suite", type=Path, default=DEFAULT_CONTINUOUS_SUITE)
     p.add_argument("--gcx", type=Path, required=True)
     p.add_argument("--work", type=Path, default=DEFAULT_WORK)
-    p.add_argument("--client", default="claude")
-    p.add_argument("--model", default="sonnet")
+    p.add_argument("--client", choices=list(SUPPORTED_CLIENTS), default="claude")
+    p.add_argument("--model", default=None)
     p.add_argument("--reasoning", default="medium")
     p.add_argument("--label", required=True)
     p.add_argument("--rounds", type=int, default=1)
@@ -307,14 +352,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--episode", action="append")
     p.add_argument("--verification", type=Path, help="passing continuous_verify.py record (required unless --dry-run)")
     p.add_argument("--timeout", type=int, default=900, help="seconds per step")
-    p.add_argument("--max-total-usd", type=float, required=True)
+    p.add_argument("--max-total-usd", type=float, default=None, help="hard spend cap (required for claude)")
     p.add_argument("--max-run-usd", type=float, default=2.0, help="cap handed to each step's client call")
     p.add_argument("--max-runs", type=int, help="cap on client calls (steps), not episodes")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--output", type=Path)
     args = p.parse_args(argv)
-    if args.client != "claude":
-        p.error("continuous episodes support --client claude only")
+    if args.model is None:
+        args.model = DEFAULT_MODEL_BY_CLIENT[args.client]
+    if args.max_total_usd is None:
+        if args.client == "claude":
+            p.error("--max-total-usd is required for --client claude")
+        args.max_total_usd = DEFAULT_CODEX_BUDGET_USD
     unknown = [a for a in args.arms if a not in ARMS]
     if unknown:
         p.error(f"unknown arms {unknown}; choose from {sorted(ARMS)}")
@@ -323,7 +372,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return args
 
 
-def main(argv: list[str] | None = None, runner: Runner = run_claude) -> int:
+def main(argv: list[str] | None = None, runner: Runner | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     try:
         suite_path = args.suite.resolve()
@@ -342,8 +391,17 @@ def main(argv: list[str] | None = None, runner: Runner = run_claude) -> int:
         verification_sha = check_verification(args.verification.resolve(), episodes, repos)
         work = args.work.resolve()
         sources = {n: (ensure_checkout(repos[n], work), repos[n].commit) for n in {e.repo for e in episodes}}
-        guide = generate_guide(args.gcx.resolve()) if any(a.guide for a in {p.arm for p in plan}) else {}
-        config = EpisodeConfig(args.model, args.reasoning, args.gcx.resolve(), args.timeout, args.seed, args.label)
+        guide = generate_guide(args.gcx.resolve(), client=args.client) if any(a.guide for a in {p.arm for p in plan}) else {}
+        config = EpisodeConfig(
+            args.model,
+            args.reasoning,
+            args.gcx.resolve(),
+            args.timeout,
+            args.seed,
+            args.label,
+            client=args.client,
+        )
+        active_runner = runner or runner_for_client(args.client)
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         output = args.output or HERE / "results" / f"{args.label}-{stamp}.continuous.jsonl"
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -354,7 +412,7 @@ def main(argv: list[str] | None = None, runner: Runner = run_claude) -> int:
             handle.write(json.dumps(build_meta(args, suite_path, core_path, repos, episodes, guide, plan, budget, verification_sha), sort_keys=True) + "\n")
             handle.flush()
             try:
-                for record, budget in execute_episodes(plan, sources, config, budget, runner, guide, Path(tmp), log_dir):
+                for record, budget in execute_episodes(plan, sources, config, budget, active_runner, guide, Path(tmp), log_dir):
                     handle.write(json.dumps(record, sort_keys=True) + "\n")
                     handle.flush()
                     completed += 1

@@ -136,6 +136,12 @@ def _episode_row(meta: dict[str, Any], model: str, trace: str, r: dict[str, Any]
     )
 
 
+def _row_builder(meta: dict[str, Any], record: dict[str, Any]):
+    if record.get("type") == "episode" or str(meta.get("lane", "")).endswith("-continuous"):
+        return _episode_row
+    return _unforced_row
+
+
 def load_trace(path: Path) -> Trace:
     lines = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     metas = [x for x in lines if x.get("type") == "meta"]
@@ -145,9 +151,8 @@ def load_trace(path: Path) -> Trace:
     runs = [x for x in lines if x.get("type") in {"run", "episode"}]
     summaries = [x for x in lines if x.get("type") == "summary"]
     model = _model(meta, runs)
-    build = _episode_row if meta.get("lane") == "claude-code-continuous" else _unforced_row
     return Trace(
         path=path, sha256=file_sha256(path), meta=meta, records=tuple(runs),
         summary=summaries[-1] if summaries else None,
-        rows=tuple(build(meta, model, meta["label"], r) for r in runs),
+        rows=tuple(_row_builder(meta, r)(meta, model, meta["label"], r) for r in runs),
     )

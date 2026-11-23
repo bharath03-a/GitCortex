@@ -31,6 +31,10 @@ REQUIRED_LANES = {
     "candidate": ("claude-code-unforced", "claude-code-continuous"),
     "baseline": ("claude-code-unforced",),
 }
+LANE_ALIASES = {
+    "claude-code-unforced": ("claude-code-unforced", "codex-unforced"),
+    "claude-code-continuous": ("claude-code-continuous", "codex-continuous"),
+}
 PROVENANCE_TEXT = ("client", "client_version", "model", "created_at", "gcx_version")
 
 
@@ -227,7 +231,11 @@ def validate(root: Path, manifest: dict[str, Any], docs: list[str] | None = None
             errors += gate_errors
             losses += gate_losses
     for role, required in REQUIRED_LANES.items():
-        errors += [f"missing {role} result for lane {lane}" for lane in required if lane not in seen_lanes[role]]
+        errors += [
+            f"missing {role} result for lane {lane}"
+            for lane in required
+            if not any(alias in seen_lanes[role] for alias in LANE_ALIASES.get(lane, (lane,)))
+        ]
     claims = manifest.get("claims", [])
     if not isinstance(claims, list) or not claims:
         errors.append("manifest must list the claims the release makes (each cites a result id)")

@@ -1,11 +1,12 @@
-"""Claude Code commands for multi-step episodes: one persistent session, edits allowed."""
+"""Client commands (Claude Code and Codex CLI) for multi-step episodes: one persistent session, edits allowed."""
 
 from __future__ import annotations
 
+import json
 import uuid
 from pathlib import Path
 
-from unforced_client import READ_ONLY_BASH, Arm, mcp_config
+from unforced_client import READ_ONLY_BASH, Arm, codex_mcp_config_args, mcp_config
 
 # Agents must be able to run the project's own tests while fixing a bug.
 BUILD_AND_TEST_BASH = (
@@ -36,6 +37,42 @@ def disallowed_tools(arm: Arm) -> str:
     return " ".join(tools)
 
 
+def build_codex_step_command(
+    arm: Arm,
+    prompt: str,
+    model: str,
+    effort: str,
+    gcx: Path,
+    session: str,
+    first_step: bool,
+    cwd: Path | None = None,
+) -> list[str]:
+    """Build a persistent `codex exec` (step 1) or `codex exec resume` (step 2+) command.
+
+    Note: `codex exec resume` in codex-cli 0.171.0 does not accept `-C/--cd` (cwd
+    comes from the subprocess working directory), and `--ephemeral` is omitted on
+    every step so session state persists across the episode.
+    """
+    common = [
+        "--json",
+        "--ignore-user-config",
+        "--ignore-rules",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-m", model,
+        "-c", f"model_reasoning_effort={json.dumps(effort)}",
+        *codex_mcp_config_args(arm, gcx),
+    ]
+    if first_step:
+        command = ["codex", "exec", *common]
+        if cwd is not None:
+            command.extend(["-C", str(cwd)])
+        command.append(prompt)
+        return command
+    if not session or not session.strip():
+        raise ValueError("Codex resume requires a non-empty session/thread id")
+    return ["codex", "exec", "resume", *common, session, prompt]
+
+
 def build_step_command(
     arm: Arm,
     prompt: str,
@@ -45,7 +82,15 @@ def build_step_command(
     max_budget_usd: float,
     session: str,
     first_step: bool,
+    client: str = "claude",
+    cwd: Path | None = None,
 ) -> list[str]:
+    if client == "codex":
+        return build_codex_step_command(
+            arm, prompt, model, effort, gcx, session, first_step, cwd=cwd
+        )
+    if client != "claude":
+        raise ValueError(f"unsupported client: {client}")
     session_flag = ["--session-id", session] if first_step else ["--resume", session]
     return [
         "claude",

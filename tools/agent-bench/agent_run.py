@@ -320,6 +320,7 @@ Question: {q}"""
         "exec",
         "--json",
         "--ephemeral",
+        "--ignore-user-config",
         "--ignore-rules",
         "--dangerously-bypass-approvals-and-sandbox",
         "-m",
