@@ -33,28 +33,29 @@ export function KeyboardHelp({ onClose }: Props) {
       >
         <div className="flex items-center justify-between border-b border-(--color-border-subtle) bg-(--color-elevated)/55 px-4 py-3">
           <div className="flex items-center gap-2">
-            <Keyboard className="size-4 text-(--color-accent)" />
-            <span className="font-medium">Keyboard shortcuts</span>
+            <Keyboard className="size-4 text-(--color-accent-text)" />
+            <span className="text-ui-base font-heading">Keyboard shortcuts</span>
           </div>
           <button
             onClick={onClose}
+            aria-label="Close keyboard shortcuts"
             className="rounded p-1 text-(--color-text-muted) hover:text-(--color-text-primary)"
           >
             <X className="size-4" />
           </button>
         </div>
-        <ul className="grid grid-cols-1 gap-1 p-3">
+        <ul className="grid max-h-[75vh] grid-cols-1 gap-1 overflow-y-auto p-3">
           {SHORTCUTS.map((s) => (
             <li
-              key={s.desc}
-              className="flex items-center justify-between rounded px-2 py-1.5 hover:bg-(--color-elevated)"
+              key={`${s.keys.join("+")}-${s.desc}`}
+              className="flex items-center justify-between gap-3 rounded px-2 py-1.5 hover:bg-(--color-elevated)"
             >
-              <span className="text-[12px] text-(--color-text-muted)">{s.desc}</span>
-              <span className="flex items-center gap-1">
+              <span className="text-ui-base text-(--color-text-muted)">{s.desc}</span>
+              <span className="flex shrink-0 items-center gap-1">
                 {s.keys.map((k) => (
                   <kbd
                     key={k}
-                    className="min-w-6 rounded border border-(--color-border-subtle) bg-(--color-elevated) px-1.5 py-0.5 text-center font-mono text-[9px] text-(--color-text-primary)"
+                    className="min-w-6 rounded border border-(--color-border-subtle) bg-(--color-elevated) px-1.5 py-0.5 text-center font-mono text-ui-xs font-label text-(--color-text-primary)"
                   >
                     {k}
                   </kbd>
