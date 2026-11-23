@@ -3,45 +3,19 @@ use std::{fs, path::Path};
 use anyhow::{Context, Result};
 use serde_json::json;
 
+use crate::cmd::init::guide;
 use crate::cmd::init::helpers::{require_json_object, write_atomic};
 
-const CURSOR_RULES: &str = r#"---
-description: GitCortex knowledge graph — use the gcx CLI (or its MCP tool) to navigate the codebase
-globs: ["**/*"]
-alwaysApply: true
----
+pub(crate) const MARKER: &str = "cursor integration";
 
-# GitCortex Agent Guide
+const FRONTMATTER: &str = "---\ndescription: GitCortex code graph: callers, impact before edits, cross-file paths\nalwaysApply: true\n---\n\n";
 
-This repository is indexed by GitCortex. Run these directly in a terminal; the
-`gitcortex` MCP server in `.cursor/mcp.json` exposes the same actions through
-its one compact `gcx` dispatch tool, if you prefer that path.
+/// Older releases wrote this file whole, without markers.
+const LEGACY_HEADER: &str = "description: GitCortex knowledge graph";
 
-## Key commands
-
-| CLI command | MCP action | When to use |
-|------|------|-------------|
-| `gcx query lookup-symbol <name>` | `lookup_symbol` | Find any function, struct, class, or trait by name |
-| `gcx query find-callers <name>` | `find_callers` | Who calls this function? (backward trace) |
-| `gcx query find-callees <name>` | `find_callees` | What does this function call? (forward trace) |
-| `gcx query list-definitions <file>` | `list_definitions` | All symbols in a file — faster than reading the whole file |
-| `gcx query find-implementors <name>` | `find_implementors` | All implementations of a trait or interface |
-| `gcx query trace-path <from> <to>` | `trace_path` | Is there a call path from A to B? |
-| `gcx query find-unused` | `find_unused_symbols` | Dead code candidates |
-| `gcx query get-subgraph <name>` | `get_subgraph` | Everything within N hops of a symbol |
-
-## Workflows
-
-**Navigating unfamiliar code**: `lookup-symbol` → `list-definitions` → `get-subgraph`
-
-**Debugging a crash**: `lookup-symbol` on the failing function → `find-callers` upstream
-
-**Impact analysis before refactoring**: `find-callers` then `gcx blast-radius --base main --head HEAD`
-
-**Finding dead code**: `find-unused` filtered by kind
-
-See `.gitcortex/AGENT_GUIDE.md` for the full reference.
-"#;
+pub(crate) fn guidance() -> String {
+    guide::managed_block(MARKER, "")
+}
 
 pub fn install(repo_root: &Path, _global_editor_config: bool) -> Result<()> {
     write_cursor_rules(repo_root)?;
@@ -50,12 +24,23 @@ pub fn install(repo_root: &Path, _global_editor_config: bool) -> Result<()> {
 }
 
 fn write_cursor_rules(repo_root: &Path) -> Result<()> {
-    let dir = repo_root.join(".cursor").join("rules");
-    fs::create_dir_all(&dir)?;
-    let path = dir.join("gitcortex.mdc");
-    if !path.exists() {
-        fs::write(path, CURSOR_RULES).context("write .cursor/rules/gitcortex.mdc")?;
+    let path = repo_root
+        .join(".cursor")
+        .join("rules")
+        .join("gitcortex.mdc");
+    let legacy = fs::read_to_string(&path)
+        .map(|text| text.contains(LEGACY_HEADER))
+        .unwrap_or(false);
+    if legacy || !path.exists() {
+        if let Some(dir) = path.parent() {
+            fs::create_dir_all(dir)?;
+        }
+        write_atomic(&path, &format!("{FRONTMATTER}{}", guidance()))
+            .context("write .cursor/rules/gitcortex.mdc")?;
+        return Ok(());
     }
+    guide::upsert_block(&path, MARKER, &guidance())
+        .context("update .cursor/rules/gitcortex.mdc")?;
     Ok(())
 }
 

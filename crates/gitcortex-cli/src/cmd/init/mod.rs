@@ -11,7 +11,9 @@ use indicatif::{ProgressBar, ProgressStyle};
 
 pub(crate) mod detect;
 pub mod editors;
+pub(crate) mod guide;
 pub(crate) mod helpers;
+pub(crate) mod read_hook;
 pub(crate) mod universal;
 
 use super::serve_lock;

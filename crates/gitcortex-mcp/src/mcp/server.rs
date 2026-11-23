@@ -49,15 +49,34 @@ pub fn daemon_log_path(repo_root: &Path) -> PathBuf {
 /// Ask the live graph owner for observed readiness instead of equating an
 /// advisory lock with a healthy watcher. The probe has a bounded timeout.
 pub async fn daemon_readiness(repo_root: &Path) -> Result<serde_json::Value> {
+    let data = daemon_call(
+        repo_root,
+        "graph_stats",
+        serde_json::json!({}),
+        Duration::from_secs(3),
+    )
+    .await?;
+    data.get("index")
+        .cloned()
+        .context("daemon did not return index readiness; restart it with the current binary")
+}
+
+/// Run one compact `gcx` action on the live daemon without starting one.
+pub async fn daemon_call(
+    repo_root: &Path,
+    action: &str,
+    params: serde_json::Value,
+    timeout: Duration,
+) -> Result<serde_json::Value> {
     use tokio::io::AsyncWriteExt;
-    tokio::time::timeout(Duration::from_secs(3), async {
+    tokio::time::timeout(timeout, async {
         let mut stream = tokio::net::UnixStream::connect(daemon_socket_path(repo_root)).await?;
         stream.write_all(&[COMPACT_MODE]).await?;
         let client = ().serve(stream).await?;
         let response = client
             .call_tool(
                 rmcp::model::CallToolRequestParams::new("gcx").with_arguments(
-                    serde_json::json!({"action":"graph_stats", "params":{}})
+                    serde_json::json!({"action": action, "params": params})
                         .as_object()
                         .cloned()
                         .unwrap_or_default(),
@@ -68,16 +87,14 @@ pub async fn daemon_readiness(repo_root: &Path) -> Result<serde_json::Value> {
         let response = response?;
         anyhow::ensure!(
             response.is_error != Some(true),
-            "daemon readiness query failed"
+            "daemon {action} query failed"
         );
-        let index = response
+        response
             .structured_content
-            .and_then(|data| data.get("index").cloned())
-            .context("daemon did not return index readiness; restart it with the current binary")?;
-        Ok(index)
+            .context("daemon returned no structured result")
     })
     .await
-    .context("daemon readiness probe timed out")?
+    .with_context(|| format!("daemon {action} query timed out"))?
 }
 
 /// Own the embedded graph once and multiplex any number of local MCP clients.

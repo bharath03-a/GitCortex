@@ -4,6 +4,7 @@ pub mod deinit;
 pub mod doctor;
 pub mod export;
 pub mod hook;
+pub mod hook_context;
 pub mod init;
 pub mod query;
 pub mod serve;

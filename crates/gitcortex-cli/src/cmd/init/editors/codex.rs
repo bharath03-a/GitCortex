@@ -2,25 +2,15 @@ use std::{fs, path::Path};
 
 use anyhow::{Context, Result};
 
+use crate::cmd::init::guide;
 use crate::cmd::init::helpers::write_atomic;
+use crate::cmd::init::read_hook;
 
-pub(crate) const AGENTS_SECTION: &str = r#"<!-- >>> gitcortex codex integration >>> -->
-## GitCortex knowledge graph
+pub(crate) const MARKER: &str = "codex integration";
 
-This repository is indexed by GitCortex. For structural questions, prefer these
-over broad file scans — run them directly as shell commands, or via the `gcx`
-MCP tool if `mcp_servers.gitcortex` is configured:
-
-- `gcx query lookup-symbol <name>` locates a definition.
-- `gcx query find-callers <name>` / `gcx query find-callees <name>` trace call relationships.
-- `gcx query get-subgraph <name>` maps a symbol neighbourhood.
-- `gcx query tour` summarizes unfamiliar areas.
-- `gcx blast-radius --base <branch> --head <branch>` assesses change impact.
-
-Treat graph output as navigation evidence and confirm behavior in source and
-tests before editing. If the index is stale, run `gcx hook`.
-<!-- <<< gitcortex codex integration <<< -->
-"#;
+pub(crate) fn guidance() -> String {
+    guide::managed_block(MARKER, "")
+}
 
 pub(crate) const CODEX_MCP_SECTION: &str = r#"# >>> gitcortex codex MCP >>>
 [mcp_servers.gitcortex]
@@ -50,22 +40,6 @@ const HOOKS_JSON_TEMPLATE: &str = r#"{
 }
 "#;
 
-const PRE_TOOL_USE_HOOK: &str = r#"#!/usr/bin/env sh
-# GitCortex PreToolUse hook — appends call-graph context when a file is read.
-set -e
-export PATH="$HOME/.cargo/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
-
-input=$(cat)
-file_path=$(printf '%s' "$input" | python3 -c \
-  "import sys,json; d=json.load(sys.stdin); print(d.get('tool_input',{}).get('file_path',''))" \
-  2>/dev/null || true)
-
-[ -z "$file_path" ] && exit 0
-command -v gcx >/dev/null 2>&1 || exit 0
-
-gcx query context "$file_path" 2>/dev/null || true
-"#;
-
 pub fn install(repo_root: &Path, _global_editor_config: bool) -> Result<()> {
     write_agents_md(repo_root)?;
     write_codex_config(repo_root)?;
@@ -75,27 +49,13 @@ pub fn install(repo_root: &Path, _global_editor_config: bool) -> Result<()> {
 
 fn write_agents_md(repo_root: &Path) -> Result<()> {
     let path = repo_root.join("AGENTS.md");
-
-    if path.exists() {
-        let existing = fs::read_to_string(&path).context("read AGENTS.md")?;
-        if existing.contains("gitcortex codex integration") {
-            return Ok(());
-        }
+    if let Ok(existing) = fs::read_to_string(&path) {
         if let Some(start) = existing.find("# GitCortex - Codex Guide") {
             let prefix = existing[..start].trim_end();
-            let migrated = if prefix.is_empty() {
-                AGENTS_SECTION.to_owned()
-            } else {
-                format!("{prefix}\n\n{AGENTS_SECTION}")
-            };
-            write_atomic(&path, &migrated).context("migrate AGENTS.md")?;
-            return Ok(());
+            write_atomic(&path, &format!("{prefix}\n")).context("migrate AGENTS.md")?;
         }
-        write_atomic(&path, &format!("{existing}\n\n{AGENTS_SECTION}"))
-            .context("update AGENTS.md")?;
-    } else {
-        fs::write(&path, AGENTS_SECTION).context("write AGENTS.md")?;
     }
+    guide::upsert_block(&path, MARKER, &guidance()).context("update AGENTS.md")?;
     Ok(())
 }
 
@@ -127,16 +87,7 @@ fn write_hooks_json(repo_root: &Path) -> Result<()> {
     let hook_dir = repo_root.join(".codex").join("hooks");
     fs::create_dir_all(&hook_dir)?;
     let hook_path = hook_dir.join("gcx-context.sh");
-    if !hook_path.exists() {
-        fs::write(&hook_path, PRE_TOOL_USE_HOOK).context("write gcx-context.sh")?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(&hook_path)?.permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(&hook_path, perms)?;
-        }
-    }
+    read_hook::install(&hook_path)?;
 
     let path = repo_root.join(".codex").join("hooks.json");
     if path.exists() {
