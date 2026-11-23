@@ -2226,10 +2226,46 @@ impl GitCortexServer {
         }
         data.insert("index".to_owned(), index);
         data.insert("graph_generation".to_owned(), json!(generation));
+        if result.is_error != Some(true) {
+            if let Some(budget_tokens) = self.agent_envelope_budget(&action, &data) {
+                super::agent::enforce_envelope_budget(&mut data, budget_tokens, 0);
+            }
+        }
         let data = serde_json::Value::Object(data);
         result.content = vec![Content::text(data.to_string())];
         result.structured_content = Some(data);
         Ok(result)
+    }
+
+    fn agent_envelope_budget(
+        &self,
+        action: &str,
+        data: &serde_json::Map<String, serde_json::Value>,
+    ) -> Option<usize> {
+        match action {
+            "find_callers" | "pre_edit_impact" | "search_code" => {
+                Some(self.response_budget.min(600))
+            }
+            "get_subgraph" => Some(self.response_budget.min(400)),
+            "symbol_context" => Some(self.response_budget.min(800)),
+            "answer_query" => {
+                if data.contains_key("risk_level") {
+                    Some(self.response_budget.min(600))
+                } else if data.contains_key("used_by")
+                    && data.contains_key("callers")
+                    && data.contains_key("callees")
+                {
+                    Some(self.response_budget.min(800))
+                } else if data.contains_key("relation_counts") {
+                    Some(self.response_budget.min(400))
+                } else if data.contains_key("semantic_available") {
+                    Some(self.response_budget.min(600))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
     }
 }
 

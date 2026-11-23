@@ -143,3 +143,138 @@ fn after_delete_last_file_in_directory() {
     index_hook_path(&repo, &mut store, "main");
     assert_matches_rebuild(&repo, &store, "main");
 }
+
+#[test]
+fn python_class_instantiation_uses_edges_match_rebuild_and_rank_in_subgraph() {
+    use gitcortex_core::{
+        schema::{EdgeConfidence, EdgeKind, NodeKind},
+        store::GraphStore,
+    };
+    use gitcortex_mcp::mcp::agent::{self, AgentQueryOptions, AgentStatus};
+
+    let repo = TestRepo::new();
+    // Commit 1: caller arrives BEFORE Session is defined (exercises incremental
+    // reconciliation when the target class arrives in a later commit).
+    repo.write(
+        "src/requests/api.py",
+        "\
+from . import sessions
+
+def request(method, url, **kwargs):
+    with sessions.Session() as session:
+        return session.request(method=method, url=url, **kwargs)
+",
+    );
+    repo.commit("add api.py before sessions.py");
+    let mut store = KuzuGraphStore::open(repo.root()).unwrap();
+    index_hook_path(&repo, &mut store, "main");
+    assert_matches_rebuild(&repo, &store, "main");
+
+    // Commit 2: Session class with 20 methods + same-file factory + direct import caller
+    // + a noisy test suite importing Session explicitly (resolved confidence, is_test=true).
+    let mut sessions_py = String::from("class Session:\n");
+    for i in 0..20 {
+        sessions_py.push_str(&format!("    def method_{i:02}(self):\n        pass\n"));
+    }
+    sessions_py.push_str("\ndef session():\n    return Session()\n");
+    repo.write("src/requests/sessions.py", &sessions_py);
+    repo.write(
+        "src/requests/direct.py",
+        "\
+from .sessions import Session
+
+def build_client():
+    return Session()
+",
+    );
+    let mut tests_py = String::from("from requests.sessions import Session\n\n");
+    for i in 0..25 {
+        tests_py.push_str(&format!(
+            "def test_session_{i:02}():\n    return Session()\n"
+        ));
+    }
+    repo.write("tests/test_sessions.py", &tests_py);
+    repo.commit("add Session class, direct import caller, and tests");
+    index_hook_path(&repo, &mut store, "main");
+    assert_matches_rebuild(&repo, &store, "main");
+
+    // Verify Uses edges from all three production call patterns to Session (Struct).
+    let nodes = store.list_all_nodes("main").unwrap();
+    let edges = store.list_all_edges("main").unwrap();
+    let session_node = nodes
+        .iter()
+        .find(|n| n.kind == NodeKind::Struct && n.name == "Session")
+        .expect("Session struct node");
+    let fn_id = |file: &str, name: &str| {
+        nodes
+            .iter()
+            .find(|n| {
+                n.kind == NodeKind::Function && n.name == name && n.file.to_string_lossy() == file
+            })
+            .unwrap_or_else(|| panic!("missing function {file}::{name}"))
+            .id
+            .clone()
+    };
+    let api_request = fn_id("src/requests/api.py", "request");
+    let direct_build = fn_id("src/requests/direct.py", "build_client");
+    let same_file_session = fn_id("src/requests/sessions.py", "session");
+
+    assert!(
+        edges.iter().any(|e| {
+            e.kind == EdgeKind::Uses && e.src == api_request && e.dst == session_node.id
+        }),
+        "expected Uses edge from src/requests/api.py::request -> Session"
+    );
+    assert!(
+        edges.iter().any(|e| {
+            e.kind == EdgeKind::Uses
+                && e.src == direct_build
+                && e.dst == session_node.id
+                && e.confidence == EdgeConfidence::Resolved
+        }),
+        "expected Resolved Uses edge from src/requests/direct.py::build_client -> Session"
+    );
+    assert!(
+        edges.iter().any(|e| {
+            e.kind == EdgeKind::Uses && e.src == same_file_session && e.dst == session_node.id
+        }),
+        "expected Uses edge from src/requests/sessions.py::session -> Session"
+    );
+
+    // Verify get_subgraph ranks production used_by ahead of test used_by and contains methods.
+    let sub = agent::get_subgraph(
+        &store,
+        "main",
+        "Session",
+        2,
+        "both",
+        AgentQueryOptions {
+            limit: 20,
+            budget_tokens: 1200,
+        },
+    )
+    .expect("get_subgraph");
+    assert_eq!(sub.status, AgentStatus::Ok);
+    let api_pos = sub
+        .evidence
+        .iter()
+        .position(|e| e.relation == "used_by" && e.file == "src/requests/api.py")
+        .expect("src/requests/api.py must appear in Session subgraph evidence");
+    let direct_pos = sub
+        .evidence
+        .iter()
+        .position(|e| e.relation == "used_by" && e.file == "src/requests/direct.py")
+        .expect("src/requests/direct.py must appear in Session subgraph evidence");
+    if let Some(first_test_pos) = sub.evidence.iter().position(|e| e.is_test) {
+        assert!(
+            api_pos < first_test_pos && direct_pos < first_test_pos,
+            "production used_by ({api_pos}, {direct_pos}) must rank ahead of test evidence ({first_test_pos})"
+        );
+    }
+    if let Some(first_contains_pos) = sub.evidence.iter().position(|e| e.relation == "contains") {
+        assert!(
+            api_pos < first_contains_pos && direct_pos < first_contains_pos,
+            "used_by ({api_pos}, {direct_pos}) must rank ahead of contains ({first_contains_pos})"
+        );
+    }
+}

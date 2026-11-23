@@ -17,8 +17,11 @@ fn git(root: &Path, args: &[&str]) -> String {
     String::from_utf8(output.stdout).unwrap().trim().to_owned()
 }
 
+static KUZU_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 #[tokio::test]
 async fn protocol_reports_scope_and_rejects_missing_or_stale_impact() {
+    let _kuzu_guard = KUZU_LOCK.lock().await;
     // One fixture per mode avoids simultaneous Kuzu opens in this process.
     for compact in [true, false] {
         let tmp = tempfile::tempdir().unwrap();
@@ -200,4 +203,105 @@ async fn protocol_reports_scope_and_rejects_missing_or_stale_impact() {
         client.cancel().await.unwrap();
         service.cancel().await.unwrap();
     }
+}
+
+#[tokio::test]
+async fn protocol_enforces_response_budget_including_index_envelope() {
+    use gitcortex_indexer::IncrementalIndexer;
+
+    let _kuzu_guard = KUZU_LOCK.lock().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    git(root, &["init", "-b", "main"]);
+    let mut source = String::from(
+        "pub struct HubTarget {}\nimpl HubTarget {\n    pub fn target_method(&self) -> usize { 1 }\n}\n",
+    );
+    for i in 0..30 {
+        source.push_str(&format!(
+            "pub fn hub_caller_{i:02}(hub: &HubTarget) -> usize {{ hub.target_method() + {i} }}\n"
+        ));
+    }
+    std::fs::write(root.join("lib.rs"), source).unwrap();
+    git(root, &["add", "."]);
+    git(
+        root,
+        &[
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-m",
+            "seed hub callers",
+        ],
+    );
+
+    let indexer = IncrementalIndexer::new(root).unwrap();
+    let (diff, head) = indexer.run(None).unwrap();
+    let mut store = KuzuGraphStore::open(root).unwrap();
+    store.apply_diff("main", &diff).unwrap();
+    store.set_last_indexed_sha("main", &head).unwrap();
+    drop(store);
+
+    let server = GitCortexServer::new_with_mode(root, false).unwrap();
+    let (server_io, client_io) = tokio::io::duplex(65536);
+    let task = tokio::spawn(async move { server.serve(server_io).await.unwrap() });
+    let client = ().serve(client_io).await.unwrap();
+    let service = task.await.unwrap();
+
+    let checks: [(&str, Value, usize); 5] = [
+        (
+            "find_callers",
+            json!({"function_name": "crate::HubTarget::target_method", "depth": 1}),
+            600,
+        ),
+        (
+            "pre_edit_impact",
+            json!({"function_name": "crate::HubTarget::target_method", "depth": 1}),
+            600,
+        ),
+        (
+            "get_subgraph",
+            json!({"seed_name": "crate::HubTarget::target_method", "depth": 1, "direction": "both", "limit": 30}),
+            400,
+        ),
+        (
+            "symbol_context",
+            json!({"name": "crate::HubTarget::target_method"}),
+            800,
+        ),
+        (
+            "search_code",
+            json!({"query": "hub_caller", "limit": 30, "include_details": true}),
+            600,
+        ),
+    ];
+
+    for (tool_name, args, budget_tokens) in checks {
+        let result = client
+            .call_tool(
+                CallToolRequestParams::new(tool_name.to_owned())
+                    .with_arguments(args.as_object().unwrap().clone()),
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.is_error, Some(false), "{tool_name} errored");
+        let data = result.structured_content.expect("structured_content");
+        assert_eq!(data["index"]["state"], "ready");
+        let serialized = data.to_string();
+        let tokens_est = serialized.len().div_ceil(4);
+        assert!(
+            tokens_est <= budget_tokens,
+            "{tool_name} exceeded budget {budget_tokens}: {} bytes ({tokens_est} tokens)",
+            serialized.len()
+        );
+        let returned = data["coverage"]["returned"].as_u64().unwrap_or(0);
+        assert!(
+            returned >= 1,
+            "{tool_name} dropped all evidence under budget {budget_tokens}: {data}"
+        );
+    }
+
+    client.cancel().await.unwrap();
+    service.cancel().await.unwrap();
 }

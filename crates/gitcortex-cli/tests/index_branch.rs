@@ -210,7 +210,7 @@ fn held_lock_failure_says_mcp_can_index_the_branch() {
     let _ = std::fs::remove_dir_all(store_dir);
     assert_eq!(output.status.code(), Some(1));
     let text = stderr(&output);
-    assert!(text.contains("repository graph is active"), "{text}");
+    assert!(text.contains("repository graph is busy"), "{text}");
     assert!(text.contains("MCP"), "{text}");
     assert!(text.contains("branch"), "{text}");
     assert!(text.contains("feature"), "{text}");
