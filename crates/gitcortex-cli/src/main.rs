@@ -147,7 +147,7 @@ enum Commands {
         #[arg(long)]
         branch: Option<String>,
         /// Output format: markdown (default codebase map), json (legacy symbols + edges),
-        /// graph-json (versioned graph v1), dot, svg, graphml, cypher, or html.
+        /// graph-json (versioned graph v1), mermaid, dot, svg, graphml, cypher, or html.
         #[arg(long, default_value = "markdown", value_enum)]
         format: cmd::export::ExportFormat,
         /// Upsert a compressed top-symbols table into CLAUDE.md between
@@ -170,7 +170,7 @@ enum Commands {
         /// Comma-separated edge kinds to traverse and emit (e.g. calls,imports).
         #[arg(long, value_delimiter = ',')]
         edge_kinds: Option<Vec<String>>,
-        /// Maximum number of nodes to emit (defaults to 5000).
+        /// Maximum number of nodes to emit (defaults to 5000, or 100 for mermaid).
         #[arg(long)]
         max_nodes: Option<usize>,
         /// Write output to PATH instead of stdout (or instead of `.gitcortex/context.md` for markdown).
