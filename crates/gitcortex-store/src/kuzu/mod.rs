@@ -987,6 +987,7 @@ impl GraphStore for KuzuGraphStore {
             bulk_apply(&conn, &nt, &et, diff)?;
             persist_reference_facts(&conn, &rt, &new_reference_facts)?;
             reconcile_reference_names(&conn, &nt, &et, &rt, &affected_names)?;
+            branch::bump_mutation_epoch(&self.repo_id, branch)?;
             return Ok(());
         }
 
@@ -2475,10 +2476,7 @@ impl GraphStore for KuzuGraphStore {
     fn set_working_tree_dirty(&mut self, branch_name: &str, dirty: bool) -> Result<()> {
         let path = branch::last_sha_path(&self.repo_id, branch_name).with_extension("dirty");
         if dirty {
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            std::fs::write(path, b"unverified working-tree overlay")?;
+            branch::write_atomic(&path, b"unverified working-tree overlay")?;
         } else if let Err(error) = std::fs::remove_file(path) {
             if error.kind() != std::io::ErrorKind::NotFound {
                 return Err(error.into());

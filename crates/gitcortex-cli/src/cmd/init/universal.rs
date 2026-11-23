@@ -143,23 +143,30 @@ pub fn initial_index(repo_root: &Path) -> Result<(usize, usize)> {
     let head_sha = head_sha(repo_root)?;
     let last_sha = store.last_indexed_sha(&branch)?;
     let dirty_overlay = store.working_tree_dirty(&branch)?;
+    let rules_before = gitcortex_mcp::mcp::ignore_rules::rules_hash(repo_root).ok();
+    let rules_mismatch = rules_before.as_ref().map_or(true, |rules| {
+        !gitcortex_mcp::mcp::ignore_rules::indexed_rules_match(repo_root, &branch, rules)
+            .unwrap_or(false)
+    });
 
-    if dirty_overlay || last_sha.as_deref() != Some(head_sha.as_str()) {
+    if dirty_overlay || rules_mismatch || last_sha.as_deref() != Some(head_sha.as_str()) {
+        let full_rebuild = dirty_overlay || rules_mismatch;
         let indexer = IncrementalIndexer::new(repo_root).context("failed to create indexer")?;
         let (mut diff, indexed_head_sha) = indexer
-            .run(if dirty_overlay {
+            .run(if full_rebuild {
                 None
             } else {
                 last_sha.as_deref()
             })
             .context("initial index failed")?;
-        if dirty_overlay {
-            // Explicit init may repair a prior overlay, including untracked
-            // files that disappeared while the daemon was stopped.
+        if full_rebuild {
+            // Explicit init may repair a prior overlay or ignore-rule change,
+            // including untracked or newly ignored files that must be dropped.
             diff.removed_files.extend(
                 store
                     .list_all_nodes(&branch)?
                     .into_iter()
+                    .filter(|node| node.kind != gitcortex_core::schema::NodeKind::Folder)
                     .map(|node| node.file),
             );
         }
@@ -173,6 +180,15 @@ pub fn initial_index(repo_root: &Path) -> Result<(usize, usize)> {
         store.bump_mutation_epoch(&branch)?;
         store.set_working_tree_dirty(&branch, true)?;
         store.apply_diff(&branch, &diff).context("apply diff")?;
+        if let Some(rules) = rules_before.as_ref() {
+            if gitcortex_mcp::mcp::ignore_rules::rules_hash(repo_root).ok() == rules_before {
+                gitcortex_mcp::mcp::ignore_rules::persist_indexed_rules(
+                    repo_root,
+                    &branch,
+                    rules.as_deref(),
+                )?;
+            }
+        }
         store
             .set_last_indexed_sha(&branch, &indexed_head_sha)
             .context("persist sha")?;

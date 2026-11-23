@@ -204,3 +204,20 @@ Hook timing (`GCX_TIMING=1 gcx hook` with isolated `GCX_STORE_PATH`): 497ms firs
 
 B7 review full gate: `just ci` PASS (`cargo test --workspace`: 514 passed, 0 failed, 0 ignored).
 `cargo nextest run -p gitcortex-mcp -j 4`: 309 run, 309 passed, 0 skipped.
+
+## B8: post-B7 review closure (offline ignore hash, fast-path epoch, atomic markers, watcher reports)
+
+| finding | scenario (test) | first result | final |
+|---|---|---|---|
+| High: untracked `.gitcortex/ignore` edited offline leaves clean checkout `ready` | `untracked_ignore_edited_offline_blocks_clean_checkout_until_reconciled` | FAIL: `ready` while stale ignored nodes remained on clean checkout | PASS |
+| Medium: `KuzuGraphStore::apply_diff` empty-table bulk fast path omits mutation epoch bump | `apply_diff_bumps_mutation_epoch_on_empty_and_incremental_paths` | FAIL: `mutation_epoch` stayed `0` after bulk `apply_diff` | PASS |
+| Low: non-atomic `fs::write` on `.sha`, `.epoch`, `.dirty`, `schema_version`, `editor_prompted` | `write_atomic_replaces_content_without_leaving_temp_files` | non-atomic overwrite | PASS |
+| Watcher report (b): newly git-ignored / excluded file retained in `snapshots`, blocking overlay certification | `newly_gitignored_untracked_file_is_evicted_from_snapshots_and_overlay_certifies` | FAIL: stale `scratch.rs` snapshot kept `snapshots.len() != changed_after.len()`, leaving overlay `unverified` | PASS |
+| Watcher report (c): `.gitignore` / `.git/info/exclude` / `.gitcortex/ignore` edits ignored by watcher callback | `ignore_config_paths_trigger_rescan`, `watcher_rescans_immediately_when_gitignore_changes` | FAIL: no rescan triggered on `Create`/`Modify(Data)` of ignore-config files | PASS |
+| Watcher report (a): `recover && head_changed` skips `sync_commit` | `reconcile_disk_when_recover_and_head_changed_updates_sha_and_drops_deleted_files` | PASS (rejected as bug: `reconcile_disk` already enumerates disk + store files, updates `last_indexed_sha`, prunes deleted folders, and certifies clean and dirty checkouts; pinned with regression) | PASS |
+
+- **Per-branch ignore-rules persistence (`<branch>.ignore`):** `finish_tree_apply`, `reconcile_disk`, `sync_commit`, `gcx init`, and `gcx hook` atomically persist the `.gitcortex/ignore` blob hash (or `none`) under which a branch was indexed. `readiness::inspect` checks it on the clean checkout path so offline creation, modification, or deletion of an untracked `.gitcortex/ignore` returns `unverified` until full reconciliation; legacy stores without `.ignore` remain compatible when no `.gitcortex/ignore` exists on disk.
+- **Atomic metadata writes:** `gitcortex_store::branch::write_atomic` (same-directory temp file + rename) backs `schema_version`, `editor_prompted`, `<branch>.sha`, `<branch>.ignore`, `<branch>.epoch`, and `<branch>.dirty`.
+
+B8 full gate (`cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace -j 4`, `typos .`): PASS (`521 passed, 0 failed, 0 ignored`).
+

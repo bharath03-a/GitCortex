@@ -138,6 +138,15 @@ async fn run_watcher(
                 return;
             }
             for path in event.paths {
+                // Ignore-config edits (.gitignore, .git/info/exclude,
+                // .gitcortex/ignore) can add or remove untracked source files
+                // from scope without touching the source files themselves.
+                if is_ignore_config_path(&path) {
+                    raise_rescan(&callback_epoch, &callback_rescan);
+                    callback_health.store(true, Ordering::Release);
+                    callback_pending.store(true, Ordering::Release);
+                    continue;
+                }
                 // Directory removal/rename may hide many source files. Reconcile
                 // once rather than guessing which descendants still exist.
                 if !should_watch(&path) {
@@ -374,13 +383,14 @@ pub(crate) fn reconcile_disk(
             store
                 .list_all_nodes(branch)?
                 .into_iter()
+                .filter(|node| node.kind != gitcortex_core::schema::NodeKind::Folder)
                 .map(|node| root.join(node.file))
                 .filter(|path| should_watch(path)),
         );
     }
     let mut paths: Vec<_> = paths.into_iter().collect();
     paths.sort();
-    apply_disk_batch(root, store, branch, head, &paths, revision, snapshots)
+    apply_disk_batch_inner(root, store, branch, head, &paths, revision, snapshots, true)
 }
 
 pub(crate) fn apply_disk_batch(
@@ -392,6 +402,20 @@ pub(crate) fn apply_disk_batch(
     revision: &AtomicU64,
     snapshots: &mut HashMap<PathBuf, Option<String>>,
 ) -> anyhow::Result<()> {
+    apply_disk_batch_inner(root, store, branch, head, paths, revision, snapshots, false)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_disk_batch_inner(
+    root: &Path,
+    store: &Arc<Mutex<KuzuGraphStore>>,
+    branch: &str,
+    head: &str,
+    paths: &[PathBuf],
+    revision: &AtomicU64,
+    snapshots: &mut HashMap<PathBuf, Option<String>>,
+    full_reconcile: bool,
+) -> anyhow::Result<()> {
     let rules_before = super::ignore_rules::rules_hash(root).ok();
     let indexer = IncrementalIndexer::new(root)?;
     let (git_ignored, indexable) = split_git_ignored(root, paths)?;
@@ -400,7 +424,7 @@ pub(crate) fn apply_disk_batch(
     // exclude; git-ignored files are never indexed, only removed.
     let diff = {
         let mut diff = indexer.index_files_from_disk(&indexable)?;
-        diff.removed_files.extend(git_ignored);
+        diff.removed_files.extend(git_ignored.iter().cloned());
         diff
     };
     anyhow::ensure!(
@@ -417,9 +441,17 @@ pub(crate) fn apply_disk_batch(
     store.bump_mutation_epoch(branch)?;
     store.set_working_tree_dirty(branch, true)?;
     store.apply_diff(branch, &diff)?;
+    // Drop snapshots for files that became untracked+git-ignored or excluded by
+    // `.gitcortex/ignore`, otherwise stale entries keep `snapshots.len()` out
+    // of sync with `changed_after.len()` and block overlay certification.
+    for rel in &git_ignored {
+        snapshots.remove(rel);
+    }
     for (path, hash) in &diff.source_hashes {
         if indexer.includes_path(path) {
             snapshots.insert(path.clone(), hash.clone());
+        } else {
+            snapshots.remove(path);
         }
     }
     // Certify only bytes indexed under rules that held for the whole batch and
@@ -427,8 +459,20 @@ pub(crate) fn apply_disk_batch(
     let rules_settled = rules_before.is_some()
         && super::ignore_rules::rules_hash(root).ok() == rules_before
         && !super::ignore_rules::rules_modified(root, head).unwrap_or(true);
-    let verified =
-        rules_settled && clean_before && clean && snapshots_match_commit(root, head, snapshots)?;
+    if full_reconcile && rules_settled {
+        if let Some(rules) = rules_before.as_ref() {
+            super::ignore_rules::persist_indexed_rules(root, branch, rules.as_deref())?;
+        }
+    }
+    let clean_rules_synced = rules_before.as_ref().is_some_and(|rules| {
+        full_reconcile
+            || super::ignore_rules::indexed_rules_match(root, branch, rules).unwrap_or(false)
+    });
+    let verified = rules_settled
+        && clean_rules_synced
+        && clean_before
+        && clean
+        && snapshots_match_commit(root, head, snapshots)?;
     // Persist uncertainty across daemon restarts and historical branch queries.
     // A dirty graph is useful evidence, but cannot justify a safety conclusion.
     store.set_last_indexed_sha(branch, head)?;
@@ -519,12 +563,29 @@ pub(crate) fn sync_commit(
     if !changed {
         return Ok(());
     }
+    let rules_before = super::ignore_rules::rules_hash(root).ok();
     let mut store = store
         .lock()
         .map_err(|_| anyhow::anyhow!("store mutex poisoned"))?;
     let last = store.last_indexed_sha(branch)?;
-    let base = last.as_deref();
-    let (diff, indexed_head) = IncrementalIndexer::new(root)?.run(base)?;
+    let rules_mismatch = rules_before.as_ref().map_or(true, |rules| {
+        !super::ignore_rules::indexed_rules_match(root, branch, rules).unwrap_or(false)
+    });
+    let base = if rules_mismatch {
+        None
+    } else {
+        last.as_deref()
+    };
+    let (mut diff, indexed_head) = IncrementalIndexer::new(root)?.run(base)?;
+    if rules_mismatch {
+        diff.removed_files.extend(
+            store
+                .list_all_nodes(branch)?
+                .into_iter()
+                .filter(|node| node.kind != gitcortex_core::schema::NodeKind::Folder)
+                .map(|node| node.file),
+        );
+    }
     anyhow::ensure!(
         indexed_head == head
             && super::helpers::detect_current_branch(root).as_deref() == Some(branch),
@@ -534,6 +595,13 @@ pub(crate) fn sync_commit(
     store.bump_mutation_epoch(branch)?;
     store.set_working_tree_dirty(branch, true)?;
     store.apply_diff(branch, &diff)?;
+    if let Some(rules) = rules_before.as_ref() {
+        if super::ignore_rules::rules_hash(root).ok() == rules_before
+            && !super::ignore_rules::rules_modified(root, head).unwrap_or(true)
+        {
+            super::ignore_rules::persist_indexed_rules(root, branch, rules.as_deref())?;
+        }
+    }
     for (path, hash) in &diff.source_hashes {
         snapshots.insert(path.clone(), hash.clone());
     }
@@ -574,6 +642,17 @@ fn ignored_path(path: &Path) -> bool {
             Some("target" | ".git" | "node_modules" | ".gitcortex")
         )
     })
+}
+
+/// Ignore-rule configuration files whose creation, modification, or deletion
+/// can change which untracked or tracked files belong in the graph.
+fn is_ignore_config_path(path: &Path) -> bool {
+    if path.ends_with(Path::new(".git/info/exclude"))
+        || path.ends_with(Path::new(".gitcortex/ignore"))
+    {
+        return true;
+    }
+    path.file_name().and_then(|name| name.to_str()) == Some(".gitignore") && !ignored_path(path)
 }
 
 fn should_watch(path: &std::path::Path) -> bool {
@@ -629,6 +708,16 @@ mod tests {
         raise_rescan(&epoch, &rescan);
         assert!(clear_startup_rescan(&rescan, &epoch, pre));
         assert!(rescan.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn ignore_config_paths_trigger_rescan() {
+        assert!(is_ignore_config_path(Path::new("/repo/.gitignore")));
+        assert!(is_ignore_config_path(Path::new("/repo/sub/.gitignore")));
+        assert!(is_ignore_config_path(Path::new("/repo/.git/info/exclude")));
+        assert!(is_ignore_config_path(Path::new("/repo/.gitcortex/ignore")));
+        assert!(!is_ignore_config_path(Path::new("/repo/target/.gitignore")));
+        assert!(!is_ignore_config_path(Path::new("/repo/src/lib.rs")));
     }
 
     #[test]
