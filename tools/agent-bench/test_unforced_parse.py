@@ -268,5 +268,205 @@ class RealTranscriptTests(unittest.TestCase):
         self.assertAlmostEqual(metrics.cost_usd or 0, 0.0311, places=4)
 
 
+class CodexTranscriptTests(unittest.TestCase):
+    """Metric extraction from Codex CLI `codex exec --json` JSONL transcripts."""
+
+    def test_extract_codex_thread_id(self) -> None:
+        from unforced_parse import extract_codex_thread_id
+
+        raw = "not json\n" + stream(
+            {"type": "thread.started", "thread_id": "0199a213-81c0-7800-8aa1-bbab2a035a53"},
+            {"type": "turn.started"},
+        )
+        self.assertEqual(extract_codex_thread_id(raw), "0199a213-81c0-7800-8aa1-bbab2a035a53")
+        self.assertIsNone(extract_codex_thread_id(stream({"type": "turn.started"})))
+
+    def test_mcp_adoption_tokens_and_position(self) -> None:
+        raw = stream(
+            {"type": "thread.started", "thread_id": "t-1"},
+            {"type": "turn.started"},
+            {
+                "type": "item.completed",
+                "item": {
+                    "id": "i1",
+                    "type": "command_execution",
+                    "command": "/bin/zsh -lc 'rg AddCommand .'",
+                    "aggregated_output": "command.go:10",
+                    "exit_code": 0,
+                    "status": "completed",
+                },
+            },
+            {
+                "type": "turn.completed",
+                "usage": {"input_tokens": 1000, "cached_input_tokens": 200, "output_tokens": 50},
+            },
+            {"type": "turn.started"},
+            {
+                "type": "item.completed",
+                "item": {
+                    "id": "i2",
+                    "type": "mcp_tool_call",
+                    "server": "gcx",
+                    "tool": "gcx",
+                    "arguments": {"action": "find_callers", "symbol": "AddCommand"},
+                    "result": {
+                        "content": [
+                            {"type": "text", "text": json.dumps({"status": "ok", "index": {"state": "ready"}})}
+                        ]
+                    },
+                    "error": None,
+                    "status": "completed",
+                },
+            },
+            {
+                "type": "item.completed",
+                "item": {"id": "i3", "type": "agent_message", "text": "Callers are in command.go and completions.go."},
+            },
+            {
+                "type": "turn.completed",
+                "usage": {"input_tokens": 2000, "cached_input_tokens": 1500, "output_tokens": 100},
+            },
+        )
+        metrics = parse_transcript(raw, client="codex", model="gpt-5.4-mini")
+        self.assertEqual(metrics.run_status, "ok")
+        self.assertEqual(metrics.model, "gpt-5.4-mini")
+        self.assertIsNone(metrics.cost_usd)
+        self.assertEqual(metrics.turns, 2)
+        self.assertEqual(metrics.tool_calls, 2)
+        self.assertTrue(metrics.adopted)
+        self.assertEqual(metrics.gcx_calls, 1)
+        self.assertEqual(metrics.first_gcx_position, 2)
+        self.assertEqual(metrics.gcx_actions, ("find_callers",))
+        self.assertEqual(metrics.gcx_states, ("ready",))
+        self.assertTrue(metrics.gcx_connected)
+        self.assertTrue(metrics.gcx_tool_listed)
+        self.assertEqual(metrics.gcx_error_rate, 0.0)
+        # Turn 1: raw_in=1000, cached=200, out=50 => total=1050, uncached=850
+        # Turn 2: raw_in=2000, cached=1500, out=100 => cum total=3150, cum uncached=1450
+        self.assertEqual(metrics.total_tokens, 3150)
+        self.assertEqual(metrics.uncached_tokens, 1450)
+        self.assertEqual(metrics.input_tokens, 1300)
+        self.assertEqual(metrics.cache_read_tokens, 1700)
+        self.assertEqual(metrics.output_tokens, 150)
+        self.assertEqual(metrics.tokens_before_first_gcx_total, 3150)
+        self.assertEqual(metrics.tokens_before_first_gcx_uncached, 1450)
+        self.assertIsNone(metrics.not_ready)
+
+    def test_gcx_cli_detected_without_matching_grep_for_gcx(self) -> None:
+        raw = stream(
+            {"type": "thread.started", "thread_id": "t-2"},
+            {"type": "turn.started"},
+            {
+                "type": "item.completed",
+                "item": {
+                    "type": "command_execution",
+                    "command": "/bin/zsh -lc 'rg gcx README.md'",
+                    "aggregated_output": "gcx",
+                    "exit_code": 0,
+                    "status": "completed",
+                },
+            },
+            {
+                "type": "item.completed",
+                "item": {
+                    "type": "command_execution",
+                    "command": "/bin/zsh -lc 'cd /repo && /opt/gcx query find-callers AddCommand'",
+                    "aggregated_output": json.dumps({"index": {"state": "ready"}, "items": []}),
+                    "exit_code": 0,
+                    "status": "completed",
+                },
+            },
+            {"type": "item.completed", "item": {"type": "agent_message", "text": "Found callers in command.go."}},
+            {"type": "turn.completed", "usage": {"input_tokens": 500, "cached_input_tokens": 0, "output_tokens": 40}},
+        )
+        metrics = parse_transcript(raw, client="codex", model="gpt-5.4-mini")
+        self.assertTrue(metrics.adopted)
+        self.assertEqual(metrics.gcx_calls, 1)
+        self.assertEqual(metrics.tool_calls, 2)
+        self.assertEqual(metrics.first_gcx_position, 2)
+        self.assertEqual(metrics.gcx_actions, ("find-callers",))
+        self.assertEqual(metrics.gcx_states, ("ready",))
+
+    def test_non_gcx_commands_file_change_web_search_and_repeats(self) -> None:
+        raw = stream(
+            {"type": "thread.started", "thread_id": "t-3"},
+            {"type": "turn.started"},
+            {
+                "type": "item.completed",
+                "item": {"type": "command_execution", "command": "rg gcx .", "exit_code": 0, "status": "completed"},
+            },
+            {
+                "type": "item.completed",
+                "item": {"type": "command_execution", "command": "rg gcx .", "exit_code": 0, "status": "completed"},
+            },
+            {
+                "type": "item.completed",
+                "item": {"type": "file_change", "changes": [{"path": "calc.py", "kind": "update"}], "status": "completed"},
+            },
+            {
+                "type": "item.completed",
+                "item": {"type": "web_search", "query": "python unittest"},
+            },
+            {"type": "item.completed", "item": {"type": "agent_message", "text": "Done."}},
+            {"type": "turn.completed", "usage": {"input_tokens": 200, "cached_input_tokens": 50, "output_tokens": 20}},
+        )
+        metrics = parse_transcript(raw, client="codex", model="gpt-5.4-mini")
+        self.assertFalse(metrics.adopted)
+        self.assertEqual(metrics.gcx_calls, 0)
+        self.assertEqual(metrics.tool_calls, 4)
+        self.assertEqual(metrics.repeat_commands, 1)
+
+    def test_mcp_error_and_not_ready_handling(self) -> None:
+        raw = stream(
+            {"type": "thread.started", "thread_id": "t-4"},
+            {"type": "turn.started"},
+            {
+                "type": "item.completed",
+                "item": {
+                    "type": "mcp_tool_call",
+                    "server": "gitcortex",
+                    "tool": "gcx",
+                    "arguments": {"action": "find_callers"},
+                    "result": {"structured_content": {"status": "index_not_ready", "index": {"state": "missing"}}},
+                    "error": {"message": "index missing"},
+                    "status": "failed",
+                },
+            },
+            {
+                "type": "item.completed",
+                "item": {"type": "command_execution", "command": "rg foo .", "exit_code": 0, "status": "completed"},
+            },
+            {
+                "type": "item.completed",
+                "item": {"type": "agent_message", "text": "The graph index was not ready, so I fell back to rg."},
+            },
+            {"type": "turn.completed", "usage": {"input_tokens": 300, "cached_input_tokens": 0, "output_tokens": 30}},
+        )
+        metrics = parse_transcript(raw, client="codex")
+        self.assertEqual(metrics.gcx_calls, 1)
+        self.assertEqual(metrics.gcx_errors, 1)
+        self.assertEqual(metrics.gcx_error_rate, 1.0)
+        assert metrics.not_ready is not None
+        self.assertEqual(metrics.not_ready["first_state"], "missing")
+        self.assertTrue(metrics.not_ready["fell_back"])
+        self.assertTrue(metrics.not_ready["disclosed"])
+        self.assertTrue(metrics.not_ready["correct"])
+
+    def test_failure_and_missing_turn_statuses(self) -> None:
+        no_turn = parse_transcript(stream({"type": "thread.started", "thread_id": "t-5"}), client="codex")
+        self.assertEqual(no_turn.run_status, "no_result")
+
+        failed = parse_transcript(
+            stream(
+                {"type": "thread.started", "thread_id": "t-6"},
+                {"type": "item.completed", "item": {"type": "error", "message": "mcp server gcx failed to start"}},
+                {"type": "turn.failed", "error": {"message": "rate limit"}},
+            ),
+            client="codex",
+        )
+        self.assertEqual(failed.run_status, "error")
+        self.assertFalse(failed.gcx_connected)
+
+
 if __name__ == "__main__":
     unittest.main()

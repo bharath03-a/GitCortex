@@ -305,5 +305,151 @@ class SessionTests(unittest.TestCase):
         self.assertEqual((metrics["gcx_calls"], metrics["first_gcx_position"]), (1, 3))
 
 
+class CodexContinuousTests(unittest.TestCase):
+    CONFIG = EpisodeConfig("gpt-5.4-mini", "medium", Path("/opt/gcx"), 60, 1, "codex-unit", client="codex")
+
+    def test_codex_step_commands_use_exec_then_resume_without_ephemeral(self) -> None:
+        from continuous_client import build_step_command
+
+        cwd = Path("/tmp/ep")
+        step1 = build_step_command(
+            ARMS["gcx-bare"], "Fix calc.py", "gpt-5.4-mini", "medium", Path("/opt/gcx"), 2.0,
+            "placeholder", first_step=True, client="codex", cwd=cwd,
+        )
+        step2 = build_step_command(
+            ARMS["gcx-bare"], "Which files reference add?", "gpt-5.4-mini", "medium", Path("/opt/gcx"), 2.0,
+            "0199a213-81c0-7800-8aa1-bbab2a035a53", first_step=False, client="codex", cwd=cwd,
+        )
+        base1 = build_step_command(
+            ARMS["baseline"], "Fix calc.py", "gpt-5.4-mini", "medium", Path("/opt/gcx"), 2.0,
+            "placeholder", first_step=True, client="codex", cwd=cwd,
+        )
+
+        self.assertEqual(step1[:2], ["codex", "exec"])
+        self.assertNotIn("resume", step1)
+        self.assertNotIn("--ephemeral", step1)
+        self.assertIn("--ignore-user-config", step1)
+        self.assertIn("--ignore-rules", step1)
+        self.assertEqual(step1[step1.index("-C") + 1], str(cwd))
+        self.assertEqual(step1[-1], "Fix calc.py")
+
+        self.assertEqual(step2[:3], ["codex", "exec", "resume"])
+        self.assertNotIn("--ephemeral", step2)
+        self.assertNotIn("-C", step2)
+        self.assertIn("--ignore-user-config", step2)
+        self.assertIn("--ignore-rules", step2)
+        self.assertEqual(step2[-2:], ["0199a213-81c0-7800-8aa1-bbab2a035a53", "Which files reference add?"])
+
+        self.assertFalse(any("mcp_servers.gcx" in arg for arg in base1))
+        self.assertTrue(any("mcp_servers.gcx.command=" in arg for arg in step1))
+        self.assertTrue(any("mcp_servers.gcx.command=" in arg for arg in step2))
+
+        with self.assertRaises(ValueError):
+            build_step_command(
+                ARMS["baseline"], "probe", "gpt-5.4-mini", "medium", Path("/opt/gcx"), 2.0,
+                "", first_step=False, client="codex",
+            )
+
+    def test_codex_episode_resumes_real_thread_id_across_steps(self) -> None:
+        commands: list[list[str]] = []
+        thread_id = "0199a213-81c0-7800-8aa1-bbab2a035a53"
+
+        def runner(command: list[str], cwd: Path, timeout_s: int) -> RawRun:
+            commands.append(command)
+            is_resume = len(command) >= 3 and command[2] == "resume"
+            if not is_resume:
+                (cwd / "calc.py").write_text(GOOD)
+                events = [
+                    {"type": "thread.started", "thread_id": thread_id},
+                    {"type": "turn.started"},
+                    {
+                        "type": "item.completed",
+                        "item": {"type": "file_change", "changes": [{"path": "calc.py", "kind": "update"}], "status": "completed"},
+                    },
+                    {"type": "item.completed", "item": {"type": "agent_message", "text": "Fixed calc.py."}},
+                    {"type": "turn.completed", "usage": {"input_tokens": 400, "cached_input_tokens": 0, "output_tokens": 50}},
+                ]
+            else:
+                events = [
+                    {"type": "thread.started", "thread_id": thread_id},
+                    {"type": "turn.started"},
+                    {
+                        "type": "item.completed",
+                        "item": {
+                            "type": "mcp_tool_call",
+                            "server": "gcx",
+                            "tool": "gcx",
+                            "arguments": {"action": "find_callers"},
+                            "result": {"content": [{"type": "text", "text": json.dumps({"index": {"state": "ready"}})}]},
+                            "status": "completed",
+                        },
+                    },
+                    {"type": "item.completed", "item": {"type": "agent_message", "text": "calc.py defines add."}},
+                    {"type": "turn.completed", "usage": {"input_tokens": 500, "cached_input_tokens": 300, "output_tokens": 30}},
+                ]
+            return RawRun(stream(*events), "", 0, 500, False)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            source, commit, episode = make_mini(Path(tmp))
+            planned = PlannedEpisode(1, episode, ARMS["gcx-bare"], 0)
+            with mock.patch.object(continuous_run, "index_repo"), mock.patch.object(continuous_run, "release_index"):
+                record, _ = run_episode(
+                    planned, source, commit, self.CONFIG, RunBudget(10000.0, 2.0), runner, {},
+                    Path(tmp) / "scratch", Path(tmp) / "logs",
+                )
+
+        self.assertEqual(len(commands), 2)
+        self.assertEqual(commands[1][:3], ["codex", "exec", "resume"])
+        self.assertEqual(commands[1][-2], thread_id)
+        self.assertEqual(record["session_id"], thread_id)
+        self.assertTrue(record["success"])
+        self.assertTrue(record["probe_correct"])
+        self.assertTrue(record["metrics"]["adopted"])
+        self.assertEqual(record["metrics"]["first_gcx_position"], 2)
+        self.assertEqual(record["metrics"]["total_tokens"], 980)
+        self.assertEqual(record["metrics"]["uncached_tokens"], 680)
+
+    def test_codex_episode_aborts_if_step1_omits_thread_id(self) -> None:
+        commands: list[list[str]] = []
+
+        def no_thread_runner(command: list[str], cwd: Path, timeout_s: int) -> RawRun:
+            commands.append(command)
+            (cwd / "calc.py").write_text(GOOD)
+            events = [
+                {"type": "turn.started"},
+                {"type": "item.completed", "item": {"type": "agent_message", "text": "Fixed calc.py."}},
+                {"type": "turn.completed", "usage": {"input_tokens": 100, "cached_input_tokens": 0, "output_tokens": 10}},
+            ]
+            return RawRun(stream(*events), "", 0, 100, False)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            source, commit, episode = make_mini(Path(tmp))
+            planned = PlannedEpisode(1, episode, ARMS["baseline"], 0)
+            record, _ = run_episode(
+                planned, source, commit, self.CONFIG, RunBudget(10000.0, 2.0), no_thread_runner, {},
+                Path(tmp) / "scratch", Path(tmp) / "logs",
+            )
+
+        self.assertEqual(len(commands), 1)
+        self.assertFalse(record["success"])
+        self.assertIn("thread_id", record["aborted"])
+
+    def test_diff_stats_excludes_codex_dir_and_parse_args_supports_codex(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source, commit, episode = make_mini(Path(tmp))
+            dest = Path(tmp) / "work"
+            start = prepare_episode_repo(source, commit, episode, dest)
+            (dest / "calc.py").write_text(GOOD)
+            (dest / ".codex").mkdir()
+            (dest / ".codex" / "config.toml").write_text("x = 1\n")
+            stats = diff_stats(dest, start)
+            self.assertEqual(stats.files, ("calc.py",))
+
+        args = continuous_run.parse_args(["--client", "codex", "--gcx", "/opt/gcx", "--label", "dry", "--dry-run"])
+        self.assertEqual(args.client, "codex")
+        self.assertEqual(args.model, "gpt-5.4-mini")
+        self.assertEqual(args.max_total_usd, 10000.0)
+
+
 if __name__ == "__main__":
     unittest.main()

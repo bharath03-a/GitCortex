@@ -218,6 +218,34 @@ class GateTests(unittest.TestCase):
         self.world.validate()
         self.assertEqual(before, self.world.manifest)
 
+    def test_codex_only_lanes_satisfy_release_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            world = World(Path(tmp))
+            world.add("cand-codex-unforced", "candidate", "codex-unforced", CANDIDATE)
+            world.add("cand-codex-continuous", "candidate", "codex-continuous", CANDIDATE)
+            world.add("base-codex-unforced", "baseline", "codex-unforced", BASELINE)
+            for result_id in ("cand-codex-unforced", "cand-codex-continuous", "base-codex-unforced"):
+                world.edit(
+                    result_id,
+                    lambda s: s["traces"][0].update(
+                        client="codex", client_version="codex-cli 0.171.0", model="gpt-5.4-mini"
+                    ),
+                )
+            world.manifest["claims"] = [{
+                "id": "uncached-overall",
+                "result_id": "cand-codex-unforced",
+                "group": "overall/all",
+                "arm": "gcx-guide",
+                "metric": "uncached_tokens_ratio",
+                "op": ">=",
+                "value": 1.0,
+            }]
+            self.assertEqual(world.validate()[0], [])
+
+            # Dropping codex-continuous still fails closed
+            world.manifest["results"] = [r for r in world.manifest["results"] if "continuous" not in r["path"]]
+            self.assertTrue(any("missing candidate result for lane claude-code-continuous" in e for e in world.validate()[0]))
+
 
 if __name__ == "__main__":
     unittest.main()

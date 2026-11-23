@@ -234,5 +234,148 @@ class CapEnforcementTests(unittest.TestCase):
         self.assertEqual(len(record["prompt_sha256"]), 64)
 
 
+class CodexUnforcedTests(unittest.TestCase):
+    def test_codex_command_isolation_and_mcp_parity(self) -> None:
+        cwd = Path("/tmp/repo")
+        base = build_command(ARMS["baseline"], TASKS[0].prompt, "gpt-5.4-mini", "low", GCX_BIN, 1.0, client="codex", cwd=cwd)
+        bare = build_command(ARMS["gcx-bare"], TASKS[0].prompt, "gpt-5.4-mini", "low", GCX_BIN, 1.0, client="codex", cwd=cwd)
+        guided = build_command(ARMS["gcx-guide"], TASKS[0].prompt, "gpt-5.4-mini", "low", GCX_BIN, 1.0, client="codex", cwd=cwd)
+        self.assertEqual(bare, guided)
+        self.assertEqual(base[:2], ["codex", "exec"])
+        for flag in ("--json", "--ephemeral", "--ignore-user-config", "--ignore-rules", "--dangerously-bypass-approvals-and-sandbox"):
+            self.assertIn(flag, base)
+            self.assertIn(flag, bare)
+        self.assertEqual(base[base.index("-C") + 1], str(cwd))
+        self.assertEqual(base[-1], TASKS[0].prompt)
+        self.assertEqual(bare[-1], TASKS[0].prompt)
+        self.assertFalse(any("mcp_servers.gcx" in arg for arg in base))
+        self.assertIn(f"mcp_servers.gcx.command={json.dumps(str(GCX_BIN))}", bare)
+        self.assertIn('mcp_servers.gcx.args=["serve"]', bare)
+        self.assertIn("mcp_servers.gcx.startup_timeout_sec=30", bare)
+
+    def test_codex_guide_generation_and_install_cleanup(self) -> None:
+        from unittest import mock
+        import subprocess
+        from unforced_client import CODEX_GUIDE_FILES, generate_guide
+
+        commands: list[list[str]] = []
+
+        def fake_gcx_init(cmd, cwd=None, **kwargs):
+            commands.append(list(cmd))
+            if cmd[:2] == [str(GCX_BIN), "init"]:
+                self.assertEqual(cmd, [str(GCX_BIN), "init", "--editor", "codex"])
+                root = Path(cwd)
+                (root / "AGENTS.md").write_text("# Codex gcx guide\n", encoding="utf-8")
+                (root / ".gitcortex").mkdir(parents=True, exist_ok=True)
+                (root / ".gitcortex" / "AGENT_GUIDE.md").write_text("Full guide\n", encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        with mock.patch("unforced_client.subprocess.run", side_effect=fake_gcx_init):
+            files = generate_guide(GCX_BIN, client="codex")
+        self.assertIn([str(GCX_BIN), "init", "--editor", "codex"], commands)
+        self.assertIn([str(GCX_BIN), "clean"], commands)
+        self.assertEqual(tuple(files.keys()), CODEX_GUIDE_FILES)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            with installed_guide(repo, files):
+                self.assertEqual((repo / "AGENTS.md").read_text(), "# Codex gcx guide\n")
+                self.assertTrue((repo / ".gitcortex/AGENT_GUIDE.md").exists())
+            self.assertFalse((repo / "AGENTS.md").exists())
+            self.assertFalse((repo / ".gitcortex/AGENT_GUIDE.md").exists())
+
+    def test_parse_args_codex_defaults_vs_claude_requirements(self) -> None:
+        from unforced_run import DEFAULT_CODEX_BUDGET_USD, parse_args
+
+        codex_args = parse_args(["--client", "codex", "--gcx", str(GCX_BIN), "--label", "codex-smoke"])
+        self.assertEqual(codex_args.client, "codex")
+        self.assertEqual(codex_args.model, "gpt-5.4-mini")
+        self.assertEqual(codex_args.max_total_usd, DEFAULT_CODEX_BUDGET_USD)
+
+        claude_args = parse_args(["--gcx", str(GCX_BIN), "--label", "claude-smoke", "--max-total-usd", "5"])
+        self.assertEqual(claude_args.client, "claude")
+        self.assertEqual(claude_args.model, "sonnet")
+        self.assertEqual(claude_args.max_total_usd, 5.0)
+
+        with self.assertRaises(SystemExit):
+            parse_args(["--gcx", str(GCX_BIN), "--label", "missing-cap"])
+
+    def test_execute_plan_codex_end_to_end_and_guide_scoping(self) -> None:
+        task = next(t for t in TASKS if t.id == "cobra-impact-add-command")
+        plan = plan_runs([task], ("baseline", "gcx-bare", "gcx-guide"), 1, 1)
+        config = RunConfig("gpt-5.4-mini", "low", GCX_BIN, 60, 1, "codex-unit", client="codex")
+        guide = {"AGENTS.md": "# guide\n", ".gitcortex/AGENT_GUIDE.md": "full\n"}
+        saw_guide: dict[str, bool] = {}
+
+        def codex_runner(command: list[str], cwd: Path, timeout_s: int) -> RawRun:
+            has_mcp = any("mcp_servers.gcx" in arg for arg in command)
+            has_agents = (cwd / "AGENTS.md").exists()
+            arm_key = "gcx-guide" if has_agents else ("gcx-bare" if has_mcp else "baseline")
+            saw_guide[arm_key] = has_agents
+            events = [{"type": "thread.started", "thread_id": f"th-{arm_key}"}, {"type": "turn.started"}]
+            if has_mcp:
+                events.append({
+                    "type": "item.completed",
+                    "item": {
+                        "type": "mcp_tool_call",
+                        "server": "gcx",
+                        "tool": "gcx",
+                        "arguments": {"action": "find_callers"},
+                        "result": {"content": [{"type": "text", "text": json.dumps({"index": {"state": "ready"}})}]},
+                        "status": "completed",
+                    },
+                })
+            events.append({
+                "type": "item.completed",
+                "item": {"type": "agent_message", "text": "command.go and completions.go"},
+            })
+            events.append({
+                "type": "turn.completed",
+                "usage": {"input_tokens": 600, "cached_input_tokens": 100, "output_tokens": 40},
+            })
+            return RawRun(stream(*events), "", 0, 900, False)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            rows = [
+                rec
+                for rec, _ in execute_plan(
+                    plan, {"cobra": repo}, config, RunBudget(10000.0, 1.0), codex_runner, guide, Path(tmp) / "logs"
+                )
+            ]
+            self.assertFalse((repo / "AGENTS.md").exists())
+
+        by_arm = {r["arm"]: r for r in rows}
+        self.assertEqual(saw_guide, {"baseline": False, "gcx-bare": False, "gcx-guide": True})
+        self.assertTrue(all(r["success"] for r in rows))
+        self.assertTrue(all(r["cost_estimated"] for r in rows))
+        self.assertFalse(by_arm["baseline"]["metrics"]["adopted"])
+        self.assertTrue(by_arm["gcx-bare"]["metrics"]["adopted"])
+        self.assertTrue(by_arm["gcx-guide"]["metrics"]["adopted"])
+        self.assertEqual(by_arm["gcx-guide"]["metrics"]["total_tokens"], 640)
+        self.assertEqual(by_arm["gcx-guide"]["metrics"]["uncached_tokens"], 540)
+
+    def test_agent_run_unforced_codex_dry_run_dispatch(self) -> None:
+        import sys
+        from unittest import mock
+        import agent_run
+
+        argv = [
+            "agent_run.py",
+            "--unforced",
+            "--client",
+            "codex",
+            "--gcx",
+            str(GCX_BIN),
+            "--label",
+            "dry",
+            "--dry-run",
+        ]
+        with mock.patch.object(sys, "argv", argv):
+            rc = agent_run.main()
+        self.assertEqual(rc, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

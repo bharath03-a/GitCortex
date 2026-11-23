@@ -1,8 +1,7 @@
-"""Claude Code client adapter for the unforced lane.
+"""Client adapters (Claude Code and Codex CLI) for the unforced lane.
 
-Every arm gets the same read-only tool surface and the same isolation from the
-operator's own Claude config; only the gcx MCP server and the generated guide
-differ between arms.
+Every arm gets the same isolation from the operator's own client config; only
+the gcx MCP server and the generated guide differ between arms.
 """
 
 from __future__ import annotations
@@ -15,11 +14,21 @@ import shutil
 import subprocess
 import tempfile
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
 GUIDE_FILES = (".claude/CLAUDE.md", ".gitcortex/AGENT_GUIDE.md")
+CODEX_GUIDE_FILES = ("AGENTS.md", ".gitcortex/AGENT_GUIDE.md")
+GUIDE_FILES_BY_CLIENT = {
+    "claude": GUIDE_FILES,
+    "codex": CODEX_GUIDE_FILES,
+}
+SUPPORTED_CLIENTS = ("claude", "codex")
+DEFAULT_MODEL_BY_CLIENT = {
+    "claude": "sonnet",
+    "codex": "gpt-5.4-mini",
+}
 READ_ONLY_BASH = (
     "grep", "rg", "find", "cat", "ls", "head", "tail", "sed", "wc", "sort", "uniq", "awk",
     "git log", "git grep", "git show", "git ls-files", "git diff", "git blame",
@@ -71,9 +80,57 @@ def mcp_config(arm: Arm, gcx: Path) -> str:
     return json.dumps({"mcpServers": servers}, separators=(",", ":"))
 
 
-def build_command(
-    arm: Arm, prompt: str, model: str, effort: str, gcx: Path, max_budget_usd: float
+def codex_mcp_config_args(arm: Arm, gcx: Path) -> list[str]:
+    """Per-invocation Codex `-c` overrides that attach the gcx MCP server only on gcx arms."""
+    if not arm.gcx:
+        return []
+    return [
+        "-c", f"mcp_servers.gcx.command={json.dumps(str(gcx))}",
+        "-c", 'mcp_servers.gcx.args=["serve"]',
+        "-c", "mcp_servers.gcx.startup_timeout_sec=30",
+    ]
+
+
+def build_codex_command(
+    arm: Arm,
+    prompt: str,
+    model: str,
+    effort: str,
+    gcx: Path,
+    cwd: Path | None = None,
 ) -> list[str]:
+    command = [
+        "codex",
+        "exec",
+        "--json",
+        "--ephemeral",
+        "--ignore-user-config",
+        "--ignore-rules",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-m", model,
+        "-c", f"model_reasoning_effort={json.dumps(effort)}",
+        *codex_mcp_config_args(arm, gcx),
+    ]
+    if cwd is not None:
+        command.extend(["-C", str(cwd)])
+    command.append(prompt)
+    return command
+
+
+def build_command(
+    arm: Arm,
+    prompt: str,
+    model: str,
+    effort: str,
+    gcx: Path,
+    max_budget_usd: float,
+    client: str = "claude",
+    cwd: Path | None = None,
+) -> list[str]:
+    if client == "codex":
+        return build_codex_command(arm, prompt, model, effort, gcx, cwd=cwd)
+    if client != "claude":
+        raise ValueError(f"unsupported client: {client}")
     return [
         "claude",
         "-p",
@@ -128,20 +185,49 @@ def run_claude(command: list[str], cwd: Path, timeout_s: int) -> RawRun:
         return RawRun(_text(exc.stdout), _text(exc.stderr), None, _elapsed_ms(started), True)
 
 
-def generate_guide(gcx: Path) -> dict[str, str]:
-    """The guide `gcx init --editor claude` writes, captured from a scratch repo."""
+def run_codex(command: list[str], cwd: Path, timeout_s: int) -> RawRun:
+    started = time.perf_counter()
+    try:
+        done = subprocess.run(
+            command,
+            cwd=cwd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=timeout_s,
+            check=False,
+        )
+        return RawRun(done.stdout, done.stderr, done.returncode, _elapsed_ms(started), False)
+    except subprocess.TimeoutExpired as exc:
+        return RawRun(_text(exc.stdout), _text(exc.stderr), None, _elapsed_ms(started), True)
+
+
+def runner_for_client(client: str) -> Callable[[list[str], Path, int], RawRun]:
+    if client == "codex":
+        return run_codex
+    if client == "claude":
+        return run_claude
+    raise ValueError(f"unsupported client: {client}")
+
+
+def generate_guide(gcx: Path, client: str = "claude") -> dict[str, str]:
+    """The guide `gcx init --editor <client>` writes, captured from a scratch repo."""
+    if client not in GUIDE_FILES_BY_CLIENT:
+        raise ValueError(f"unsupported client: {client}")
+    guide_files = GUIDE_FILES_BY_CLIENT[client]
     scratch = Path(tempfile.mkdtemp(prefix="gcx-guide-"))
     try:
         for command in (
             ["git", "init", "-q"],
             ["git", "-c", "user.email=bench@example.invalid", "-c", "user.name=bench",
              "commit", "-q", "--allow-empty", "-m", "scratch"],
-            [str(gcx), "init", "--editor", "claude"],
+            [str(gcx), "init", "--editor", client],
         ):
             done = subprocess.run(command, cwd=scratch, capture_output=True, text=True, check=False)
             if done.returncode != 0:
                 raise RuntimeError(f"{' '.join(command[:3])} failed: {done.stderr or done.stdout}")
-        files = {name: (scratch / name).read_text(encoding="utf-8") for name in GUIDE_FILES}
+        files = {name: (scratch / name).read_text(encoding="utf-8") for name in guide_files}
         subprocess.run([str(gcx), "clean"], cwd=scratch, capture_output=True, check=False)
         return files
     finally:
