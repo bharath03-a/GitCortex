@@ -355,6 +355,26 @@ pub fn payload_files(repo_id: &str) -> [PathBuf; 2] {
     payload_files_in_dir(&data_dir(repo_id))
 }
 
+/// Staging directory inside a repository's data dir (`{data_dir}/compact-<ts>/`),
+/// kept on the same filesystem so payload swaps are atomic renames.
+pub fn staging_dir(repo_id: &str, ts: u64) -> PathBuf {
+    data_dir(repo_id).join(format!("compact-{ts}"))
+}
+
+/// Backup paths inside `dir` used while moving the live payload aside during
+/// compaction (`graph.kuzu.pre-compact-<ts>` and `.wal`).
+pub fn pre_compact_payload_files_in_dir(dir: &Path, ts: u64) -> [PathBuf; 2] {
+    [
+        dir.join(format!("graph.kuzu.pre-compact-{ts}")),
+        dir.join(format!("graph.kuzu.pre-compact-{ts}.wal")),
+    ]
+}
+
+/// Backup paths for `repo_id` during compaction.
+pub fn pre_compact_payload_files(repo_id: &str, ts: u64) -> [PathBuf; 2] {
+    pre_compact_payload_files_in_dir(&data_dir(repo_id), ts)
+}
+
 /// Path to the last-indexed SHA file for a specific branch.
 pub fn last_sha_path(repo_id: &str, branch: &str) -> PathBuf {
     data_dir(repo_id).join(format!("{}.sha", sanitize(branch)))
