@@ -1,18 +1,17 @@
-use std::{
-    fs::File,
-    path::{Path, PathBuf},
-    process::{Command, Stdio},
-    time::Duration,
-};
+use std::{path::PathBuf, time::Duration};
 
 use anyhow::{Context, Result};
-use tokio::io::AsyncWriteExt;
-use tokio::net::UnixStream;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
+
+use super::serve_start::{self, Ownership};
 
 const COMPACT_MODE: u8 = 0;
 const FULL_MODE: u8 = 1;
-const START_TIMEOUT: Duration = Duration::from_secs(10);
-const RETRY_INTERVAL: Duration = Duration::from_millis(50);
+/// A daemon past its idle deadline can drop a just-queued connection unread.
+const HANDSHAKE_ATTEMPTS: usize = 4;
+const HANDSHAKE_RETRY: Duration = Duration::from_millis(100);
+const STARTUP_ERROR_CODE: i64 = -32603;
 
 pub fn run(compact: bool) -> Result<()> {
     let repo_root = repo_root()?;
@@ -23,6 +22,9 @@ pub fn run(compact: bool) -> Result<()> {
 /// Entry point for the hidden daemon subprocess. The public `gcx serve`
 /// command remains a stdio MCP process from the editor's perspective.
 pub fn run_daemon(repo_root: PathBuf) -> Result<()> {
+    if let Ownership::AlreadyServed = serve_start::wait_for_repository(&repo_root)? {
+        return Ok(());
+    }
     let rt = tokio::runtime::Runtime::new().context("failed to build tokio runtime")?;
     let result = rt.block_on(gitcortex_mcp::mcp::server::serve_daemon(repo_root));
     // A semantic embedding batch runs on Tokio's blocking pool and cannot be
@@ -33,29 +35,41 @@ pub fn run_daemon(repo_root: PathBuf) -> Result<()> {
 }
 
 async fn proxy_stdio(repo_root: PathBuf, compact: bool) -> Result<()> {
-    let mut stream = connect_or_start(&repo_root).await?;
-    stream
-        .write_u8(if compact { COMPACT_MODE } else { FULL_MODE })
+    let mut lines = BufReader::new(tokio::io::stdin()).lines();
+    let Some(first) = lines
+        .next_line()
         .await
-        .context("select repository daemon MCP mode")?;
-
-    let (mut socket_read, mut socket_write) = stream.into_split();
-    let stdin = tokio::io::stdin();
+        .context("read MCP request from editor")?
+    else {
+        return Ok(());
+    };
+    let first = rewrite_handshake(&first);
     let mut stdout = tokio::io::stdout();
+    let (mut socket_read, mut socket_write, first_reply) =
+        match handshake(&repo_root, compact, &first).await {
+            Ok(parts) => parts,
+            Err(error) => {
+                // An unanswered `initialize` surfaces as CONNECTION_CLOSED with
+                // no cause; a JSON-RPC error carries the cause to the editor.
+                if let Some(reply) = startup_error_reply(&first, &error) {
+                    stdout.write_all(reply.as_bytes()).await.ok();
+                    stdout.flush().await.ok();
+                }
+                return Err(error);
+            }
+        };
+    if let Some(reply) = first_reply {
+        stdout.write_all(reply.as_bytes()).await?;
+        stdout.flush().await?;
+    }
+
     let upstream = async {
-        let mut lines = tokio::io::AsyncBufReadExt::lines(tokio::io::BufReader::new(stdin));
         while let Some(line) = lines
             .next_line()
             .await
             .context("read MCP request from editor")?
         {
-            let rewritten = rewrite_handshake(&line);
-            socket_write
-                .write_all(rewritten.as_bytes())
-                .await
-                .context("forward MCP requests to repository daemon")?;
-            socket_write
-                .write_all(b"\n")
+            forward_line(&mut socket_write, &rewrite_handshake(&line))
                 .await
                 .context("forward MCP requests to repository daemon")?;
         }
@@ -63,7 +77,7 @@ async fn proxy_stdio(repo_root: PathBuf, compact: bool) -> Result<()> {
         Ok::<_, anyhow::Error>(())
     };
     let downstream = async {
-        tokio::io::copy(&mut socket_read, &mut stdout)
+        tokio::io::copy_buf(&mut socket_read, &mut stdout)
             .await
             .context("forward MCP responses from repository daemon")?;
         stdout.flush().await?;
@@ -84,6 +98,58 @@ async fn proxy_stdio(repo_root: PathBuf, compact: bool) -> Result<()> {
         }
     }
     Ok(())
+}
+
+type Session = (BufReader<OwnedReadHalf>, OwnedWriteHalf, Option<String>);
+
+/// Deliver the first request and, when it expects a reply, wait for any line
+/// back: only then has the daemon accepted this client instead of exiting.
+async fn handshake(repo_root: &std::path::Path, compact: bool, first: &str) -> Result<Session> {
+    let expects_reply = serde_json::from_str::<serde_json::Value>(first)
+        .ok()
+        .is_some_and(|value| value.get("id").is_some());
+    let mode = if compact { COMPACT_MODE } else { FULL_MODE };
+    for attempt in 1..=HANDSHAKE_ATTEMPTS {
+        let (read, mut write) = serve_start::connect_or_start(repo_root).await?.into_split();
+        let mut reader = BufReader::new(read);
+        let sent = async {
+            write.write_u8(mode).await?;
+            forward_line(&mut write, first).await
+        }
+        .await;
+        if sent.is_ok() {
+            if !expects_reply {
+                return Ok((reader, write, None));
+            }
+            let mut reply = String::new();
+            if matches!(reader.read_line(&mut reply).await, Ok(read) if read > 0) {
+                return Ok((reader, write, Some(reply)));
+            }
+        }
+        if attempt < HANDSHAKE_ATTEMPTS {
+            tokio::time::sleep(HANDSHAKE_RETRY).await;
+        }
+    }
+    anyhow::bail!("repository daemon closed {HANDSHAKE_ATTEMPTS} connections before answering")
+}
+
+async fn forward_line(write: &mut OwnedWriteHalf, line: &str) -> std::io::Result<()> {
+    write.write_all(line.as_bytes()).await?;
+    write.write_all(b"\n").await
+}
+
+fn startup_error_reply(first: &str, error: &anyhow::Error) -> Option<String> {
+    let request: serde_json::Value = serde_json::from_str(first).ok()?;
+    let id = request.get("id")?.clone();
+    let reply = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "error": {
+            "code": STARTUP_ERROR_CODE,
+            "message": format!("GitCortex MCP server could not start: {error:#}. Next: run `gcx doctor`."),
+        },
+    });
+    Some(format!("{reply}\n"))
 }
 
 /// Antigravity's `agy` CLI sends a non-standard `server/discover` handshake
@@ -122,60 +188,28 @@ fn rewrite_handshake(line: &str) -> String {
     serde_json::to_string(&value).unwrap_or_else(|_| line.to_owned())
 }
 
-async fn connect_or_start(repo_root: &Path) -> Result<UnixStream> {
-    let socket_path = gitcortex_mcp::mcp::server::daemon_socket_path(repo_root);
-    if let Ok(stream) = UnixStream::connect(&socket_path).await {
-        return Ok(stream);
-    }
-
-    let log_path = gitcortex_mcp::mcp::server::daemon_log_path(repo_root);
-    if let Some(parent) = log_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let log = File::create(&log_path)
-        .with_context(|| format!("create daemon log {}", log_path.display()))?;
-    let stderr = log.try_clone()?;
-    let mut child = Command::new(std::env::current_exe()?)
-        .arg("__serve-daemon")
-        .arg("--repo-root")
-        .arg(repo_root)
-        .stdin(Stdio::null())
-        .stdout(Stdio::from(log))
-        .stderr(Stdio::from(stderr))
-        .spawn()
-        .context("start GitCortex repository daemon")?;
-
-    let deadline = tokio::time::Instant::now() + START_TIMEOUT;
-    loop {
-        match UnixStream::connect(&socket_path).await {
-            Ok(stream) => return Ok(stream),
-            Err(error) if tokio::time::Instant::now() >= deadline => {
-                let status = child.try_wait().ok().flatten();
-                let detail = std::fs::read_to_string(&log_path)
-                    .ok()
-                    .filter(|text| !text.trim().is_empty())
-                    .map(|text| format!("\n{}", text.trim()))
-                    .unwrap_or_default();
-                anyhow::bail!(
-                    "repository daemon did not become ready within {}s{}: {error}{detail}",
-                    START_TIMEOUT.as_secs(),
-                    status
-                        .map(|value| format!(" (child exited with {value})"))
-                        .unwrap_or_default(),
-                );
-            }
-            Err(_) => tokio::time::sleep(RETRY_INTERVAL).await,
-        }
-    }
-}
-
 fn repo_root() -> Result<PathBuf> {
     crate::cmd::init::helpers::repo_root()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::rewrite_handshake;
+    use super::{rewrite_handshake, startup_error_reply};
+
+    #[test]
+    fn startup_failure_answers_the_pending_request_with_a_next_step() {
+        let first = r#"{"jsonrpc":"2.0","id":7,"method":"initialize","params":{}}"#;
+        let error = anyhow::anyhow!("graph schema version 14 is incompatible");
+        let reply: serde_json::Value =
+            serde_json::from_str(&startup_error_reply(first, &error).expect("reply"))
+                .expect("valid JSON");
+        assert_eq!(reply["id"], 7);
+        let message = reply["error"]["message"].as_str().expect("message");
+        assert!(message.contains("schema version 14"), "{message}");
+        assert!(message.contains("gcx doctor"), "{message}");
+        let notification = r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#;
+        assert!(startup_error_reply(notification, &error).is_none());
+    }
 
     #[test]
     fn rewrites_antigravity_server_discover_to_initialize() {

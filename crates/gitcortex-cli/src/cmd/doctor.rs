@@ -60,32 +60,7 @@ pub fn run() -> Result<()> {
     )
     .unwrap_or(false);
     if server_active {
-        ok("graph store owned by active MCP server");
-        let readiness = tokio::runtime::Runtime::new()
-            .map_err(anyhow::Error::from)
-            .and_then(|runtime| {
-                runtime.block_on(gitcortex_mcp::mcp::server::daemon_readiness(&repo_root))
-            });
-        match readiness {
-            Ok(index) if index["state"] == "ready" => {
-                ok("active MCP server verified index readiness")
-            }
-            Ok(index) => fail(
-                &format!(
-                    "active MCP index is {}",
-                    index["state"].as_str().unwrap_or("unverified")
-                ),
-                index["next_action"]
-                    .as_str()
-                    .unwrap_or("inspect source and restart gcx serve"),
-                &mut all_ok,
-            ),
-            Err(error) => fail(
-                &format!("could not verify active MCP freshness: {error}"),
-                "restart gcx serve and rerun gcx doctor",
-                &mut all_ok,
-            ),
-        }
+        check_active_server(&repo_root, &mut all_ok);
     } else {
         match KuzuGraphStore::open(&repo_root) {
             Ok(store) => {
@@ -179,6 +154,11 @@ pub fn run() -> Result<()> {
                     "run: gcx init",
                     &mut all_ok,
                 );
+                fail(
+                    "MCP server cannot start, so editors report CONNECTION_CLOSED",
+                    RECONNECT_AFTER_INIT,
+                    &mut all_ok,
+                );
             }
         }
     }
@@ -191,6 +171,63 @@ pub fn run() -> Result<()> {
 
     eprintln!();
     finish(all_ok)
+}
+
+const RECONNECT_AFTER_INIT: &str =
+    "run: gcx init, then reconnect gitcortex in your editor (Claude Code: /mcp)";
+
+/// The lock says someone owns the graph; only a live MCP answer proves an
+/// editor can connect to it.
+fn check_active_server(repo_root: &Path, all_ok: &mut bool) {
+    let owner = gitcortex_store::branch::repository_lock_owner(repo_root);
+    let readiness = tokio::runtime::Runtime::new()
+        .map_err(anyhow::Error::from)
+        .and_then(|runtime| {
+            runtime.block_on(gitcortex_mcp::mcp::server::daemon_readiness(repo_root))
+        });
+    match readiness {
+        Ok(index) => {
+            ok("MCP server reachable");
+            if index["state"] == "ready" {
+                ok("active MCP server verified index readiness");
+            } else {
+                fail(
+                    &format!(
+                        "active MCP index is {}",
+                        index["state"].as_str().unwrap_or("unverified")
+                    ),
+                    index["next_action"]
+                        .as_str()
+                        .unwrap_or("inspect source and restart gcx serve"),
+                    all_ok,
+                );
+            }
+        }
+        Err(error) if owner.contains("repository daemon") => fail(
+            &format!("MCP server unreachable ({owner}): {error:#}"),
+            &format!(
+                "stop the stuck daemon (kill {}), then reconnect gitcortex in your editor (Claude Code: /mcp)",
+                owner_pid(&owner).unwrap_or("<pid>")
+            ),
+            all_ok,
+        ),
+        Err(error) => fail(
+            &format!(
+                "MCP server unreachable: graph is held by {}: {error:#}",
+                if owner.is_empty() { "another gcx process" } else { owner.as_str() }
+            ),
+            "wait for that gcx command to finish (or stop `gcx viz`), then rerun gcx doctor",
+            all_ok,
+        ),
+    }
+}
+
+fn owner_pid(owner: &str) -> Option<&str> {
+    owner
+        .strip_prefix("pid ")?
+        .split_whitespace()
+        .next()
+        .filter(|pid| pid.chars().all(|c| c.is_ascii_digit()))
 }
 
 fn check_wsl() {
@@ -559,6 +596,13 @@ mod tests {
         detect::parse_editor_flag,
         editors::{editor_flag, EditorKind},
     };
+
+    #[test]
+    fn owner_pid_reads_only_numeric_pids() {
+        assert_eq!(owner_pid("pid 4242 (repository daemon)"), Some("4242"));
+        assert_eq!(owner_pid("pid x (repository daemon)"), None);
+        assert_eq!(owner_pid(""), None);
+    }
 
     #[test]
     fn required_error_marks_doctor_unhealthy() {
