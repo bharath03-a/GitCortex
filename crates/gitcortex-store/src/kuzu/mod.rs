@@ -18,10 +18,13 @@ use kuzu::{Connection, Database, SystemConfig, Value};
 use crate::{branch, schema as db_schema};
 
 mod bulk;
+mod compact;
 mod conv;
 mod escape;
 mod queries;
 mod values;
+
+pub use compact::{CompactPhase, CompactReport};
 
 use conv::{edge_kind_from_str, lang_scope_clause, vis_str};
 use escape::{esc, esc_multiline};
@@ -979,6 +982,7 @@ impl KuzuGraphStore {
         repository_lock: Option<branch::RepositoryLock>,
     ) -> Result<Self> {
         let repo_id = branch::storage_repo_id(repo_root);
+        compact::recover_pre_compact_if_needed(&repo_id)?;
         let db_path = branch::db_path(&repo_id);
         let existing_store = db_path.exists();
         let persisted_schema = branch::read_schema_version(&repo_id);

@@ -49,6 +49,12 @@ pub enum StorageCmd {
         #[arg(long)]
         apply: bool,
     },
+    /// Reclaim unused space inside `graph.kuzu` via atomic payload swap (dry-run by default).
+    Compact {
+        /// Perform the compaction (without `--apply`, only prints current payload usage).
+        #[arg(long)]
+        apply: bool,
+    },
 }
 
 pub fn run(cmd: StorageCmd) -> Result<()> {
@@ -61,6 +67,7 @@ pub fn run(cmd: StorageCmd) -> Result<()> {
             apply,
         } => run_prune(orphaned, backups, unknown_older_than, apply),
         StorageCmd::Gc { apply } => run_gc(apply),
+        StorageCmd::Compact { apply } => run_compact(apply),
     }
 }
 
@@ -395,6 +402,51 @@ fn run_gc(apply: bool) -> Result<()> {
             report.unregistered.join(", "),
         );
     }
+    Ok(())
+}
+
+fn run_compact(apply: bool) -> Result<()> {
+    let repo_root = current_repo_root()?;
+    let repo_id = branch::storage_repo_id(&repo_root);
+    let db_path = branch::db_path(&repo_id);
+
+    if !apply {
+        if !db_path.exists() {
+            println!(
+                "{}",
+                paint(
+                    hint_style(),
+                    "No local GitCortex store for this repository yet. Run `gcx init` to create one."
+                )
+            );
+            return Ok(());
+        }
+        let payload_bytes: u64 = branch::payload_files(&repo_id)
+            .into_iter()
+            .filter_map(|p| std::fs::metadata(p).ok().map(|m| m.len()))
+            .sum();
+        let branches = gitcortex_store::meta::read_branch_registry(&repo_id)
+            .unwrap_or_default()
+            .len();
+        println!(
+            "{} payload {} ({} registered branch(es)) at {}. Re-run with `--apply` to compact.",
+            paint(header_style(), "dry-run:"),
+            paint(name_style(), &format_bytes(payload_bytes)),
+            branches,
+            db_path.display(),
+        );
+        return Ok(());
+    }
+
+    let report = KuzuGraphStore::compact(&repo_root)?;
+    let saved = report.before.saturating_sub(report.after);
+    println!(
+        "{} {} -> {} ({} reclaimed).",
+        paint(header_style(), "compact:"),
+        paint(name_style(), &format_bytes(report.before)),
+        paint(name_style(), &format_bytes(report.after)),
+        paint(name_style(), &format_bytes(saved)),
+    );
     Ok(())
 }
 
