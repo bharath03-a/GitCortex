@@ -242,6 +242,20 @@ fn node_table_is_empty(conn: &Connection, nt: &str) -> Result<bool> {
     }
 }
 
+/// True when the branch's reference-fact table has zero rows.
+fn reference_table_is_empty(conn: &Connection, rt: &str) -> Result<bool> {
+    let mut r = conn
+        .query(&format!("MATCH (ref:{rt}) RETURN count(ref) AS c LIMIT 1"))
+        .map_err(|e| GitCortexError::Store(format!("count refs: {e}")))?;
+    match r.by_ref().next() {
+        Some(row) => match &row[0] {
+            kuzu::Value::Int64(n) => Ok(*n == 0),
+            _ => Ok(false),
+        },
+        None => Ok(true),
+    }
+}
+
 fn rows_to_edges(result: kuzu::QueryResult) -> Result<Vec<Edge>> {
     let mut out = Vec::new();
     for row in result {
@@ -266,9 +280,18 @@ fn rows_to_edges(result: kuzu::QueryResult) -> Result<Vec<Edge>> {
     Ok(out)
 }
 
-/// Bulk-load a full-index diff via CSV `COPY`. Stages CSVs in a unique temp
-/// dir, loads them, then removes the dir. See [`bulk`] for the rationale.
-fn bulk_apply(conn: &Connection, nt: &str, et: &str, diff: &GraphDiff) -> Result<()> {
+/// Bulk-load a fresh branch's nodes, reconciled edges, and raw reference facts
+/// via CSV `COPY`. Stages CSVs in a unique temp dir, loads them, then removes
+/// the dir. See [`bulk`] for the rationale.
+fn bulk_apply(
+    conn: &Connection,
+    nt: &str,
+    et: &str,
+    rt: &str,
+    nodes: &[Node],
+    edges: &[Edge],
+    refs: &[RawReference],
+) -> Result<()> {
     // Unique staging dir per call: pid + nanos + a process-wide atomic counter,
     // so concurrent `apply_diff`s (e.g. parallel tests in one binary) never
     // share a directory.
@@ -286,7 +309,18 @@ fn bulk_apply(conn: &Connection, nt: &str, et: &str, diff: &GraphDiff) -> Result
     std::fs::create_dir_all(&stage)
         .map_err(|e| GitCortexError::Store(format!("create staging dir: {e}")))?;
 
-    let result = bulk::bulk_load(conn, nt, et, &stage, &diff.added_nodes, &diff.added_edges);
+    let result = bulk::bulk_load(
+        conn,
+        bulk::BranchTables {
+            nodes: nt,
+            edges: et,
+            refs: rt,
+        },
+        &stage,
+        nodes,
+        edges,
+        refs,
+    );
 
     // Best-effort cleanup regardless of load outcome.
     let _ = std::fs::remove_dir_all(&stage);
@@ -564,13 +598,13 @@ fn resolve_calls_batch(
 }
 
 #[derive(Clone)]
-struct RawReference {
-    id: String,
-    src_id: String,
-    src_file: String,
-    target_name: String,
-    kind: EdgeKind,
-    line: i64,
+pub(super) struct RawReference {
+    pub(super) id: String,
+    pub(super) src_id: String,
+    pub(super) src_file: String,
+    pub(super) target_name: String,
+    pub(super) kind: EdgeKind,
+    pub(super) line: i64,
 }
 
 fn raw_reference_id(
@@ -1135,17 +1169,49 @@ impl GraphStore for KuzuGraphStore {
         // is already in `added_edges`; the only `deferred_*` left are external
         // (stdlib) names the store couldn't resolve anyway.
         let empty = node_table_is_empty(&conn, &nt)?;
+        let refs_empty = empty && reference_table_is_empty(&conn, &rt)?;
         if std::env::var_os("GCX_TIMING").is_some() {
             eprintln!(
-                "[gcx-timing] apply_diff path: table_empty={empty} nodes={} edges={}",
+                "[gcx-timing] apply_diff path: table_empty={empty} refs_empty={refs_empty} nodes={} edges={} refs={}",
                 diff.added_nodes.len(),
-                diff.added_edges.len()
+                diff.added_edges.len(),
+                new_reference_facts.len()
             );
         }
         if empty {
-            bulk_apply(&conn, &nt, &et, diff)?;
-            persist_reference_facts(&conn, &rt, &new_reference_facts)?;
-            reconcile_reference_names(&conn, &nt, &et, &rt, &affected_names)?;
+            if refs_empty {
+                let mut seen_ref_ids = HashSet::with_capacity(new_reference_facts.len());
+                let unique_refs: Vec<RawReference> = new_reference_facts
+                    .into_iter()
+                    .filter(|fact| seen_ref_ids.insert(fact.id.clone()))
+                    .collect();
+                let reconciled_edges = bulk::reconcile_full_index_edges(
+                    &diff.added_nodes,
+                    &diff.added_edges,
+                    &unique_refs,
+                );
+                bulk_apply(
+                    &conn,
+                    &nt,
+                    &et,
+                    &rt,
+                    &diff.added_nodes,
+                    &reconciled_edges,
+                    &unique_refs,
+                )?;
+            } else {
+                bulk_apply(
+                    &conn,
+                    &nt,
+                    &et,
+                    &rt,
+                    &diff.added_nodes,
+                    &diff.added_edges,
+                    &[],
+                )?;
+                persist_reference_facts(&conn, &rt, &new_reference_facts)?;
+                reconcile_reference_names(&conn, &nt, &et, &rt, &affected_names)?;
+            }
             branch::bump_mutation_epoch(&self.repo_id, branch)?;
             return Ok(());
         }
