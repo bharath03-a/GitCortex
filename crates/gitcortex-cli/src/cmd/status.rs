@@ -60,7 +60,7 @@ fn report_status(repo_root: &Path, store: &dyn GraphStore, branch: &str) -> Resu
                 &readiness.branch,
                 "ready",
                 &last_sha,
-                readiness.next_action,
+                &readiness.next_action,
             )?;
             Ok(())
         }
@@ -75,7 +75,7 @@ fn report_status(repo_root: &Path, store: &dyn GraphStore, branch: &str) -> Resu
                 &readiness.branch,
                 "unverified (observed counts only; working-tree coverage is unverified)",
                 &last_sha,
-                readiness.next_action,
+                &readiness.next_action,
             )?;
             Ok(())
         }

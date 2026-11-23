@@ -15,3 +15,10 @@ pub mod tools;
 pub mod tour;
 pub(crate) mod watcher;
 pub mod wiki;
+
+pub mod tree_jobs;
+
+#[cfg(test)]
+pub(crate) mod test_support;
+#[cfg(test)]
+mod tree_gate_tests;

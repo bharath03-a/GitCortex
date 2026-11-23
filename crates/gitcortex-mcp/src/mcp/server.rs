@@ -20,6 +20,9 @@ const COMPACT_MODE: u8 = 0;
 const FULL_MODE: u8 = 1;
 const STARTUP_IDLE_TIMEOUT: Duration = Duration::from_secs(15);
 const CLIENT_IDLE_TIMEOUT: Duration = Duration::from_millis(500);
+/// How long an idle daemon outlives its clients to finish a branch index. Past
+/// this the job is abandoned: its dirty marker keeps the key from reading ready.
+const TREE_JOB_DRAIN_CAP: Duration = Duration::from_secs(600);
 
 struct SocketGuard {
     path: PathBuf,
@@ -107,13 +110,24 @@ pub async fn serve_daemon(repo_root: PathBuf) -> Result<()> {
     // clones differ only in whether they expose compact or full tool schemas.
     spawn_background_services(&repo_root, &handler);
 
-    let clients = Arc::new(AtomicUsize::new(0));
-    let changed = Arc::new(tokio::sync::Notify::new());
-    let mut ever_connected = false;
     tracing::info!(
         "GitCortex repository daemon listening at {}",
         socket_path.display()
     );
+    accept_until_idle(listener, handler, TREE_JOB_DRAIN_CAP).await?;
+    tracing::info!("GitCortex repository daemon stopped after its last client disconnected");
+    Ok(())
+}
+
+async fn accept_until_idle(
+    listener: tokio::net::UnixListener,
+    handler: GitCortexServer,
+    drain_cap: Duration,
+) -> Result<()> {
+    let clients = Arc::new(AtomicUsize::new(0));
+    let changed = Arc::new(tokio::sync::Notify::new());
+    let mut ever_connected = false;
+    let mut draining_since = None;
 
     loop {
         let idle_timeout = if ever_connected {
@@ -126,12 +140,20 @@ pub async fn serve_daemon(repo_root: PathBuf) -> Result<()> {
                 accepted = listener.accept() => {
                     let (stream, _) = accepted.context("accept MCP client")?;
                     ever_connected = true;
+                    draining_since = None;
                     spawn_client(handler.clone(), stream, clients.clone(), changed.clone());
                 }
                 _ = changed.notified() => {}
                 _ = tokio::time::sleep(idle_timeout) => {
                     if clients.load(Ordering::Acquire) == 0 {
-                        break;
+                        if !handler.has_active_tree_job() {
+                            break;
+                        }
+                        let since = *draining_since.get_or_insert_with(std::time::Instant::now);
+                        if since.elapsed() >= drain_cap {
+                            tracing::warn!("abandoning a branch index after the idle drain limit");
+                            break;
+                        }
                     }
                 }
             }
@@ -146,8 +168,6 @@ pub async fn serve_daemon(repo_root: PathBuf) -> Result<()> {
             }
         }
     }
-
-    tracing::info!("GitCortex repository daemon stopped after its last client disconnected");
     Ok(())
 }
 
@@ -368,5 +388,105 @@ fn update_semantic_index(
         index.save();
     } else {
         tracing::info!("semantic index up-to-date: {} vectors", index.len());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mcp::readiness::inspect_commit;
+    use crate::mcp::test_support::{commit_file, git, run_async, TempRepo};
+    use rmcp::model::CallToolRequestParams;
+    use tokio::io::AsyncWriteExt;
+
+    const DEADLINE: Duration = Duration::from_secs(15);
+
+    struct Idling {
+        handler: GitCortexServer,
+        daemon: tokio::task::JoinHandle<Result<()>>,
+        permit: tokio::sync::OwnedSemaphorePermit,
+        feature: String,
+        _socket: tempfile::TempDir,
+    }
+
+    // A client starts a branch job held behind the permit, then disconnects.
+    async fn client_leaves_during_job(repo: Arc<TempRepo>, drain_cap: Duration) -> Idling {
+        let head = commit_file(repo.path(), "a.rs", "pub fn base() {}\n", "base");
+        git(repo.path(), &["switch", "-c", "feat/x"]);
+        let feature = commit_file(repo.path(), "b.rs", "pub fn feature() {}\n", "feature");
+        git(repo.path(), &["switch", "main"]);
+        let handler = GitCortexServer::new_daemon(repo.path()).expect("server");
+        crate::mcp::tree_jobs::apply_tree_index(
+            repo.path(),
+            &mut *handler.store_context().store.lock().expect("store"),
+            "main",
+            &head,
+        )
+        .expect("index main");
+        let permit = handler.tree_jobs().hold_permit().await;
+        let socket = tempfile::tempdir_in("/tmp").expect("socket dir");
+        let path = socket.path().join("mcp.sock");
+        let listener = tokio::net::UnixListener::bind(&path).expect("bind");
+        let daemon = tokio::spawn(accept_until_idle(listener, handler.clone(), drain_cap));
+        let mut stream = tokio::net::UnixStream::connect(&path)
+            .await
+            .expect("connect");
+        stream.write_all(&[COMPACT_MODE]).await.expect("mode");
+        let client = ().serve(stream).await.expect("client");
+        let data = client
+            .call_tool(
+                CallToolRequestParams::new("gcx").with_arguments(
+                    serde_json::json!({"action": "graph_stats", "params": {"branch": "feat/x"}})
+                        .as_object()
+                        .cloned()
+                        .unwrap_or_default(),
+                ),
+            )
+            .await
+            .expect("call")
+            .structured_content
+            .expect("structured");
+        assert_eq!(data["index"]["state"], "indexing", "{data}");
+        client.cancel().await.expect("cancel");
+        Idling {
+            handler,
+            daemon,
+            permit,
+            feature,
+            _socket: socket,
+        }
+    }
+
+    #[test]
+    fn idle_daemon_finishes_an_active_tree_job_before_exiting() {
+        run_async(|repo| async move {
+            let idling = client_leaves_during_job(repo, Duration::from_secs(600)).await;
+            tokio::time::sleep(CLIENT_IDLE_TIMEOUT * 4).await;
+            assert!(!idling.daemon.is_finished(), "daemon abandoned the job");
+            drop(idling.permit);
+            tokio::time::timeout(DEADLINE, idling.daemon)
+                .await
+                .expect("daemon exits once the job is done")
+                .expect("task")
+                .expect("daemon");
+            let store = idling.handler.store_context().store;
+            let store = store.lock().expect("store");
+            let state = inspect_commit(&*store, "feat/x", &idling.feature);
+            assert_eq!(state.state, "ready");
+        });
+    }
+
+    #[test]
+    fn idle_drain_is_capped_when_a_job_never_finishes() {
+        run_async(|repo| async move {
+            let idling = client_leaves_during_job(repo, Duration::from_millis(1)).await;
+            tokio::time::timeout(DEADLINE, idling.daemon)
+                .await
+                .expect("the drain cap ends the wait")
+                .expect("task")
+                .expect("daemon");
+            assert!(idling.handler.has_active_tree_job());
+            drop(idling.permit);
+        });
     }
 }

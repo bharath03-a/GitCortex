@@ -97,7 +97,7 @@ pub fn run() -> Result<()> {
                 match scope {
                     Ok(index) if index.state != "ready" => fail(
                         &format!("index readiness is {}", index.state),
-                        index.next_action,
+                        &index.next_action,
                         &mut all_ok,
                     ),
                     Err(error) => fail(
