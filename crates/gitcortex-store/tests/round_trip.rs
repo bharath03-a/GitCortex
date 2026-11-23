@@ -503,3 +503,147 @@ fn schema_mismatch_requires_explicit_initialization_before_rebuild() {
     assert_eq!(branch::read_schema_version(&repo_id), SCHEMA_VERSION);
     branch::wipe_repo_data(&repo_id).expect("clean test data");
 }
+
+#[test]
+fn full_index_bulk_reconciliation_matches_incremental_cypher_path() {
+    let dir_bulk = tempfile::tempdir().expect("bulk tempdir");
+    let dir_incr = tempfile::tempdir().expect("incr tempdir");
+    let bulk_repo_id = branch::repo_id(dir_bulk.path());
+    let incr_repo_id = branch::repo_id(dir_incr.path());
+    let mut store_bulk = KuzuGraphStore::open_for_init(dir_bulk.path()).expect("open bulk");
+    let mut store_incr = KuzuGraphStore::open_for_init(dir_incr.path()).expect("open incr");
+
+    let mod_caller = make_node("mod_a", NodeKind::Module, "src/a.rs", 1);
+    let caller = make_node("caller", NodeKind::Function, "src/a.rs", 5);
+    let target_rs = make_node("helper", NodeKind::Function, "src/b.rs", 1);
+    let target_py = make_node("helper", NodeKind::Function, "scripts/b.py", 1);
+    let unimported = make_node("local_only", NodeKind::Function, "src/c.rs", 1);
+    let widget_type = make_node("Widget", NodeKind::Struct, "src/types.rs", 1);
+
+    let full_diff = GraphDiff {
+        added_nodes: vec![
+            mod_caller.clone(),
+            caller.clone(),
+            target_rs.clone(),
+            target_py.clone(),
+            unimported.clone(),
+            widget_type.clone(),
+        ],
+        // Include a pre-existing Inferred edge that reconciliation must upgrade
+        // to Resolved once the Imports fact is reconciled.
+        added_edges: vec![Edge {
+            src: caller.id.clone(),
+            dst: target_rs.id.clone(),
+            kind: EdgeKind::Calls,
+            line: Some(10),
+            confidence: gitcortex_core::schema::EdgeConfidence::Inferred,
+        }],
+        deferred_imports: vec![(mod_caller.id.clone(), "helper".into())],
+        deferred_calls: vec![
+            (caller.id.clone(), "helper".into(), 10),
+            (caller.id.clone(), "helper".into(), 25),
+            (caller.id.clone(), "local_only".into(), 30),
+            (caller.id.clone(), "future_fn".into(), 40),
+        ],
+        deferred_uses: vec![(caller.id.clone(), "Widget".into())],
+        ..Default::default()
+    };
+
+    // Store A: fresh empty branch takes the in-memory + CSV COPY bulk path.
+    store_bulk
+        .apply_diff("main", &full_diff)
+        .expect("bulk apply_diff");
+
+    // Store B: seed with an unrelated sentinel node first so the second diff
+    // runs through the non-empty Cypher persist_reference_facts +
+    // reconcile_reference_names path.
+    let sentinel = make_node("sentinel", NodeKind::Function, "src/sentinel.rs", 1);
+    store_incr
+        .apply_diff(
+            "main",
+            &GraphDiff {
+                added_nodes: vec![sentinel.clone()],
+                ..Default::default()
+            },
+        )
+        .expect("seed sentinel");
+    let mut incr_diff = full_diff.clone();
+    incr_diff.removed_node_ids.push(sentinel.id.clone());
+    store_incr
+        .apply_diff("main", &incr_diff)
+        .expect("incremental apply_diff");
+
+    let collect_edges = |store: &KuzuGraphStore| {
+        let mut edges = store
+            .list_edges_page("main", 0, 500)
+            .expect("list_edges_page")
+            .into_iter()
+            .map(|e| {
+                (
+                    e.src.as_str(),
+                    e.dst.as_str(),
+                    e.kind.to_string(),
+                    e.line,
+                    e.confidence.to_string(),
+                )
+            })
+            .collect::<Vec<_>>();
+        edges.sort();
+        edges
+    };
+
+    let bulk_edges = collect_edges(&store_bulk);
+    let incr_edges = collect_edges(&store_incr);
+    assert_eq!(bulk_edges, incr_edges);
+
+    // Sanity-check key properties:
+    // - Both call-site lines (10, 25) to Rust `helper` are Resolved.
+    // - Python `helper` was excluded by language scoping.
+    // - Unimported `local_only` is Inferred.
+    // - `Widget` Uses edge exists.
+    assert!(bulk_edges.iter().any(|(_, dst, k, ln, cf)| {
+        dst == &target_rs.id.as_str() && k == "calls" && *ln == Some(10) && cf == "resolved"
+    }));
+    assert!(bulk_edges.iter().any(|(_, dst, k, ln, cf)| {
+        dst == &target_rs.id.as_str() && k == "calls" && *ln == Some(25) && cf == "resolved"
+    }));
+    assert!(!bulk_edges
+        .iter()
+        .any(|(_, dst, _, _, _)| dst == &target_py.id.as_str()));
+    assert!(bulk_edges.iter().any(|(_, dst, k, ln, cf)| {
+        dst == &unimported.id.as_str() && k == "calls" && *ln == Some(30) && cf == "inferred"
+    }));
+    assert!(bulk_edges
+        .iter()
+        .any(|(_, dst, k, _, _)| { dst == &widget_type.id.as_str() && k == "uses" }));
+
+    // Verify raw reference facts loaded via COPY refs.csv reconcile on a later
+    // incremental edit when `future_fn` is introduced in a new file.
+    let future_fn = make_node("future_fn", NodeKind::Function, "src/future.rs", 1);
+    store_bulk
+        .apply_diff(
+            "main",
+            &GraphDiff {
+                added_nodes: vec![future_fn.clone()],
+                ..Default::default()
+            },
+        )
+        .expect("incremental add future_fn");
+    let callers = store_bulk
+        .find_callers("main", "future_fn")
+        .expect("find_callers");
+    assert_eq!(callers.len(), 1);
+    assert_eq!(callers[0].id, caller.id);
+    let updated_edges = collect_edges(&store_bulk);
+    assert!(updated_edges.iter().any(|(src, dst, k, ln, _)| {
+        src == &caller.id.as_str()
+            && dst == &future_fn.id.as_str()
+            && k == "calls"
+            && *ln == Some(40)
+    }));
+
+    drop(store_bulk);
+    drop(store_incr);
+    branch::wipe_repo_data(&bulk_repo_id).expect("clean bulk test data");
+    branch::wipe_repo_data(&incr_repo_id).expect("clean incr test data");
+}
