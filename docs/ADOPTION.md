@@ -64,17 +64,18 @@ Organization-wide AI-tool rollouts need reversible installation, observable heal
 
 ### Controls to highlight
 
-- repository-local setup by default
-- global editor changes require an explicit flag
-- shared external hook paths require explicit permission
-- `gcx doctor` exits non-zero when required checks fail
-- `gcx deinit --dry-run` previews rollback
-- the generated PR workflow uses exact immutable SHAs
+- repository-local setup by default (`gcx init --editor none` for explicit CLI-only use)
+- global editor changes require `--global-editor-config`
+- shared external hook paths require `--shared-git-hooks`
+- `gcx doctor` exits non-zero when required checks fail and explicitly notes that MCP registration alone does not confirm an active client connection
+- `gcx deinit --dry-run` previews rollback (and `gcx deinit` preserves unrelated config and retains graph data unless `--purge` is passed)
+- the generated `.github/workflows/gcx-blast-radius.yml` workflow uses two jobs: a read-only `blast-radius` job (`permissions: contents: read`) that checks out and indexes exact immutable PR SHAs (`pull_request.base.sha` and `pull_request.head.sha`) and uploads the `gitcortex-blast-radius` artifact, plus a same-repository `comment` job (`if: github.event.pull_request.head.repo.full_name == github.repository`, `permissions: actions: read, pull-requests: write`)
 - fork PR reports remain artifacts and do not attempt write-token comments
+- automated verification covers generated editor configs, the compact MCP protocol, and Read-hook scripts across the six supported installers; real desktop/CLI client discovery is recorded as **not exercised** until validated in a live pilot (Agy CLI is omitted/unsupported)
 
 ### Call to action
 
-Approve a bounded pilot with pinned versions and predeclared acceptance criteria; do not start with a required organization-wide check.
+Approve a bounded pilot with pinned versions and predeclared acceptance criteria; do not start with a required organization-wide check. See [QUICKSTART.md](QUICKSTART.md#6-recovery) for recovery procedures and [EXPORT.md](EXPORT.md) for portable graph exports.
 
 ## Open-source maintainers
 
@@ -84,7 +85,7 @@ Maintainers need useful contributor guidance and PR context without requiring a 
 
 ### Message
 
-> Add an informational blast-radius artifact for every PR and a sticky comment for trusted branches, while keeping source analysis inside the repository’s own runner.
+> Add a read-only `blast-radius` artifact job for every PR and a same-repository `comment` job for trusted branches, while keeping source analysis inside the repository’s own runner.
 
 ### Proof workflow
 
@@ -94,7 +95,7 @@ git diff -- .github/workflows/gcx-blast-radius.yml
 gcx doctor
 ```
 
-Review and commit the generated workflow only after checking its permissions and installation policy.
+The generated workflow installs the matching `gitcortex` crate version with `--locked`, runs `blast-radius` with `permissions: contents: read` and `persist-credentials: false`, and only runs the `comment` job when `github.event.pull_request.head.repo.full_name == github.repository`. Review and commit the generated workflow only after checking its permissions and installation policy.
 
 ## Comparison language
 
