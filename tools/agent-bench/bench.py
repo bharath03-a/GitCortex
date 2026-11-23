@@ -148,6 +148,7 @@ def load_suite(path: Path) -> tuple[dict[str, Any], dict[str, Repo], list[Task]]
 # bench run's `gcx serve`/`gcx viz` can still be releasing the OS-level
 # flock when the next run's prepare_repo starts.
 LOCK_ERROR_TEXT = "repository graph is active"
+LOCK_ERROR_TEXTS: tuple[str, ...] = (LOCK_ERROR_TEXT, "repository graph is busy")
 LOCK_RETRY_BACKOFFS_S: tuple[float, ...] = (2, 4, 8)
 
 
@@ -159,7 +160,7 @@ def run_with_lock_retry(
     sleep: Callable[[float], None] = time.sleep,
 ) -> str:
     """Run `command`, retrying on RepositoryLock's transient "repository
-    graph is active" error before giving up.
+    graph is active" / "repository graph is busy" error before giving up.
 
     The OS-level flock (`RepositoryLock`) itself is correct — it's released
     automatically on process exit or crash. The failure this retries is a
@@ -174,7 +175,8 @@ def run_with_lock_retry(
         last_result = run_fn(command, cwd)
         if last_result.returncode == 0:
             return last_result.stdout
-        if LOCK_ERROR_TEXT not in last_result.stdout and LOCK_ERROR_TEXT not in last_result.stderr:
+        combined = f"{last_result.stdout}\n{last_result.stderr}"
+        if not any(marker in combined for marker in LOCK_ERROR_TEXTS):
             break
         if backoff is not None:
             sleep(backoff)

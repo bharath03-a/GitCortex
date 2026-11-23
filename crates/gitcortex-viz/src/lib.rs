@@ -48,9 +48,10 @@ pub enum VizFormat {
     /// Open the interactive WebGL force-directed graph in the browser
     /// (Cosmograph, served from a local Axum process).
     Web,
-    /// Self-contained `graph.html` printed to stdout. Uses vis-network from a
-    /// CDN, embeds the graph as inline JSON. No server, can be opened offline
-    /// after the first load. Pipe to a file: `gcx viz --format html > graph.html`.
+    /// Legacy `graph.html` printed to stdout. Graph data is embedded as inline
+    /// JSON, but rendering requires remote vis-network from a CDN (offline or
+    /// cached availability is not guaranteed). Pipe to a file:
+    /// `gcx viz --format html > graph.html`.
     Html,
     /// Print a Graphviz DOT file to stdout.
     Dot,
@@ -74,7 +75,7 @@ struct AppState {
 
 pub fn run(branch: String, port: u16, format: VizFormat) -> Result<()> {
     let repo_root = repo_root()?;
-    let store = KuzuGraphStore::open(&repo_root).context("failed to open graph store")?;
+    let store = KuzuGraphStore::open_for_viz(&repo_root).context("failed to open graph store")?;
 
     match format {
         VizFormat::Dot => {
@@ -132,6 +133,21 @@ pub fn run(branch: String, port: u16, format: VizFormat) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn suggest_alternate_port(occupied: u16) -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .and_then(|listener| listener.local_addr())
+        .map(|addr| addr.port())
+        .ok()
+        .filter(|&p| p != occupied && p > 0)
+        .unwrap_or_else(|| {
+            if occupied == u16::MAX {
+                5679
+            } else {
+                occupied + 1
+            }
+        })
 }
 
 async fn serve(state: Arc<AppState>, port: u16) -> Result<()> {
@@ -205,13 +221,20 @@ async fn serve(state: Arc<AppState>, port: u16) -> Result<()> {
         }))
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind(&addr)
-        .await
-        .with_context(|| format!("bind {addr}"))?;
+    let listener = tokio::net::TcpListener::bind(&addr).await.with_context(|| {
+        let alt_port = suggest_alternate_port(port);
+        format!(
+            "failed to bind {addr} (port {port} is already in use); retry with an alternate port: `gcx viz --port {alt_port}`"
+        )
+    })?;
 
     tracing::info!(url = %url, "GitCortex viz listening");
-    eprintln!("GitCortex Viz → {url}  (Ctrl-C to stop)");
-    let _ = open::that(&url);
+    eprintln!(
+        "GitCortex Viz → {url}  (press Ctrl-C to stop; holds the repository graph lock while running, so standalone CLI readers will report busy until stopped)"
+    );
+    if std::env::var_os("GCX_NO_BROWSER").is_none() {
+        let _ = open::that(&url);
+    }
 
     axum::serve(listener, app).await.context("axum serve")?;
     Ok(())
@@ -1150,6 +1173,23 @@ mod tests {
             err.to_string().contains("cd <repository>"),
             "unexpected error: {err}"
         );
+    }
+
+    #[test]
+    fn html_help_discloses_cdn_dependency() {
+        use clap::ValueEnum;
+        let possible = VizFormat::Html
+            .to_possible_value()
+            .expect("Html possible value");
+        let help = possible
+            .get_help()
+            .expect("Html help text")
+            .to_string()
+            .to_ascii_lowercase();
+        assert!(help.contains("embedded"), "help: {help}");
+        assert!(help.contains("vis-network"), "help: {help}");
+        assert!(help.contains("cdn"), "help: {help}");
+        assert!(help.contains("not guaranteed"), "help: {help}");
     }
 
     #[test]

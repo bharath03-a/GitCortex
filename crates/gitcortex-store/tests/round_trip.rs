@@ -44,7 +44,7 @@ fn repository_lock_rejects_a_second_store_owner() {
     let error = KuzuGraphStore::open(repo.path())
         .err()
         .expect("second owner must be rejected");
-    assert!(error.to_string().contains("repository graph is active"));
+    assert!(error.to_string().contains("repository graph is busy"));
     drop(first);
     let reopened = KuzuGraphStore::open(repo.path()).expect("lock released on drop");
     drop(reopened);
