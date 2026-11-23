@@ -509,6 +509,7 @@ gcx export --format json > graph.json   # committable JSON: symbols + edges, joi
 gcx export --claude-md --top 40     # upsert top-N symbols into CLAUDE.md
 ```
 
+- **`--format graph-json` / `mermaid` / `dot` / `svg` / `graphml` / `cypher` / `html`**: export the whole branch or a `--seed`-scoped subgraph (`--direction up|down|both`, `--depth`, `--edge-kinds`, `--max-nodes`) with readiness checks. See [docs/EXPORT.md](docs/EXPORT.md).
 - **`--format json`**: emits `{ branch, sha, symbols[], edges[] }` to stdout. Each symbol carries `id`, `name`, `qualified_name`, `kind`, `file`, `line`, `visibility`; edges reference symbol `id`s. Commit it, diff it in PRs, or consume it in CI **without the binary or the embedded DB**.
 - **`--claude-md`**: upserts a compact, centrality-ranked symbol table into `CLAUDE.md` between `<!-- gcx:symbols start/end -->` markers (idempotent). Assistants get the most-referenced symbols (name → `file:line`) **pre-loaded with zero tool calls**, with a hint to fall back to the MCP tools for anything not listed.
 

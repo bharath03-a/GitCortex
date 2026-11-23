@@ -454,7 +454,7 @@ gcx viz --branch feat/auth --port 8080
 
 ### gcx export
 
-Export the knowledge graph as a codebase map, JSON, or a CLAUDE.md symbol table.
+Export the knowledge graph as a codebase map, versioned graph JSON, Mermaid, DOT/SVG/GraphML/Cypher/HTML, or a `CLAUDE.md` symbol table. See [EXPORT.md](EXPORT.md) for full format examples and the `graph-json` schema.
 
 ```
 gcx export [OPTIONS]
@@ -462,18 +462,31 @@ gcx export [OPTIONS]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--branch <BRANCH>` | current branch | Branch to export |
-| `--format <FORMAT>` | `markdown` | `markdown` (codebase map) or `json` (symbols + edges) |
+| `--branch <BRANCH>` | current branch | Branch to export (validated against Git before opening the store) |
+| `--format <FORMAT>` | `markdown` | `markdown`, `json` (legacy), `graph-json` (v1 schema), `mermaid`, `dot`, `svg`, `graphml`, `cypher`, `html` |
+| `--seed <SEED>` | none | Scope traversal around one symbol (node ID, exact `qualified_name`, or unique short `name`) |
+| `--depth <N>` | `2` | BFS hop depth from `--seed` (`0`–`5`) |
+| `--direction <DIR>` | `both` | Traversal direction from `--seed`: `up` (incoming), `down` (outgoing), `both` |
+| `--edge-kinds <KINDS>` | all | Comma-separated edge kinds allowed during traversal and output (e.g. `calls,imports`) |
+| `--max-nodes <N>` | `5000` (`100` for `mermaid`) | Maximum nodes to emit (seed and closest hops preserved first) |
+| `--out <PATH>` | stdout (`.gitcortex/context.md` for `markdown`) | Write output to a file path instead of stdout |
+| `--allow-stale` | false | Export even when index readiness is not `ready` (records state in `meta.readiness`) |
 | `--claude-md` | false | Upsert a top-symbols table into `CLAUDE.md` (overrides `--format`) |
 | `--top <N>` | `40` | Number of top-ranked symbols to inject with `--claude-md` |
 
+**Exit codes (scoped graph formats):** `0` success, `1` operational/store error, `2` invalid input (unknown/ambiguous `--seed`, invalid `--branch`, unknown `--edge-kinds`, or argument error), `3` index not ready unless `--allow-stale` is set.
+
 **Format: markdown**
 
-Writes `.gitcortex/context.md` — a structured Markdown map of all files, structs, functions. Commit it to give teammates instant codebase context.
+Writes `.gitcortex/context.md` (or `--out`) — a structured Markdown map of all files, structs, and functions.
 
-**Format: json**
+**Format: json (legacy)**
 
-Emits `{ branch, sha, symbols[], edges[] }` to stdout. Each symbol carries `id`, `name`, `qualified_name`, `kind`, `file`, `line`, `visibility`. Edges reference symbol `id`s.
+Emits `{ branch, sha, symbols[], edges[] }` to stdout (or `--out`). Each symbol carries `id`, `name`, `qualified_name`, `kind`, `file`, `line`, `visibility`. Edges reference symbol `id`s.
+
+**Format: graph-json**
+
+Emits a versioned `gitcortex.graph` v1 document conforming to [`docs/schemas/gitcortex-graph-v1.schema.json`](schemas/gitcortex-graph-v1.schema.json) with readiness metadata, scoping parameters, truncation totals, and zero source text.
 
 **Flag: --claude-md**
 
@@ -482,11 +495,11 @@ Upserts a compact, centrality-ranked symbol table between `<!-- gcx:symbols star
 **Examples:**
 
 ```bash
-gcx export                          # writes .gitcortex/context.md
-gcx export --branch feat/auth
-gcx export --format json > graph.json
-gcx export --claude-md              # inject top 40 symbols into CLAUDE.md
-gcx export --claude-md --top 60
+gcx export                                                            # writes .gitcortex/context.md
+gcx export --format graph-json --out graph.json                       # versioned graph v1 JSON
+gcx export --format mermaid --seed verify_token --direction up --depth 2
+gcx export --format json > symbols.json                               # legacy flat symbols + edges
+gcx export --claude-md --top 60                                       # inject top 60 symbols into CLAUDE.md
 ```
 
 ---
