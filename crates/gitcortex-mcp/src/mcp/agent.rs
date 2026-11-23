@@ -751,16 +751,9 @@ pub fn symbol_context<S: GraphStore + ?Sized>(
             is_test: is_test_file(&other.file),
         });
     }
+    let target_file = target.file.display().to_string();
     for bucket in [&mut callers, &mut callees, &mut used_by] {
-        bucket.sort_by(|a, b| {
-            a.is_test
-                .cmp(&b.is_test)
-                .then_with(|| {
-                    confidence_label_rank(&a.confidence).cmp(&confidence_label_rank(&b.confidence))
-                })
-                .then_with(|| a.file.cmp(&b.file))
-                .then_with(|| a.qualified_name.cmp(&b.qualified_name))
-        });
+        diversify_relation_evidence(bucket, &target_file);
     }
 
     let total = callers.len() + callees.len() + used_by.len();
@@ -794,6 +787,57 @@ pub fn symbol_context<S: GraphStore + ?Sized>(
     };
     apply_symbol_context_budget(&mut response, options.budget_tokens);
     Ok(response)
+}
+
+/// Rank relation evidence so cross-file production dependents appear before
+/// same-file references and tests, and round-robin across distinct files within
+/// each tier so one high-fanout file cannot crowd out other dependent modules
+/// when the bucket is truncated to `limit` or trimmed to `budget_tokens`.
+fn diversify_relation_evidence(bucket: &mut Vec<RelationEvidence>, target_file: &str) {
+    if bucket.len() <= 1 {
+        return;
+    }
+    bucket.sort_by(|a, b| {
+        a.is_test
+            .cmp(&b.is_test)
+            .then_with(|| (a.file == target_file).cmp(&(b.file == target_file)))
+            .then_with(|| {
+                confidence_label_rank(&a.confidence).cmp(&confidence_label_rank(&b.confidence))
+            })
+            .then_with(|| a.file.cmp(&b.file))
+            .then_with(|| a.qualified_name.cmp(&b.qualified_name))
+            .then_with(|| a.line.cmp(&b.line))
+    });
+
+    let mut tiers: [Vec<Vec<RelationEvidence>>; 4] = Default::default();
+    let mut file_indices: [HashMap<String, usize>; 4] = Default::default();
+    for item in bucket.drain(..) {
+        let tier = usize::from(item.is_test) * 2 + usize::from(item.file == target_file);
+        if let Some(&idx) = file_indices[tier].get(&item.file) {
+            tiers[tier][idx].push(item);
+        } else {
+            let idx = tiers[tier].len();
+            file_indices[tier].insert(item.file.clone(), idx);
+            tiers[tier].push(vec![item]);
+        }
+    }
+
+    for groups in tiers {
+        let mut queues: Vec<std::collections::VecDeque<RelationEvidence>> =
+            groups.into_iter().map(Into::into).collect();
+        loop {
+            let mut progressed = false;
+            for queue in &mut queues {
+                if let Some(item) = queue.pop_front() {
+                    bucket.push(item);
+                    progressed = true;
+                }
+            }
+            if !progressed {
+                break;
+            }
+        }
+    }
 }
 
 fn apply_symbol_context_budget(response: &mut AgentSymbolContextResponse, budget_tokens: usize) {
@@ -1700,5 +1744,43 @@ mod tests {
             .as_str()
             .unwrap()
             .contains(&format!("offset={returned}")));
+    }
+
+    #[test]
+    fn diversify_relation_evidence_spreads_files_before_repeating() {
+        let mk = |file: &str, sym: &str, confidence: &str, is_test: bool| RelationEvidence {
+            relation: "used_by".to_owned(),
+            direction: "in".to_owned(),
+            symbol: sym.to_owned(),
+            qualified_name: format!("crate::{sym}"),
+            kind: "method".to_owned(),
+            file: file.to_owned(),
+            line: 10,
+            confidence: confidence.to_owned(),
+            is_test,
+        };
+        let mut bucket = vec![
+            mk("crates/searcher/src/mod.rs", "new", "extracted", false),
+            mk("crates/printer/src/json.rs", "a", "resolved", false),
+            mk("crates/printer/src/json.rs", "b", "resolved", false),
+            mk("crates/printer/src/json.rs", "c", "resolved", false),
+            mk("crates/core/search.rs", "run", "inferred", false),
+            mk("tests/search_test.rs", "t1", "resolved", true),
+        ];
+        diversify_relation_evidence(&mut bucket, "crates/searcher/src/mod.rs");
+        let files: Vec<&str> = bucket.iter().map(|e| e.file.as_str()).collect();
+        // Cross-file production files get one slot each before json.rs repeats;
+        // same-file production follows cross-file production; tests come last.
+        assert_eq!(
+            files,
+            vec![
+                "crates/printer/src/json.rs",
+                "crates/core/search.rs",
+                "crates/printer/src/json.rs",
+                "crates/printer/src/json.rs",
+                "crates/searcher/src/mod.rs",
+                "tests/search_test.rs",
+            ]
+        );
     }
 }
