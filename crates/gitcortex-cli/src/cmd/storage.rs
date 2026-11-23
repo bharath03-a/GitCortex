@@ -4,7 +4,10 @@ use anyhow::{Context, Result};
 use clap::Subcommand;
 use gitcortex_store::{
     branch,
-    usage::{inspect_repo_dir, scan_store_root, RepoStatus, RepoUsage},
+    usage::{
+        apply_prune, inspect_repo_dir, plan_prune, scan_store_root, PrunePolicy, RepoStatus,
+        RepoUsage,
+    },
 };
 
 use crate::style::{header_style, hint_style, name_style, paint};
@@ -20,11 +23,32 @@ pub enum StorageCmd {
         #[arg(long)]
         json: bool,
     },
+    /// Reclaim orphaned stores, historical backups, or stale unknown stores (dry-run by default).
+    Prune {
+        /// Select stores whose repository directory was deleted (parent still exists).
+        #[arg(long)]
+        orphaned: bool,
+        /// Select historical `*.bak-*` dirs and leftover `graph.kuzu.pre-compact-*` payloads.
+        #[arg(long)]
+        backups: bool,
+        /// Select metadata-less `unknown` stores whose `graph.kuzu` is older than DAYS days.
+        #[arg(long, value_name = "DAYS")]
+        unknown_older_than: Option<u32>,
+        /// Perform the deletions (without `--apply`, only prints the plan).
+        #[arg(long)]
+        apply: bool,
+    },
 }
 
 pub fn run(cmd: StorageCmd) -> Result<()> {
     match cmd {
         StorageCmd::List { all, json } => run_list(all, json),
+        StorageCmd::Prune {
+            orphaned,
+            backups,
+            unknown_older_than,
+            apply,
+        } => run_prune(orphaned, backups, unknown_older_than, apply),
     }
 }
 
@@ -116,6 +140,73 @@ fn run_list(all: bool, json: bool) -> Result<()> {
             entries.len(),
             branch::data_root().display(),
         );
+    }
+    Ok(())
+}
+
+fn run_prune(
+    orphaned: bool,
+    backups: bool,
+    unknown_older_than: Option<u32>,
+    apply: bool,
+) -> Result<()> {
+    let policy = if !orphaned && !backups && unknown_older_than.is_none() {
+        PrunePolicy::default()
+    } else {
+        PrunePolicy {
+            orphaned,
+            backups,
+            unknown_older_than_days: unknown_older_than,
+        }
+    };
+
+    let root = branch::data_root();
+    let plan = plan_prune(&root, &policy)?;
+    if plan.items.is_empty() {
+        println!(
+            "{}",
+            paint(
+                hint_style(),
+                &format!("Nothing to prune in {}.", root.display())
+            )
+        );
+        return Ok(());
+    }
+
+    for (usage, reason) in &plan.items {
+        println!(
+            "{}  {:>9}  {}",
+            paint(header_style(), &format!("{reason:<18}")),
+            paint(name_style(), &format_bytes(usage.bytes)),
+            usage.dir.display(),
+        );
+    }
+
+    if !apply {
+        println!(
+            "\n{} {} across {} item(s). Re-run with `--apply` to delete.",
+            paint(header_style(), "dry-run:"),
+            paint(name_style(), &format_bytes(plan.bytes)),
+            plan.items.len(),
+        );
+        return Ok(());
+    }
+
+    let report = apply_prune(&plan)?;
+    println!(
+        "\n{} {} reclaimed.",
+        paint(header_style(), "pruned:"),
+        paint(name_style(), &format_bytes(report.removed)),
+    );
+    if !report.skipped_locked.is_empty() {
+        println!(
+            "{} {} locked item(s) skipped:",
+            paint(header_style(), "skipped:"),
+            report.skipped_locked.len(),
+        );
+        for path in &report.skipped_locked {
+            println!("  {}", path.display());
+        }
     }
     Ok(())
 }
