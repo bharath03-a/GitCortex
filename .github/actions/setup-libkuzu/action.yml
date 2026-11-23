@@ -36,6 +36,26 @@ runs:
           rm -f "${TARBALL}"
         fi
 
+        # kuzu-0.11.3/build.rs emits -l static:+whole-archive for snowball and
+        # the four default extension archives even when KUZU_SHARED=1 (upstream
+        # bug: those symbols are already linked into libkuzu.so, while static
+        # bundled builds require default features because Kuzu's CMake always
+        # generates extension loader calls for them). Provide symbol-free ELF
+        # stub archives so KUZU_SHARED=1 links cleanly without changing Cargo.toml.
+        STUB_OBJ="$(mktemp /tmp/kuzu-stub-XXXXXX.o)"
+        trap 'rm -f "${STUB_OBJ}"' EXIT
+        cc -c -x c /dev/null -o "${STUB_OBJ}"
+        for stub in \
+          libsnowball.a \
+          libalgo_static.kuzu_extension \
+          libfts_static.kuzu_extension \
+          libjson_static.kuzu_extension \
+          libvector_static.kuzu_extension; do
+          if [ ! -f "${KUZU_DIR}/${stub}" ]; then
+            ar rcs "${KUZU_DIR}/${stub}" "${STUB_OBJ}"
+          fi
+        done
+
         {
           echo "KUZU_SHARED=1"
           echo "KUZU_LIBRARY_DIR=${KUZU_DIR}"
