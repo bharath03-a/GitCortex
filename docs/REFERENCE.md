@@ -19,9 +19,11 @@ Complete reference for the `gcx` CLI, MCP server tools, configuration, and graph
   - [gcx viz](#gcx-viz)
   - [gcx export](#gcx-export)
   - [gcx status](#gcx-status)
+  - [gcx storage](#gcx-storage)
   - [gcx clean](#gcx-clean)
   - [gcx doctor](#gcx-doctor)
   - [gcx update](#gcx-update)
+- [Recovery](#recovery)
 - [MCP server](#mcp-server)
   - [Editor setup](#editor-setup)
   - [Compact mode](#compact-mode)
@@ -80,8 +82,10 @@ Download from the [releases page](https://github.com/bharath03-a/GitCortex/relea
 # 1. Go to your repo
 cd /path/to/your/repo
 
-# 2. Index, install hooks, and opt into repository-local MCP setup
-gcx init --editor codex   # omit --editor for CLI-only use
+# 2. Index and install hooks without configuring any editor (explicit CLI-only setup)
+gcx init --editor none
+# Or opt into repository-local MCP + rules setup for one editor:
+# gcx init --editor codex
 
 # 3. Verify setup
 gcx doctor
@@ -94,7 +98,7 @@ gcx query find-callers run --depth 2
 gcx serve
 ```
 
-After `gcx init`, every `git commit`, `git pull`, `git rebase`, and `git checkout` keeps the graph current automatically.
+After `gcx init`, every `git commit`, `git pull`, `git rebase`, and `git checkout` keeps the committed graph current automatically.
 
 ---
 
@@ -112,7 +116,7 @@ These flags apply to every subcommand.
 
 ### gcx init
 
-Install Git hooks and run the initial full index. Editor MCP registration is opt-in.
+Install Git hooks and run the initial full index. Use `--editor none` for explicit CLI-only setup everywhere (including interactive terminals).
 
 ```
 gcx init [OPTIONS]
@@ -120,28 +124,29 @@ gcx init [OPTIONS]
 
 | Flag | Description |
 |------|-------------|
-| `--ci` | Write `.github/workflows/gcx-blast-radius.yml` for the GitHub Actions PR bot. |
-| `--editor <EDITOR>` | Select `none`, `auto`, `claude`, `cursor`, `windsurf`, `copilot`, `antigravity`, `codex`, or `all`. Omitted by default. |
-| `--global-editor-config` | Explicitly allow changes to editor configuration outside the repository. |
+| `--ci` | Write `.github/workflows/gcx-blast-radius.yml` (two jobs: read-only `blast-radius` + same-repo `comment`). |
+| `--editor <EDITOR>` | Select `none`, `auto`, `claude`, `cursor`, `windsurf`, `copilot`, `antigravity`, `codex`, or `all`. On the **first** interactive TTY run without `--editor`, `gcx init` opens a one-time checkbox chooser (remembered per repo per machine); non-TTY runs without `--editor` default to `none`. |
+| `--global-editor-config` | Explicitly allow changes to editor configuration outside the repository (required for `windsurf`, optional for `claude` and `antigravity`). |
 | `--shared-git-hooks` | Explicitly allow changes when `core.hooksPath` points outside the repository and Git common directory. |
 
 **What `gcx init` does:**
 
-1. Resolves the active Git hooks directory with `git rev-parse --git-path hooks` and adds managed, non-blocking hook blocks.
-2. Runs a full index of the current HEAD.
-3. Writes repository-local MCP configuration only when `--editor` is supplied.
+1. Resolves the active Git hooks directory with `git rev-parse --git-path hooks` and adds managed, non-blocking hook blocks (`post-commit`, `post-merge`, `post-rewrite`, `post-checkout`).
+2. Runs a full index of the current `HEAD` and writes `.gitcortex/ignore` and `.gitcortex/AGENT_GUIDE.md`.
+3. Writes repository-local MCP configuration, mirrors `.gitcortex/AGENT_GUIDE.md` into the editor's managed rules block, and installs non-blocking `PreToolUse` Read hooks (`gcx __hook-context`) for Claude Code, Codex, and Antigravity when those editors are selected.
 4. Writes `.claude/commands/gcx/` slash commands only when Claude is selected.
 
 **Examples:**
 
 ```bash
-gcx init                        # no editor configuration
-gcx init --editor claude        # repository-local Claude Code setup
+gcx init --editor none          # explicit CLI-only setup (no editor configuration)
+gcx init                        # interactive first-TTY chooser (CLI-only in non-TTY / CI)
+gcx init --editor claude        # repository-local Claude Code setup + Read hook
 gcx init --editor auto          # explicitly request environment detection
-gcx init --editor codex         # repository-local Codex setup
+gcx init --editor codex         # repository-local Codex setup + Read hook
 gcx init --editor windsurf --global-editor-config
 gcx init --editor all           # all repository-local integrations
-gcx init --ci                   # + GitHub Actions workflow
+gcx init --ci --editor none     # CLI-only + GitHub Actions blast-radius workflow
 ```
 
 ---
@@ -288,7 +293,7 @@ One-shot graph queries from the terminal. Useful for scripts, CI, and manual ins
 gcx query <SUBCOMMAND>
 ```
 
-All query subcommands accept `--branch <NAME>` (default: `main`).
+All query subcommands accept `--branch <NAME>` (default: current checkout branch, falling back to `main`).
 
 #### gcx query lookup-symbol
 
@@ -306,14 +311,22 @@ gcx query lookup-symbol run --branch feat/auth
 #### gcx query find-callers
 
 ```
-gcx query find-callers <NAME> [--depth <1-5>] [--branch <BRANCH>]
+gcx query find-callers <NAME> [--depth <1-5>] [--limit <N>] [--budget-tokens <N>] [--format <text|agent-json>] [--branch <BRANCH>]
 ```
 
 Find callers of a function. `--depth 1` (default) returns direct callers; higher values walk multiple hops.
 
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--depth` | `1` | Hops to walk up the call graph (`1`–`5`) |
+| `--limit` | `25` | Maximum caller rows returned |
+| `--budget-tokens` | `600` | Global response budget used by `agent-json` output |
+| `--format` | `text` | `text` (human-readable) or `agent-json` |
+
 ```bash
 gcx query find-callers validate_token
 gcx query find-callers apply_diff --depth 3
+gcx query find-callers apply_diff --format agent-json --limit 10
 ```
 
 #### gcx query find-callees
@@ -405,15 +418,18 @@ gcx query find-unused --kind struct --branch feat/cleanup
 #### gcx query get-subgraph
 
 ```
-gcx query get-subgraph <NAME> [--depth <1-5>] [--direction <in|out|both>] [--branch <BRANCH>]
+gcx query get-subgraph <NAME> [--depth <1-5>] [--direction <in|out|both>] [--limit <N>] [--budget-tokens <N>] [--format <text|agent-json>] [--branch <BRANCH>]
 ```
 
 Return all nodes and edges within N hops of a seed symbol.
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--depth` | `2` | Hops to expand from seed |
+| `--depth` | `1` | Hops to expand from seed (`1`–`5`) |
 | `--direction` | `both` | `in` (ancestors), `out` (descendants), `both` |
+| `--limit` | `20` | Maximum nodes returned |
+| `--budget-tokens` | `400` | Global response budget used by `agent-json` output |
+| `--format` | `text` | `text` or `agent-json` |
 
 ```bash
 gcx query get-subgraph KuzuGraphStore --depth 2
@@ -435,13 +451,24 @@ gcx query wiki apply_diff
 #### gcx query search
 
 ```
-gcx query search <QUERY> [--limit <N>] [--branch <BRANCH>]
+gcx query search <QUERY> [--kind <KIND>] [--file <PATH>] [--limit <N>] [--offset <N>] [--include-details] [--budget-tokens <N>] [--format <text|agent-json>] [--branch <BRANCH>]
 ```
 
 Fuzzy search over name + qualified path. Ranked: exact → prefix → substring. Functions and structs are ranked higher.
 
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--kind` | none | Optional node kind filter |
+| `--file` | none | Optional file path prefix/substring filter |
+| `--limit` | `10` | Maximum results per page |
+| `--offset` | `0` | Pagination offset |
+| `--include-details` | `false` | Include extra signature/doc detail fields |
+| `--budget-tokens` | `600` | Global response budget used by `agent-json` output |
+| `--format` | `text` | `text` or `agent-json` |
+
 ```bash
 gcx query search auth --limit 20
+gcx query search auth --limit 10 --format agent-json
 gcx query search "graph store" --branch main
 ```
 
@@ -451,7 +478,7 @@ gcx query search "graph store" --branch main
 gcx query tour [--seed <NAME>] [--limit <N>] [--branch <BRANCH>]
 ```
 
-Generate a guided tour through the codebase.
+Generate a guided tour through the codebase (`--limit` defaults to `6`).
 
 - Without `--seed`: picks highest-centrality public entry points.
 - With `--seed`: BFS-walks outward from that symbol along call edges.
@@ -466,7 +493,7 @@ gcx query tour --seed Auth --limit 20
 
 ### gcx blast-radius
 
-Show the blast radius of changes between two branches.
+Show the blast radius of changes between two branches or refs.
 
 ```
 gcx blast-radius [OPTIONS]
@@ -474,30 +501,30 @@ gcx blast-radius [OPTIONS]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--base <BRANCH>` | `main` | Branch to compare against (merge target) |
-| `--head <BRANCH>` | `HEAD` | Branch with changes |
+| `--base <BRANCH>` | current branch (fallback `main`) | Branch or ref to compare against (pass `--base main` explicitly when comparing a feature branch against `main`) |
+| `--head <BRANCH>` | `HEAD` | Branch or ref with changes |
 | `--depth <N>` | `2` | BFS depth for transitive caller discovery |
 | `--format <FORMAT>` | `text` | Output format: `text`, `json`, `github-comment` |
 
 **Formats:**
 - `text` — human-readable terminal output
-- `json` — machine-readable `{ changed, callers, risk_level }` object
-- `github-comment` — Markdown suitable for posting as a sticky PR comment (used by the CI bot)
+- `json` — machine-readable `{ base, head, risk, changed_count, affected_count, changed_nodes, affected_callers }` object
+- `github-comment` — Markdown suitable for posting as a sticky PR comment (used by the CI workflow)
 
 **Examples:**
 
 ```bash
-gcx blast-radius
+gcx blast-radius --base main --head HEAD --format text
 gcx blast-radius --base main --head feat/auth
-gcx blast-radius --format json | jq '.risk_level'
-gcx blast-radius --format github-comment > /tmp/comment.md
+gcx blast-radius --base main --head HEAD --format json | jq '.risk'
+gcx blast-radius --base main --head HEAD --format github-comment > /tmp/comment.md
 ```
 
 ---
 
 ### gcx viz
 
-Visualise the knowledge graph in a browser or as DOT output.
+Visualise the knowledge graph in the embedded local web UI or emit graph output.
 
 ```
 gcx viz [OPTIONS]
@@ -505,16 +532,22 @@ gcx viz [OPTIONS]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--branch <BRANCH>` | `main` | Branch to visualise |
-| `--format <FORMAT>` | `web` | `web` (browser), `dot` (Graphviz DOT), `mermaid` |
-| `--port <PORT>` | `5678` | HTTP port for web mode |
+| `--branch <BRANCH>` | current branch (fallback `main`) | Branch to visualise |
+| `--format <FORMAT>` | `web` | `web` (embedded interactive UI), `html` (legacy HTML + CDN), `dot` (Graphviz DOT), `svg`, `graphml`, `cypher` |
+| `--port <PORT>` | `5678` | HTTP port for `web` mode (if occupied, `gcx viz` reports the port and suggests `gcx viz --port <free-port>`) |
+
+**Embedded `web` UI vs legacy `html` vs `gcx export`:**
+- `gcx viz` (`--format web`) serves the local React/Cosmograph explorer with all JS, CSS, and fonts embedded inside the `gcx` binary and readable typography (body ≥14px, UI text ≥12px, AA contrast). It holds an exclusive lock on the repository graph store while running (press `Ctrl-C` to stop; standalone CLI readers report the active owner PID and retry guidance while it runs).
+- `gcx viz --format html` writes a legacy single-file HTML page that embeds graph JSON inline but loads `vis-network` from a remote CDN (offline/cached availability is not guaranteed; a standalone offline static bundle is not shipped in this release).
+- For Mermaid diagrams, versioned `graph-json` v1, or scoped exports (`--seed`, `--depth`, `--direction`, `--edge-kinds`), use [`gcx export`](#gcx-export) (for example `gcx export --format mermaid`).
 
 **Examples:**
 
 ```bash
-gcx viz                         # open browser at localhost:5678
+gcx viz                         # open embedded UI at http://127.0.0.1:5678 (Ctrl-C to stop)
 gcx viz --format dot | dot -Tsvg > graph.svg
-gcx viz --format mermaid
+gcx viz --format svg > graph.svg
+gcx viz --format html > graph.html
 gcx viz --branch feat/auth --port 8080
 ```
 
@@ -539,6 +572,7 @@ gcx export [OPTIONS]
 | `--max-nodes <N>` | `5000` (`100` for `mermaid`) | Maximum nodes to emit (seed and closest hops preserved first) |
 | `--out <PATH>` | stdout (`.gitcortex/context.md` for `markdown`) | Write output to a file path instead of stdout |
 | `--allow-stale` | false | Export even when index readiness is not `ready` (records state in `meta.readiness`) |
+| `--force` | false | Overwrite an existing `--out` path |
 | `--claude-md` | false | Upsert a top-symbols table into `CLAUDE.md` (overrides `--format`) |
 | `--top <N>` | `40` | Number of top-ranked symbols to inject with `--claude-md` |
 
@@ -574,13 +608,14 @@ gcx export --claude-md --top 60                                       # inject t
 
 ### gcx status
 
-Show indexed node and edge counts for a branch.
+Show readiness state and indexed node/edge counts for a branch (defaults to the current checkout branch).
 
 ```
 gcx status [--branch <BRANCH>]
 ```
 
 ```
+state:      ready
 branch:     main
 last sha:   abc1234...
 nodes:      312
@@ -592,42 +627,72 @@ edges:      847
   calls        514
   contains     246
   ...
+note:       Verify source and tests; ignored, oversized, unsupported, and dynamic code can be absent from the static graph.
+```
+
+**Exit codes:** `0` (`ready` or `unverified` — `unverified` prints a warning that counts are observed only and working-tree coverage is unverified), `1` operational/store/schema error, `2` invalid ref or CLI arguments, `3` not ready (`missing`, `stale`, `indexing`, or `degraded`).
+
+---
+
+### gcx storage
+
+Inspect and maintain machine-local graph storage across the current repository or all repositories under the local data root. All destructive subcommands (`prune`, `gc`, `compact`) run as a **dry-run** unless `--apply` is passed.
+
+```
+gcx storage <SUBCOMMAND>
+```
+
+| Subcommand | Flags | Description |
+|------------|-------|-------------|
+| `list` | `[--all] [--json]` | Show disk usage, status, and branch inventory for the current repository (or every local store with `--all`). |
+| `prune` | `[--orphaned] [--backups] [--unknown-older-than <DAYS>] [--apply]` | Plan or remove orphaned repo stores, historical `*.bak-*` / `graph.kuzu.pre-compact-*` backups, or old metadata-less stores. |
+| `gc` | `[--apply]` | Plan or drop deleted branch tables and stale detached snapshots for the current repository. |
+| `compact` | `[--apply]` | Plan or reclaim unused space inside `graph.kuzu` via atomic payload swap. |
+
+```bash
+gcx storage list --all
+gcx storage prune --orphaned --backups        # dry-run plan
+gcx storage prune --orphaned --backups --apply
+gcx storage gc                                # dry-run plan
+gcx storage compact --apply
 ```
 
 ---
 
 ### gcx clean
 
-Wipe the graph store for this repo. The next `gcx init` or commit triggers a fresh full index.
+Wipe the graph store for this repo. The next `gcx init --editor none` (or `gcx init`) triggers a fresh full index.
 
 ```
 gcx clean
 ```
 
-> **Irreversible.** All branch graphs for this repo are deleted.
+> **Irreversible.** All branch graphs for this repo are deleted. Before running `gcx clean` after an upgrade or schema mismatch, inspect `gcx --version`, `gcx doctor`, and `gcx storage list`, stop active owners, and back up the store directory if needed.
 
 ---
 
 ### gcx doctor
 
-Diagnose setup issues: hooks installed, store accessible, index current, MCP registered.
+Diagnose setup issues: hooks installed, store accessible, index readiness, and MCP registration. Exits non-zero when required checks fail.
 
 ```
 gcx doctor
 ```
 
 ```
-  [ok] gcx v0.4.0 on PATH (/usr/local/bin/gcx)
+  [ok] gcx on PATH (/usr/local/bin/gcx)
   [ok] git repository detected
   [ok] post-commit hook installed
   [ok] post-merge hook installed
   [ok] post-rewrite hook installed
   [ok] post-checkout hook installed
-  [ok] graph store accessible  (1 842 nodes, 4 217 edges on main)
+  [ok] graph store accessible  (1842 nodes, 4217 edges on main)
   [ok] index is current  (HEAD abc1234)
-  [ok] MCP registered  (Claude Code)
-  [--] MCP not configured for Cursor  (run: gcx init --editor cursor)
+  [ok] MCP Claude Code: registration found (.mcp.json — reload editor; registration alone does not confirm an active connection)
+  [--] MCP Cursor: not configured (run: gcx init --editor cursor)
 ```
+
+`gcx doctor` checks the six supported editors (`claude`, `codex`, `cursor`, `antigravity`, `windsurf`, `copilot`). Agy CLI is omitted/unsupported.
 
 ---
 
@@ -641,13 +706,37 @@ gcx update
 
 ---
 
+## Recovery
+
+`gcx deinit` only removes hooks and editor files — it does **not** repair or restore a graph store. Git hooks only update the graph on committed Git operations (`post-commit`, `post-merge`, `post-rewrite`, `post-checkout`); they do **not** verify uncommitted working-tree edits.
+
+| Symptom / state | Safe check | Exact command | Expected state after recovery |
+| --- | --- | --- | --- |
+| Outside a Git repository (`exit 1`) | Confirm repository path (`pwd`) | `cd <repository> && gcx doctor` | Repository detected; `gcx doctor` exits `0` once initialized and clean (no store created outside repo) |
+| Existing valid unindexed branch (`status` exits `3`, `missing`) | Validate local branch exists (`git show-ref --verify refs/heads/<branch>`) | `gcx index --branch <branch>` | Branch indexed from committed objects without checkout; `index.state = "ready"` (`working_tree_verified = false`) |
+| Missing or deleted graph store (`status` exits `3`, `missing`) | Check active owners (`gcx doctor` / `gcx storage list`) and stop editor MCP sessions or `gcx viz` | `gcx init --editor none` | Local store rebuilt from `HEAD`; `gcx status` exits `0` (`state: ready` on clean tree) |
+| Stale committed index (`status` exits `3`, `stale`) | Compare indexed SHA vs `HEAD` (`gcx doctor`) | `gcx hook && gcx doctor` | Incremental diff applied to `HEAD`; `gcx status` and `gcx doctor` exit `0` (`state: ready`) |
+| Working-tree `unverified` (`status` exits `0` warning; `doctor` exits `1`) | Inspect dirty code/doc files (`git status`); verify changes in source and tests | Commit intended changes (no automatic commit or blanket ignore), or let live `gcx serve` settle its `.overlay` checkpoint | Clean checkout or settled overlay returns `index.state = "ready"` (`working_tree_verified = true`) |
+| Incompatible schema / upgrade failure (`status` or `query` exits `1`, store preserved) | Record `gcx --version`, run `gcx doctor` and `gcx storage list`, stop active owners (editor MCP / `gcx viz`), and back up the store directory if needed | `gcx init --editor none` (or explicitly destructive `gcx clean && gcx init --editor none` only when rebuilding local graph data is intended — never blindly delete stores) | Fresh store created at current schema version; `gcx status` exits `0` (`state: ready`) |
+
+---
+
 ## MCP server
 
 The MCP server exposes the knowledge graph to AI coding assistants via the [Model Context Protocol](https://modelcontextprotocol.io).
 
 ### Editor setup
 
-`gcx init --editor <name>` writes repository-local configuration for the selected editor. Global configuration requires `--global-editor-config`.
+`gcx init --editor <name>` writes repository-local configuration for the selected editor and mirrors `.gitcortex/AGENT_GUIDE.md` into that editor's managed rules file. Global configuration requires `--global-editor-config`. **Agy CLI** (`agy-cli`) is unsupported and omitted from both `gcx init --editor` and `gcx doctor`.
+
+| Editor | `--editor` token | MCP config path (scope) | Read hook / rules | Trust / reload step | Verification status |
+| --- | --- | --- | --- | --- | --- |
+| Claude Code | `claude` | `.mcp.json` (local; `~/.claude.json` with `--global-editor-config`) | `CLAUDE.md` + `PreToolUse` `Read` (`gcx __hook-context`, non-blocking) | Trust workspace MCP / reconnect (`/mcp`) | Generated config + MCP protocol + Read-hook automated; real client discovery not exercised |
+| Codex | `codex` | `.codex/config.toml` (local) | `AGENTS.md` + `PreToolUse` `view_file` (`gcx __hook-context`, non-blocking) | Restart / reload Codex session | Generated config + MCP protocol + Read-hook automated; real client discovery not exercised |
+| Cursor | `cursor` | `.cursor/mcp.json` (local) | `.cursor/rules/gitcortex.mdc` (MCP-only) | Enable / reload `gitcortex` in Cursor MCP settings | Generated config + MCP protocol automated; real client discovery not exercised |
+| Antigravity | `antigravity` | `.agents/plugins/gitcortex/mcp_config.json` (local plugin; `~/.antigravity/mcp.json` with `--global-editor-config`) | `.agents/plugins/gitcortex/rules/AGENTS.md` + `PreToolUse` `Read` (`gcx __hook-context`, non-blocking) | Trust / reload local plugin in Antigravity | Generated config + MCP protocol + Read-hook automated; real client discovery not exercised |
+| Windsurf | `windsurf` | `~/.codeium/windsurf/mcp_config.json` (global; requires `--global-editor-config`) | `.windsurfrules` (MCP-only) | Reload Windsurf MCP servers | Generated config + MCP protocol automated; real client discovery not exercised |
+| GitHub Copilot | `copilot` | `.vscode/mcp.json` (local) | `.github/copilot-instructions.md` (MCP-only) | Trust workspace and start `gitcortex` in VS Code MCP panel | Generated config + MCP protocol automated; real client discovery not exercised |
 
 #### Claude Code
 
@@ -666,15 +755,19 @@ Project `.mcp.json`, plus optional `~/.claude.json` with `--global-editor-config
 
 #### Cursor
 
-Repository-local `.cursor/mcp.json` uses the same `mcpServers` entry as Claude.
+Repository-local `.cursor/mcp.json` uses the same `mcpServers` entry as Claude (MCP-only; no Read hook).
 
-#### Windsurf / Antigravity
+#### Antigravity
 
-These editors currently require global MCP files. GitCortex writes them only when `--global-editor-config` is supplied. For Antigravity this includes both `~/.antigravity/mcp.json` (the IDE) and `~/.gemini/config/mcp_config.json` (the separate `agy` CLI, which reads its own config).
+Repository-local plugin at `.agents/plugins/gitcortex/mcp_config.json` (plus optional `~/.antigravity/mcp.json` when `--global-editor-config` is supplied) and a non-blocking `PreToolUse` `Read` hook.
+
+#### Windsurf
+
+Windsurf requires a global MCP file (`~/.codeium/windsurf/mcp_config.json`). GitCortex writes it only when `--global-editor-config` is supplied (MCP-only; no Read hook).
 
 #### GitHub Copilot in VS Code
 
-Repository-local `.vscode/mcp.json`:
+Repository-local `.vscode/mcp.json` (MCP-only; no Read hook):
 
 ```json
 {
@@ -690,7 +783,7 @@ Repository-local `.vscode/mcp.json`:
 
 #### Codex (OpenAI)
 
-Codex uses the default compact mode to reduce token overhead:
+Repository-local `.codex/config.toml` (plus `AGENTS.md` rules and a non-blocking `PreToolUse` `view_file` hook):
 
 ```toml
 [mcp_servers.gitcortex]
@@ -706,10 +799,25 @@ startup_timeout_sec = 30
 `gcx serve` exposes the compact `gcx` dispatch tool by default. `gcx serve --full` additionally exposes every individual tool.
 
 - Reduces per-turn MCP schema overhead ~95%
-- All queries still work via the single `gcx` tool
+- All queries still work via the single `gcx` tool with tool arguments nested under `params`
+- Every tool response includes an `index` readiness envelope (`index.state`, `index.working_tree_verified`, `index.next_action`)
 - MCP prompts may not be available in clients that only load exposed tools
 
 All generated editor configurations use compact mode. Add `--full` only for clients that require individual tool schemas.
+
+**Compact MCP smoke call:**
+
+```json
+{
+  "name": "gcx",
+  "arguments": {
+    "action": "lookup_symbol",
+    "params": { "name": "MySymbol" }
+  }
+}
+```
+
+Inspect the returned `index.state` (`ready` vs `unverified` / `stale` / `missing`) before trusting an empty symbol or caller result.
 
 ---
 
@@ -1315,7 +1423,7 @@ Generates an architecture diagram from the knowledge graph.
 
 ### Slash commands (Claude Code)
 
-`gcx init` installs four slash commands into `.claude/commands/gcx/`:
+`gcx init --editor claude` installs four slash commands into `.claude/commands/gcx/`:
 
 | Command | Description |
 |---------|-------------|
@@ -1440,13 +1548,19 @@ All graph data is machine-local and never committed.
 ```
 <platform-data>/gitcortex/{repo_id}/
     graph.kuzu           # KuzuDB database (all branches, table-namespaced)
+    schema_version       # graph schema version marker (mismatch refuses open without deleting)
+    repo.json            # repository metadata & identity_version (1 = path-based store)
+    branches.json        # tracked branch & detached snapshot metadata
+    last_branch_gc       # timestamp of last branch garbage-collection pass
     main.sha             # last indexed commit SHA for branch "main"
     main.dirty           # present while the graph contains an uncommitted overlay or unverified apply
-    main.overlay         # atomic JSON checkpoint { head, branch_key, files: path -> blob_hash | null }
+    main.overlay         # atomic JSON checkpoint { head, branch_key, files: path -> blob_hash | null, ignore }
     feat__auth.sha       # last indexed SHA for branch "feat/auth"
 ```
 
-`{repo_id}` is a stable BLAKE3 digest of the absolute repository path. Linux uses `$XDG_DATA_HOME` (default `~/.local/share`); macOS uses `~/Library/Application Support`. Existing macOS stores under `~/.local/share/gitcortex` remain supported.
+`{repo_id}` is a stable BLAKE3 digest of the absolute repository path (`identity_version: 1`, so each checkout or linked worktree maintains its own store; shared worktree store identity is not enabled in this release). Linux uses `$XDG_DATA_HOME` (default `~/.local/share`); macOS uses `~/Library/Application Support`. Existing macOS stores under `~/.local/share/gitcortex` remain supported.
+
+Use `gcx storage list [--all]`, `gcx storage prune`, `gcx storage gc`, and `gcx storage compact` to inspect or reclaim disk usage safely (dry-run by default unless `--apply` is passed).
 
 Branch names are sanitised for use as KuzuDB table prefixes: `/` → `__`, `-` → `_`, leading digits escaped.
 
