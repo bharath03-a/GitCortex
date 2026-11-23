@@ -25,6 +25,8 @@ directories.workspace = true
 fs2.workspace = true
 gitcortex-core.workspace = true
 kuzu = { workspace = true, optional = true }
+serde.workspace = true
+serde_json.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]

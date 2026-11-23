@@ -1,4 +1,6 @@
 pub mod branch;
+pub mod meta;
+pub mod usage;
 
 #[cfg(feature = "kuzu-backend")]
 pub mod kuzu;

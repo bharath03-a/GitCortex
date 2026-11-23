@@ -779,6 +779,9 @@ fn reconcile_reference_names(
 pub struct KuzuGraphStore {
     db: Database,
     repo_id: String,
+    /// Cache of sanitized branch keys already persisted in `branches.json` so
+    /// read queries do not rewrite the registry on every `ensure_branch` call.
+    registered_branches: std::sync::RwLock<HashSet<String>>,
     /// Held for the store's lifetime so every in-process Kuzu owner participates
     /// in the same cross-process exclusion protocol.
     _repository_lock: Option<branch::RepositoryLock>,
@@ -839,6 +842,11 @@ impl KuzuGraphStore {
         Self::open_with_schema_policy(repo_root, true, Some(lock))
     }
 
+    /// Storage directory identifier for this open store.
+    pub fn repo_id(&self) -> &str {
+        &self.repo_id
+    }
+
     fn open_with_schema_policy(
         repo_root: &Path,
         allow_rebuild: bool,
@@ -881,9 +889,17 @@ impl KuzuGraphStore {
             }
         })?;
 
+        crate::meta::record_repo_open(&repo_id, repo_root)?;
+        let registered = crate::meta::read_branch_registry(&repo_id)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|entry| entry.key)
+            .collect();
+
         Ok(Self {
             db,
             repo_id,
+            registered_branches: std::sync::RwLock::new(registered),
             _repository_lock: repository_lock,
         })
     }
@@ -918,7 +934,7 @@ impl KuzuGraphStore {
         Ok(facts)
     }
 
-    // ── Private helpers ───────────────────────────────────────────────────────
+    // ── Private helpers ──────────────────────────────────────────────────────
 
     fn conn(&self) -> Result<Connection<'_>> {
         Connection::new(&self.db)
@@ -927,7 +943,20 @@ impl KuzuGraphStore {
 
     fn ensure_branch(&self, branch: &str) -> Result<()> {
         let mut conn = self.conn()?;
-        db_schema::ensure_branch(&mut conn, branch)
+        db_schema::ensure_branch(&mut conn, branch)?;
+        let key = branch::sanitize(branch);
+        let already_registered = self
+            .registered_branches
+            .read()
+            .map(|set| set.contains(&key))
+            .unwrap_or(false);
+        if !already_registered {
+            crate::meta::ensure_branch_registered(&self.repo_id, branch)?;
+            if let Ok(mut set) = self.registered_branches.write() {
+                set.insert(key);
+            }
+        }
+        Ok(())
     }
 }
 
@@ -2461,7 +2490,12 @@ impl GraphStore for KuzuGraphStore {
     }
 
     fn set_last_indexed_sha(&mut self, branch_name: &str, sha: &str) -> Result<()> {
-        branch::write_last_sha(&self.repo_id, branch_name, sha)
+        branch::write_last_sha(&self.repo_id, branch_name, sha)?;
+        crate::meta::record_branch_indexed(&self.repo_id, branch_name)?;
+        if let Ok(mut set) = self.registered_branches.write() {
+            set.insert(branch::sanitize(branch_name));
+        }
+        Ok(())
     }
 
     fn working_tree_dirty(&self, branch_name: &str) -> Result<bool> {
