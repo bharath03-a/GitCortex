@@ -1,0 +1,68 @@
+name: Setup prebuilt libkuzu (Linux x86_64)
+description: >-
+  Download and SHA256-verify the official prebuilt KuzuDB v0.11.3 shared
+  library on Linux x86_64 so CI jobs link libkuzu.so in seconds instead of
+  compiling KuzuDB C++ from source (~15 min).
+
+inputs:
+  append-rpath:
+    description: Append -Wl,-rpath for libkuzu to RUSTFLAGS so binaries and subprocesses resolve libkuzu.so without LD_LIBRARY_PATH
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Download and verify prebuilt libkuzu v0.11.3
+      shell: bash
+      env:
+        APPEND_RPATH: ${{ inputs.append-rpath }}
+      run: |
+        set -euo pipefail
+        KUZU_VERSION="v0.11.3"
+        KUZU_SHA256="e99f9671ebfacf4d6208aa4b94490016e4ac9be242deed1fea78afb31c058ebd"
+        # Fixed path keeps kuzu build.rs fingerprints and rust-cache keys
+        # deterministic across runners and PRs.
+        KUZU_DIR="/tmp/libkuzu-0.11.3"
+        TARBALL="/tmp/libkuzu-linux-x86_64-${KUZU_VERSION}.tar.gz"
+
+        if [ ! -f "${KUZU_DIR}/libkuzu.so" ] || [ ! -f "${KUZU_DIR}/kuzu.hpp" ]; then
+          curl --proto '=https' --tlsv1.2 -fsSL --retry 3 --retry-delay 2 \
+            "https://github.com/kuzudb/kuzu/releases/download/${KUZU_VERSION}/libkuzu-linux-x86_64.tar.gz" \
+            -o "${TARBALL}"
+          echo "${KUZU_SHA256}  ${TARBALL}" | sha256sum -c -
+          mkdir -p "${KUZU_DIR}"
+          tar -xzf "${TARBALL}" -C "${KUZU_DIR}"
+          rm -f "${TARBALL}"
+        fi
+
+        # kuzu-0.11.3/build.rs emits -l static:+whole-archive for snowball and
+        # the four default extension archives even when KUZU_SHARED=1 (upstream
+        # bug: those symbols are already linked into libkuzu.so, while static
+        # bundled builds require default features because Kuzu's CMake always
+        # generates extension loader calls for them). Provide symbol-free ELF
+        # stub archives so KUZU_SHARED=1 links cleanly without changing Cargo.toml.
+        STUB_OBJ="$(mktemp /tmp/kuzu-stub-XXXXXX.o)"
+        trap 'rm -f "${STUB_OBJ}"' EXIT
+        cc -c -x c /dev/null -o "${STUB_OBJ}"
+        for stub in \
+          libsnowball.a \
+          libalgo_static.kuzu_extension \
+          libfts_static.kuzu_extension \
+          libjson_static.kuzu_extension \
+          libvector_static.kuzu_extension; do
+          if [ ! -f "${KUZU_DIR}/${stub}" ]; then
+            ar rcs "${KUZU_DIR}/${stub}" "${STUB_OBJ}"
+          fi
+        done
+
+        {
+          echo "KUZU_SHARED=1"
+          echo "KUZU_LIBRARY_DIR=${KUZU_DIR}"
+          echo "KUZU_INCLUDE_DIR=${KUZU_DIR}"
+          echo "LD_LIBRARY_PATH=${KUZU_DIR}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+        } >> "$GITHUB_ENV"
+
+        if [ "${APPEND_RPATH}" = "true" ]; then
+          echo "RUSTFLAGS=${RUSTFLAGS:+${RUSTFLAGS} }-C link-arg=-Wl,-rpath,${KUZU_DIR}" >> "$GITHUB_ENV"
+        fi

@@ -26,10 +26,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: taiki-e/install-action@v2.85.4
         with:
-          command: check
-          arguments: --workspace
+          tool: cargo-deny
+      # Use the runner's preinstalled stable cargo for `cargo metadata` so
+      # rust-toolchain.toml does not trigger a ~20s toolchain download here.
+      - name: Run cargo-deny
+        env:
+          RUSTUP_TOOLCHAIN: stable
+        run: cargo-deny --log-level warn --manifest-path ./Cargo.toml --workspace check
 
   cargo-audit:
     name: cargo-audit
@@ -37,9 +42,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions-rust-lang/audit@v1
+      - uses: taiki-e/install-action@v2.85.4
         with:
-          denyWarnings: true
+          tool: cargo-audit
+      - name: Run cargo-audit
+        run: cargo-audit audit --deny warnings
 
   npm-audit:
     name: npm audit (viz)
