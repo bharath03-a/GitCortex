@@ -7,6 +7,32 @@ from release tags and commit history after the fact, so they summarise what
 shipped rather than what was written at release time. Dates for those entries
 are tag dates.
 
+## [0.8.0] - 2026-11-25
+
+**Upgrade note (schema v15):** Existing pre-0.8.0 stores require a one-time rebuild via `gcx init` (or `gcx init --editor none` for CLI-only).
+
+### Added
+- **Storage lifecycle & compaction commands (`gcx storage`):** Inspect store ownership and disk footprint with `gcx storage list` (`--all`, `--json`), preview and remove orphaned stores or backups with `gcx storage prune`, reclaim deleted local branches and stale detached snapshots with `gcx storage gc`, and compact `graph.kuzu` payloads via atomic swap with `gcx storage compact`. All destructive operations are dry-run by default and require `--apply`. Verified **83.4–84.6%** disk reclaim across 10 real repositories after 5 deleted feature branches (e.g. `django` `676.2 → 104.1 MiB`, `moby` `852.6 → 139.2 MiB`).
+- **Branch indexing from git objects without checkout:** Index any local branch directly from git objects (`a5b790e`), enabling branch-aware comparisons and exact-revision PR impact workflows without mutating the working tree.
+- **Persisted uncommitted-edit overlay checkpoint & trust readiness contract:** Every query and export reports explicit index readiness (`ready`, `stale`, `missing`, `degraded`), tracks dirty/overlay state across uncommitted edits, and refuses silent false-fresh or empty-as-safe results. Verified across live MCP and commit-path rebuild-equivalence suites.
+- **Token-efficient progressive code search & typed question planning:** Compact/full modes, structured filters, pagination, and envelope token-budget enforcement across deterministic search and graph traversal (`45/45` pass across 10 repos; **Hit@1 = 100%**, **MRR = 1.000**, **NDCG@10 = 0.971**, **File Recall = 1.000**).
+- **Portable graph exports (`gcx export`):** Readiness-checked, scoped exports in versioned GitCortex JSON (`--format graph-json`, schema v1) and Mermaid (`--format mermaid`) with shared exit codes and `docs/EXPORT.md` guide.
+- **Shared cross-editor Agent Guide & bounded MCP onboarding:** `gcx init` installs a single shared guide across Claude Code, Codex CLI, Cursor, Windsurf, Copilot, and Antigravity, sends bounded server instructions on MCP `initialize`, and emits bounded teaching hints with a long-path daemon socket fallback. In the 48-run unforced adoption study, installing the guide lifted voluntary graph adoption from `40%` to `100%` (`16/16` pass) with `0` false graph calls on restraint tasks.
+- **Hardened PR blast-radius workflow (`gcx init --ci`):** Exact-SHA base/head indexing via `GCX_BRANCH_OVERRIDE`, pinned action SHAs, read-only analysis job with `persist-credentials: false`, and same-repo sticky PR comments.
+- **Benchmark harness & release evidence archive:** Added Codex CLI adapters across deterministic, paired-agent, competitor (Graphify `0.9.44`, CodeGraph `1.5.0`), unforced adoption, and continuous-coding lanes, archived with SHA-256 provenance under `docs/benchmarks/v0.8.0/`.
+
+### Changed
+- **Up to >118× faster cold full indexing & sub-second incremental updates:** Reconciling fresh full-index edges in memory and bulk-copying reference facts cut `ripgrep` cold indexing from `22.07s → 1.68s` (**13.1× faster**) and `django` (3,049 files, 48.5k nodes, 267.5k edges) from `>600s` timeout to `5.06s` (**>118× faster**). Fast incremental reference reconciliation and in-place surviving node updates brought single-file `gcx hook` updates to a **821 ms** median across 10 real repos.
+- **Readable `gcx viz` typography & computed-style tests:** Tokenized typography across the Explorer shell, rail, header, graph labels, and detail panels with automated computed-style regression gates.
+- **Redesigned GitHub Pages & collapsible release log:** Unified navigation bar with live GitHub star badge, six light-theme self-hosted SVG benchmark charts with plain-English reader's guides, a 30-second 1080p light-theme realistic workflow demo, and a collapsible changelog with only the latest release expanded by default.
+
+### Fixed
+- **Cross-file evidence diversity in `find_callers` and `symbol_context`:** Diversified returned relation evidence across files so large hub symbols no longer starve callers from other modules.
+- **Python class instantiation edges & envelope token budgets:** Fixed missing Python constructor/instantiation call edges and strictly enforced MCP response token budgets.
+- **Truthful startup, status, and editor diagnostics:** `gcx serve` surfaces the actual startup cause instead of opaque `CONNECTION_CLOSED` failures; `gcx status`, `gcx doctor`, and `gcx blast-radius` accurately resolve symbolic refs, distinguish commit currency from working-tree edits, explain busy-graph recovery steps, and diagnose installed editor registrations reliably.
+- **`gcx viz` asset and manifest loading:** Fixed font-route registration, stuck `"Reading graph manifest..."` state, and false `"No indexed symbols"` empty-state display.
+- **Security advisories & dependency hygiene:** Updated `url` (`RUSTSEC-2026-0592`), `minimatch`, `eslint`, `typescript-eslint`, and `pytest`, added CodeQL scanning across Rust/JS/TS/Python/Actions, and added advisory-ignore drift checks.
+
 ## [0.7.6] - 2026-08-25
 
 ### Fixed

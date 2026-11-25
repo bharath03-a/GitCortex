@@ -701,11 +701,11 @@
               <div class="kv">&nbsp;&nbsp;<span class="b">[warn]</span> branch 'main' behind HEAD &rarr; run <b>gcx hook</b></div>
             </div>
             <div class="exchange-foot">
-              <span>never fakes empty callers</span><span>explicit recovery command</span><span>machine-readable status --json</span>
+              <span>never fakes empty callers</span><span>explicit recovery command</span><span>explicit exit codes &amp; readiness</span>
             </div>
           </figure>
           <div class="wf-meta">
-            <strong>Honest failure modes:</strong> missing, stale, or degraded indexes return explicit readiness metadata rather than pretending a symbol has zero callers. Run <code>gcx doctor</code> or <code>gcx status --json</code> at any time to verify hooks, store health, and editor wiring.
+            <strong>Honest failure modes:</strong> missing, stale, or degraded indexes return explicit readiness metadata rather than pretending a symbol has zero callers. Run <code>gcx doctor</code> or <code>gcx status</code> at any time to verify hooks, store health, and editor wiring.
           </div>
         </div>
       </div>
@@ -838,7 +838,7 @@
       </div>
       <div class="feature">
         <h3>Storage lifecycle &amp; diagnostics</h3>
-        <p>Inspect and reclaim multi-branch disk usage with dry-run-first <code>gcx storage list / prune / gc / compact</code>. Verify hooks, store health, and editor wiring via <code>gcx doctor</code> and <code>gcx status --json</code>.</p>
+        <p>Inspect and reclaim multi-branch disk usage with dry-run-first <code>gcx storage list / prune / gc / compact</code>. Verify hooks, store health, and editor wiring via <code>gcx doctor</code> and <code>gcx status</code>.</p>
         <div class="chips"><span class="chip">dry-run default</span><span class="chip">84%+ reclaim</span><span class="chip">gcx doctor</span></div>
       </div>
       <div class="feature">

@@ -1,0 +1,45 @@
+{
+  "release": "0.8.0",
+  "archived_date": "2026-11-25",
+  "base_commit_before_release_pr": "869a0ad",
+  "suites": {
+    "det_35": "tools/agent-bench/suite.toml (35 tasks across ripgrep, requests, hono, cobra, gson)",
+    "det_big_10": "10 tasks across tokio, django, next.js, moby, spring-boot",
+    "codex_35": "Codex CLI gpt-6.1-sol (low reasoning), 35 tasks \u00d7 2 arms (baseline vs GitCortex MCP)",
+    "vs_graphify_15": "Codex CLI gpt-6.1-sol (low reasoning), 15 tasks across 5 core repos vs Graphify 0.9.44",
+    "vs_codegraph_10": "Codex CLI gpt-6.1-sol (low reasoning), 10 tasks across 5 large repos vs CodeGraph 1.5.0",
+    "unforced_48": "48 runs (16 tasks = 10 graph + 6 restraint \u00d7 3 arms: baseline, gcx-bare, gcx-guide)",
+    "continuous_episodes": "2 multi-step continuous coding episodes (requests-auth-redirect, cobra-find-flags) with hidden behavioral tests",
+    "ops": "10-repo cold full-index, incremental gcx hook latency, and 5-deleted-branch storage gc + compact reclaim"
+  },
+  "artifacts": {
+    "master.json": {
+      "bytes": 41176,
+      "sha256": "e983261fa207c141fa2518320f96333e20b50eedc32f0d2c8dfc4498303150d8"
+    },
+    "det-35.jsonl": {
+      "bytes": 127958,
+      "sha256": "e593545f6b1c5f9aaaa1c414cfd4be2a6210adaf8d3829128be26a2f7f33baf9"
+    },
+    "det-big-10.jsonl": {
+      "bytes": 34213,
+      "sha256": "ec3e562f5d63857aea05a9521eb28b16223e77b31e958d77eedd6b9eea2720b5"
+    },
+    "agent-codex-35.jsonl": {
+      "bytes": 187439,
+      "sha256": "ffe6b157666f74eb7bbdeefc109c10f42608db6441f358f6e76d5d7cc7fd0c5f"
+    },
+    "ops.json": {
+      "bytes": 10654,
+      "sha256": "94a3efa8dbaba3961520898bf505042683483aa52b051ad4989cf4b6db5a39f0"
+    },
+    "vs-graphify-15.json": {
+      "bytes": 135395,
+      "sha256": "3667c239d924b23e951b6f4239742ff50507f58f6b6246176bc310a02c820096"
+    },
+    "vs-codegraph-10.json": {
+      "bytes": 55192,
+      "sha256": "ed0a448151b5332f4f73f735fdd2712b22b2bbd77cc0bbf02b9a928607624290"
+    }
+  }
+}

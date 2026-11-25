@@ -1,0 +1,1537 @@
+{
+  "det_35": {
+    "summary": {
+      "by_action": {
+        "architecture": {
+          "latency_ms_median": 403,
+          "payload_bytes_median": 4582,
+          "quality_mean": 1.0,
+          "tasks": 5,
+          "valid": 5
+        },
+        "callers": {
+          "latency_ms_median": 236,
+          "payload_bytes_median": 2328,
+          "quality_mean": 1.0,
+          "tasks": 5,
+          "valid": 5
+        },
+        "impact": {
+          "latency_ms_median": 604,
+          "payload_bytes_median": 4631,
+          "quality_mean": 1.0,
+          "tasks": 5,
+          "valid": 5
+        },
+        "refactor": {
+          "latency_ms_median": 231,
+          "payload_bytes_median": 3036,
+          "quality_mean": 1.0,
+          "tasks": 5,
+          "valid": 5
+        },
+        "search": {
+          "file_recall_mean": 1.0,
+          "latency_ms_median": 234,
+          "mrr_mean": 1.0,
+          "payload_bytes_median": 2210,
+          "precision_at_5_mean": 0.68,
+          "quality_mean": 1.0,
+          "relevance_tasks": 5,
+          "tasks": 5,
+          "valid": 5
+        },
+        "subgraph": {
+          "latency_ms_median": 232,
+          "payload_bytes_median": 1510,
+          "quality_mean": 1.0,
+          "tasks": 5,
+          "valid": 5
+        },
+        "tour": {
+          "latency_ms_median": 240,
+          "payload_bytes_median": 1164,
+          "quality_mean": 1.0,
+          "tasks": 5,
+          "valid": 5
+        }
+      },
+      "invalid": 0,
+      "latency_ms_median": 241,
+      "payload_bytes_median": 2328,
+      "quality_mean": 1.0,
+      "tasks": 35,
+      "type": "summary",
+      "valid": 35
+    },
+    "latency_p50_ms": 241,
+    "latency_p95_ms": 1836,
+    "latency_max_ms": 1998,
+    "tasks": [
+      {
+        "id": "ripgrep-search-searcher",
+        "repo": "ripgrep",
+        "action": "search",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 2392,
+        "ms": 241
+      },
+      {
+        "id": "ripgrep-tour",
+        "repo": "ripgrep",
+        "action": "tour",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 1385,
+        "ms": 265
+      },
+      {
+        "id": "ripgrep-callers-line-number",
+        "repo": "ripgrep",
+        "action": "callers",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 2348,
+        "ms": 236
+      },
+      {
+        "id": "ripgrep-neighborhood-line-number",
+        "repo": "ripgrep",
+        "action": "subgraph",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 1431,
+        "ms": 238
+      },
+      {
+        "id": "requests-search-session",
+        "repo": "requests",
+        "action": "search",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 2210,
+        "ms": 227
+      },
+      {
+        "id": "requests-tour",
+        "repo": "requests",
+        "action": "tour",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 206,
+        "ms": 245
+      },
+      {
+        "id": "requests-callers-send",
+        "repo": "requests",
+        "action": "callers",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 2195,
+        "ms": 247
+      },
+      {
+        "id": "requests-neighborhood-send",
+        "repo": "requests",
+        "action": "subgraph",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 1378,
+        "ms": 221
+      },
+      {
+        "id": "hono-search-dispatch",
+        "repo": "hono",
+        "action": "search",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 957,
+        "ms": 234
+      },
+      {
+        "id": "hono-tour",
+        "repo": "hono",
+        "action": "tour",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 1164,
+        "ms": 217
+      },
+      {
+        "id": "hono-callers-compose",
+        "repo": "hono",
+        "action": "callers",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 1080,
+        "ms": 218
+      },
+      {
+        "id": "hono-neighborhood-compose",
+        "repo": "hono",
+        "action": "subgraph",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 1510,
+        "ms": 232
+      },
+      {
+        "id": "cobra-search-parse-flags",
+        "repo": "cobra",
+        "action": "search",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 2115,
+        "ms": 233
+      },
+      {
+        "id": "cobra-tour",
+        "repo": "cobra",
+        "action": "tour",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 294,
+        "ms": 204
+      },
+      {
+        "id": "cobra-callers-add-command",
+        "repo": "cobra",
+        "action": "callers",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 2328,
+        "ms": 203
+      },
+      {
+        "id": "cobra-neighborhood-add-command",
+        "repo": "cobra",
+        "action": "subgraph",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 1576,
+        "ms": 232
+      },
+      {
+        "id": "gson-search-json-reader",
+        "repo": "gson",
+        "action": "search",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 2251,
+        "ms": 245
+      },
+      {
+        "id": "gson-tour",
+        "repo": "gson",
+        "action": "tour",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 2403,
+        "ms": 240
+      },
+      {
+        "id": "gson-callers-begin-array",
+        "repo": "gson",
+        "action": "callers",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 2352,
+        "ms": 251
+      },
+      {
+        "id": "gson-neighborhood-begin-array",
+        "repo": "gson",
+        "action": "subgraph",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 1534,
+        "ms": 243
+      },
+      {
+        "id": "ripgrep-impact-line-number",
+        "repo": "ripgrep",
+        "action": "impact",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 4663,
+        "ms": 604
+      },
+      {
+        "id": "ripgrep-architecture-searcher",
+        "repo": "ripgrep",
+        "action": "architecture",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 4795,
+        "ms": 520
+      },
+      {
+        "id": "ripgrep-refactor-searcher",
+        "repo": "ripgrep",
+        "action": "refactor",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 3015,
+        "ms": 232
+      },
+      {
+        "id": "requests-impact-send",
+        "repo": "requests",
+        "action": "impact",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 4359,
+        "ms": 335
+      },
+      {
+        "id": "requests-architecture-session",
+        "repo": "requests",
+        "action": "architecture",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 4582,
+        "ms": 403
+      },
+      {
+        "id": "requests-refactor-session",
+        "repo": "requests",
+        "action": "refactor",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 3036,
+        "ms": 229
+      },
+      {
+        "id": "hono-impact-compose",
+        "repo": "hono",
+        "action": "impact",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 1080,
+        "ms": 261
+      },
+      {
+        "id": "hono-architecture-dispatch",
+        "repo": "hono",
+        "action": "architecture",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 2468,
+        "ms": 270
+      },
+      {
+        "id": "hono-refactor-compose",
+        "repo": "hono",
+        "action": "refactor",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 1255,
+        "ms": 243
+      },
+      {
+        "id": "cobra-impact-add-command",
+        "repo": "cobra",
+        "action": "impact",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 4631,
+        "ms": 1836
+      },
+      {
+        "id": "cobra-architecture-parse-flags",
+        "repo": "cobra",
+        "action": "architecture",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 2670,
+        "ms": 247
+      },
+      {
+        "id": "cobra-refactor-add-command",
+        "repo": "cobra",
+        "action": "refactor",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 3142,
+        "ms": 225
+      },
+      {
+        "id": "gson-impact-begin-array",
+        "repo": "gson",
+        "action": "impact",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 4738,
+        "ms": 1998
+      },
+      {
+        "id": "gson-architecture-peek",
+        "repo": "gson",
+        "action": "architecture",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 4732,
+        "ms": 478
+      },
+      {
+        "id": "gson-refactor-begin-array",
+        "repo": "gson",
+        "action": "refactor",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 3159,
+        "ms": 231
+      }
+    ]
+  },
+  "det_big_10": {
+    "summary": {
+      "by_action": {
+        "callers": {
+          "latency_ms_median": 460,
+          "payload_bytes_median": 2216,
+          "quality_mean": 1.0,
+          "tasks": 5,
+          "valid": 5
+        },
+        "search": {
+          "file_recall_mean": 1.0,
+          "latency_ms_median": 966,
+          "mrr_mean": 1.0,
+          "payload_bytes_median": 2350,
+          "precision_at_5_mean": 0.6,
+          "quality_mean": 1.0,
+          "relevance_tasks": 5,
+          "tasks": 5,
+          "valid": 5
+        }
+      },
+      "invalid": 0,
+      "latency_ms_median": 650,
+      "payload_bytes_median": 2314,
+      "quality_mean": 1.0,
+      "tasks": 10,
+      "type": "summary",
+      "valid": 10
+    },
+    "latency_p50_ms": 650,
+    "latency_p95_ms": 1273,
+    "latency_max_ms": 1273,
+    "tasks": [
+      {
+        "id": "tokio-search-notify",
+        "repo": "tokio",
+        "action": "search",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 2252,
+        "ms": 325
+      },
+      {
+        "id": "tokio-callers-notify-waiters",
+        "repo": "tokio",
+        "action": "callers",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 2390,
+        "ms": 240
+      },
+      {
+        "id": "django-search-queryset",
+        "repo": "django",
+        "action": "search",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 2317,
+        "ms": 665
+      },
+      {
+        "id": "django-callers-filter",
+        "repo": "django",
+        "action": "callers",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 2199,
+        "ms": 422
+      },
+      {
+        "id": "nextjs-search-use-router",
+        "repo": "nextjs",
+        "action": "search",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 2350,
+        "ms": 1273
+      },
+      {
+        "id": "nextjs-callers-normalize-page-path",
+        "repo": "nextjs",
+        "action": "callers",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 2216,
+        "ms": 966
+      },
+      {
+        "id": "moby-search-container-create",
+        "repo": "moby",
+        "action": "search",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 2383,
+        "ms": 966
+      },
+      {
+        "id": "moby-callers-container-kill",
+        "repo": "moby",
+        "action": "callers",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 2311,
+        "ms": 460
+      },
+      {
+        "id": "springboot-search-spring-application",
+        "repo": "spring-boot",
+        "action": "search",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 2361,
+        "ms": 1001
+      },
+      {
+        "id": "springboot-callers-get-main-application-class",
+        "repo": "spring-boot",
+        "action": "callers",
+        "valid": true,
+        "quality": 1.0,
+        "bytes": 1982,
+        "ms": 636
+      }
+    ]
+  },
+  "codex_35": {
+    "tasks": 35,
+    "valid": 35,
+    "baseline_quality": 0.9429,
+    "gcx_quality": 0.9857,
+    "baseline_tokens": 3877403,
+    "gcx_tokens": 3124734,
+    "total_delta_pct": -19.4,
+    "token_geomean": 1.2185,
+    "baseline_uncached": 662427,
+    "gcx_uncached": 478846,
+    "uncached_delta_pct": -27.7,
+    "uncached_geomean": 1.3834,
+    "by_repo": {
+      "cobra": {
+        "n": 7,
+        "baseline_quality": 0.9286,
+        "gcx_quality": 0.9286,
+        "baseline_tokens": 735334,
+        "gcx_tokens": 519867,
+        "total_delta_pct": -29.3,
+        "baseline_uncached": 119910,
+        "gcx_uncached": 85819,
+        "uncached_delta_pct": -28.4
+      },
+      "gson": {
+        "n": 7,
+        "baseline_quality": 1.0,
+        "gcx_quality": 1.0,
+        "baseline_tokens": 757452,
+        "gcx_tokens": 586782,
+        "total_delta_pct": -22.5,
+        "baseline_uncached": 149324,
+        "gcx_uncached": 79518,
+        "uncached_delta_pct": -46.7
+      },
+      "hono": {
+        "n": 7,
+        "baseline_quality": 0.9286,
+        "gcx_quality": 1.0,
+        "baseline_tokens": 777307,
+        "gcx_tokens": 543735,
+        "total_delta_pct": -30.0,
+        "baseline_uncached": 133595,
+        "gcx_uncached": 89975,
+        "uncached_delta_pct": -32.7
+      },
+      "requests": {
+        "n": 7,
+        "baseline_quality": 1.0,
+        "gcx_quality": 1.0,
+        "baseline_tokens": 826248,
+        "gcx_tokens": 733426,
+        "total_delta_pct": -11.2,
+        "baseline_uncached": 128136,
+        "gcx_uncached": 124146,
+        "uncached_delta_pct": -3.1
+      },
+      "ripgrep": {
+        "n": 7,
+        "baseline_quality": 0.8571,
+        "gcx_quality": 1.0,
+        "baseline_tokens": 781062,
+        "gcx_tokens": 740924,
+        "total_delta_pct": -5.1,
+        "baseline_uncached": 131462,
+        "gcx_uncached": 99388,
+        "uncached_delta_pct": -24.4
+      }
+    },
+    "by_action": {
+      "architecture": {
+        "n": 5,
+        "baseline_quality": 0.9,
+        "gcx_quality": 1.0,
+        "baseline_tokens": 585551,
+        "gcx_tokens": 443411,
+        "total_delta_pct": -24.3,
+        "baseline_uncached": 94927,
+        "gcx_uncached": 81299,
+        "uncached_delta_pct": -14.4
+      },
+      "callers": {
+        "n": 5,
+        "baseline_quality": 0.8,
+        "gcx_quality": 1.0,
+        "baseline_tokens": 448453,
+        "gcx_tokens": 384610,
+        "total_delta_pct": -14.2,
+        "baseline_uncached": 81605,
+        "gcx_uncached": 52194,
+        "uncached_delta_pct": -36.0
+      },
+      "impact": {
+        "n": 5,
+        "baseline_quality": 1.0,
+        "gcx_quality": 1.0,
+        "baseline_tokens": 736423,
+        "gcx_tokens": 546935,
+        "total_delta_pct": -25.7,
+        "baseline_uncached": 122407,
+        "gcx_uncached": 71799,
+        "uncached_delta_pct": -41.3
+      },
+      "refactor": {
+        "n": 5,
+        "baseline_quality": 1.0,
+        "gcx_quality": 1.0,
+        "baseline_tokens": 784736,
+        "gcx_tokens": 590361,
+        "total_delta_pct": -24.8,
+        "baseline_uncached": 149728,
+        "gcx_uncached": 93337,
+        "uncached_delta_pct": -37.7
+      },
+      "search": {
+        "n": 5,
+        "baseline_quality": 1.0,
+        "gcx_quality": 1.0,
+        "baseline_tokens": 325375,
+        "gcx_tokens": 357166,
+        "total_delta_pct": 9.8,
+        "baseline_uncached": 52095,
+        "gcx_uncached": 50094,
+        "uncached_delta_pct": -3.8
+      },
+      "subgraph": {
+        "n": 5,
+        "baseline_quality": 1.0,
+        "gcx_quality": 1.0,
+        "baseline_tokens": 515379,
+        "gcx_tokens": 397217,
+        "total_delta_pct": -22.9,
+        "baseline_uncached": 73267,
+        "gcx_uncached": 41761,
+        "uncached_delta_pct": -43.0
+      },
+      "tour": {
+        "n": 5,
+        "baseline_quality": 0.9,
+        "gcx_quality": 0.9,
+        "baseline_tokens": 481486,
+        "gcx_tokens": 405034,
+        "total_delta_pct": -15.9,
+        "baseline_uncached": 88398,
+        "gcx_uncached": 88362,
+        "uncached_delta_pct": -0.0
+      }
+    }
+  },
+  "vs_graphify_15": {
+    "tasks": 15,
+    "arms": {
+      "baseline": {
+        "quality_mean": 0.9667,
+        "perfect_tasks": 14,
+        "errors": 0,
+        "total_tokens": 2106710,
+        "uncached_tokens": 367062
+      },
+      "gcx": {
+        "quality_mean": 1.0,
+        "perfect_tasks": 15,
+        "errors": 0,
+        "total_tokens": 1580707,
+        "uncached_tokens": 246435
+      },
+      "graphify": {
+        "quality_mean": 0.5333,
+        "perfect_tasks": 6,
+        "errors": 5,
+        "total_tokens": 1054662,
+        "uncached_tokens": 124870
+      }
+    },
+    "on_graphify_passing_6": {
+      "baseline": {
+        "total_tokens": 891328,
+        "uncached_tokens": 153792
+      },
+      "gcx": {
+        "total_tokens": 577739,
+        "uncached_tokens": 91083
+      },
+      "graphify": {
+        "total_tokens": 538425,
+        "uncached_tokens": 76985
+      }
+    },
+    "per_task": [
+      {
+        "task_id": "ripgrep-impact-line-number",
+        "repo": "ripgrep",
+        "action": "impact",
+        "baseline_q": 1.0,
+        "gcx_q": 1.0,
+        "graphify_q": 0.0,
+        "graphify_err": false,
+        "baseline_tok": 103839,
+        "gcx_tok": 126018,
+        "graphify_tok": 97613
+      },
+      {
+        "task_id": "ripgrep-architecture-searcher",
+        "repo": "ripgrep",
+        "action": "architecture",
+        "baseline_q": 1.0,
+        "gcx_q": 1.0,
+        "graphify_q": 0.5,
+        "graphify_err": true,
+        "baseline_tok": 138429,
+        "gcx_tok": 138945,
+        "graphify_tok": 51362
+      },
+      {
+        "task_id": "ripgrep-refactor-searcher",
+        "repo": "ripgrep",
+        "action": "refactor",
+        "baseline_q": 1.0,
+        "gcx_q": 1.0,
+        "graphify_q": 0.0,
+        "graphify_err": true,
+        "baseline_tok": 155533,
+        "gcx_tok": 140241,
+        "graphify_tok": 34175
+      },
+      {
+        "task_id": "requests-impact-send",
+        "repo": "requests",
+        "action": "impact",
+        "baseline_q": 1.0,
+        "gcx_q": 1.0,
+        "graphify_q": 0.0,
+        "graphify_err": false,
+        "baseline_tok": 134670,
+        "gcx_tok": 146661,
+        "graphify_tok": 51262
+      },
+      {
+        "task_id": "requests-architecture-session",
+        "repo": "requests",
+        "action": "architecture",
+        "baseline_q": 1.0,
+        "gcx_q": 1.0,
+        "graphify_q": 0.5,
+        "graphify_err": false,
+        "baseline_tok": 155497,
+        "gcx_tok": 79719,
+        "graphify_tok": 78902
+      },
+      {
+        "task_id": "requests-refactor-session",
+        "repo": "requests",
+        "action": "refactor",
+        "baseline_q": 1.0,
+        "gcx_q": 1.0,
+        "graphify_q": 1.0,
+        "graphify_err": false,
+        "baseline_tok": 203999,
+        "gcx_tok": 134788,
+        "graphify_tok": 108533
+      },
+      {
+        "task_id": "hono-impact-compose",
+        "repo": "hono",
+        "action": "impact",
+        "baseline_q": 1.0,
+        "gcx_q": 1.0,
+        "graphify_q": 1.0,
+        "graphify_err": false,
+        "baseline_tok": 144801,
+        "gcx_tok": 98226,
+        "graphify_tok": 59059
+      },
+      {
+        "task_id": "hono-architecture-dispatch",
+        "repo": "hono",
+        "action": "architecture",
+        "baseline_q": 0.5,
+        "gcx_q": 1.0,
+        "graphify_q": 0.5,
+        "graphify_err": true,
+        "baseline_tok": 123563,
+        "gcx_tok": 80408,
+        "graphify_tok": 51316
+      },
+      {
+        "task_id": "hono-refactor-compose",
+        "repo": "hono",
+        "action": "refactor",
+        "baseline_q": 1.0,
+        "gcx_q": 1.0,
+        "graphify_q": 1.0,
+        "graphify_err": false,
+        "baseline_tok": 130367,
+        "gcx_tok": 102846,
+        "graphify_tok": 61611
+      },
+      {
+        "task_id": "cobra-impact-add-command",
+        "repo": "cobra",
+        "action": "impact",
+        "baseline_q": 1.0,
+        "gcx_q": 1.0,
+        "graphify_q": 1.0,
+        "graphify_err": false,
+        "baseline_tok": 183899,
+        "gcx_tok": 78346,
+        "graphify_tok": 75128
+      },
+      {
+        "task_id": "cobra-architecture-parse-flags",
+        "repo": "cobra",
+        "action": "architecture",
+        "baseline_q": 1.0,
+        "gcx_q": 1.0,
+        "graphify_q": 1.0,
+        "graphify_err": false,
+        "baseline_tok": 88356,
+        "gcx_tok": 62781,
+        "graphify_tok": 117659
+      },
+      {
+        "task_id": "cobra-refactor-add-command",
+        "repo": "cobra",
+        "action": "refactor",
+        "baseline_q": 1.0,
+        "gcx_q": 1.0,
+        "graphify_q": 1.0,
+        "graphify_err": false,
+        "baseline_tok": 139906,
+        "gcx_tok": 100752,
+        "graphify_tok": 116435
+      },
+      {
+        "task_id": "gson-impact-begin-array",
+        "repo": "gson",
+        "action": "impact",
+        "baseline_q": 1.0,
+        "gcx_q": 1.0,
+        "graphify_q": 0.0,
+        "graphify_err": false,
+        "baseline_tok": 169214,
+        "gcx_tok": 97684,
+        "graphify_tok": 48468
+      },
+      {
+        "task_id": "gson-architecture-peek",
+        "repo": "gson",
+        "action": "architecture",
+        "baseline_q": 1.0,
+        "gcx_q": 1.0,
+        "graphify_q": 0.5,
+        "graphify_err": true,
+        "baseline_tok": 79706,
+        "gcx_tok": 81558,
+        "graphify_tok": 51568
+      },
+      {
+        "task_id": "gson-refactor-begin-array",
+        "repo": "gson",
+        "action": "refactor",
+        "baseline_q": 1.0,
+        "gcx_q": 1.0,
+        "graphify_q": 0.0,
+        "graphify_err": true,
+        "baseline_tok": 154931,
+        "gcx_tok": 111734,
+        "graphify_tok": 51571
+      }
+    ]
+  },
+  "vs_codegraph_10": {
+    "tasks": 10,
+    "arms": {
+      "baseline": {
+        "quality_mean": 1.0,
+        "perfect_tasks": 10,
+        "errors": 0,
+        "total_tokens": 785264,
+        "uncached_tokens": 163568
+      },
+      "gcx": {
+        "quality_mean": 1.0,
+        "perfect_tasks": 10,
+        "errors": 0,
+        "total_tokens": 653151,
+        "uncached_tokens": 125151
+      },
+      "codegraph": {
+        "quality_mean": 0.9,
+        "perfect_tasks": 9,
+        "errors": 0,
+        "total_tokens": 626035,
+        "uncached_tokens": 129651
+      }
+    },
+    "per_task": [
+      {
+        "task_id": "tokio-search-notify",
+        "repo": "tokio",
+        "action": "search",
+        "baseline_q": 1.0,
+        "gcx_q": 1.0,
+        "codegraph_q": 1.0,
+        "baseline_tok": 70877,
+        "gcx_tok": 53537,
+        "codegraph_tok": 50893,
+        "baseline_unc": 13405,
+        "gcx_unc": 12577,
+        "codegraph_unc": 9549
+      },
+      {
+        "task_id": "tokio-callers-notify-waiters",
+        "repo": "tokio",
+        "action": "callers",
+        "baseline_q": 1.0,
+        "gcx_q": 1.0,
+        "codegraph_q": 1.0,
+        "baseline_tok": 60845,
+        "gcx_tok": 55790,
+        "codegraph_tok": 53615,
+        "baseline_unc": 11693,
+        "gcx_unc": 13934,
+        "codegraph_unc": 9839
+      },
+      {
+        "task_id": "django-search-queryset",
+        "repo": "django",
+        "action": "search",
+        "baseline_q": 1.0,
+        "gcx_q": 1.0,
+        "codegraph_q": 1.0,
+        "baseline_tok": 52372,
+        "gcx_tok": 53760,
+        "codegraph_tok": 51487,
+        "baseline_unc": 11284,
+        "gcx_unc": 7936,
+        "codegraph_unc": 4383
+      },
+      {
+        "task_id": "django-callers-filter",
+        "repo": "django",
+        "action": "callers",
+        "baseline_q": 1.0,
+        "gcx_q": 1.0,
+        "codegraph_q": 1.0,
+        "baseline_tok": 78744,
+        "gcx_tok": 55520,
+        "codegraph_tok": 57458,
+        "baseline_unc": 25624,
+        "gcx_unc": 9696,
+        "codegraph_unc": 16626
+      },
+      {
+        "task_id": "nextjs-search-use-router",
+        "repo": "nextjs",
+        "action": "search",
+        "baseline_q": 1.0,
+        "gcx_q": 1.0,
+        "codegraph_q": 1.0,
+        "baseline_tok": 108074,
+        "gcx_tok": 79947,
+        "codegraph_tok": 79013,
+        "baseline_unc": 16938,
+        "gcx_unc": 15691,
+        "codegraph_unc": 28837
+      },
+      {
+        "task_id": "nextjs-callers-normalize-page-path",
+        "repo": "nextjs",
+        "action": "callers",
+        "baseline_q": 1.0,
+        "gcx_q": 1.0,
+        "codegraph_q": 0.0,
+        "baseline_tok": 121872,
+        "gcx_tok": 115896,
+        "codegraph_tok": 113908,
+        "baseline_unc": 23184,
+        "gcx_unc": 20536,
+        "codegraph_unc": 34932
+      },
+      {
+        "task_id": "moby-search-container-create",
+        "repo": "moby",
+        "action": "search",
+        "baseline_q": 1.0,
+        "gcx_q": 1.0,
+        "codegraph_q": 1.0,
+        "baseline_tok": 82764,
+        "gcx_tok": 55061,
+        "codegraph_tok": 54192,
+        "baseline_unc": 17100,
+        "gcx_unc": 8981,
+        "codegraph_unc": 8624
+      },
+      {
+        "task_id": "moby-callers-container-kill",
+        "repo": "moby",
+        "action": "callers",
+        "baseline_q": 1.0,
+        "gcx_q": 1.0,
+        "codegraph_q": 1.0,
+        "baseline_tok": 78352,
+        "gcx_tok": 77294,
+        "codegraph_tok": 79128,
+        "baseline_unc": 16784,
+        "gcx_unc": 20974,
+        "codegraph_unc": 9112
+      },
+      {
+        "task_id": "springboot-search-spring-application",
+        "repo": "spring-boot",
+        "action": "search",
+        "baseline_q": 1.0,
+        "gcx_q": 1.0,
+        "codegraph_q": 1.0,
+        "baseline_tok": 55868,
+        "gcx_tok": 53136,
+        "codegraph_tok": 33603,
+        "baseline_unc": 12732,
+        "gcx_unc": 7312,
+        "codegraph_unc": 3139
+      },
+      {
+        "task_id": "springboot-callers-get-main-application-class",
+        "repo": "spring-boot",
+        "action": "callers",
+        "baseline_q": 1.0,
+        "gcx_q": 1.0,
+        "codegraph_q": 1.0,
+        "baseline_tok": 75496,
+        "gcx_tok": 53210,
+        "codegraph_tok": 52738,
+        "baseline_unc": 14824,
+        "gcx_unc": 7514,
+        "codegraph_unc": 4610
+      }
+    ]
+  },
+  "unforced_48": {
+    "total_runs": 48,
+    "arms": {
+      "baseline": {
+        "runs": 16,
+        "pass_all": 14,
+        "pass_graph": 8,
+        "total_graph": 10,
+        "pass_restraint": 6,
+        "total_restraint": 6,
+        "adopted_graph": 0,
+        "false_restraint_calls": 0,
+        "total_gcx_calls": 0,
+        "all_total_tokens": 1252195,
+        "all_uncached_tokens": 196067,
+        "graph_total_tokens": 981817,
+        "graph_uncached_tokens": 172473
+      },
+      "gcx-bare": {
+        "runs": 16,
+        "pass_all": 15,
+        "pass_graph": 9,
+        "total_graph": 10,
+        "pass_restraint": 6,
+        "total_restraint": 6,
+        "adopted_graph": 4,
+        "false_restraint_calls": 0,
+        "total_gcx_calls": 10,
+        "all_total_tokens": 2131152,
+        "all_uncached_tokens": 278608,
+        "graph_total_tokens": 1860345,
+        "graph_uncached_tokens": 230265
+      },
+      "gcx-guide": {
+        "runs": 16,
+        "pass_all": 16,
+        "pass_graph": 10,
+        "total_graph": 10,
+        "pass_restraint": 6,
+        "total_restraint": 6,
+        "adopted_graph": 10,
+        "false_restraint_calls": 0,
+        "total_gcx_calls": 55,
+        "all_total_tokens": 3270908,
+        "all_uncached_tokens": 320892,
+        "graph_total_tokens": 2996240,
+        "graph_uncached_tokens": 284560
+      }
+    }
+  },
+  "continuous_episodes": {
+    "requests-auth-redirect": {
+      "gcx-guide": {
+        "success": true,
+        "steps_passed": 2,
+        "steps_total": 2,
+        "adopted": true,
+        "gcx_calls": 3,
+        "gcx_errors": 2,
+        "repeat_reads": 0,
+        "repeat_commands": 0,
+        "tool_calls": 16,
+        "total_tokens": 1154205,
+        "uncached_tokens": 117533,
+        "wall_s": 133.0,
+        "false_no_dependents": false,
+        "probe_correct": true
+      },
+      "gcx-bare": {
+        "success": true,
+        "steps_passed": 2,
+        "steps_total": 2,
+        "adopted": false,
+        "gcx_calls": 0,
+        "gcx_errors": 0,
+        "repeat_reads": 0,
+        "repeat_commands": 1,
+        "tool_calls": 12,
+        "total_tokens": 660741,
+        "uncached_tokens": 79365,
+        "wall_s": 97.7,
+        "false_no_dependents": false,
+        "probe_correct": true
+      },
+      "baseline": {
+        "success": true,
+        "steps_passed": 2,
+        "steps_total": 2,
+        "adopted": false,
+        "gcx_calls": 0,
+        "gcx_errors": 0,
+        "repeat_reads": 0,
+        "repeat_commands": 1,
+        "tool_calls": 12,
+        "total_tokens": 731576,
+        "uncached_tokens": 74680,
+        "wall_s": 92.0,
+        "false_no_dependents": false,
+        "probe_correct": true
+      }
+    },
+    "cobra-find-flags": {
+      "baseline": {
+        "success": true,
+        "steps_passed": 2,
+        "steps_total": 2,
+        "adopted": false,
+        "gcx_calls": 0,
+        "gcx_errors": 0,
+        "repeat_reads": 0,
+        "repeat_commands": 1,
+        "tool_calls": 16,
+        "total_tokens": 914141,
+        "uncached_tokens": 69085,
+        "wall_s": 103.2,
+        "false_no_dependents": false,
+        "probe_correct": true
+      },
+      "gcx-bare": {
+        "success": true,
+        "steps_passed": 2,
+        "steps_total": 2,
+        "adopted": false,
+        "gcx_calls": 0,
+        "gcx_errors": 0,
+        "repeat_reads": 0,
+        "repeat_commands": 0,
+        "tool_calls": 13,
+        "total_tokens": 830807,
+        "uncached_tokens": 85079,
+        "wall_s": 96.5,
+        "false_no_dependents": false,
+        "probe_correct": true
+      },
+      "gcx-guide": {
+        "success": true,
+        "steps_passed": 2,
+        "steps_total": 2,
+        "adopted": true,
+        "gcx_calls": 6,
+        "gcx_errors": 1,
+        "repeat_reads": 0,
+        "repeat_commands": 0,
+        "tool_calls": 19,
+        "total_tokens": 1036017,
+        "uncached_tokens": 168177,
+        "wall_s": 106.6,
+        "false_no_dependents": false,
+        "probe_correct": true
+      }
+    }
+  },
+  "ops": {
+    "gcx_cold_index": {
+      "ripgrep": {
+        "repo": "ripgrep",
+        "returncode": 0,
+        "elapsed_s": 0.915,
+        "size_bytes": 14885327,
+        "size_mib": 14.2,
+        "nodes": 3800,
+        "edges": 19655,
+        "files": null,
+        "status_raw": {},
+        "stderr_tail": []
+      },
+      "requests": {
+        "repo": "requests",
+        "returncode": 0,
+        "elapsed_s": 0.395,
+        "size_bytes": 10572241,
+        "size_mib": 10.08,
+        "nodes": 1099,
+        "edges": 4067,
+        "files": null,
+        "status_raw": {},
+        "stderr_tail": []
+      },
+      "hono": {
+        "repo": "hono",
+        "returncode": 0,
+        "elapsed_s": 0.581,
+        "size_bytes": 12030409,
+        "size_mib": 11.47,
+        "nodes": 4197,
+        "edges": 13093,
+        "files": null,
+        "status_raw": {},
+        "stderr_tail": []
+      },
+      "cobra": {
+        "repo": "cobra",
+        "returncode": 0,
+        "elapsed_s": 0.388,
+        "size_bytes": 10711499,
+        "size_mib": 10.22,
+        "nodes": 888,
+        "edges": 3343,
+        "files": null,
+        "status_raw": {},
+        "stderr_tail": []
+      },
+      "gson": {
+        "repo": "gson",
+        "returncode": 0,
+        "elapsed_s": 0.836,
+        "size_bytes": 17863113,
+        "size_mib": 17.04,
+        "nodes": 4707,
+        "edges": 26249,
+        "files": null,
+        "status_raw": {},
+        "stderr_tail": []
+      },
+      "tokio": {
+        "repo": "tokio",
+        "returncode": 0,
+        "elapsed_s": 1.629,
+        "size_bytes": 30110163,
+        "size_mib": 28.72,
+        "nodes": 11236,
+        "edges": 76163,
+        "files": null,
+        "status_raw": {},
+        "stderr_tail": []
+      },
+      "django": {
+        "repo": "django",
+        "returncode": 0,
+        "elapsed_s": 5.281,
+        "size_bytes": 109765077,
+        "size_mib": 104.68,
+        "nodes": 48548,
+        "edges": 267527,
+        "files": null,
+        "status_raw": {},
+        "stderr_tail": []
+      },
+      "nextjs": {
+        "repo": "nextjs",
+        "returncode": 0,
+        "elapsed_s": 10.7,
+        "size_bytes": 144114133,
+        "size_mib": 137.44,
+        "nodes": 120735,
+        "edges": 414340,
+        "files": null,
+        "status_raw": {},
+        "stderr_tail": []
+      },
+      "moby": {
+        "repo": "moby",
+        "returncode": 0,
+        "elapsed_s": 23.843,
+        "size_bytes": 312144337,
+        "size_mib": 297.68,
+        "nodes": 269433,
+        "edges": 1072083,
+        "files": null,
+        "status_raw": {},
+        "stderr_tail": []
+      },
+      "spring-boot": {
+        "repo": "spring-boot",
+        "returncode": 0,
+        "elapsed_s": 9.432,
+        "size_bytes": 159678943,
+        "size_mib": 152.28,
+        "nodes": 93461,
+        "edges": 377799,
+        "files": null,
+        "status_raw": {},
+        "stderr_tail": []
+      }
+    },
+    "graphify_cold_index": {
+      "ripgrep": {
+        "repo": "ripgrep",
+        "returncode": 0,
+        "elapsed_s": 3.005,
+        "size_bytes": 15570216,
+        "size_mib": 14.85,
+        "nodes": 4798,
+        "edges": 10628,
+        "stderr_tail": [
+          "warning: 144 source file(s) produced zero nodes and are absent from the graph: .graphify_labels.json, 04cbb0f61a00a8c5492c15209f47a247e3f87f76736b577b6a883a821c43bf35.json, 068d82a83c76fac9d2132977f950643f0eb0e56f5280bfe1655cc43ab4af909b.json, 06ebff60f4d3ea89067615855f9187f48232a12ae2315b7573fb9cfa59feae78.json, 0724451b9b7ac02bbf7abac8863236df96ff51c247067aa612296c817dac81ae.json (+139 more). A re-run will retry them (empties are no longer cached); if it persists, please report the file(s) (#1666)."
+        ]
+      },
+      "requests": {
+        "repo": "requests",
+        "returncode": 0,
+        "elapsed_s": 1.451,
+        "size_bytes": 4891050,
+        "size_mib": 4.66,
+        "nodes": 1699,
+        "edges": 2881,
+        "stderr_tail": [
+          "warning: 53 source file(s) produced zero nodes and are absent from the graph: .graphify_labels.json, 05a26730c67cfbab5455c89afbbd696d7a60067a84c6e2455683f1da10332ebd.json, 083ad8d234ad992c38db890ee9a987bf280284029ba4997f8b657fd1c0727a35.json, 0c58f43bff756224d581fd0f145d3946bb888aab9ac36eb2ed677aae26414725.json, 0c9d8df04ac72bd8c1c6b51c5cdbb513e6833cd9e53f1cacf9ba203e9300b607.json (+48 more). A re-run will retry them (empties are no longer cached); if it persists, please report the file(s) (#1666)."
+        ]
+      },
+      "hono": {
+        "repo": "hono",
+        "returncode": 0,
+        "elapsed_s": 4.82,
+        "size_bytes": 7836319,
+        "size_mib": 7.47,
+        "nodes": 3686,
+        "edges": 6730,
+        "stderr_tail": [
+          "warning: 45 source file(s) produced zero nodes and are absent from the graph: .graphify_labels.json, 0a0e001f1eec88c2efbe009052e019c92d0e2361cde5df0a1e8930d97f902494.json, 0cb9664ae3c4e2d3fab9053c96cb3011b36f4ead94cd6221d21dc544a476dc39.json, 0fc4ba483f85037fdda0770e372b4be853be64eadab14436e6def6722b46279b.json, 1db58828fdc7e29327ffb17ce59503bbf5f9274867ae2e4789e4383c059afb44.json (+40 more). A re-run will retry them (empties are no longer cached); if it persists, please report the file(s) (#1666).",
+          "  warning: 7 file(s) had syntax errors and may be partially extracted: src/context.ts (first error at line 96), src/helper/factory/index.ts (first error at line 25), src/helper/ssg/middleware.ts (first error at line 32), src/jsx/hooks/index.ts (first error at line 179), src/jsx/index.ts (first error at line 112) (+2 more) (#2551)"
+        ]
+      },
+      "cobra": {
+        "repo": "cobra",
+        "returncode": 0,
+        "elapsed_s": 0.978,
+        "size_bytes": 4077363,
+        "size_mib": 3.89,
+        "nodes": 1181,
+        "edges": 2528,
+        "stderr_tail": [
+          "warning: 57 source file(s) produced zero nodes and are absent from the graph: .graphify_labels.json, 00c9dbedc62b02dc4dad002be69430195d112af56fd23a9a102a92a09aa390e3.json, 0caef0514c85e608d66941269834d7cd1e8604a42177796d94fcbfdb9000980a.json, 133e74c54b0e3e3e90e377824b2640344160fd8a1ada6a83d6d1a5ec7d09b86d.json, 160ad671fc9d7b94370bb417167f61f791e2875fbb6c018913a48262963f9a74.json (+52 more). A re-run will retry them (empties are no longer cached); if it persists, please report the file(s) (#1666)."
+        ]
+      },
+      "gson": {
+        "repo": "gson",
+        "returncode": 0,
+        "elapsed_s": 4.83,
+        "size_bytes": 24075454,
+        "size_mib": 22.96,
+        "nodes": 5097,
+        "edges": 15635,
+        "stderr_tail": [
+          "warning: 289 source file(s) produced zero nodes and are absent from the graph: .graphify_labels.json, 00fd57f346ced761971b50f4029311409056cc7a7fe3b647ceed92614d6a10f2.json, 016822923360adf1c198616da85749c5808a898fc7238ca0c8fba86a08431ce4.json, 01bbd2e1d279fbde040c409cfae3415c531f9361d92fc8ecc5229871dd34ab67.json, 01e8ca3ee3e84d149758fba1154cb2badda13efbb81bd2436e56a827db865eca.json (+284 more). A re-run will retry them (empties are no longer cached); if it persists, please report the file(s) (#1666)."
+        ]
+      }
+    },
+    "codegraph_cold_index": {
+      "tokio": {
+        "returncode": 0,
+        "elapsed_s": 3.563,
+        "size_bytes": 43327717,
+        "stdout_tail": [
+          "\u25c6  Indexed 804 files",
+          "\u2502",
+          "\u25cf  13,606 nodes, 43,710 edges in 955ms",
+          "\u2502",
+          "\u2514  Done"
+        ],
+        "stderr_tail": []
+      },
+      "django": {
+        "returncode": 0,
+        "elapsed_s": 8.148,
+        "size_bytes": 162848997,
+        "stdout_tail": [
+          "\u25c6  Indexed 3,016 files",
+          "\u2502",
+          "\u25cf  62,114 nodes, 195,802 edges in 2.1s",
+          "\u2502",
+          "\u2514  Done"
+        ],
+        "stderr_tail": []
+      },
+      "nextjs": {
+        "returncode": 0,
+        "elapsed_s": 158.445,
+        "size_bytes": 665919717,
+        "stdout_tail": [
+          "\u25c6  Indexed 23,894 files",
+          "\u2502",
+          "\u25cf  168,609 nodes, 639,624 edges in 1m 58s",
+          "\u2502",
+          "\u2514  Done"
+        ],
+        "stderr_tail": []
+      },
+      "moby": {
+        "returncode": 0,
+        "elapsed_s": 6.681,
+        "size_bytes": 114901221,
+        "stdout_tail": [
+          "\u25c6  Indexed 2,275 files",
+          "\u2502",
+          "\u25cf  36,837 nodes, 120,384 edges in 1.9s",
+          "\u2502",
+          "\u2514  Done"
+        ],
+        "stderr_tail": []
+      },
+      "spring-boot": {
+        "returncode": 0,
+        "elapsed_s": 29.335,
+        "size_bytes": 586694885,
+        "stdout_tail": [
+          "\u25c6  Indexed 9,753 files",
+          "\u2502",
+          "\u25cf  184,301 nodes, 424,855 edges in 7.6s",
+          "\u2502",
+          "\u2514  Done"
+        ],
+        "stderr_tail": []
+      }
+    },
+    "lifecycle": {
+      "ripgrep": {
+        "repo": "ripgrep",
+        "full_index_rc": 0,
+        "full_index_s": 0.699,
+        "base_size_mib": 14.2,
+        "incremental_add_rc": 0,
+        "incremental_add_ms": 423.1,
+        "added_symbol_found": true,
+        "query_after_add_ms": 191.9,
+        "incremental_delete_rc": 0,
+        "incremental_delete_ms": 421.5,
+        "deleted_symbol_absent": true,
+        "branch_switch_median_ms": 701.3,
+        "churn_branches": 5,
+        "size_after_churn_mib": 89.13,
+        "gc_dry_preserved_size": false,
+        "gc_apply_rc": 0,
+        "gc_apply_ms": 231.3,
+        "size_after_gc_mib": 89.31,
+        "compact_apply_rc": 0,
+        "compact_apply_ms": 529.1,
+        "size_after_compact_mib": 14.21,
+        "reclaimed_mib": 74.92,
+        "reclaimed_pct": 84.1
+      },
+      "tokio": {
+        "repo": "tokio",
+        "full_index_rc": 0,
+        "full_index_s": 1.764,
+        "base_size_mib": 28.72,
+        "incremental_add_rc": 0,
+        "incremental_add_ms": 820.5,
+        "added_symbol_found": true,
+        "query_after_add_ms": 219.2,
+        "incremental_delete_rc": 0,
+        "incremental_delete_ms": 844.9,
+        "deleted_symbol_absent": true,
+        "branch_switch_median_ms": 1799.1,
+        "churn_branches": 5,
+        "size_after_churn_mib": 189.66,
+        "gc_dry_preserved_size": false,
+        "gc_apply_rc": 0,
+        "gc_apply_ms": 453.8,
+        "size_after_gc_mib": 189.93,
+        "compact_apply_rc": 0,
+        "compact_apply_ms": 1414.5,
+        "size_after_compact_mib": 28.72,
+        "reclaimed_mib": 160.94,
+        "reclaimed_pct": 84.9
+      },
+      "django": {
+        "repo": "django",
+        "full_index_rc": 0,
+        "full_index_s": 6.203,
+        "base_size_mib": 104.69,
+        "incremental_add_rc": 0,
+        "incremental_add_ms": 6871.6,
+        "added_symbol_found": true,
+        "query_after_add_ms": 356.7,
+        "incremental_delete_rc": 0,
+        "incremental_delete_ms": 6555.8,
+        "deleted_symbol_absent": true,
+        "branch_switch_median_ms": 6634.0,
+        "churn_branches": 5,
+        "size_after_churn_mib": 676.15,
+        "gc_dry_preserved_size": false,
+        "gc_apply_rc": 0,
+        "gc_apply_ms": 282.5,
+        "size_after_gc_mib": 676.64,
+        "compact_apply_rc": 0,
+        "compact_apply_ms": 3422.7,
+        "size_after_compact_mib": 104.12,
+        "reclaimed_mib": 572.03,
+        "reclaimed_pct": 84.6
+      }
+    }
+  }
+}

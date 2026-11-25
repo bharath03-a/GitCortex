@@ -29,22 +29,18 @@ cd your-repo && gcx init --editor none   # CLI-only setup; omit --editor in a te
 
 ## Why
 
-When you ask an AI editor to work on a large codebase, it either scans dozens of files to build context (burning tokens) or misses the bigger picture entirely. There's no middle ground.
-
-GitCortex gives your AI editor a pre-built, queryable call graph of your repo, functions, structs, traits, interfaces, call relationships, inheritance, so instead of reading raw source files it can ask precise questions like "what calls this function?" or "what implements this trait?" and get structured answers instantly.
+When you ask an AI assistant to work on a large codebase, ordinary grep and file reads alone either burn context scanning dozens of files or miss cross-file callers and blast radius. GitCortex works **alongside** ordinary source search and tests: it maintains a local, branch-aware call and dependency graph with explicit freshness receipts (`ready | stale | missing | degraded`) so your assistant can pinpoint callers, impact, and architecture first, then verify the exact source lines.
 
 ### Highlights
 
-- **MIT licensed**: commercial-friendly.
-- **Zero runtime dependencies**: single static binary, no Node.js / Python runtime required.
+- **MIT licensed**: commercial-friendly, single static binary with zero Node.js/Python runtime dependencies.
 - **5 languages**: Rust, Python, TypeScript/JavaScript, Go, Java ([coverage matrix](#supported-languages)).
-- **Auto-indexing on every git op**: incremental, sub-500 ms on changed files; a full index of a 520k-LOC repo (Django) takes ~4 s.
-- **Per-branch graphs**: switching branches is instant, no re-index.
-- **Wiki, search, tour, blast-radius**: built-in discovery surface for AI assistants and humans.
-- **Works in Codex, Claude Code, Cursor, Windsurf, GitHub Copilot, Google Antigravity** via MCP.
-- **Net token savings on real sessions**: median of 3 runs across 5 OSS repos (Rust, Python, TS, Go, Java): **+7.7 % overall**, geomean **1.06×**, with discovery queries (`search_code`) winning **1.30×** and landing in ~half the turns of grep (see [benchmark below](#benchmark)).
-- **One smart dispatch tool by default**: `gcx` is a single compact MCP schema covering every graph operation, so agents don't pay the schema cost of all 27 individual tools on every turn — the fixed per-turn schema overhead of loading many tool definitions is a real, measured cost (see [`RELEASE-GATE.md`](docs/benchmarks/RELEASE-GATE.md)). All 27 individual tools remain one flag away (`gcx serve --full`) for power users and agents that want granular, single-purpose calls.
-- **PR blast-radius workflow**: `gcx init --ci` writes `.github/workflows/gcx-blast-radius.yml` with a read-only `blast-radius` analysis job that uploads a report artifact on every PR and a same-repo `comment` job that posts a sticky PR comment — changed nodes, affected callers, and a 🟢🟡🟠🔴 risk band — via `gcx blast-radius --format github-comment`. No hosted service, no waitlist; it runs in your own CI today ([full section below](#ci--pr-blast-radius-bot)). Example comment output:
+- **Fast bulk indexing & sub-second incremental updates**: `hono` in `0.44s`, `ripgrep` in `1.68s` (**13.1× faster** than pre-0.8.0), `django` (3,049 files / 48.5k nodes / 267.5k edges) in `5.06s` (**>118× faster**); single-file incremental `gcx hook` updates run in **821 ms** median across 10 repos.
+- **Branch-aware graphs & storage lifecycle**: index local branches without checkout, track uncommitted edits with a persisted overlay checkpoint, and reclaim **83.4–84.6%** disk space after deleting feature branches via dry-run-first `gcx storage list / prune / gc / compact`.
+- **Verified retrieval accuracy & agent savings (v0.8.0)**: **45/45** deterministic pass (**100% Hit@1**, **1.000 MRR**, **0.971 NDCG@10**, **1.000 File Recall**); **-27.7%** uncached tokens (`-19.4%` total) with answer quality lifted from `0.943 → 0.986` across 35 paired Codex CLI tasks ([benchmark below](#benchmark)).
+- **Works in Codex, Claude Code, Cursor, Windsurf, GitHub Copilot, Google Antigravity** via MCP, with a shared cross-editor Agent Guide installed by `gcx init`.
+- **One smart dispatch tool by default**: `gcx` is a single compact MCP schema covering every graph operation, so agents don't pay the per-turn schema overhead of loading all 27 individual tools (`gcx serve --full` exposes all 27 tools on demand).
+- **PR blast-radius workflow**: `gcx init --ci` writes `.github/workflows/gcx-blast-radius.yml` with a read-only `blast-radius` job (exact base/head SHA indexing via `GCX_BRANCH_OVERRIDE`, pinned action SHAs, `persist-credentials: false`) and a same-repo `comment` job that posts a sticky PR comment — changed nodes, affected callers, and a 🟢🟡🟠🔴 risk band — via `gcx blast-radius --format github-comment` ([full section below](#ci--pr-blast-radius-bot)). Example comment output:
 
   ```
   ## 🟠 Blast Radius — Risk: **HIGH**
@@ -77,73 +73,48 @@ GitCortex gives your AI editor a pre-built, queryable call graph of your repo, f
 This is a real capture of `gcx viz` running locally against the GitCortex
 repository: 2,495 indexed symbols, the live force-directed graph, complete
 symbol search, and a connected `find_callers` investigation with callers and
-callees. No hosted product page or mock data is shown.
+callees. A 30-second 1080p before-vs-after coding walkthrough is also embedded on the **[product page](https://bharath03-a.github.io/GitCortex/)**.
 
 ---
 
 ## Benchmark
 
-We run real assistant sessions twice on the same questions, once with normal source search/read, once with GitCortex graph access, and record the assistant-reported token usage. No chars/4 proxy.
+All v0.8.0 results come from pinned commits, assistant-reported token usage (no chars/4 proxies), and retained negative/caveat cases. Full machine-readable artifacts and SHA-256 checksums live in [`docs/benchmarks/v0.8.0/`](docs/benchmarks/v0.8.0/README.md) and on the **[interactive benchmarks page](https://bharath03-a.github.io/GitCortex/benchmarks.html)**.
 
-| Question                          | What it tests                                     |
-| --------------------------------- | ------------------------------------------------- |
-| "Find all auth-related code"      | Discovery, where the graph vs. grep matters most |
-| "Give me a tour of this codebase" | Architecture overview                             |
-| "If I change X, what breaks?"     | Refactor impact, honest about limits             |
-| "Show everything connected to X"  | Neighbourhood, honest loss case on large hubs    |
+### v0.8.0 headline results
 
-### Real results (compact MCP, 5 repos × 4 questions, **median of 3 runs**)
+| Lane | Scope | Key Result |
+| ---- | ----- | ---------- |
+| **Deterministic IR retrieval** | 45 tasks across 10 repos (up to 270k LOC) | **45/45 pass**, **Hit@1 100%**, **MRR 1.000**, **NDCG@5 0.925**, **NDCG@10 0.971**, **MAP@5 0.897**, **File Recall 1.000** |
+| **Paired Codex CLI suite** | 35 tasks × 2 arms (`gpt-6.1-sol`, low) | Quality **0.943 → 0.986** (35/35 pass, 0 regressions); **-27.7%** uncached tokens (`1.38×`), **-19.4%** total (`1.22×`) |
+| **Cold full-index speed** | 10 real OSS repos (123–4,606 files) | `hono` **0.44s**, `ripgrep` **1.68s** (`13.1×`), `tokio` **2.85s**, `django` **5.06s** (`>118×`), `moby` **18.19s** |
+| **Day-2 hooks & storage GC** | 10 repos (1-file edit; 5 deleted branches) | Incremental `gcx hook` **821 ms** median; `gcx storage gc + compact` reclaims **83.4–84.6%** disk space |
+| **vs. Graphify `0.9.44`** | 15 tasks across 5 core repos (Codex) | GitCortex **1.000** (15/15, **-32.9%** uncached) vs. Graphify **0.533** (6/15; 5 symbol errors; faster on its 6 passing tasks: 77k vs 91k) |
+| **vs. CodeGraph `1.5.0`** | 10 tasks across 5 large repos (Codex) | GitCortex **0.950** (9/10, **-27.7%** uncached) vs. CodeGraph **0.750** (6/10, **+10.5%** uncached; CodeGraph indexed `moby` faster: 8.32s vs 18.19s) |
+| **Unforced adoption & restraint** | 48 runs (10 graph + 6 restraint × 3 arms) | `gcx-guide`: **16/16** pass, **10/10** voluntary graph adoption, **6/6** restraint (`0` false calls); unbudgeted runs used 321k vs 196k uncached tokens (pair with `--budget-tokens`) |
 
-| Repo    | Language   | Baseline tokens | Graph tokens | Saved |
-| ------- | ---------- | --------------: | -----------: | ----: |
-| ripgrep | Rust       |          95,824 |       73,711 | **+23.1 %** |
-| requests| Python     |          81,650 |       64,712 | **+20.7 %** |
-| hono    | TypeScript |          76,963 |       81,940 | −6.5 % |
-| cobra   | Go         |          70,033 |       72,271 | −3.2 % |
-| gson    | Java       |          70,043 |       71,548 | −2.2 % |
-
-Aggregate: **+7.7 % tokens saved**, geomean **1.06×**. Per question (median ratio): `search_code` **1.30×**, `start_tour` **1.02×**, `find_callers` **0.96×**, `get_subgraph` **0.94×**.
-
-> **Why these numbers are lower than older claims.** Earlier reports quoted ~38 % from a single run; run-to-run variance is large (one repo swung ±70 pp between identical runs), so single-run aggregates aren't trustworthy. These are medians of 3 rounds with rate-limited/errored sessions excluded, the honest, noise-resistant view. See the [full report](#benchmark) for the previous run behind a dated toggle.
-
-**What improves most:** targeted discovery, `search_code` reliably wins (1.30×) and lands the answer in roughly **half the turns** of grep. Larger, idiomatic repos (Rust, Python) benefit most.
-
-**Where the graph is still weak:** broad "tour" and "what breaks" questions stay near break-even (the model reads code either way), and Java (gson) is the consistent drag, its parser is the shallowest. Both are active work.
-
-📊 **[Full interactive benchmark report →](https://htmlpreview.github.io/?https://github.com/bharath03-a/GitCortex/blob/main/docs/benchmarks/final-report.html)**: per-language breakdown, full vs. compact MCP comparison, charts, and methodology. (Source: [`docs/benchmarks/final-report.html`](docs/benchmarks/final-report.html))
+> **Full charts & methodology:** See [benchmarks.html](https://bharath03-a.github.io/GitCortex/benchmarks.html), [compare.html](https://bharath03-a.github.io/GitCortex/compare.html), and [`docs/benchmarks/v0.8.0/README.md`](docs/benchmarks/v0.8.0/README.md). Pre-0.8.0 historical records (v0.6.2 / v0.7.6) remain archived separately and dated.
 
 ### Reproducing
 
 ```bash
 cargo build --release --bin gcx
-# Codex compact-MCP sweep (5 languages, 4 questions)
-bash docs/benchmarks/codex-sweep.sh gpt-5.4-mini 4
-# Claude sweep (haiku, release-gate benchmark)
-bash docs/benchmarks/real-sweep.sh
-# Single Codex repo
-bash docs/benchmarks/codex-harness.sh \
-    https://github.com/BurntSushi/ripgrep \
-    /tmp/ripgrep-codex.json gpt-5.4-mini 4
-# Single Claude repo
-bash docs/benchmarks/real-harness.sh \
-    https://github.com/BurntSushi/ripgrep \
-    /tmp/ripgrep.json claude-haiku-4-5-20251001 4
-# Render HTML reports from existing JSON
-python3 docs/benchmarks/real-report.py docs/benchmarks/codex-report-data \
-    -o docs/benchmarks/codex-report.html
-python3 docs/benchmarks/real-report.py
+# Deterministic 35-task retrieval gate (5 pinned core repos)
+python3 tools/agent-bench/bench.py run --suite tools/agent-bench/suite.toml --binary ./target/release/gcx
+# Unforced adoption & restraint harness
+python3 tools/agent-bench/bench.py unforced --suite tools/agent-bench/unforced-suite.toml --binary ./target/release/gcx
 ```
 
 ---
 
 ## How it works
 
-1. `gcx init` installs four git hooks and runs an initial full index.
-2. On every local HEAD change the hook fires, diffs only the changed files, and updates the graph in under 500ms.
-3. `gcx serve` starts an MCP server on stdio so Codex, Claude Code, or any MCP client can query the graph.
-4. `gcx viz` opens an interactive force-directed graph in your browser.
+1. `gcx init` installs four git hooks, runs an initial full index, and (optionally) wires up your AI editors with the shared Agent Guide.
+2. On every local HEAD change, the git hook diffs changed files and reconciles references incrementally (**821 ms** median across 10 repos); uncommitted working-tree edits are tracked via a persisted overlay checkpoint with explicit freshness state.
+3. `gcx serve` starts a local MCP server on stdio so Codex, Claude Code, Cursor, Windsurf, Copilot, or Antigravity can query callers, blast radius, and search results with source evidence.
+4. `gcx viz` and `gcx export` inspect or export scoped subgraphs; `gcx storage` keeps multi-branch disk usage compact.
 
-The graph is namespaced per branch, switching branches instantly gives you the graph for that branch with no re-indexing.
+Graphs are isolated per branch, and local branches can be indexed directly from git objects without checking them out.
 
 ---
 
@@ -602,7 +573,7 @@ Example output:
 ```
 gcx doctor
 
-  [ok] gcx v0.7.6 on PATH (/usr/local/bin/gcx)
+  [ok] gcx v0.8.0 on PATH (/usr/local/bin/gcx)
   [ok] git repository detected
   [ok] post-commit hook installed
   [ok] post-merge hook installed
@@ -628,13 +599,15 @@ gcx update
 ```
 gcx update
 
-  current version:  0.7.6
-  latest version:   0.7.6
+  current version:  0.8.0
+  latest version:   0.8.0
   you are up to date.
 
   To update (cargo):
     cargo install gitcortex
 ```
+
+> **Upgrading from pre-0.8.0 (schema v15):** After upgrading to `v0.8.0`, run `gcx init` (or `gcx init --editor none` for CLI-only) once per existing repository to rebuild the local graph store under schema v15.
 
 ---
 

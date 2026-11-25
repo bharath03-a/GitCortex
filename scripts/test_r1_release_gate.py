@@ -143,10 +143,14 @@ class ReleaseGateTests(unittest.TestCase):
         for path in paths:
             (self.root / path).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source / path, self.root / path)
-        self.assertTrue(gate.package_versions(self.root))
+        versions = gate.package_versions(self.root)
+        self.assertTrue(versions)
+        minor = ".".join(versions["Cargo.toml"].split(".")[:2])
         cargo = self.root / "Cargo.toml"
         original = cargo.read_text()
-        cargo.write_text(original.replace('version = "0.7"', 'version = "0.6"'))
+        mutated = original.replace(f'version = "{minor}"', 'version = "0.0"')
+        self.assertNotEqual(mutated, original)
+        cargo.write_text(mutated)
         with self.assertRaises(ValueError):
             gate.package_versions(self.root)
         cargo.write_text(original)
