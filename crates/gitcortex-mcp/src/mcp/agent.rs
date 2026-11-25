@@ -376,6 +376,7 @@ pub fn find_callers<S: GraphStore + ?Sized>(
         }
     };
 
+    let target_file = target.file.display().to_string();
     let target_summary = to_candidate(&target);
     let mut seen: HashSet<String> = HashSet::new();
     seen.insert(target.id.as_str());
@@ -392,14 +393,17 @@ pub fn find_callers<S: GraphStore + ?Sized>(
         pairs.sort_by(rank_callers);
 
         frontier = pairs.iter().map(|(node, _)| node.id.as_str()).collect();
+        let mut hop_evidence = Vec::with_capacity(pairs.len());
         for (node, confidence) in pairs {
             match confidence {
                 EdgeConfidence::Extracted => mix.extracted += 1,
                 EdgeConfidence::Resolved => mix.resolved += 1,
                 EdgeConfidence::Inferred => mix.inferred += 1,
             }
-            evidence.push(to_evidence(node, confidence, hop));
+            hop_evidence.push(to_evidence(node, confidence, hop));
         }
+        diversify_caller_evidence(&mut hop_evidence, &target_file);
+        evidence.extend(hop_evidence);
         if frontier.is_empty() {
             break;
         }
@@ -824,6 +828,46 @@ fn diversify_relation_evidence(bucket: &mut Vec<RelationEvidence>, target_file: 
 
     for groups in tiers {
         let mut queues: Vec<std::collections::VecDeque<RelationEvidence>> =
+            groups.into_iter().map(Into::into).collect();
+        loop {
+            let mut progressed = false;
+            for queue in &mut queues {
+                if let Some(item) = queue.pop_front() {
+                    bucket.push(item);
+                    progressed = true;
+                }
+            }
+            if !progressed {
+                break;
+            }
+        }
+    }
+}
+
+/// Reorder single-hop caller evidence (already ordered by `rank_callers`) so
+/// cross-file production callers precede same-file helpers and tests, and
+/// round-robin across distinct files within each tier so one high-fanout file
+/// cannot crowd out external dependents under `limit` or `budget_tokens`.
+fn diversify_caller_evidence(bucket: &mut Vec<CallerEvidence>, target_file: &str) {
+    if bucket.len() <= 1 {
+        return;
+    }
+
+    let mut tiers: [Vec<Vec<CallerEvidence>>; 4] = Default::default();
+    let mut file_indices: [HashMap<String, usize>; 4] = Default::default();
+    for item in bucket.drain(..) {
+        let tier = usize::from(item.is_test) * 2 + usize::from(item.file == target_file);
+        if let Some(&idx) = file_indices[tier].get(&item.file) {
+            tiers[tier][idx].push(item);
+        } else {
+            let idx = tiers[tier].len();
+            file_indices[tier].insert(item.file.clone(), idx);
+            tiers[tier].push(vec![item]);
+        }
+    }
+
+    for groups in tiers {
+        let mut queues: Vec<std::collections::VecDeque<CallerEvidence>> =
             groups.into_iter().map(Into::into).collect();
         loop {
             let mut progressed = false;
@@ -1780,6 +1824,57 @@ mod tests {
                 "crates/printer/src/json.rs",
                 "crates/searcher/src/mod.rs",
                 "tests/search_test.rs",
+            ]
+        );
+    }
+
+    #[test]
+    fn diversify_caller_evidence_prioritizes_cross_file_and_spreads_files() {
+        let mk = |file: &str, sym: &str, confidence: &str, is_test: bool| CallerEvidence {
+            hop: 1,
+            symbol: sym.to_owned(),
+            qualified_name: format!("QuerySet.{sym}"),
+            kind: "method".to_owned(),
+            file: file.to_owned(),
+            line: 10,
+            signature: format!("def {sym}(self):"),
+            confidence: confidence.to_owned(),
+            is_test,
+        };
+        let mut bucket = vec![
+            mk("django/db/models/query.py", "get", "extracted", false),
+            mk("django/db/models/query.py", "dates", "extracted", false),
+            mk(
+                "django/contrib/admin/filters.py",
+                "queryset",
+                "inferred",
+                false,
+            ),
+            mk(
+                "django/contrib/admin/filters.py",
+                "other",
+                "inferred",
+                false,
+            ),
+            mk(
+                "django/contrib/admin/options.py",
+                "get_search_results",
+                "inferred",
+                false,
+            ),
+            mk("tests/queries/tests.py", "test_filter", "inferred", true),
+        ];
+        diversify_caller_evidence(&mut bucket, "django/db/models/query.py");
+        let files: Vec<&str> = bucket.iter().map(|e| e.file.as_str()).collect();
+        assert_eq!(
+            files,
+            vec![
+                "django/contrib/admin/filters.py",
+                "django/contrib/admin/options.py",
+                "django/contrib/admin/filters.py",
+                "django/db/models/query.py",
+                "django/db/models/query.py",
+                "tests/queries/tests.py",
             ]
         );
     }
