@@ -5,28 +5,28 @@
     </clipPath>
   </defs>
   <style>
-    .t-title { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 17.5px; font-weight: 700; fill: #FCFCFA; letter-spacing: -0.02em; }
-    .t-sub { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 11.5px; fill: #B6B6C4; }
-    .t-pill { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; font-weight: 600; fill: #F09B7A; letter-spacing: 0.08em; }
+    .t-title { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 17.5px; font-weight: 700; fill: #14141A; letter-spacing: -0.02em; }
+    .t-sub { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 11.5px; fill: #52525E; }
+    .t-pill { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; font-weight: 600; fill: #A84A27; letter-spacing: 0.08em; }
     .t-sec { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 700; fill: #4E4E58; letter-spacing: 0.07em; text-transform: uppercase; }
-    .t-sec-sub { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 11px; fill: #7C7C88; }
+    .t-sec-sub { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 11px; fill: #73737F; }
     .t-lbl { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 12px; font-weight: 600; fill: #14141A; }
     .t-lbl2 { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; fill: #4E4E58; }
     .t-val { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 600; fill: #14141A; }
     .t-val-b { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 700; fill: #C4633F; }
     .t-val-g { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 700; fill: #266B59; }
-    .t-axis { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; fill: #7C7C88; }
-    .t-foot { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 9.8px; fill: #7C7C88; }
+    .t-axis { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; fill: #73737F; }
+    .t-foot { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 9.8px; fill: #73737F; }
     .t-chip { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 9.5px; font-weight: 600; }
   </style>
   <g clip-path="url(#clip-codex-actions)">
     <rect x="0" y="0" width="960" height="455" fill="#FFFFFF"/>
-    <rect x="0" y="0" width="960" height="78" fill="#18181F"/>
+    <rect x="0" y="0" width="960" height="78" fill="#F7F5EF"/>
     <rect x="0" y="0" width="960" height="3.5" fill="#C4633F"/>
-    <line x1="0" y1="78" x2="960" y2="78" stroke="#2A2A36" stroke-width="1"/>
+    <line x1="0" y1="78" x2="960" y2="78" stroke="#E5E2D9" stroke-width="1"/>
     <text x="28" y="34" class="t-title">35-Task Codex Benchmark: Savings Concentrate on Relationship Questions</text>
     <text x="28" y="56" class="t-sub">Graph traversal (subgraph, impact, refactor, callers) saves 36–43% uncached tokens; plain search stays near grep parity.</text>
-    <rect x="749.6" y="22" width="182.4" height="24" rx="12" fill="#262228" stroke="#5A382E" stroke-width="1"/>
+    <rect x="749.6" y="22" width="182.4" height="24" rx="12" fill="#FBEFE9" stroke="#E8C2B0" stroke-width="1"/>
     <text x="840.8" y="37.5" text-anchor="middle" class="t-pill">AGENT BENCH · 35 TASKS</text>
     <rect x="28" y="94" width="214" height="64" rx="8" fill="#FAF9F5" stroke="#E2E0D8"/>
     <text x="42" y="113" class="t-sec">Tasks Valid</text>
@@ -90,7 +90,7 @@
     <text x="932" y="353" text-anchor="end" class="t-axis">tot +9.8%</text>
     <text x="28" y="380" class="t-lbl">tour</text>
     <text x="128" y="380" class="t-axis">n=5 · q 0.90→0.90</text>
-    <rect x="728.0" y="368" width="4" height="16" rx="2" fill="#7C7C88"/>
+    <rect x="728.0" y="368" width="4" height="16" rx="2" fill="#73737F"/>
     <text x="738.0" y="380" class="t-axis">0.0%</text>
     <text x="932" y="380" text-anchor="end" class="t-axis">tot -15.9%</text>
     <rect x="0" y="421" width="960" height="34" fill="#FAF9F5"/>

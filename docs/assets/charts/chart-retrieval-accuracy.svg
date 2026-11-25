@@ -5,28 +5,28 @@
     </clipPath>
   </defs>
   <style>
-    .t-title { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 17.5px; font-weight: 700; fill: #FCFCFA; letter-spacing: -0.02em; }
-    .t-sub { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 11.5px; fill: #B6B6C4; }
-    .t-pill { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; font-weight: 600; fill: #F09B7A; letter-spacing: 0.08em; }
+    .t-title { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 17.5px; font-weight: 700; fill: #14141A; letter-spacing: -0.02em; }
+    .t-sub { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 11.5px; fill: #52525E; }
+    .t-pill { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; font-weight: 600; fill: #A84A27; letter-spacing: 0.08em; }
     .t-sec { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 700; fill: #4E4E58; letter-spacing: 0.07em; text-transform: uppercase; }
-    .t-sec-sub { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 11px; fill: #7C7C88; }
+    .t-sec-sub { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 11px; fill: #73737F; }
     .t-lbl { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 12px; font-weight: 600; fill: #14141A; }
     .t-lbl2 { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; fill: #4E4E58; }
     .t-val { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 600; fill: #14141A; }
     .t-val-b { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 700; fill: #C4633F; }
     .t-val-g { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 700; fill: #266B59; }
-    .t-axis { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; fill: #7C7C88; }
-    .t-foot { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 9.8px; fill: #7C7C88; }
+    .t-axis { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; fill: #73737F; }
+    .t-foot { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 9.8px; fill: #73737F; }
     .t-chip { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 9.5px; font-weight: 600; }
   </style>
   <g clip-path="url(#clip-retrieval-accuracy)">
     <rect x="0" y="0" width="960" height="520" fill="#FFFFFF"/>
-    <rect x="0" y="0" width="960" height="78" fill="#18181F"/>
+    <rect x="0" y="0" width="960" height="78" fill="#F7F5EF"/>
     <rect x="0" y="0" width="960" height="3.5" fill="#C4633F"/>
-    <line x1="0" y1="78" x2="960" y2="78" stroke="#2A2A36" stroke-width="1"/>
+    <line x1="0" y1="78" x2="960" y2="78" stroke="#E5E2D9" stroke-width="1"/>
     <text x="28" y="34" class="t-title">Code Retrieval Ranking Accuracy (Hit@1, MRR, NDCG@k, MAP@5)</text>
     <text x="28" y="56" class="t-sub">Standard IR metrics over deterministic lexical retrieval across 5 core + 5 big repos (45/45 exact evidence contract pass).</text>
-    <rect x="756.8" y="22" width="175.2" height="24" rx="12" fill="#262228" stroke="#5A382E" stroke-width="1"/>
+    <rect x="756.8" y="22" width="175.2" height="24" rx="12" fill="#FBEFE9" stroke="#E8C2B0" stroke-width="1"/>
     <text x="844.4" y="37.5" text-anchor="middle" class="t-pill">IR METRICS · 10 REPOS</text>
     <rect x="28.0" y="94" width="170" height="62" rx="8" fill="#FAF9F5" stroke="#E2E0D8"/>
     <text x="40.0" y="112" class="t-sec">Hit@1 · MRR</text>

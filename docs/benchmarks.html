@@ -180,6 +180,36 @@
     .gh-star-count:empty { display: none; }
     @media (max-width: 760px) { .nav-hide { display: none; } .nav-links { gap: 14px; } }
 
+  
+    /* Chart reader's guide / explanation block */
+    .chart-explain {
+      margin: -6px 0 22px;
+      padding: 16px 20px;
+      background: var(--paper, #FCFCFA);
+      border: 1px solid var(--rule, #E5E4DE);
+      border-left: 3px solid var(--brand, #C4633F);
+      border-radius: 10px;
+      font-size: .9rem;
+      line-height: 1.58;
+      color: var(--ink-2, #55555F);
+    }
+    .chart-explain .ex-title {
+      font-family: var(--mono);
+      font-size: .72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      color: var(--ink, #14141A);
+      margin-bottom: 8px;
+    }
+    .chart-explain ul { list-style: none; display: grid; gap: 6px; margin: 0; padding: 0; }
+    .chart-explain li { position: relative; padding-left: 16px; }
+    .chart-explain li::before {
+      content: ""; position: absolute; left: 0; top: .68em;
+      width: 7px; height: 1.5px; background: var(--brand, #C4633F);
+    }
+    .chart-explain strong { color: var(--ink, #14141A); font-weight: 650; }
+
   </style>
 </head>
 <body>
@@ -261,6 +291,15 @@
     <div class="chart-frame">
       <img src="assets/charts/chart-retrieval-accuracy.svg" alt="Code retrieval ranking accuracy across 10 repositories showing Hit@1 100%, MRR 1.000, NDCG@5 0.925, NDCG@10 0.971, MAP@5 0.897, and 45/45 contract pass" loading="lazy" width="960" height="520">
     </div>
+    <div class="chart-explain">
+      <div class="ex-title">How to read this chart &amp; IR metrics</div>
+      <ul>
+        <li><strong>Top-10 Rank Map (green numbered tiles):</strong> Each row shows the first 10 symbols returned by <code>gcx query search</code>. A green tile means that rank matched the pinned ground-truth file or symbol; gray tiles are other returned symbols; dashed tiles mean fewer than 10 hits existed in the token budget.</li>
+        <li><strong>Hit@1 (100%) &amp; MRR (1.000):</strong> Every single repository placed a ground-truth match at <strong>rank #1</strong> (Mean Reciprocal Rank = 1.000), meaning an assistant sees the right definition immediately without scrolling.</li>
+        <li><strong>NDCG@5 (0.925) &amp; NDCG@10 (0.971):</strong> Normalized Discounted Cumulative Gain measures how tightly relevant results cluster near the top of the list (1.000 = ideal ordering). <strong>MAP@5 (0.897)</strong> is Mean Average Precision over the top 5 slots, and <strong>File Recall (1.000)</strong> confirms every target file appeared within the returned budget.</li>
+        <li><strong>Why P@5 is 0.640 even when NDCG@5 is 0.925:</strong> Narrow queries like <code>django</code>&rsquo;s <code>QuerySet</code> or <code>hono</code>&rsquo;s <code>dispatch</code> have only 1&ndash;2 ground-truth symbols in the entire repo, so Precision@5 (relevant hits &divide; 5) is naturally capped below 1.0 even under perfect ranking.</li>
+      </ul>
+    </div>
     <div class="grid2">
       <div class="card">
         <h3>Core Suite &mdash; 35 tasks (5 repos)</h3>
@@ -295,6 +334,14 @@
 
     <div class="chart-frame">
       <img src="assets/charts/chart-codex-actions.svg" alt="35-task Codex agent benchmark showing uncached token deltas by action category" loading="lazy" width="960" height="455">
+    </div>
+    <div class="chart-explain">
+      <div class="ex-title">How to read this chart &amp; key takeaways</div>
+      <ul>
+        <li><strong>Left of 0% = fewer tokens than grep:</strong> Each horizontal bar shows the percent change in <strong>uncached input tokens</strong> (the expensive, newly-read context an LLM processes) compared to an identical Codex CLI session using ordinary grep and file reads. The right column lists the corresponding change in <strong>total tokens</strong> (cached + uncached).</li>
+        <li><strong>Where graph traversal wins biggest:</strong> Multi-hop relationship questions&mdash;<code>subgraph</code> (&minus;43.0%), <code>impact</code> (&minus;41.3%), <code>refactor</code> (&minus;37.7%), and <code>callers</code> (&minus;36.0%, while lifting accuracy from 0.80 &rarr; 1.00)&mdash;avoid repeated grep-and-read loops across dozens of files.</li>
+        <li><strong>Honest boundary (<code>search</code> &amp; <code>tour</code>):</strong> Single-hop lexical lookup stays near grep parity (&minus;3.8% uncached, +9.8% total tokens). GitCortex is designed to complement source search and tests, not replace plain grep on trivial lookups.</li>
+      </ul>
     </div>
 
     <div class="grid2">
@@ -347,6 +394,14 @@
     <div class="chart-frame">
       <img src="assets/charts/chart-cold-index.svg" alt="Cold full-index time and disk footprint across 10 real repositories" loading="lazy" width="960" height="505">
     </div>
+    <div class="chart-explain">
+      <div class="ex-title">How to read this chart &amp; key takeaways</div>
+      <ul>
+        <li><strong>Shorter bars &amp; smaller MiB are better:</strong> Left panel compares cold full-index wall time and store size against <strong>Graphify 0.9.44</strong> on 5 core repos (<code>3.13 s</code> vs <code>15.08 s</code>, <strong>4.8&times; faster</strong>). Right panel compares against <strong>CodeGraph 1.5.0</strong> on 5 large repos (<code>50.9 s</code> vs <code>206.2 s</code>, <strong>4.1&times; faster</strong> and <strong>52% smaller disk</strong>).</li>
+        <li><strong>Why the right panel uses a power-0.55 axis:</strong> Repo times span two orders of magnitude&mdash;from <code>tokio</code> (1.63 s) to CodeGraph on <code>nextjs</code> (158.45 s). A gentle power axis keeps small repos readable while preserving exact measured labels on every bar.</li>
+        <li><strong>Honest trade-off on <code>moby</code>:</strong> CodeGraph finishes faster (6.68 s / 109.6 MiB) because it skips vendored Go directories (36.8k nodes), whereas GitCortex indexed the entire tree including vendored packages (269.4k nodes / 1.07M edges).</li>
+      </ul>
+    </div>
 
     <div class="table-wrap">
       <table>
@@ -385,6 +440,14 @@
     <div class="chart-frame">
       <img src="assets/charts/chart-lifecycle.svg" alt="Operational lifecycle chart comparing pre-fix vs v0.8.0 incremental hook latency and 5-branch storage reclaim" loading="lazy" width="960" height="445">
     </div>
+    <div class="chart-explain">
+      <div class="ex-title">How to read this chart &amp; key takeaways</div>
+      <ul>
+        <li><strong>Left panel &mdash; 1-file commit hook latency:</strong> Compares pre-fix global reference re-reconciliation against v0.8.0&rsquo;s diff-scoped, PK-bounded incremental hook. Updating a 1-file edit drops from <code>4.17 s</code> &rarr; <strong>423 ms</strong> on <code>ripgrep</code>, <code>&gt;60 s</code> timeout &rarr; <strong>821 ms</strong> on <code>tokio</code>, and <code>&gt;60 s</code> dense-hub crash &rarr; <strong>6.87 s</strong> on <code>django</code> (15,217 incoming edges on <code>query.py</code>).</li>
+        <li><strong>Right panel &mdash; 5-branch churn &amp; disk reclaim:</strong> After creating and deleting 5 feature branches, running dry-run-first <code>gcx storage gc --apply</code> + <code>compact --apply</code> reclaims <strong>84.1&ndash;84.9%</strong> of disk space in 0.76&ndash;3.71 s, returning each store to its clean base footprint.</li>
+        <li><strong>Verified correctness:</strong> Every run asserted that the newly added symbol appeared in <code>lookup-symbol</code> immediately after commit and disappeared completely after revert.</li>
+      </ul>
+    </div>
 
     <div class="table-wrap">
       <table>
@@ -414,6 +477,14 @@
     <div class="chart-frame">
       <img src="assets/charts/chart-competitors.svg" alt="Head-to-head evidence accuracy and uncached tokens vs Graphify 0.9.44 and CodeGraph 1.5.0" loading="lazy" width="960" height="440">
     </div>
+    <div class="chart-explain">
+      <div class="ex-title">How to read this chart &amp; key takeaways</div>
+      <ul>
+        <li><strong>Top rows = Evidence Accuracy (higher is better, max 1.000):</strong> Measures whether the assistant returned every required <code>file:line</code> citation with zero forbidden/wrong hits. GitCortex achieves <strong>1.000</strong> on both the 15-task core suite (15/15) and 10-task big-repo suite (10/10).</li>
+        <li><strong>Bottom rows = Uncached Tokens (lower is better):</strong> Shows total newly-read tokens spent across the full suite compared to the grep baseline. GitCortex cuts uncached tokens by <strong>&minus;32.9%</strong> vs Graphify&rsquo;s core baseline and <strong>&minus;23.5%</strong> on the 5 big repos.</li>
+        <li><strong>Reading competitor numbers fairly:</strong> Graphify&rsquo;s lower aggregate token bar reflects 5 early exits on ambiguous symbol errors and 9 incomplete/failed tasks (0.533 accuracy); on the 6 tasks where Graphify scored 1.00, it did use fewer tokens (77k vs GitCortex&rsquo;s 91k). CodeGraph scored 9/10 (missing <code>nextjs-callers-normalize-page-path</code>) and used slightly fewer total tokens overall (&minus;20.3% vs &minus;16.8%) while GitCortex led on uncached tokens (&minus;23.5% vs &minus;20.7%).</li>
+      </ul>
+    </div>
   </div>
 </section>
 
@@ -428,6 +499,14 @@
 
     <div class="chart-frame">
       <img src="assets/charts/chart-adoption.svg" alt="48-run unforced adoption and restraint study comparing baseline, gcx-bare, and gcx-guide" loading="lazy" width="960" height="400">
+    </div>
+    <div class="chart-explain">
+      <div class="ex-title">How to read this chart &amp; key takeaways</div>
+      <ul>
+        <li><strong>Three independent questions across 48 runs:</strong> Unlike forced tool benchmarks, here the agent was <em>never told</em> to use GitCortex. We measured whether it passes more tasks (left), voluntarily adopts <code>gcx</code> on 10 relationship tasks (middle), and shows restraint on 6 non-graph tasks where grep/reading is better (right).</li>
+        <li><strong>Why the shared Agent Guide matters:</strong> A bare CLI binary on PATH (<code>gcx-bare</code>) was only discovered on 4/10 graph tasks. Installing the concise guide via <code>gcx init</code> lifted voluntary adoption to <strong>10/10 (100%)</strong>, lifted overall pass rate from <strong>14/16 &rarr; 16/16</strong>, and kept false graph calls on restraint tasks at <strong>0/6</strong>.</li>
+        <li><strong>Honest token caveat:</strong> Without explicit per-call <code>--budget-tokens</code> caps in the unforced harness, the guided agent made 55 thorough CLI calls and spent more uncached tokens (321k vs 196k). Always pair the guide with budgeted queries in cost-sensitive workflows.</li>
+      </ul>
     </div>
 
     <div class="table-wrap">

@@ -5,28 +5,28 @@
     </clipPath>
   </defs>
   <style>
-    .t-title { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 17.5px; font-weight: 700; fill: #FCFCFA; letter-spacing: -0.02em; }
-    .t-sub { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 11.5px; fill: #B6B6C4; }
-    .t-pill { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; font-weight: 600; fill: #F09B7A; letter-spacing: 0.08em; }
+    .t-title { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 17.5px; font-weight: 700; fill: #14141A; letter-spacing: -0.02em; }
+    .t-sub { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 11.5px; fill: #52525E; }
+    .t-pill { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; font-weight: 600; fill: #A84A27; letter-spacing: 0.08em; }
     .t-sec { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 700; fill: #4E4E58; letter-spacing: 0.07em; text-transform: uppercase; }
-    .t-sec-sub { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 11px; fill: #7C7C88; }
+    .t-sec-sub { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 11px; fill: #73737F; }
     .t-lbl { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 12px; font-weight: 600; fill: #14141A; }
     .t-lbl2 { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; fill: #4E4E58; }
     .t-val { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 600; fill: #14141A; }
     .t-val-b { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 700; fill: #C4633F; }
     .t-val-g { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 700; fill: #266B59; }
-    .t-axis { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; fill: #7C7C88; }
-    .t-foot { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 9.8px; fill: #7C7C88; }
+    .t-axis { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; fill: #73737F; }
+    .t-foot { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 9.8px; fill: #73737F; }
     .t-chip { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 9.5px; font-weight: 600; }
   </style>
   <g clip-path="url(#clip-cold-index)">
     <rect x="0" y="0" width="960" height="505" fill="#FFFFFF"/>
-    <rect x="0" y="0" width="960" height="78" fill="#18181F"/>
+    <rect x="0" y="0" width="960" height="78" fill="#F7F5EF"/>
     <rect x="0" y="0" width="960" height="3.5" fill="#C4633F"/>
-    <line x1="0" y1="78" x2="960" y2="78" stroke="#2A2A36" stroke-width="1"/>
+    <line x1="0" y1="78" x2="960" y2="78" stroke="#E5E2D9" stroke-width="1"/>
     <text x="28" y="34" class="t-title">Cold Full-Index Time &amp; Disk Footprint (10 Real Repositories)</text>
     <text x="28" y="56" class="t-sub">Warm-cache local builds on identical pinned commits, zero LLM calls. Shorter bars and smaller MiB are better.</text>
-    <rect x="785.6" y="22" width="146.4" height="24" rx="12" fill="#262228" stroke="#5A382E" stroke-width="1"/>
+    <rect x="785.6" y="22" width="146.4" height="24" rx="12" fill="#FBEFE9" stroke="#E8C2B0" stroke-width="1"/>
     <text x="858.8" y="37.5" text-anchor="middle" class="t-pill">INDEXING · v0.8.0</text>
     <text x="28" y="108" class="t-sec">5 Core Repos · vs Graphify 0.9.44</text>
     <rect x="327.2" y="95" width="124.8" height="18" rx="9" fill="#E9F4F0"/><text x="389.6" y="107" text-anchor="middle" class="t-chip" fill="#266B59">4.8× faster total</text>

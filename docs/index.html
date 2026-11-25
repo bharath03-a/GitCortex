@@ -440,6 +440,36 @@
     .gh-star-count:empty { display: none; }
     @media (max-width: 760px) { .nav-hide { display: none; } .nav-links { gap: 14px; } }
 
+  
+    /* Chart reader's guide / explanation block */
+    .chart-explain {
+      margin: -6px 0 22px;
+      padding: 16px 20px;
+      background: var(--paper, #FCFCFA);
+      border: 1px solid var(--rule, #E5E4DE);
+      border-left: 3px solid var(--brand, #C4633F);
+      border-radius: 10px;
+      font-size: .9rem;
+      line-height: 1.58;
+      color: var(--ink-2, #55555F);
+    }
+    .chart-explain .ex-title {
+      font-family: var(--mono);
+      font-size: .72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      color: var(--ink, #14141A);
+      margin-bottom: 8px;
+    }
+    .chart-explain ul { list-style: none; display: grid; gap: 6px; margin: 0; padding: 0; }
+    .chart-explain li { position: relative; padding-left: 16px; }
+    .chart-explain li::before {
+      content: ""; position: absolute; left: 0; top: .68em;
+      width: 7px; height: 1.5px; background: var(--brand, #C4633F);
+    }
+    .chart-explain strong { color: var(--ink, #14141A); font-weight: 650; }
+
   </style>
 </head>
 <body>
@@ -537,13 +567,13 @@
   <div class="wrap">
     <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:20px; flex-wrap:wrap;">
       <div>
-        <span class="eyebrow">26-Second Walkthrough</span>
+        <span class="eyebrow">30-Second Light-Theme Walkthrough</span>
         <h2 style="margin-top:6px;">Before vs After: Grep exploration vs GitCortex v0.8.0</h2>
       </div>
       <a href="benchmarks.html" style="font-family:var(--mono); font-size:.78rem; color:var(--brand); border-bottom:1px solid var(--brand); padding-bottom:2px;">Inspect all 6 benchmark charts &rarr;</a>
     </div>
-    <div style="border:1px solid var(--rule); border-radius:14px; overflow:hidden; background:#111117; box-shadow:0 14px 36px rgba(20,20,26,.09);">
-      <video src="assets/demo-v080.mp4" controls autoplay muted loop playsinline preload="metadata" width="1280" height="720" style="display:block; width:100%; height:auto;">
+    <div style="border:1px solid var(--rule); border-radius:14px; overflow:hidden; background:#F7F5EF; box-shadow:0 14px 36px rgba(20,20,26,.07);">
+      <video src="assets/demo-v080.mp4" controls autoplay muted loop playsinline preload="metadata" width="1920" height="1080" style="display:block; width:100%; height:auto;">
         Your browser does not support HTML5 video. <a href="assets/demo-v080.mp4">Download the v0.8.0 Before vs After demo (MP4)</a>.
       </video>
     </div>
@@ -996,8 +1026,16 @@
         <div class="chart-frame">
           <img src="assets/charts/chart-codex-actions.svg" alt="35-task Codex agent benchmark showing 36 to 43 percent uncached token savings on subgraph, impact, refactor, and callers questions, while plain search stays near grep parity" loading="lazy" width="960" height="455">
         </div>
+    <div class="chart-explain">
+      <div class="ex-title">How to read this chart &amp; key takeaways</div>
+      <ul>
+        <li><strong>Left of 0% = fewer tokens than grep:</strong> Each horizontal bar shows the percent change in <strong>uncached input tokens</strong> (the expensive, newly-read context an LLM processes) compared to an identical Codex CLI session using ordinary grep and file reads. The right column lists the corresponding change in <strong>total tokens</strong> (cached + uncached).</li>
+        <li><strong>Where graph traversal wins biggest:</strong> Multi-hop relationship questions&mdash;<code>subgraph</code> (&minus;43.0%), <code>impact</code> (&minus;41.3%), <code>refactor</code> (&minus;37.7%), and <code>callers</code> (&minus;36.0%, while lifting accuracy from 0.80 &rarr; 1.00)&mdash;avoid repeated grep-and-read loops across dozens of files.</li>
+        <li><strong>Honest boundary (<code>search</code> &amp; <code>tour</code>):</strong> Single-hop lexical lookup stays near grep parity (&minus;3.8% uncached, +9.8% total tokens). GitCortex is designed to complement source search and tests, not replace plain grep on trivial lookups.</li>
+      </ul>
+    </div>
         <p class="method">
-          Plain lexical search stays near grep parity (&minus;3.8% uncached, +9.8% total tokens); unbudgeted unforced adoption improved pass rate from 14/16 to 16/16 (10/10 adoption, 0/6 false restraint calls) at higher total token spend. See all 5 graphs, competitor head-to-heads, and exact tables on <a href="benchmarks.html">benchmarks.html</a> and <a href="compare.html">compare.html</a>.
+          Plain lexical search stays near grep parity (&minus;3.8% uncached, +9.8% total tokens); unbudgeted unforced adoption improved pass rate from 14/16 to 16/16 (10/10 adoption, 0/6 false restraint calls) at higher total token spend. See all 6 graphs, competitor head-to-heads, and exact tables on <a href="benchmarks.html">benchmarks.html</a> and <a href="compare.html">compare.html</a>.
         </p>
       </div>
 
