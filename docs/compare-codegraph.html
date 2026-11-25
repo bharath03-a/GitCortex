@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="How GitCortex compares to CodeGraph across three real AI clients — Claude Code, Codex, and Antigravity. Same 10 questions, fresh baselines each time, including where CodeGraph wins.">
-  <title>Compare vs CodeGraph — GitCortex</title>
+  <meta name="description" content="GitCortex v0.8.0 vs CodeGraph 1.5.0 across 5 large open-source repositories (tokio, django, next.js, moby, spring-boot) — accuracy, tokens, cold-index speed, and disk footprint, including where CodeGraph wins.">
+  <title>GitCortex v0.8.0 vs CodeGraph 1.5.0 — GitCortex</title>
 
   <meta property="og:type"        content="website">
   <meta property="og:url"         content="https://bharath03-a.github.io/GitCortex/compare-codegraph.html">
-  <meta property="og:title"       content="How GitCortex compares to CodeGraph — GitCortex">
-  <meta property="og:description" content="Same repos, same questions, three real AI clients. Real numbers, including where CodeGraph wins.">
+  <meta property="og:title"       content="GitCortex v0.8.0 vs CodeGraph 1.5.0">
+  <meta property="og:description" content="10 big-repo navigation tasks plus cold-index speed & disk footprint across tokio, django, next.js, moby, and spring-boot — including where CodeGraph wins.">
   <meta property="og:image"       content="https://raw.githubusercontent.com/bharath03-a/GitCortex/main/assets/icon.svg">
 
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
@@ -53,24 +53,19 @@
       --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
       --sans: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
       --gut: 28px; --max: 1080px;
+      color-scheme: light;
     }
-    :root { color-scheme: light; }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html { font-size: 16px; scroll-behavior: smooth; }
-    @media (prefers-reduced-motion: reduce) {
-      html { scroll-behavior: auto; }
-      *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
-    }
     body { background: var(--paper); color: var(--ink); font-family: var(--sans); line-height: 1.6; -webkit-font-smoothing: antialiased; }
     a { color: inherit; text-decoration: none; }
     :focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; border-radius: 2px; }
     code, pre, .mono { font-family: var(--mono); }
     .wrap { max-width: var(--max); margin: 0 auto; padding: 0 var(--gut); }
 
-    .eyebrow { font-family: var(--mono); font-size: .69rem; text-transform: uppercase; letter-spacing: .145em; font-weight: 600; color: var(--ink-3); }
-    h1 { font-size: clamp(1.9rem, 3.8vw, 2.5rem); line-height: 1.1; letter-spacing: -.03em; font-weight: 800; max-width: 22ch; text-wrap: balance; }
+    .eyebrow { font-family: var(--mono); font-size: .69rem; text-transform: uppercase; letter-spacing: .145em; font-weight: 600; color: var(--ink-3); display: block; margin-bottom: 10px; }
+    h1 { font-size: clamp(1.9rem, 3.8vw, 2.5rem); line-height: 1.1; letter-spacing: -.03em; font-weight: 800; max-width: 24ch; text-wrap: balance; }
     h2 { font-size: clamp(1.25rem, 2.3vw, 1.55rem); line-height: 1.2; letter-spacing: -.02em; font-weight: 760; margin-bottom: 10px; }
-    h3 { font-size: 1rem; letter-spacing: -.008em; font-weight: 660; }
     .lede { color: var(--ink-2); font-size: 1.02rem; max-width: 66ch; }
     .note { color: var(--ink-2); font-size: .9rem; }
 
@@ -88,77 +83,58 @@
     .nav-cta { font-family: var(--mono); font-size: .76rem; font-weight: 600; background: var(--ink); color: var(--paper); padding: 8px 14px; border-radius: 6px; }
     @media (max-width: 560px) {
       .nav-in { gap: 12px; }
-      .nav-links { gap: 16px; overflow-x: auto; min-width: 0; flex: 1 1 auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+      .nav-links { gap: 16px; overflow-x: auto; min-width: 0; flex: 1 1 auto; scrollbar-width: none; }
       .nav-links::-webkit-scrollbar { display: none; }
       .brandmark { flex: none; }
     }
 
-    header.hero { padding: 52px 0 32px; border-bottom: 1px solid var(--rule); }
-    header.hero .eyebrow { margin-bottom: 12px; }
+    header.hero { padding: 52px 0 34px; border-bottom: 1px solid var(--rule); }
     header.hero h1 { margin-bottom: 12px; }
-
-    .tldr { background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; padding: 22px 24px; margin-top: 22px; }
+    .tldr { background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; padding: 20px 22px; margin-top: 22px; }
     .tldr-label { font-family: var(--mono); font-size: .68rem; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); margin-bottom: 8px; }
-    .tldr p { font-size: 1rem; color: var(--ink); }
-    .tldr p + p { margin-top: 8px; color: var(--ink-2); font-size: .92rem; }
+    .tldr p { font-size: .96rem; color: var(--ink); }
+    .tldr p + p { margin-top: 8px; color: var(--ink-2); font-size: .9rem; }
 
     section { padding: 44px 0; border-bottom: 1px solid var(--rule); }
     section:last-of-type { border-bottom: none; }
-    .section-head { max-width: 66ch; margin-bottom: 24px; }
+    .section-head { max-width: 70ch; margin-bottom: 22px; }
 
-    .bar-compare { display: flex; flex-direction: column; gap: 22px; }
-    .bar-row .bar-labels { display: flex; justify-content: space-between; font-size: .86rem; margin-bottom: 6px; }
-    .bar-row .bar-labels .who { font-weight: 600; }
-    .bar-row .bar-labels .val { font-family: var(--mono); font-weight: 600; }
-    .bar-track { height: 10px; border-radius: 6px; background: var(--rule-soft); overflow: hidden; }
-    .bar-fill { height: 100%; border-radius: 6px; }
-    .bar-fill.gitcortex { background: var(--good); }
-    .bar-fill.codegraph { background: var(--ink-3); }
-    .bar-metric-name { font-family: var(--mono); font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); margin-bottom: 10px; }
+    .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    @media (max-width: 760px) { .grid3 { grid-template-columns: 1fr; } }
+    .card { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 18px 20px; }
+    .card .lbl { font-family: var(--mono); font-size: .68rem; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); margin-bottom: 6px; }
+    .card .val { font-family: var(--mono); font-size: 1.5rem; font-weight: 700; color: var(--ink); }
+    .card .val.good { color: var(--good); }
+    .card .sub { font-size: .83rem; color: var(--ink-2); margin-top: 6px; }
 
-    .card-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
-    @media (max-width: 640px) { .card-grid { grid-template-columns: 1fr; } }
-    .info-card { background: var(--surface); border: 1px solid var(--rule); border-radius: 12px; padding: 20px 22px; }
-    .info-card .tool-name { font-weight: 700; font-size: 1.02rem; margin-bottom: 3px; }
-    .info-card .tool-tag { font-family: var(--mono); font-size: .72rem; color: var(--ink-3); margin-bottom: 14px; }
+    .chart-frame { margin: 20px 0; border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; background: var(--surface); }
+    .chart-frame img { display: block; width: 100%; height: auto; }
 
-    table { width: 100%; border-collapse: collapse; font-size: .86rem; }
-    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--rule-soft); }
-    th { font-family: var(--mono); font-size: .68rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); font-weight: 600; }
+    table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+    th, td { text-align: left; padding: 9px 11px; border-bottom: 1px solid var(--rule-soft); }
+    th { font-family: var(--mono); font-size: .67rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); font-weight: 600; }
     td.num, th.num { text-align: right; font-family: var(--mono); }
     tr:last-child td { border-bottom: none; }
+    tr.total-row td { background: var(--surface-2); font-weight: 700; border-top: 1px solid var(--rule); }
     .table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); }
-    .table-wrap table { min-width: 640px; }
+    .table-wrap table { min-width: 660px; }
+
     .pill { display: inline-block; font-family: var(--mono); font-size: .68rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
     .pill-good { background: var(--good-soft); color: var(--good); }
     .pill-warn { background: var(--warn-soft); color: var(--warn); }
     .pill-bad { background: var(--bad-soft); color: var(--bad); }
 
-    .callout { background: var(--surface-2); border: 1px solid var(--rule); border-radius: 10px; padding: 18px 20px; font-size: .89rem; color: var(--ink-2); }
+    .callout { background: var(--surface-2); border: 1px solid var(--rule); border-radius: 10px; padding: 18px 20px; font-size: .89rem; color: var(--ink-2); margin-top: 18px; }
     .callout strong { color: var(--ink); }
-    .callout code { background: var(--surface); padding: 1px 5px; border-radius: 4px; font-size: .86em; }
-    .callout.positive { border-left: 3px solid var(--good); }
+    .callout code { background: var(--surface); padding: 1px 5px; border-radius: 4px; font-size: .85em; color: var(--ink); }
     .callout.honest { border-left: 3px solid var(--warn); }
-    .callout p + p { margin-top: 10px; }
+    .callout ul { padding-left: 20px; margin-top: 8px; }
+    .callout li { margin-bottom: 8px; }
 
-    .example { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 18px 20px; margin-top: 14px; }
-    .example .example-label { font-family: var(--mono); font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); margin-bottom: 8px; }
-    .example p { color: var(--ink-2); font-size: .92rem; }
-    .example p + p { margin-top: 10px; }
-    .example pre { white-space: pre-wrap; font-size: .78rem; color: var(--ink-2); line-height: 1.6; background: var(--surface-2); padding: 12px 14px; border-radius: 8px; margin-top: 10px; overflow-x: auto; }
-
-    details.methodology-details { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 4px 20px; }
-    details.methodology-details summary { padding: 14px 0; cursor: pointer; font-weight: 660; font-size: .95rem; list-style: none; display: flex; align-items: center; justify-content: space-between; }
-    details.methodology-details summary::-webkit-details-marker { display: none; }
-    details.methodology-details summary::after { content: "+"; font-family: var(--mono); color: var(--ink-3); font-size: 1.2rem; }
-    details.methodology-details[open] summary::after { content: "–"; }
-    .methodology li { margin-bottom: 10px; color: var(--ink-2); font-size: .9rem; }
-    .methodology { padding: 4px 0 18px 20px; }
-
-    footer.foot { padding: 34px 0 46px; }
+    footer.foot { padding: 34px 0 46px; border-top: 1px solid var(--rule); }
     .foot-in { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
     .foot-id { display: flex; align-items: center; gap: 9px; font-family: var(--mono); font-size: .78rem; color: var(--ink-3); }
-    .foot-id svg { width: 18px; height: 18px; color: var(--ink-3); }
+    .foot-id svg { width: 18px; height: 18px; color: var(--brand); }
     .foot-links { display: flex; gap: 18px; flex-wrap: wrap; font-size: .82rem; color: var(--ink-2); }
     .foot-links a:hover { color: var(--ink); }
   </style>
@@ -179,9 +155,10 @@
       GitCortex
     </a>
     <ul class="nav-links">
-      <li><a href="./#how">How it works</a></li>
+      <li><a href="./#walkthrough">Workflow</a></li>
       <li><a href="benchmarks.html">Benchmarks</a></li>
-      <li><a href="compare.html">Compare</a></li>
+      <li><a href="compare.html" style="color:var(--ink); font-weight:600;">Compare</a></li>
+      <li><a href="releases.html">Releases</a></li>
       <li><a class="nav-cta" href="https://github.com/bharath03-a/GitCortex">GitHub</a></li>
     </ul>
   </div>
@@ -189,120 +166,136 @@
 
 <header class="hero">
   <div class="wrap">
-    <span class="eyebrow">Compare · measured across 3 real AI clients</span>
-    <h1>How GitCortex compares to CodeGraph.</h1>
+    <span class="eyebrow">Compare &middot; v0.8.0 vs CodeGraph 1.5.0</span>
+    <h1>How GitCortex v0.8.0 compares to CodeGraph 1.5.0.</h1>
     <p class="lede">
-      CodeGraph is another local code-knowledge-graph tool built for AI coding agents. Rather than
-      run it once through one client, we ran the same 10 questions against five real repos through
-      three independent AI clients — Claude Code, Codex, and Antigravity — with a fresh baseline
-      captured for each, so nothing stale got compared.
+      We indexed five large real-world repositories (<code>tokio</code>, <code>django</code>,
+      <code>next.js</code>, <code>moby</code>, <code>spring-boot</code>) with both GitCortex v0.8.0
+      and CodeGraph 1.5.0, then ran all 10 search &amp; caller tasks through Codex CLI
+      (<code>gpt-6.1-sol</code>, low reasoning). Dated historical 3-client v0.7.6 results are
+      preserved below.
     </p>
     <div class="tldr">
       <div class="tldr-label">In short</div>
-      <p>GitCortex answered with complete evidence accuracy (10/10) in every single run, across all three clients. CodeGraph scored 8/10 in each client — and missed the <em>same</em> call-tracing question independently, every time. Token efficiency was closer and client-dependent: CodeGraph was actually cheaper via two of the three clients.</p>
-      <p>We're posting the losses along with the wins — see <a href="#by-client">the per-client breakdown</a> for exactly where CodeGraph came out ahead.</p>
+      <p>GitCortex v0.8.0 achieved <strong>10/10 accuracy (1.000)</strong>, the <strong>lowest uncached tokens</strong> (125.2k, &minus;23.5% vs baseline), <strong>4.1&times; faster aggregate indexing</strong> (50.9 s vs 206.2 s), and <strong>52% smaller total disk</strong> (721 MiB vs 1,501 MiB) &mdash; including <strong>14.8&times; faster</strong> indexing on <code>next.js</code>.</p>
+      <p>CodeGraph 1.5.0 scored <strong>9/10 (0.900)</strong>, still missing <code>nextjs-callers-normalize-page-path</code> (0.00), used slightly fewer total (cached + uncached) tokens (626k vs 653k), and beat GitCortex cleanly on <code>moby</code> indexing speed and size. See <a href="#codegraph-wins" style="color:var(--brand); text-decoration:underline;">where CodeGraph wins</a>.</p>
     </div>
   </div>
 </header>
 
-<section id="by-client">
+<section id="v080-codex">
   <div class="wrap">
     <div class="section-head">
-      <h2>Accuracy and tokens, by client</h2>
-      <p class="note">10 tasks (search + callers, 5 repos: tokio, django, next.js, moby, spring-boot) run through each client independently, fresh baseline captured per client so nothing stale got reused across runs.</p>
+      <h2>v0.8.0 vs CodeGraph 1.5.0 (Codex CLI &middot; 10 big-repo tasks)</h2>
+      <p class="note">Fresh baseline, GitCortex v0.8.0, and CodeGraph 1.5.0 runs on identical pinned commits.</p>
     </div>
+
+    <div class="grid3">
+      <div class="card">
+        <div class="lbl">Baseline (grep / read)</div>
+        <div class="val">1.000 <span style="font-size:.9rem; font-weight:500;">(10/10)</span></div>
+        <div class="sub">785,264 total / 163,568 uncached tokens</div>
+      </div>
+      <div class="card" style="border-color: var(--brand);">
+        <div class="lbl" style="color:var(--brand);">GitCortex v0.8.0</div>
+        <div class="val good">1.000 <span style="font-size:.9rem; font-weight:500;">(10/10)</span></div>
+        <div class="sub">653,151 total (&minus;16.8%) / <strong>125,151 uncached (&minus;23.5%)</strong></div>
+      </div>
+      <div class="card">
+        <div class="lbl">CodeGraph 1.5.0</div>
+        <div class="val">0.900 <span style="font-size:.9rem; font-weight:500;">(9/10)</span></div>
+        <div class="sub"><strong>626,035 total (&minus;20.3%)</strong> / 129,651 uncached (&minus;20.7%)</div>
+      </div>
+    </div>
+
+    <div class="chart-frame">
+      <img src="assets/charts/chart-competitors.svg" alt="Competitor head-to-head evidence accuracy and uncached tokens" loading="lazy" width="920" height="410">
+    </div>
+
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Client</th><th>GitCortex evidence</th><th>CodeGraph evidence</th><th class="num">GitCortex tokens</th><th class="num">CodeGraph tokens</th><th>Token winner</th></tr>
+          <tr><th>Task</th><th>Type</th><th class="num">GCX Q</th><th class="num">CG Q</th><th class="num">Baseline unc</th><th class="num">GCX unc</th><th class="num">CG unc</th></tr>
         </thead>
         <tbody>
-          <tr><td>Claude Code</td><td><span class="pill pill-good">10/10</span></td><td><span class="pill pill-warn">8/10</span></td><td class="num">1,867,650</td><td class="num">2,091,507</td><td>GitCortex (−11%)</td></tr>
-          <tr><td>Codex</td><td><span class="pill pill-good">10/10</span></td><td><span class="pill pill-warn">8/10</span></td><td class="num">595,651</td><td class="num">507,114</td><td>CodeGraph (−15%)</td></tr>
-          <tr><td>Antigravity</td><td><span class="pill pill-good">10/10</span></td><td><span class="pill pill-warn">8/10</span></td><td class="num">256,092</td><td class="num">248,211</td><td>CodeGraph (−3%)</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="card-grid" style="margin-top: 28px;">
-      <div class="info-card">
-        <div class="tool-name">GitCortex</div>
-        <div class="tool-tag">Rust · tree-sitter · KuzuDB · MCP-native</div>
-        <p class="note">Perfect evidence accuracy in every client, every run — 30/30 tasks correct across the full sweep.</p>
-      </div>
-      <div class="info-card">
-        <div class="tool-name">CodeGraph</div>
-        <div class="tool-tag">Node.js · tree-sitter · CLI + MCP</div>
-        <p class="note">24/30 correct — missed the same <code>callers</code>-type task independently in all three clients (see below).</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section id="why">
-  <div class="wrap">
-    <div class="section-head">
-      <h2>The repeatable miss</h2>
-      <p class="note">One task — tracing callers of Next.js's <code>normalizePagePath</code> — is where CodeGraph lost evidence accuracy in all three independent client runs. Not a one-off across a single flaky run: three separate clients, three separate LLM providers, same result.</p>
-    </div>
-    <div class="example">
-      <div class="example-label">Consistent across Claude Code, Codex, and Antigravity</div>
-      <p>
-        A second task — tracing callers of Moby's <code>ContainerKill</code> — was also missed by CodeGraph
-        in 2 of the 3 client runs. Both are <code>callers</code>-style tasks (tracing who calls a symbol,
-        not just where it's defined) — CodeGraph's <code>search</code> results were correct on all 15 attempts
-        across the three clients; the gap is specifically in call-tracing.
-      </p>
-      <p>
-        This lines up with a known weakness documented in CodeGraph's own GitHub issue tracker: cross-file
-        edges can conflate same-named symbols, producing a confident-sounding but wrong call attribution
-        rather than declining to answer. GitCortex's syntactic, no-type-inference design deliberately leaves
-        ambiguous same-named calls unlinked instead of guessing — the tradeoff shows up directly in this result.
-      </p>
-    </div>
-  </div>
-</section>
-
-<section id="task-table">
-  <div class="wrap">
-    <div class="section-head">
-      <h2>Task-by-task detail (Codex client)</h2>
-      <p class="note">Showing the Codex-driven run in full — cleanest single-client trace, zero tooling artifacts. Claude Code and Antigravity runs are in the repo (see methodology below).</p>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Task</th><th>Type</th><th>GitCortex</th><th>CodeGraph</th><th class="num">GitCortex tok</th><th class="num">CodeGraph tok</th></tr>
-        </thead>
-        <tbody>
-          <tr><td>tokio · Notify</td><td>search</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">56,794</td><td class="num">39,368</td></tr>
-          <tr><td>tokio · notify_waiters</td><td>callers</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">57,329</td><td class="num">55,294</td></tr>
-          <tr><td>django · QuerySet</td><td>search</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">40,184</td><td class="num">38,156</td></tr>
-          <tr><td>django · filter</td><td>callers</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">55,931</td><td class="num">74,169</td></tr>
-          <tr><td>next.js · useRouter</td><td>search</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">67,537</td><td class="num">68,309</td></tr>
-          <tr><td>next.js · normalizePagePath</td><td>callers</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-bad">0.00</span></td><td class="num">118,275</td><td class="num">69,077</td></tr>
-          <tr><td>moby · ContainerCreate</td><td>search</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">42,438</td><td class="num">41,899</td></tr>
-          <tr><td>moby · ContainerKill</td><td>callers</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-bad">0.00</span></td><td class="num">61,043</td><td class="num">42,246</td></tr>
-          <tr><td>spring-boot · SpringApplication</td><td>search</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">56,108</td><td class="num">39,588</td></tr>
-          <tr><td>spring-boot · getMainApplicationClass</td><td>callers</td><td><span class="pill pill-good">1.00</span></td><td><span class="pill pill-good">1.00</span></td><td class="num">40,012</td><td class="num">39,008</td></tr>
+          <tr><td><code>tokio-search-notify</code></td><td>search</td><td class="num"><span class="pill pill-good">1.0</span></td><td class="num"><span class="pill pill-good">1.0</span></td><td class="num">13,405</td><td class="num">12,577</td><td class="num"><strong>9,549</strong></td></tr>
+          <tr><td><code>tokio-callers-notify-waiters</code></td><td>callers</td><td class="num"><span class="pill pill-good">1.0</span></td><td class="num"><span class="pill pill-good">1.0</span></td><td class="num">11,693</td><td class="num">13,934</td><td class="num"><strong>9,839</strong></td></tr>
+          <tr><td><code>django-search-queryset</code></td><td>search</td><td class="num"><span class="pill pill-good">1.0</span></td><td class="num"><span class="pill pill-good">1.0</span></td><td class="num">11,284</td><td class="num">7,936</td><td class="num"><strong>4,383</strong></td></tr>
+          <tr><td><code>django-callers-filter</code></td><td>callers</td><td class="num"><span class="pill pill-good">1.0</span></td><td class="num"><span class="pill pill-good">1.0</span></td><td class="num">25,624</td><td class="num"><strong>9,696</strong></td><td class="num">16,626</td></tr>
+          <tr><td><code>nextjs-search-use-router</code></td><td>search</td><td class="num"><span class="pill pill-good">1.0</span></td><td class="num"><span class="pill pill-good">1.0</span></td><td class="num">16,938</td><td class="num"><strong>15,691</strong></td><td class="num">28,837</td></tr>
+          <tr><td><code>nextjs-callers-normalize-page-path</code></td><td>callers</td><td class="num"><span class="pill pill-good">1.0</span></td><td class="num"><span class="pill pill-bad">0.0</span></td><td class="num">23,184</td><td class="num"><strong>20,536</strong></td><td class="num">34,932</td></tr>
+          <tr><td><code>moby-search-container-create</code></td><td>search</td><td class="num"><span class="pill pill-good">1.0</span></td><td class="num"><span class="pill pill-good">1.0</span></td><td class="num">17,100</td><td class="num">8,981</td><td class="num"><strong>8,624</strong></td></tr>
+          <tr><td><code>moby-callers-container-kill</code></td><td>callers</td><td class="num"><span class="pill pill-good">1.0</span></td><td class="num"><span class="pill pill-good">1.0</span></td><td class="num">16,784</td><td class="num">20,974</td><td class="num"><strong>9,112</strong></td></tr>
+          <tr><td><code>springboot-search-spring-application</code></td><td>search</td><td class="num"><span class="pill pill-good">1.0</span></td><td class="num"><span class="pill pill-good">1.0</span></td><td class="num">12,732</td><td class="num">7,312</td><td class="num"><strong>3,139</strong></td></tr>
+          <tr><td><code>springboot-callers-get-main-application-class</code></td><td>callers</td><td class="num"><span class="pill pill-good">1.0</span></td><td class="num"><span class="pill pill-good">1.0</span></td><td class="num">14,824</td><td class="num">7,514</td><td class="num"><strong>4,610</strong></td></tr>
+          <tr class="total-row"><td colspan="2">Total / Mean</td><td class="num">1.000</td><td class="num">0.900</td><td class="num">163,568</td><td class="num">125,151</td><td class="num">129,651</td></tr>
         </tbody>
       </table>
     </div>
   </div>
 </section>
 
-<section id="methodology">
+<section id="cold-index">
   <div class="wrap">
-    <details class="methodology-details">
-      <summary>Methodology and how this page was built</summary>
-      <ol class="methodology">
-        <li>Five real open-source repos, pinned to an exact commit: tokio, django, next.js, moby, spring-boot — chosen as large, real-world codebases rather than the smaller canonical set used for other benchmarks on this site.</li>
-        <li>10 tasks (5 search + 5 callers, one pair per repo), run independently through three real AI clients: Claude Code, Codex, and Antigravity — each with its own freshly-captured baseline (grep-only arm), so no client's numbers were reused or extrapolated from another's run.</li>
-        <li>GitCortex accessed via its MCP tool in Claude Code/Antigravity, and via its own CLI in Codex (matching how each client is actually used in practice). CodeGraph accessed via its CLI (<code>codegraph query</code> / <code>codegraph callers</code>) in all three, since it has no MCP integration wired into this harness.</li>
-        <li>Quality is the fraction of independently-verified required evidence (a specific repo-relative file path) present in the final answer — same grading rule applied identically to both tools.</li>
-        <li>A staleness gate compares each run's recorded <code>gcx_sha256</code>/suite hash against the binary and task suite in use, refusing to mix a stale baseline with a fresh comparison run.</li>
-        <li>Full harness, task definitions, and raw per-client logs: <a href="https://github.com/bharath03-a/GitCortex/tree/main/tools/agent-bench">tools/agent-bench/</a> in the repo, including <code>codegraph_compare.py</code> and <code>big-repos-v1.toml</code>.</li>
-      </ol>
-    </details>
+    <div class="section-head">
+      <h2>Cold full-index speed &amp; disk footprint (5 large repos)</h2>
+      <p class="note">Aggregate cold indexing across all 5 big repos is <strong>4.1&times; faster</strong> and <strong>52% smaller</strong> on GitCortex v0.8.0 &mdash; driven by huge wins on <code>next.js</code> (14.8&times; faster, 78% smaller) and <code>spring-boot</code> (3.1&times; faster, 73% smaller).</p>
+    </div>
+
+    <div class="chart-frame">
+      <img src="assets/charts/chart-cold-index.svg" alt="Cold full-index speed and disk footprint across 10 real repositories" loading="lazy" width="920" height="470">
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Repository</th><th class="num">GCX time</th><th class="num">CG time</th><th class="num">GCX disk</th><th class="num">CG disk</th><th class="num">GCX vs CG nodes</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>tokio</strong></td><td class="num"><strong>1.63 s</strong></td><td class="num">3.56 s</td><td class="num"><strong>28.7 MiB</strong></td><td class="num">41.3 MiB</td><td class="num">11.2k vs 13.6k</td></tr>
+          <tr><td><strong>django</strong></td><td class="num"><strong>5.28 s</strong></td><td class="num">8.15 s</td><td class="num"><strong>104.7 MiB</strong></td><td class="num">155.3 MiB</td><td class="num">48.5k vs 62.1k</td></tr>
+          <tr><td><strong>spring-boot</strong></td><td class="num"><strong>9.43 s</strong></td><td class="num">29.34 s</td><td class="num"><strong>152.3 MiB</strong></td><td class="num">559.5 MiB</td><td class="num">93.5k vs 184.3k</td></tr>
+          <tr><td><strong>nextjs</strong></td><td class="num"><strong>10.70 s</strong></td><td class="num">158.45 s</td><td class="num"><strong>137.4 MiB</strong></td><td class="num">635.1 MiB</td><td class="num">120.7k vs 168.6k</td></tr>
+          <tr><td><strong>moby</strong></td><td class="num">23.84 s</td><td class="num"><strong>6.68 s</strong></td><td class="num">297.7 MiB</td><td class="num"><strong>109.6 MiB</strong></td><td class="num">269.4k vs 36.8k</td></tr>
+          <tr class="total-row"><td>5-repo total</td><td class="num">50.88 s</td><td class="num">206.18 s</td><td class="num">720.8 MiB</td><td class="num">1,500.8 MiB</td><td class="num">543.4k vs 465.5k</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="codegraph-wins">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Where CodeGraph wins</h2>
+    </div>
+    <div class="callout honest">
+      <ul>
+        <li><strong><code>moby</code> indexing time &amp; disk:</strong> CodeGraph indexed <code>moby</code> in 6.68 s / 109.6 MiB vs GitCortex's 23.84 s / 297.7 MiB because CodeGraph skips vendored Go directories (36,837 nodes / 120,384 edges vs GitCortex's 269,433 nodes / 1,072,083 edges).</li>
+        <li><strong>Total (cached + uncached) tokens on Codex:</strong> CodeGraph used 626,035 total tokens vs GitCortex's 653,151 (&minus;4.2% total), and used fewer uncached tokens on 7 of the 10 individual tasks (GitCortex won aggregate uncached tokens 125.2k vs 129.7k due to large savings on <code>django-callers-filter</code> and both <code>next.js</code> tasks).</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="historical-clients">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Dated historical record: 3-client v0.7.6 sweep</h2>
+      <p class="note">Earlier pre-0.8.0 runs across Claude Code, Codex, and Antigravity (fresh baselines per client). Kept dated and separate from the v0.8.0 vs CodeGraph 1.5.0 run above.</p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Client (historical v0.7.6)</th><th>GitCortex evidence</th><th>CodeGraph evidence</th><th class="num">GitCortex tokens</th><th class="num">CodeGraph tokens</th><th>Token winner</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Claude Code</td><td><span class="pill pill-good">10/10</span></td><td><span class="pill pill-warn">8/10</span></td><td class="num">1,867,650</td><td class="num">2,091,507</td><td>GitCortex (&minus;11%)</td></tr>
+          <tr><td>Codex</td><td><span class="pill pill-good">10/10</span></td><td><span class="pill pill-warn">8/10</span></td><td class="num">595,651</td><td class="num">507,114</td><td>CodeGraph (&minus;15%)</td></tr>
+          <tr><td>Antigravity</td><td><span class="pill pill-good">10/10</span></td><td><span class="pill pill-warn">8/10</span></td><td class="num">256,092</td><td class="num">248,211</td><td>CodeGraph (&minus;3%)</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 </section>
 
@@ -316,15 +309,14 @@
         <circle cx="46" cy="32" r="5.5" fill="currentColor" opacity=".7"/>
         <circle cx="32" cy="50" r="5.5" fill="currentColor" opacity=".7"/>
       </svg>
-      GitCortex · MIT
+      GitCortex v0.8.0 &middot; MIT
     </div>
     <div class="foot-links">
       <a href="./">Home</a>
       <a href="benchmarks.html">Benchmarks</a>
+      <a href="compare.html">Compare</a>
       <a href="compare-graphify.html">vs Graphify</a>
       <a href="https://github.com/bharath03-a/GitCortex">GitHub</a>
-      <a href="https://github.com/colbymchenry/codegraph">CodeGraph (GitHub)</a>
-      <a href="https://github.com/bharath03-a/GitCortex/tree/main/tools/agent-bench">Benchmark harness</a>
     </div>
   </div>
 </footer>
