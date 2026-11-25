@@ -647,3 +647,89 @@ fn full_index_bulk_reconciliation_matches_incremental_cypher_path() {
     branch::wipe_repo_data(&bulk_repo_id).expect("clean bulk test data");
     branch::wipe_repo_data(&incr_repo_id).expect("clean incr test data");
 }
+
+#[test]
+fn incremental_file_edit_preserves_repeated_incoming_calls_and_import_verification() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let repo_id = branch::repo_id(dir.path());
+    let mut store = KuzuGraphStore::open(dir.path()).expect("open store");
+
+    let caller = make_node("run_all", NodeKind::Function, "src/caller.rs", 1);
+    let target = make_node("target_fn", NodeKind::Function, "src/target.rs", 1);
+    let util = make_node("util_fn", NodeKind::Function, "src/util.rs", 1);
+    let util_inferred = make_node("other_fn", NodeKind::Function, "src/util.rs", 10);
+
+    // Seed graph so `caller` imports and calls `target_fn` on two lines.
+    store
+        .apply_diff(
+            "main",
+            &GraphDiff {
+                added_nodes: vec![
+                    caller.clone(),
+                    target.clone(),
+                    util.clone(),
+                    util_inferred.clone(),
+                ],
+                deferred_imports: vec![(caller.id.clone(), "target_fn".to_owned())],
+                deferred_calls: vec![
+                    (caller.id.clone(), "target_fn".to_owned(), 10),
+                    (caller.id.clone(), "target_fn".to_owned(), 20),
+                ],
+                ..Default::default()
+            },
+        )
+        .expect("initial index");
+
+    // Incrementally replace `src/target.rs`: keep `target_fn`, add `helper_fn`
+    // which imports `util_fn` and calls both `util_fn` (import-verified) and
+    // `other_fn` (inferred).
+    let helper = make_node("helper_fn", NodeKind::Function, "src/target.rs", 25);
+    store
+        .apply_diff(
+            "main",
+            &GraphDiff {
+                removed_files: vec![PathBuf::from("src/target.rs")],
+                added_nodes: vec![target.clone(), helper.clone()],
+                deferred_imports: vec![(helper.id.clone(), "util_fn".to_owned())],
+                deferred_calls: vec![
+                    (helper.id.clone(), "util_fn".to_owned(), 28),
+                    (helper.id.clone(), "other_fn".to_owned(), 30),
+                ],
+                ..Default::default()
+            },
+        )
+        .expect("incremental update");
+
+    let edges = store
+        .list_edges_page("main", 0, 500)
+        .expect("list_edges_page");
+    let incoming_call_lines: Vec<(Option<u32>, String)> = edges
+        .iter()
+        .filter(|e| e.src == caller.id && e.dst == target.id && e.kind == EdgeKind::Calls)
+        .map(|e| (e.line, e.confidence.to_string()))
+        .collect();
+    assert_eq!(incoming_call_lines.len(), 2);
+    assert!(incoming_call_lines.contains(&(Some(10), "resolved".to_owned())));
+    assert!(incoming_call_lines.contains(&(Some(20), "resolved".to_owned())));
+
+    let util_call = edges
+        .iter()
+        .find(|e| e.src == helper.id && e.dst == util.id && e.kind == EdgeKind::Calls)
+        .expect("helper -> util_fn call edge");
+    assert_eq!(util_call.line, Some(28));
+    assert_eq!(
+        util_call.confidence.to_string(),
+        "resolved",
+        "edges={edges:?}"
+    );
+
+    let other_call = edges
+        .iter()
+        .find(|e| e.src == helper.id && e.dst == util_inferred.id && e.kind == EdgeKind::Calls)
+        .expect("helper -> other_fn call edge");
+    assert_eq!(other_call.line, Some(30));
+    assert_eq!(other_call.confidence.to_string(), "inferred");
+
+    drop(store);
+    branch::wipe_repo_data(&repo_id).expect("clean test data");
+}
