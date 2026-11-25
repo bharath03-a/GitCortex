@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from build_release_page import parse_changelog, render_body, render_inline
+from build_release_page import parse_changelog, render_body, render_inline, render_page
 
 CHANGELOG = """# Changelog
 
@@ -88,6 +88,23 @@ class RenderBodyTest(unittest.TestCase):
     def test_list_closes_before_heading(self) -> None:
         html = render_body("- one\n\n### Fixed\n- two\n")
         self.assertLess(html.index("</ul>"), html.index(">Fixed</h3>"))
+
+
+class RenderPageCollapsibleTest(unittest.TestCase):
+    def test_only_latest_release_open_by_default(self) -> None:
+        releases = parse_changelog(CHANGELOG)
+        page = render_page(releases)
+        self.assertIn('<details class="release" id="v0.6.3" open>', page)
+        self.assertIn('<details class="release" id="v0.1.0">', page)
+        self.assertNotIn('<details class="release" id="v0.1.0" open>', page)
+
+    def test_unified_nav_with_dynamic_github_stars(self) -> None:
+        releases = parse_changelog(CHANGELOG)
+        page = render_page(releases)
+        self.assertIn("data-gh-stars", page)
+        self.assertIn('href="benchmarks.html"', page)
+        self.assertIn('href="compare.html"', page)
+        self.assertIn('href="releases.html" aria-current="page"', page)
 
 
 if __name__ == "__main__":

@@ -1,62 +1,80 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 355" width="920" height="355" role="img" aria-label="48-Run Unforced Adoption &amp; Restraint Study (Codex)">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 400" width="960" height="400" role="img" aria-label="48-Run Unforced Adoption &amp; Restraint Study (Codex)">
+  <defs>
+    <clipPath id="clip-adoption">
+      <rect x="0.5" y="0.5" width="959" height="399" rx="12"/>
+    </clipPath>
+  </defs>
   <style>
-    .t-title { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 18px; font-weight: 700; fill: #14141A; letter-spacing: -0.02em; }
-    .t-sub { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 12px; fill: #55555F; }
-    .t-sec { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 600; fill: #8A8A94; letter-spacing: 0.1em; text-transform: uppercase; }
+    .t-title { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 17.5px; font-weight: 700; fill: #FCFCFA; letter-spacing: -0.02em; }
+    .t-sub { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 11.5px; fill: #B6B6C4; }
+    .t-pill { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; font-weight: 600; fill: #F09B7A; letter-spacing: 0.08em; }
+    .t-sec { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 700; fill: #4E4E58; letter-spacing: 0.07em; text-transform: uppercase; }
+    .t-sec-sub { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 11px; fill: #7C7C88; }
     .t-lbl { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 12px; font-weight: 600; fill: #14141A; }
-    .t-lbl2 { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 11px; fill: #55555F; }
-    .t-val { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 11px; font-weight: 600; fill: #14141A; }
-    .t-val-b { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 11px; font-weight: 700; fill: #C4633F; }
-    .t-val-g { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 11px; font-weight: 700; fill: #2F6F5E; }
-    .t-axis { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; fill: #8A8A94; }
-    .t-foot { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; fill: #8A8A94; }
-    .t-badge { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; font-weight: 600; }
+    .t-lbl2 { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; fill: #4E4E58; }
+    .t-val { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 600; fill: #14141A; }
+    .t-val-b { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 700; fill: #C4633F; }
+    .t-val-g { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 700; fill: #266B59; }
+    .t-axis { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; fill: #7C7C88; }
+    .t-foot { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 9.8px; fill: #7C7C88; }
+    .t-chip { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 9.5px; font-weight: 600; }
   </style>
-  <rect x="0.5" y="0.5" width="919" height="354" rx="10" fill="#FFFFFF" stroke="#E5E4DE" stroke-width="1"/>
-  <rect x="1" y="1" width="918" height="64" rx="9" fill="#FCFCFA"/>
-  <line x1="0" y1="65" x2="920" y2="65" stroke="#E5E4DE" stroke-width="1"/>
-  <text x="24" y="29" class="t-title">48-Run Unforced Adoption &amp; Restraint Study (Codex)</text>
-  <text x="24" y="49" class="t-sub">Does an agent voluntarily choose GitCortex on graph tasks and stay on grep for non-graph restraint tasks?</text>
-  <text x="24" y="94" class="t-sec">Overall Task Pass Rate (16 tasks)</text>
-  <text x="24" y="126" class="t-lbl">Baseline (grep only)</text>
-  <text x="300" y="126" text-anchor="end" class="t-val">14/16 (88%)</text>
-  <rect x="24" y="132" width="276" height="16" rx="3" fill="#F5F5F1"/>
-  <rect x="24" y="132" width="241.5" height="16" rx="3" fill="#9E9EA8"/>
-  <text x="24" y="178" class="t-lbl">GitCortex (bare CLI, no guide)</text>
-  <text x="300" y="178" text-anchor="end" class="t-val">15/16 (94%)</text>
-  <rect x="24" y="184" width="276" height="16" rx="3" fill="#F5F5F1"/>
-  <rect x="24" y="184" width="258.8" height="16" rx="3" fill="#2B5CA8"/>
-  <text x="24" y="230" class="t-lbl">GitCortex + Agent Guide</text>
-  <text x="300" y="230" text-anchor="end" class="t-val">16/16 (100%)</text>
-  <rect x="24" y="236" width="276" height="16" rx="3" fill="#F5F5F1"/>
-  <rect x="24" y="236" width="276.0" height="16" rx="3" fill="#C4633F"/>
-  <text x="320" y="94" class="t-sec">Unforced Graph Adoption (10 graph tasks)</text>
-  <text x="320" y="126" class="t-lbl">Baseline (grep only)</text>
-  <text x="596" y="126" text-anchor="end" class="t-val">0/10 (0%)</text>
-  <rect x="320" y="132" width="276" height="16" rx="3" fill="#F5F5F1"/>
-  <text x="320" y="178" class="t-lbl">GitCortex (bare CLI, no guide)</text>
-  <text x="596" y="178" text-anchor="end" class="t-val">4/10 (40%)</text>
-  <rect x="320" y="184" width="276" height="16" rx="3" fill="#F5F5F1"/>
-  <rect x="320" y="184" width="110.4" height="16" rx="3" fill="#2B5CA8"/>
-  <text x="320" y="230" class="t-lbl">GitCortex + Agent Guide</text>
-  <text x="596" y="230" text-anchor="end" class="t-val">10/10 (100%)</text>
-  <rect x="320" y="236" width="276" height="16" rx="3" fill="#F5F5F1"/>
-  <rect x="320" y="236" width="276.0" height="16" rx="3" fill="#C4633F"/>
-  <text x="616" y="94" class="t-sec">Restraint Accuracy (0 false graph calls / 6)</text>
-  <text x="616" y="126" class="t-lbl">Baseline (grep only)</text>
-  <text x="892" y="126" text-anchor="end" class="t-val">6/6 (0 false)</text>
-  <rect x="616" y="132" width="276" height="16" rx="3" fill="#F5F5F1"/>
-  <rect x="616" y="132" width="276.0" height="16" rx="3" fill="#9E9EA8"/>
-  <text x="616" y="178" class="t-lbl">GitCortex (bare CLI, no guide)</text>
-  <text x="892" y="178" text-anchor="end" class="t-val">6/6 (0 false)</text>
-  <rect x="616" y="184" width="276" height="16" rx="3" fill="#F5F5F1"/>
-  <rect x="616" y="184" width="276.0" height="16" rx="3" fill="#2B5CA8"/>
-  <text x="616" y="230" class="t-lbl">GitCortex + Agent Guide</text>
-  <text x="892" y="230" text-anchor="end" class="t-val">6/6 (0 false)</text>
-  <rect x="616" y="236" width="276" height="16" rx="3" fill="#F5F5F1"/>
-  <rect x="616" y="236" width="276.0" height="16" rx="3" fill="#C4633F"/>
-  <rect x="24" y="274" width="872" height="38" rx="6" fill="#FBEFE9" stroke="#E5E4DE"/>
-  <text x="38" y="297" class="t-lbl2">Honest trade-off: Unbudgeted `gcx-guide` raised pass rate from 14/16 → 16/16 (100% adoption, 0 false restraint calls) while using 321k vs 196k uncached tokens across 55 CLI calls.</text>
-  <line x1="24" y1="323" x2="896" y2="323" stroke="#EFEEE9" stroke-width="1"/>
-  <text x="24" y="342" class="t-foot">Source: 16 tasks (10 graph + 6 restraint) × 3 arms across ripgrep, requests, hono, cobra, gson · Codex gpt-6.1-sol</text>
+  <g clip-path="url(#clip-adoption)">
+    <rect x="0" y="0" width="960" height="400" fill="#FFFFFF"/>
+    <rect x="0" y="0" width="960" height="78" fill="#18181F"/>
+    <rect x="0" y="0" width="960" height="3.5" fill="#C4633F"/>
+    <line x1="0" y1="78" x2="960" y2="78" stroke="#2A2A36" stroke-width="1"/>
+    <text x="28" y="34" class="t-title">48-Run Unforced Adoption &amp; Restraint Study (Codex)</text>
+    <text x="28" y="56" class="t-sub">Does an agent voluntarily choose GitCortex on graph tasks and stay on grep for non-graph restraint tasks?</text>
+    <rect x="778.4" y="22" width="153.6" height="24" rx="12" fill="#262228" stroke="#5A382E" stroke-width="1"/>
+    <text x="855.2" y="37.5" text-anchor="middle" class="t-pill">ADOPTION · 48 RUNS</text>
+    <text x="28" y="110" class="t-sec">Overall Pass Rate (16 tasks)</text>
+    <text x="28" y="144" class="t-lbl">Baseline (grep only)</text>
+    <text x="312" y="144" text-anchor="end" class="t-val">14/16 (88%)</text>
+    <rect x="28" y="150" width="284" height="16" rx="3" fill="#F2F1EC"/>
+    <rect x="28" y="150" width="248.5" height="16" rx="3" fill="#8E8E9A"/>
+    <text x="28" y="196" class="t-lbl">GitCortex (bare CLI)</text>
+    <text x="312" y="196" text-anchor="end" class="t-val">15/16 (94%)</text>
+    <rect x="28" y="202" width="284" height="16" rx="3" fill="#F2F1EC"/>
+    <rect x="28" y="202" width="266.2" height="16" rx="3" fill="#2B5CA8"/>
+    <text x="28" y="248" class="t-lbl">GitCortex + Agent Guide</text>
+    <text x="312" y="248" text-anchor="end" class="t-val">16/16 (100%)</text>
+    <rect x="28" y="254" width="284" height="16" rx="3" fill="#F2F1EC"/>
+    <rect x="28" y="254" width="284.0" height="16" rx="3" fill="#C4633F"/>
+    <line x1="325" y1="96" x2="325" y2="278" stroke="#ECEAE2" stroke-width="1"/>
+    <text x="338" y="110" class="t-sec">Graph Adoption (10 graph)</text>
+    <text x="338" y="144" class="t-lbl">Baseline (grep only)</text>
+    <text x="622" y="144" text-anchor="end" class="t-val">0/10 (0%)</text>
+    <rect x="338" y="150" width="284" height="16" rx="3" fill="#F2F1EC"/>
+    <text x="338" y="196" class="t-lbl">GitCortex (bare CLI)</text>
+    <text x="622" y="196" text-anchor="end" class="t-val">4/10 (40%)</text>
+    <rect x="338" y="202" width="284" height="16" rx="3" fill="#F2F1EC"/>
+    <rect x="338" y="202" width="113.6" height="16" rx="3" fill="#2B5CA8"/>
+    <text x="338" y="248" class="t-lbl">GitCortex + Agent Guide</text>
+    <text x="622" y="248" text-anchor="end" class="t-val">10/10 (100%)</text>
+    <rect x="338" y="254" width="284" height="16" rx="3" fill="#F2F1EC"/>
+    <rect x="338" y="254" width="284.0" height="16" rx="3" fill="#C4633F"/>
+    <line x1="635" y1="96" x2="635" y2="278" stroke="#ECEAE2" stroke-width="1"/>
+    <text x="648" y="110" class="t-sec">Restraint Accuracy (6 non-graph)</text>
+    <text x="648" y="144" class="t-lbl">Baseline (grep only)</text>
+    <text x="932" y="144" text-anchor="end" class="t-val">6/6 (0 false)</text>
+    <rect x="648" y="150" width="284" height="16" rx="3" fill="#F2F1EC"/>
+    <rect x="648" y="150" width="284.0" height="16" rx="3" fill="#8E8E9A"/>
+    <text x="648" y="196" class="t-lbl">GitCortex (bare CLI)</text>
+    <text x="932" y="196" text-anchor="end" class="t-val">6/6 (0 false)</text>
+    <rect x="648" y="202" width="284" height="16" rx="3" fill="#F2F1EC"/>
+    <rect x="648" y="202" width="284.0" height="16" rx="3" fill="#2B5CA8"/>
+    <text x="648" y="248" class="t-lbl">GitCortex + Agent Guide</text>
+    <text x="932" y="248" text-anchor="end" class="t-val">6/6 (0 false)</text>
+    <rect x="648" y="254" width="284" height="16" rx="3" fill="#F2F1EC"/>
+    <rect x="648" y="254" width="284.0" height="16" rx="3" fill="#C4633F"/>
+    <rect x="28" y="294" width="904" height="54" rx="8" fill="#FBF0EB" stroke="#E8C5B5"/>
+    <rect x="28" y="294" width="4" height="54" rx="2" fill="#C4633F"/>
+    <text x="44" y="315" class="t-val-b">Honest trade-off (unbudgeted adoption):</text><text x="308" y="315" class="t-lbl2">gcx-guide raised pass rate from 14/16 → 16/16 with 100% graph adoption and 0 false restraint calls,</text>
+    <text x="44" y="335" class="t-lbl2">while spending 321k vs 196k uncached tokens across 55 CLI calls. Pair with --budget-tokens in production prompts.</text>
+    <rect x="0" y="366" width="960" height="34" fill="#FAF9F5"/>
+    <line x1="0" y1="366" x2="960" y2="366" stroke="#ECEAE2" stroke-width="1"/>
+    <text x="28" y="387" class="t-foot">16 tasks (10 graph + 6 restraint) × 3 arms across ripgrep, requests, hono, cobra, gson · Codex gpt-6.1-sol</text>
+  </g>
+  <rect x="0.5" y="0.5" width="959" height="399" rx="12" fill="none" stroke="#E2E0D8" stroke-width="1"/>
 </svg>
