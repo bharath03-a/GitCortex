@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 /// Stores compare this against the persisted version and re-index on mismatch.
 // v15 persists raw reference facts so candidate-set changes can re-resolve
 // relationships originating in unchanged files.
-pub const SCHEMA_VERSION: u32 = 15;
+// v16 replaces the stored `def_body` source text with a `def_hash` own-code
+// fingerprint.
+pub const SCHEMA_VERSION: u32 = 16;
 
 /// Every named, referenceable syntactic entity becomes a node of one of these kinds.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

@@ -50,7 +50,7 @@ pub fn ensure_branch(conn: &mut Connection, branch: &str) -> Result<()> {
             is_const       BOOL,   \
             generic_bounds STRING, \
             def_signature  STRING, \
-            def_body       STRING, \
+            def_hash       STRING, \
             def_doc        STRING, \
             def_start_byte INT64,  \
             def_end_byte   INT64,  \

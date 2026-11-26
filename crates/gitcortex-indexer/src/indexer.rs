@@ -15,7 +15,7 @@ use rayon::prelude::*;
 
 use crate::{
     differ::{Differ, FileChange},
-    parser::{parser_for_path, ParseResult},
+    parser::{assign_own_code_hashes, parser_for_path, ParseResult},
     tree_source::{DiskSource, SourceProvider, TreeSource},
 };
 
@@ -553,6 +553,7 @@ impl IncrementalIndexer {
         };
 
         let mut parsed = parser.parse(repo_relative_path, source)?;
+        assign_own_code_hashes(&mut parsed.nodes, source.as_bytes());
         stabilize_parse_result(&mut parsed);
         let ParseResult {
             nodes,

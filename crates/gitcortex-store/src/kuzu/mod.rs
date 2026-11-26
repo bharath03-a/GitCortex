@@ -31,7 +31,7 @@ use escape::{esc, esc_multiline};
 use queries::{row_to_node, rows_to_nodes, NODE_COLS, NODE_COL_COUNT, SYMBOL_RANK};
 use values::{i64_val, str_val};
 
-// Batch sizes for `UNWIND`-based inserts. Nodes carry a (≤16 KB) def_body, so
+// Batch sizes for `UNWIND`-based inserts. Nodes carry many text columns, so
 // their chunk is kept small to bound query-string size; edges are three ids
 // each, so they batch much larger.
 const NODE_INSERT_CHUNK: usize = 128;
@@ -235,7 +235,7 @@ fn node_struct_literal(node: &Node) -> String {
     let generic_bounds = esc(&m.generic_bounds.join("|"));
     let annotations = esc(&m.annotations.join("|"));
     let def_sig = esc_multiline(&m.definition.signature);
-    let def_body = esc_multiline(&m.definition.body);
+    let def_hash = esc(&m.definition.hash);
     let def_doc = esc_multiline(m.definition.doc_comment.as_deref().unwrap_or(""));
     let def_start_byte = m.definition.start_byte as i64;
     let def_end_byte = m.definition.end_byte as i64;
@@ -249,7 +249,7 @@ fn node_struct_literal(node: &Node) -> String {
          start_line:{sl}, end_line:{el}, loc:{loc}, visibility:'{vis}', \
          is_async:{ia}, is_unsafe:{iu}, is_static:{ist}, is_abstract:{iab}, is_final:{ifi}, \
          is_property:{ip}, is_generator:{ig}, is_const:{ic}, generic_bounds:'{generic_bounds}', \
-         def_signature:'{def_sig}', def_body:'{def_body}', def_doc:'{def_doc}', \
+         def_signature:'{def_sig}', def_hash:'{def_hash}', def_doc:'{def_doc}', \
          def_start_byte:{def_start_byte}, def_end_byte:{def_end_byte}, \
          complexity:{complexity}, annotations:'{annotations}'}}",
         ia = m.is_async,
@@ -1555,7 +1555,7 @@ impl GraphStore for KuzuGraphStore {
                     is_static: r.is_static, is_abstract: r.is_abstract, is_final: r.is_final, \
                     is_property: r.is_property, is_generator: r.is_generator, is_const: r.is_const, \
                     generic_bounds: r.generic_bounds, \
-                    def_signature: r.def_signature, def_body: r.def_body, def_doc: r.def_doc, \
+                    def_signature: r.def_signature, def_hash: r.def_hash, def_doc: r.def_doc, \
                     def_start_byte: r.def_start_byte, def_end_byte: r.def_end_byte, \
                     complexity: r.complexity, annotations: r.annotations\
                  }})"
@@ -1575,7 +1575,7 @@ impl GraphStore for KuzuGraphStore {
                      n.is_static = r.is_static, n.is_abstract = r.is_abstract, n.is_final = r.is_final, \
                      n.is_property = r.is_property, n.is_generator = r.is_generator, n.is_const = r.is_const, \
                      n.generic_bounds = r.generic_bounds, \
-                     n.def_signature = r.def_signature, n.def_body = r.def_body, n.def_doc = r.def_doc, \
+                     n.def_signature = r.def_signature, n.def_hash = r.def_hash, n.def_doc = r.def_doc, \
                      n.def_start_byte = r.def_start_byte, n.def_end_byte = r.def_end_byte, \
                      n.complexity = r.complexity, n.annotations = r.annotations"
             ))
@@ -2349,8 +2349,8 @@ impl GraphStore for KuzuGraphStore {
 
         let mut sites = Vec::new();
         for row in result.by_ref() {
-            // NODE_COLS is 25 columns; e.line is the 26th (index 25).
-            let line = row.get(25).and_then(|v| match v {
+            // e.line is appended right after the NODE_COLS columns.
+            let line = row.get(NODE_COL_COUNT).and_then(|v| match v {
                 kuzu::Value::Int64(n) if *n >= 0 => Some(*n as u32),
                 _ => None,
             });

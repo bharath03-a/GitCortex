@@ -23,7 +23,7 @@ pub(super) const NODE_COL_COUNT: usize = 25;
 pub(super) const NODE_COLS: &str = "n.id, n.kind, n.name, n.qualified_name, n.file, \
      n.start_line, n.end_line, n.loc, n.visibility, n.is_async, n.is_unsafe, \
      n.is_static, n.is_abstract, n.is_final, n.is_property, n.is_generator, n.is_const, \
-     n.generic_bounds, n.def_signature, n.def_body, n.def_doc, n.def_start_byte, n.def_end_byte, \
+     n.generic_bounds, n.def_signature, n.def_hash, n.def_doc, n.def_start_byte, n.def_end_byte, \
      n.complexity, n.annotations";
 
 /// Cypher `ORDER BY` fragment that ranks a node by "how likely the user meant
@@ -84,7 +84,7 @@ pub(super) fn row_to_node(row: Vec<Value>) -> Result<Node> {
         generic_bounds_str.split('|').map(String::from).collect()
     };
     let def_signature = str_val(&row[18])?;
-    let def_body = str_val(&row[19])?;
+    let def_hash = str_val(&row[19])?;
     let def_doc_raw = str_val(&row[20])?;
     let def_doc = if def_doc_raw.is_empty() {
         None
@@ -129,7 +129,7 @@ pub(super) fn row_to_node(row: Vec<Value>) -> Result<Node> {
             annotations,
             definition: DefinitionText {
                 signature: def_signature,
-                body: def_body,
+                hash: def_hash,
                 doc_comment: def_doc,
                 start_byte: def_start_byte,
                 end_byte: def_end_byte,
