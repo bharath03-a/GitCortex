@@ -733,3 +733,107 @@ fn incremental_file_edit_preserves_repeated_incoming_calls_and_import_verificati
     drop(store);
     branch::wipe_repo_data(&repo_id).expect("clean test data");
 }
+
+fn with_hash(mut node: Node, hash: &str) -> Node {
+    node.metadata.definition.hash = hash.to_owned();
+    node
+}
+
+fn stored_hash(store: &KuzuGraphStore, branch: &str, name: &str) -> String {
+    let found = store
+        .lookup_symbol(branch, name, false)
+        .expect("lookup_symbol");
+    assert_eq!(found.len(), 1, "{name} on {branch}");
+    found[0].metadata.definition.hash.clone()
+}
+
+#[test]
+fn branch_diff_flags_same_span_body_edit_via_hash() {
+    let (mut store, _dir) = tmp_store();
+
+    // Same id, span and byte range on both branches; only the hash differs,
+    // exactly like a same-length body edit (`41` -> `42`).
+    let edited = with_hash(
+        make_node("edited", NodeKind::Function, "src/lib.rs", 1),
+        "aaaaaaaaaaaaaaaa",
+    );
+    let untouched = with_hash(
+        make_node("untouched", NodeKind::Function, "src/lib.rs", 10),
+        "cccccccccccccccc",
+    );
+    store
+        .apply_diff(
+            "main",
+            &GraphDiff {
+                added_nodes: vec![edited.clone(), untouched.clone()],
+                ..Default::default()
+            },
+        )
+        .expect("apply main");
+    store
+        .apply_diff(
+            "feat/edit",
+            &GraphDiff {
+                added_nodes: vec![with_hash(edited.clone(), "bbbbbbbbbbbbbbbb"), untouched],
+                ..Default::default()
+            },
+        )
+        .expect("apply feat");
+
+    let diff = store.branch_diff("main", "feat/edit").expect("branch_diff");
+    let modified: Vec<&str> = diff
+        .modified_nodes
+        .iter()
+        .map(|n| n.name.as_str())
+        .collect();
+    assert_eq!(modified, vec!["edited"]);
+    assert!(diff.added_nodes.is_empty());
+    assert!(diff.removed_node_ids.is_empty());
+}
+
+#[test]
+fn definition_hash_survives_every_node_write_path() {
+    let (mut store, _dir) = tmp_store();
+    let node = make_node("greet", NodeKind::Function, "src/lib.rs", 1);
+
+    // 1. Fresh empty branch: bulk CSV `COPY` path.
+    store
+        .apply_diff(
+            "main",
+            &GraphDiff {
+                added_nodes: vec![with_hash(node.clone(), "1111111111111111")],
+                ..Default::default()
+            },
+        )
+        .expect("bulk apply");
+    assert_eq!(stored_hash(&store, "main", "greet"), "1111111111111111");
+
+    // 2. File re-indexed with the same stable id: in-place `UNWIND ... SET`.
+    store
+        .apply_diff(
+            "main",
+            &GraphDiff {
+                removed_files: vec![PathBuf::from("src/lib.rs")],
+                added_nodes: vec![with_hash(node, "2222222222222222")],
+                ..Default::default()
+            },
+        )
+        .expect("in-place update");
+    assert_eq!(stored_hash(&store, "main", "greet"), "2222222222222222");
+
+    // 3. New node on a non-empty branch: `UNWIND ... CREATE`.
+    store
+        .apply_diff(
+            "main",
+            &GraphDiff {
+                added_nodes: vec![with_hash(
+                    make_node("wave", NodeKind::Function, "src/other.rs", 1),
+                    "3333333333333333",
+                )],
+                ..Default::default()
+            },
+        )
+        .expect("incremental create");
+    assert_eq!(stored_hash(&store, "main", "wave"), "3333333333333333");
+    assert_eq!(stored_hash(&store, "main", "greet"), "2222222222222222");
+}

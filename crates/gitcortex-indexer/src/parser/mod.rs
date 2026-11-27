@@ -16,7 +16,6 @@ pub mod typescript;
 
 pub(crate) use complexity::cyclomatic_complexity;
 
-pub(crate) use deftext::assign_own_code_hashes;
 pub(crate) use deftext::capture as capture_definition;
 
 /// Result of parsing a single source file.

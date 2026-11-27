@@ -1,30 +1,23 @@
-//! Language-agnostic capture of a node's source text — signature, own-code
+//! Language-agnostic capture of a node's source text — signature, content
 //! hash, preceding doc-comment, and byte range. Filled during pass 1 from the
 //! tree-sitter node's byte range; no extra parsing work.
 //!
 //! Powers wiki rendering, tour narration, and downstream search.
 
-use std::{cmp::Reverse, collections::HashMap};
-
-use gitcortex_core::graph::{DefinitionText, Node};
+use gitcortex_core::graph::DefinitionText;
 use tree_sitter::Node as TsNode;
 
 /// Maximum bytes of the node's source scanned for the signature and inline
 /// docstring. Bounds the scan on huge single-line nodes (minified code); the
-/// own-code hash always covers the full source.
+/// content hash always covers the full source range.
 const MAX_BODY_BYTES: usize = 2 * 1024;
-
-/// Separator hashed in place of each cut-out nested definition. Never valid
-/// UTF-8, so it cannot collide with source text. Adding or removing a nested
-/// definition therefore changes the parent's hash; editing one does not.
-const NESTED_MARKER: &[u8] = &[0xFF];
 
 /// Capture `DefinitionText` for `ts_node` from `source`.
 ///
 /// - `signature`: the slice up to the first `{`, `:` (Python), or end-of-line
 ///   if no body delimiter is found. Trimmed.
-/// - `hash`: left empty here; filled per file by [`assign_own_code_hashes`],
-///   which needs every node's range to cut out nested definitions.
+/// - `hash`: [`content_hash`] of the node's full source range, so node
+///   comparison (branch diff, blast radius) sees edits anywhere in the body.
 /// - `doc_comment`: contiguous comment nodes immediately preceding `ts_node`
 ///   at the same parent level. Returns `None` when no such comments exist.
 /// - `start_byte` / `end_byte`: byte offsets into the file.
@@ -44,76 +37,21 @@ pub(crate) fn capture(source: &[u8], ts_node: TsNode<'_>) -> DefinitionText {
 
     DefinitionText {
         signature,
-        hash: String::new(),
+        hash: content_hash(raw),
         doc_comment,
         start_byte: start as u32,
         end_byte: end as u32,
     }
 }
 
-/// Fill `definition.hash` for every node of one parsed file.
-///
-/// The hash covers the node's *own* code: its source range with the ranges of
-/// directly nested definitions replaced by [`NESTED_MARKER`]. Editing a method
-/// changes the method's hash but not its class's, so node comparison (branch
-/// diff, blast radius) flags only what was actually edited. Nodes without a
-/// captured range (`start_byte == end_byte`) keep an empty hash.
-pub(crate) fn assign_own_code_hashes(nodes: &mut [Node], source: &[u8]) {
-    // Distinct captured ranges, parents before children: earlier start first,
-    // wider range first on ties. Nodes sharing a range share a hash.
-    let mut ranges: Vec<(u32, u32)> = nodes
-        .iter()
-        .map(|n| {
-            (
-                n.metadata.definition.start_byte,
-                n.metadata.definition.end_byte,
-            )
-        })
-        .filter(|(start, end)| end > start)
-        .collect();
-    ranges.sort_by_key(|&(start, end)| (start, Reverse(end)));
-    ranges.dedup();
-
-    // Direct children of each range, found with a containment stack.
-    let mut children: Vec<Vec<(u32, u32)>> = vec![Vec::new(); ranges.len()];
-    let mut stack: Vec<usize> = Vec::new();
-    for (idx, &(start, end)) in ranges.iter().enumerate() {
-        while let Some(&top) = stack.last() {
-            let (top_start, top_end) = ranges[top];
-            if start >= top_start && end <= top_end {
-                break;
-            }
-            stack.pop();
-        }
-        if let Some(&parent) = stack.last() {
-            children[parent].push((start, end));
-        }
-        stack.push(idx);
+/// First 16 hex chars of blake3 over `raw`; empty for an empty range, matching
+/// the "not captured" default. 64 bits is plenty: hashes are only compared
+/// pairwise for the same node id.
+fn content_hash(raw: &[u8]) -> String {
+    if raw.is_empty() {
+        return String::new();
     }
-
-    let slice = |from: u32, to: u32| source.get(from as usize..to as usize).unwrap_or(&[]);
-    let hashes: HashMap<(u32, u32), String> = ranges
-        .iter()
-        .zip(&children)
-        .map(|(&(start, end), kids)| {
-            let mut hasher = blake3::Hasher::new();
-            let mut cursor = start;
-            for &(kid_start, kid_end) in kids {
-                hasher.update(slice(cursor, kid_start.max(cursor)));
-                hasher.update(NESTED_MARKER);
-                cursor = cursor.max(kid_end);
-            }
-            hasher.update(slice(cursor, end));
-            ((start, end), hasher.finalize().to_hex()[..16].to_owned())
-        })
-        .collect();
-
-    for node in nodes {
-        let def = &mut node.metadata.definition;
-        if let Some(hash) = hashes.get(&(def.start_byte, def.end_byte)) {
-            def.hash = hash.clone();
-        }
-    }
+    blake3::hash(raw).to_hex()[..16].to_owned()
 }
 
 /// Signature = lines from the start up to (and including) the line that opens
@@ -313,22 +251,20 @@ mod tests {
         let def = capture(src.as_bytes(), func);
 
         assert_eq!(def.signature, "fn foo(a: u32) -> u32");
-        assert!(def.hash.is_empty(), "hash is filled per file, not here");
+        assert_eq!(def.hash.len(), 16);
         assert_eq!(
             &src[def.start_byte as usize..def.end_byte as usize],
             "fn foo(a: u32) -> u32 {\n    a + 1\n}"
         );
     }
 
-    /// Parse Python `src` and return `name -> own-code hash`.
-    fn python_hashes(src: &str) -> HashMap<String, String> {
+    /// Parse Python `src` and return `name -> content hash`.
+    fn python_hashes(src: &str) -> std::collections::HashMap<String, String> {
         use crate::parser::LanguageParser;
-        let parsed = crate::parser::python::PythonParser::new()
+        crate::parser::python::PythonParser::new()
             .parse(std::path::Path::new("m.py"), src)
-            .expect("parse");
-        let mut nodes = parsed.nodes;
-        assign_own_code_hashes(&mut nodes, src.as_bytes());
-        nodes
+            .expect("parse")
+            .nodes
             .into_iter()
             .filter(|n| !n.metadata.definition.hash.is_empty())
             .map(|n| (n.name, n.metadata.definition.hash))
@@ -338,26 +274,21 @@ mod tests {
     const CLASS_SRC: &str = "class User:\n    def save(self):\n        return 41\n\n    def load(self):\n        return 1\n";
 
     #[test]
-    fn own_hash_is_deterministic() {
+    fn hash_is_deterministic() {
         let hashes = python_hashes(CLASS_SRC);
         assert_eq!(hashes["save"].len(), 16);
         assert_eq!(hashes, python_hashes(CLASS_SRC));
     }
 
     #[test]
-    fn editing_a_method_changes_only_that_method() {
+    fn same_length_body_edit_changes_hash() {
+        // `41` -> `42` keeps every span and byte offset identical, so the
+        // hash is the only field that can tell the two versions apart.
         let before = python_hashes(CLASS_SRC);
         let after = python_hashes(&CLASS_SRC.replace("41", "42"));
         assert_ne!(before["save"], after["save"]);
+        assert_ne!(before["User"], after["User"], "full range includes methods");
         assert_eq!(before["load"], after["load"]);
-        assert_eq!(before["User"], after["User"], "class own code unchanged");
-    }
-
-    #[test]
-    fn adding_a_method_changes_the_class() {
-        let before = python_hashes(CLASS_SRC);
-        let after = python_hashes(&format!("{CLASS_SRC}\n    def drop(self):\n        pass\n"));
-        assert_ne!(before["User"], after["User"]);
     }
 
     #[test]

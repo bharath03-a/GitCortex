@@ -73,7 +73,7 @@ pub struct LldLabels {
     pub complexity: Option<u32>,
 }
 
-/// Source-text capture for a node — signature, own-code hash, preceding
+/// Source-text capture for a node — signature, content hash, preceding
 /// doc-comment, and byte range into the original file. Filled during pass 1
 /// from the tree-sitter node's byte range; cheap (no extra parsing).
 ///
@@ -84,11 +84,10 @@ pub struct DefinitionText {
     /// First line(s) of the definition up to (and excluding) the body block.
     /// E.g. `pub fn apply_diff(&mut self, branch: &str, diff: &GraphDiff) -> Result<()>`.
     pub signature: String,
-    /// Fingerprint of the node's own source (16 hex chars of blake3), with
-    /// nested definitions cut out, so editing a method changes the method's
-    /// hash but not its class's. Lets node comparison detect body edits
-    /// without storing source; slice the file with `start_byte`/`end_byte`
-    /// when the text is needed. Empty when not captured.
+    /// Fingerprint of the node's full source range (16 hex chars of blake3).
+    /// Lets node comparison detect body edits without storing source; slice
+    /// the file with `start_byte`/`end_byte` when the text is needed. Empty
+    /// when not captured.
     pub hash: String,
     /// Doc-comment immediately preceding the node (`///`, `//!`, `/** */`, `"""`).
     /// `None` when absent.
