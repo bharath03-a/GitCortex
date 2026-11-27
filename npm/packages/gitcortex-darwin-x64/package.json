@@ -4,7 +4,7 @@
   "description": "gcx binary for macOS x86_64 (Intel)",
   "repository": {
     "type": "git",
-    "url": "https://github.com/bharath03-a/GitCortex.git"
+    "url": "git+https://github.com/bharath03-a/GitCortex.git"
   },
   "license": "MIT",
   "os": [
@@ -15,5 +15,8 @@
   ],
   "bin": {
     "gcx": "bin/gcx"
-  }
+  },
+  "files": [
+    "bin/gcx"
+  ]
 }

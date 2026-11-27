@@ -83,6 +83,12 @@ jobs:
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
 
+      - name: Verify binary is packed
+        working-directory: npm/packages/${{ matrix.pkg }}
+        run: |
+          test -x "bin/${{ matrix.binary_name }}"
+          npm pack --dry-run 2>&1 | grep -F "bin/${{ matrix.binary_name }}"
+
       - name: Publish platform package
         working-directory: npm/packages/${{ matrix.pkg }}
         env:
