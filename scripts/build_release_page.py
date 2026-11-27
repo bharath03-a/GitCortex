@@ -14,6 +14,7 @@ import html
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from string import Template
 
 REPO = "https://github.com/bharath03-a/GitCortex"
 REPO_API = "https://api.github.com/repos/bharath03-a/GitCortex"
@@ -185,7 +186,7 @@ CHEVRON = (
     "</svg>"
 )
 
-PAGE = """<!DOCTYPE html>
+PAGE = Template("""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -200,27 +201,27 @@ PAGE = """<!DOCTYPE html>
 <link rel="apple-touch-icon" href="favicon.svg">
 <link rel="canonical" href="https://bharath03-a.github.io/GitCortex/releases.html">
 <style>
-@font-face {{
+@font-face {
   font-family: "Space Grotesk"; font-style: normal; font-weight: 400; font-display: swap;
   src: url("assets/fonts/space-grotesk-latin-400-normal.woff2") format("woff2");
-}}
-@font-face {{
+}
+@font-face {
   font-family: "Space Grotesk"; font-style: normal; font-weight: 500; font-display: swap;
   src: url("assets/fonts/space-grotesk-latin-500-normal.woff2") format("woff2");
-}}
-@font-face {{
+}
+@font-face {
   font-family: "Space Grotesk"; font-style: normal; font-weight: 600 800; font-display: swap;
   src: url("assets/fonts/space-grotesk-latin-600-normal.woff2") format("woff2");
-}}
-@font-face {{
+}
+@font-face {
   font-family: "IBM Plex Mono"; font-style: normal; font-weight: 400; font-display: swap;
   src: url("assets/fonts/ibm-plex-mono-latin-400-normal.woff2") format("woff2");
-}}
-@font-face {{
+}
+@font-face {
   font-family: "IBM Plex Mono"; font-style: normal; font-weight: 500 600; font-display: swap;
   src: url("assets/fonts/ibm-plex-mono-latin-600-normal.woff2") format("woff2");
-}}
-:root {{
+}
+:root {
   --paper:#FCFCFA; --surface:#FFFFFF; --surface-2:#F5F5F1;
   --rule:#E5E4DE; --rule-soft:#EFEEE9;
   --ink:#14141A; --ink-2:#55555F; --ink-3:#8A8A94;
@@ -230,167 +231,167 @@ PAGE = """<!DOCTYPE html>
   --sans: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --gut:28px; --max:1120px;
   color-scheme: light;
-}}
-*,*::before,*::after {{ box-sizing:border-box; margin:0; padding:0; }}
-html {{ font-size:16px; scroll-behavior:smooth; }}
-@media (prefers-reduced-motion: reduce) {{ html {{ scroll-behavior:auto; }} }}
-body {{
+}
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html { font-size:16px; scroll-behavior:smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior:auto; } }
+body {
   background:var(--paper); color:var(--ink); font-family:var(--sans);
   line-height:1.6; -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
-}}
-a {{ color:inherit; text-decoration:none; }}
-:focus-visible {{ outline:2px solid var(--brand); outline-offset:3px; border-radius:2px; }}
-code {{
+}
+a { color:inherit; text-decoration:none; }
+:focus-visible { outline:2px solid var(--brand); outline-offset:3px; border-radius:2px; }
+code {
   font-family:var(--mono); font-size:.86em; color:var(--ink);
   background:var(--surface-2); border:1px solid var(--rule-soft);
   border-radius:4px; padding:.08em .36em;
-}}
-.wrap {{ max-width:var(--max); margin:0 auto; padding:0 var(--gut); }}
+}
+.wrap { max-width:var(--max); margin:0 auto; padding:0 var(--gut); }
 
-.nav {{
+.nav {
   position:sticky; top:0; z-index:50;
   background:color-mix(in srgb, var(--paper) 90%, transparent);
   backdrop-filter:blur(10px); border-bottom:1px solid var(--rule);
-}}
-.nav-in {{
+}
+.nav-in {
   max-width:var(--max); margin:0 auto; padding:0 var(--gut); height:60px;
   display:flex; align-items:center; justify-content:space-between; gap:20px;
-}}
-.brandmark {{ display:flex; align-items:center; gap:9px; font-weight:700; letter-spacing:-.02em; }}
-.brandmark svg {{ display:block; color:var(--brand); width:22px; height:22px; }}
-.nav-links {{ display:flex; align-items:center; gap:22px; list-style:none; }}
-.nav-links a {{ font-size:.875rem; color:var(--ink-2); transition:color .14s ease; }}
-.nav-links a:hover {{ color:var(--ink); }}
-.nav-links a[aria-current="page"] {{ color:var(--ink); font-weight:600; }}
-.gh-star {{
+}
+.brandmark { display:flex; align-items:center; gap:9px; font-weight:700; letter-spacing:-.02em; }
+.brandmark svg { display:block; color:var(--brand); width:22px; height:22px; }
+.nav-links { display:flex; align-items:center; gap:22px; list-style:none; }
+.nav-links a { font-size:.875rem; color:var(--ink-2); transition:color .14s ease; }
+.nav-links a:hover { color:var(--ink); }
+.nav-links a[aria-current="page"] { color:var(--ink); font-weight:600; }
+.gh-star {
   display:inline-flex; align-items:center; gap:7px;
   font-family:var(--mono); font-size:.76rem; font-weight:600;
   color:var(--ink) !important; background:var(--surface);
   border:1px solid var(--rule); border-radius:999px;
   padding:5px 11px; line-height:1;
   transition:border-color .14s ease, color .14s ease;
-}}
-.gh-star:hover {{ border-color:var(--brand); color:var(--brand) !important; }}
-.gh-star-count {{
+}
+.gh-star:hover { border-color:var(--brand); color:var(--brand) !important; }
+.gh-star-count {
   display:inline-flex; align-items:center; gap:3px;
   padding-left:7px; border-left:1px solid var(--rule);
   color:var(--ink-2); font-variant-numeric:tabular-nums;
-}}
-.gh-star-count:empty {{ display:none; }}
-@media (max-width:760px) {{ .nav-hide {{ display:none; }} .nav-links {{ gap:14px; }} }}
+}
+.gh-star-count:empty { display:none; }
+@media (max-width:760px) { .nav-hide { display:none; } .nav-links { gap:14px; } }
 
-.masthead {{ padding:68px 0 28px; }}
-.eyebrow {{
+.masthead { padding:68px 0 28px; }
+.eyebrow {
   font-family:var(--mono); font-size:.69rem; text-transform:uppercase;
   letter-spacing:.145em; font-weight:600; color:var(--ink-3);
   display:block; margin-bottom:14px;
-}}
-.masthead h1 {{
+}
+.masthead h1 {
   font-size:clamp(2.1rem,4.6vw,3rem); line-height:1.05;
   letter-spacing:-.033em; font-weight:800;
-}}
-.masthead p {{ color:var(--ink-2); margin-top:14px; max-width:64ch; }}
-.masthead a {{ color:var(--brand); text-decoration:underline; text-underline-offset:2px; }}
+}
+.masthead p { color:var(--ink-2); margin-top:14px; max-width:64ch; }
+.masthead a { color:var(--brand); text-decoration:underline; text-underline-offset:2px; }
 
-.controls-bar {{
+.controls-bar {
   display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between;
   gap:12px; padding:22px 0 24px; border-bottom:1px solid var(--rule);
-}}
-.index {{ display:flex; flex-wrap:wrap; gap:7px; }}
-.index a {{
+}
+.index { display:flex; flex-wrap:wrap; gap:7px; }
+.index a {
   font-family:var(--mono); font-size:.74rem; font-weight:600; color:var(--ink-2);
   border:1px solid var(--rule); border-radius:999px; padding:4px 11px; background:var(--surface);
   transition:border-color .14s ease, color .14s ease;
-}}
-.index a:hover {{ color:var(--brand); border-color:var(--brand); }}
-.toggle-all {{
+}
+.index a:hover { color:var(--brand); border-color:var(--brand); }
+.toggle-all {
   font-family:var(--mono); font-size:.74rem; font-weight:600; color:var(--ink-2);
   background:var(--surface); border:1px solid var(--rule); border-radius:8px;
   padding:6px 12px; cursor:pointer; white-space:nowrap;
-}}
-.toggle-all:hover {{ color:var(--ink); border-color:var(--brand); }}
+}
+.toggle-all:hover { color:var(--ink); border-color:var(--brand); }
 
-.release-list {{ display:flex; flex-direction:column; gap:14px; padding:26px 0 42px; }}
-details.release {{
+.release-list { display:flex; flex-direction:column; gap:14px; padding:26px 0 42px; }
+details.release {
   background:var(--surface); border:1px solid var(--rule); border-radius:12px;
   scroll-margin-top:80px; overflow:hidden;
   transition:border-color .14s ease;
-}}
-details.release[open] {{ border-color:color-mix(in srgb, var(--brand) 38%, var(--rule)); }}
-details.release summary.release-head {{
+}
+details.release[open] { border-color:color-mix(in srgb, var(--brand) 38%, var(--rule)); }
+details.release summary.release-head {
   list-style:none; cursor:pointer; padding:18px 22px;
   display:flex; align-items:center; justify-content:space-between; gap:16px;
   user-select:none; background:var(--surface);
-}}
-details.release summary.release-head::-webkit-details-marker {{ display:none; }}
-details.release[open] summary.release-head {{
+}
+details.release summary.release-head::-webkit-details-marker { display:none; }
+details.release[open] summary.release-head {
   background:var(--paper); border-bottom:1px solid var(--rule-soft);
-}}
-.release-meta {{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }}
-.release-meta h2 {{
+}
+.release-meta { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.release-meta h2 {
   font-size:1.3rem; font-weight:780; letter-spacing:-.022em; line-height:1.1;
-}}
-.release-date {{ font-family:var(--mono); font-size:.78rem; color:var(--ink-3); }}
-.release-summary {{ font-family:var(--mono); font-size:.72rem; color:var(--ink-3); }}
-.badge {{
+}
+.release-date { font-family:var(--mono); font-size:.78rem; color:var(--ink-3); }
+.release-summary { font-family:var(--mono); font-size:.72rem; color:var(--ink-3); }
+.badge {
   font-family:var(--mono); font-size:.64rem; font-weight:700; text-transform:uppercase;
   letter-spacing:.1em; color:var(--brand); background:var(--brand-soft);
   border:1px solid color-mix(in srgb, var(--brand) 28%, transparent);
   border-radius:999px; padding:2px 9px; line-height:1.5;
-}}
-.release-right {{ display:flex; align-items:center; gap:12px; color:var(--ink-3); }}
-.chev {{ transition:transform .16s ease; flex-shrink:0; }}
-details.release[open] .chev {{ transform:rotate(90deg); color:var(--brand); }}
+}
+.release-right { display:flex; align-items:center; gap:12px; color:var(--ink-3); }
+.chev { transition:transform .16s ease; flex-shrink:0; }
+details.release[open] .chev { transform:rotate(90deg); color:var(--brand); }
 
-.release-body {{ padding:20px 24px 24px; }}
-.release-body h3 {{
+.release-body { padding:20px 24px 24px; }
+.release-body h3 {
   font-family:var(--mono); font-size:.71rem; text-transform:uppercase;
   letter-spacing:.12em; font-weight:700; color:var(--ink-3); margin:20px 0 9px;
-}}
-.release-body h3:first-child {{ margin-top:0; }}
-.release-body h3.tone-green {{ color:var(--k-type); }}
-.release-body h3.tone-blue {{ color:var(--k-fn); }}
-.release-body h3.tone-accent {{ color:var(--brand); }}
-.release-body h3.tone-purple {{ color:var(--k-trait); }}
-.release-body p {{ color:var(--ink-2); margin:10px 0; max-width:74ch; }}
-.release-body ul {{ list-style:none; }}
-.release-body li {{
+}
+.release-body h3:first-child { margin-top:0; }
+.release-body h3.tone-green { color:var(--k-type); }
+.release-body h3.tone-blue { color:var(--k-fn); }
+.release-body h3.tone-accent { color:var(--brand); }
+.release-body h3.tone-purple { color:var(--k-trait); }
+.release-body p { color:var(--ink-2); margin:10px 0; max-width:74ch; }
+.release-body ul { list-style:none; }
+.release-body li {
   position:relative; padding-left:22px; margin:8px 0;
   color:var(--ink-2); max-width:74ch;
-}}
-.release-body li::before {{
+}
+.release-body li::before {
   content:""; position:absolute; left:2px; top:.72em;
   width:9px; height:1px; background:var(--ink-3);
-}}
-.release-body strong {{ color:var(--ink); font-weight:650; }}
-.tag-link {{ margin-top:20px; padding-top:14px; border-top:1px solid var(--rule-soft); }}
-.tag-link a {{
+}
+.release-body strong { color:var(--ink); font-weight:650; }
+.tag-link { margin-top:20px; padding-top:14px; border-top:1px solid var(--rule-soft); }
+.tag-link a {
   font-family:var(--mono); font-size:.76rem; color:var(--ink-3);
   border-bottom:1px solid var(--rule); padding-bottom:2px;
-}}
-.tag-link a:hover {{ color:var(--brand); border-color:var(--brand); }}
+}
+.tag-link a:hover { color:var(--brand); border-color:var(--brand); }
 
-.foot {{ border-top:1px solid var(--rule); padding:34px 0 44px; margin-top:20px; }}
-.foot-in {{ display:flex; justify-content:space-between; gap:20px; flex-wrap:wrap; align-items:center; }}
-.foot-id {{ display:flex; align-items:center; gap:9px; font-family:var(--mono); font-size:.78rem; color:var(--ink-3); }}
-.foot-id svg {{ width:18px; height:18px; color:var(--brand); }}
-.foot-links {{ display:flex; gap:20px; flex-wrap:wrap; }}
-.foot-links a {{ font-size:.85rem; color:var(--ink-2); }}
-.foot-links a:hover {{ color:var(--ink); }}
+.foot { border-top:1px solid var(--rule); padding:34px 0 44px; margin-top:20px; }
+.foot-in { display:flex; justify-content:space-between; gap:20px; flex-wrap:wrap; align-items:center; }
+.foot-id { display:flex; align-items:center; gap:9px; font-family:var(--mono); font-size:.78rem; color:var(--ink-3); }
+.foot-id svg { width:18px; height:18px; color:var(--brand); }
+.foot-links { display:flex; gap:20px; flex-wrap:wrap; }
+.foot-links a { font-size:.85rem; color:var(--ink-2); }
+.foot-links a:hover { color:var(--ink); }
 </style>
 </head>
 <body>
 
 <nav class="nav" aria-label="Primary">
   <div class="nav-in">
-    <a class="brandmark" href="./" aria-label="GitCortex home">{logo} GitCortex</a>
+    <a class="brandmark" href="./" aria-label="GitCortex home">${logo} GitCortex</a>
     <ul class="nav-links">
       <li class="nav-hide"><a href="./#walkthrough">Workflow</a></li>
       <li class="nav-hide"><a href="./#install">Install</a></li>
       <li><a href="benchmarks.html">Benchmarks</a></li>
       <li><a href="compare.html">Compare</a></li>
       <li><a href="releases.html" aria-current="page">Releases</a></li>
-      <li><a class="gh-star" href="{repo}" aria-label="GitCortex on GitHub" target="_blank" rel="noopener">{gh_icon}<span class="gh-star-count" data-gh-stars></span></a></li>
+      <li><a class="gh-star" href="${repo}" aria-label="GitCortex on GitHub" target="_blank" rel="noopener">${gh_icon}<span class="gh-star-count" data-gh-stars></span></a></li>
     </ul>
   </div>
 </nav>
@@ -401,11 +402,11 @@ details.release[open] .chev {{ transform:rotate(90deg); color:var(--brand); }}
     <h1>Every version, and what changed in it.</h1>
     <p>
       Latest release expanded by default; older versions collapse to keep scanning fast. Generated from
-      <a href="{repo}/blob/main/CHANGELOG.md">CHANGELOG.md</a> at build time so the site and changelog never drift.
-      Binaries and checksums are on <a href="{repo}/releases">GitHub Releases</a>.
+      <a href="${repo}/blob/main/CHANGELOG.md">CHANGELOG.md</a> at build time so the site and changelog never drift.
+      Binaries and checksums are on <a href="${repo}/releases">GitHub Releases</a>.
     </p>
     <div class="controls-bar">
-      <nav class="index" aria-label="Jump to version">{jump}</nav>
+      <nav class="index" aria-label="Jump to version">${jump}</nav>
       <button type="button" class="toggle-all" id="toggleAllBtn">Expand all</button>
     </div>
   </div>
@@ -413,20 +414,20 @@ details.release[open] .chev {{ transform:rotate(90deg); color:var(--brand); }}
 
 <main class="wrap">
   <div class="release-list">
-{releases}
+${releases}
   </div>
 </main>
 
 <footer class="foot">
   <div class="wrap foot-in">
-    <div class="foot-id">{logo} GitCortex · MIT</div>
+    <div class="foot-id">${logo} GitCortex · MIT</div>
     <div class="foot-links">
       <a href="./">Home</a>
       <a href="benchmarks.html">Benchmarks</a>
       <a href="compare.html">Compare</a>
-      <a href="{repo}">GitHub</a>
-      <a href="{repo}/releases">Downloads</a>
-      <a href="{repo}/blob/main/docs/REFERENCE.md">Reference</a>
+      <a href="${repo}">GitHub</a>
+      <a href="${repo}/releases">Downloads</a>
+      <a href="${repo}/blob/main/docs/REFERENCE.md">Reference</a>
       <a href="https://crates.io/crates/gitcortex">crates.io</a>
       <a href="https://pypi.org/project/gitcortex/">PyPI</a>
     </div>
@@ -434,63 +435,63 @@ details.release[open] .chev {{ transform:rotate(90deg); color:var(--brand); }}
 </footer>
 
 <script>
-(function() {{
+(function() {
   // Live GitHub star count (cached in sessionStorage for 15 minutes)
   var el = document.querySelector("[data-gh-stars]");
-  if (el) {{
+  if (el) {
     var key = "gcx_gh_stars_v1";
-    var fmt = function(n) {{ return n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n); }};
-    var render = function(n) {{ el.textContent = "\u2605 " + fmt(n); }};
-    try {{
+    var fmt = function(n) { return n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n); };
+    var render = function(n) { el.textContent = "\u2605 " + fmt(n); };
+    try {
       var cached = JSON.parse(sessionStorage.getItem(key) || "null");
-      if (cached && Date.now() - cached.ts < 900000 && typeof cached.n === "number") {{
+      if (cached && Date.now() - cached.ts < 900000 && typeof cached.n === "number") {
         render(cached.n);
-      }} else {{
-        fetch("{repo_api}", {{ headers: {{ Accept: "application/vnd.github+json" }} }})
-          .then(function(r) {{ return r.ok ? r.json() : null; }})
-          .then(function(d) {{
-            if (d && typeof d.stargazers_count === "number") {{
+      } else {
+        fetch("${repo_api}", { headers: { Accept: "application/vnd.github+json" } })
+          .then(function(r) { return r.ok ? r.json() : null; })
+          .then(function(d) {
+            if (d && typeof d.stargazers_count === "number") {
               render(d.stargazers_count);
-              try {{ sessionStorage.setItem(key, JSON.stringify({{ n: d.stargazers_count, ts: Date.now() }})); }} catch (_) {{}}
-            }}
-          }}).catch(function() {{}});
-      }}
-    }} catch (_) {{}}
-  }}
+              try { sessionStorage.setItem(key, JSON.stringify({ n: d.stargazers_count, ts: Date.now() })); } catch (_) {}
+            }
+          }).catch(function() {});
+      }
+    } catch (_) {}
+  }
 
   // Open target release when navigating via #vX.Y.Z hash or jump pill
-  function openHashTarget() {{
+  function openHashTarget() {
     var id = (location.hash || "").replace(/^#/, "");
     if (!id) return;
     var target = document.getElementById(id);
-    if (target && target.tagName === "DETAILS") {{
+    if (target && target.tagName === "DETAILS") {
       target.open = true;
-    }}
-  }}
+    }
+  }
   window.addEventListener("hashchange", openHashTarget);
   openHashTarget();
 
   // Expand all / Collapse older toggle
   var btn = document.getElementById("toggleAllBtn");
   var items = Array.prototype.slice.call(document.querySelectorAll("details.release"));
-  if (btn && items.length > 1) {{
-    var syncLabel = function() {{
-      var allOpen = items.every(function(d) {{ return d.open; }});
+  if (btn && items.length > 1) {
+    var syncLabel = function() {
+      var allOpen = items.every(function(d) { return d.open; });
       btn.textContent = allOpen ? "Collapse older" : "Expand all";
-    }};
-    btn.addEventListener("click", function() {{
-      var allOpen = items.every(function(d) {{ return d.open; }});
-      items.forEach(function(d, idx) {{ d.open = allOpen ? (idx === 0) : true; }});
+    };
+    btn.addEventListener("click", function() {
+      var allOpen = items.every(function(d) { return d.open; });
+      items.forEach(function(d, idx) { d.open = allOpen ? (idx === 0) : true; });
       syncLabel();
-    }});
-    items.forEach(function(d) {{ d.addEventListener("toggle", syncLabel); }});
+    });
+    items.forEach(function(d) { d.addEventListener("toggle", syncLabel); });
     syncLabel();
-  }}
-}})();
+  }
+})();
 </script>
 </body>
 </html>
-"""
+""")
 
 
 def render_page(releases: list[Release]) -> str:
@@ -528,7 +529,7 @@ def render_page(releases: list[Release]) -> str:
             f"</div>"
             f"</details>"
         )
-    return PAGE.format(
+    return PAGE.substitute(
         logo=LOGO,
         gh_icon=GH_ICON,
         repo=REPO,
