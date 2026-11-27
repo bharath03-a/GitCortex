@@ -406,7 +406,7 @@ mod tests {
             "marocchino/sticky-pull-request-comment@773744901bac0e8cbb5a0dc842800d45e9b2b405"
         ));
         assert!(workflow.contains("persist-credentials: false"));
-        assert!(workflow.contains("cargo install gitcortex --version 0.7.6 --locked"));
+        assert!(workflow.contains("cargo install gitcortex --version 0.8.0 --locked"));
         assert!(workflow.contains("comment:\n    needs: blast-radius"));
         assert!(workflow.contains("pull-requests: write"));
         assert!(workflow

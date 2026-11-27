@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="GitCortex benchmark results: measured token efficiency and retrieval quality against Codex, Claude Code, and Agy — pinned repos, real LLM calls, reproducible harness.">
-  <title>GitCortex Benchmarks</title>
+  <meta name="description" content="GitCortex v0.8.0 benchmark datasheet: 45/45 deterministic retrieval, 35-task Codex CLI agent suite, 10-repo cold indexing & lifecycle storage reclaim, 48-run unforced adoption study, and competitor head-to-heads.">
+  <title>Benchmarks — GitCortex v0.8.0</title>
 
   <meta property="og:type"        content="website">
   <meta property="og:url"         content="https://bharath03-a.github.io/GitCortex/benchmarks.html">
-  <meta property="og:title"       content="GitCortex Benchmarks">
-  <meta property="og:description" content="Measured token efficiency and retrieval quality against Codex, Claude Code, and Agy.">
+  <meta property="og:title"       content="GitCortex v0.8.0 Benchmarks">
+  <meta property="og:description" content="45/45 deterministic retrieval, 35-task Codex CLI suite, 10-repo indexing & storage reclaim, and 48-run unforced adoption study.">
   <meta property="og:image"       content="https://raw.githubusercontent.com/bharath03-a/GitCortex/main/assets/icon.svg">
 
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
@@ -49,11 +49,12 @@
       --brand: #C4633F; --brand-soft: #FBEFE9;
       --good: #2F6F5E; --good-soft: #EAF3EF;
       --warn: #8A6D28; --warn-soft: #FBF3E1;
+      --bad: #B84B42; --bad-soft: #FBEBE9;
       --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
       --sans: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
       --gut: 28px; --max: 1120px;
+      color-scheme: light;
     }
-    :root { color-scheme: light; }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html { font-size: 16px; scroll-behavior: smooth; }
     @media (prefers-reduced-motion: reduce) {
@@ -66,11 +67,11 @@
     code, pre, .mono { font-family: var(--mono); }
     .wrap { max-width: var(--max); margin: 0 auto; padding: 0 var(--gut); }
 
-    .eyebrow { font-family: var(--mono); font-size: .69rem; text-transform: uppercase; letter-spacing: .145em; font-weight: 600; color: var(--ink-3); }
-    h1 { font-size: clamp(2rem, 4vw, 2.8rem); line-height: 1.08; letter-spacing: -.03em; font-weight: 800; max-width: 20ch; text-wrap: balance; }
-    h2 { font-size: clamp(1.3rem, 2.5vw, 1.7rem); line-height: 1.16; letter-spacing: -.02em; font-weight: 760; margin-bottom: 10px; }
-    h3 { font-size: 1rem; letter-spacing: -.008em; font-weight: 660; }
-    .lede { color: var(--ink-2); font-size: 1.04rem; max-width: 62ch; }
+    .eyebrow { font-family: var(--mono); font-size: .69rem; text-transform: uppercase; letter-spacing: .145em; font-weight: 600; color: var(--ink-3); display: block; margin-bottom: 10px; }
+    h1 { font-size: clamp(2rem, 4vw, 2.75rem); line-height: 1.08; letter-spacing: -.03em; font-weight: 800; max-width: 22ch; text-wrap: balance; }
+    h2 { font-size: clamp(1.3rem, 2.4vw, 1.65rem); line-height: 1.16; letter-spacing: -.02em; font-weight: 760; margin-bottom: 10px; }
+    h3 { font-size: 1rem; letter-spacing: -.008em; font-weight: 660; margin-bottom: 10px; }
+    .lede { color: var(--ink-2); font-size: 1.02rem; max-width: 68ch; }
     .note { color: var(--ink-2); font-size: .9rem; }
 
     .nav {
@@ -92,201 +93,494 @@
       .brandmark { flex: none; }
     }
 
-    header.hero { padding: 64px 0 40px; border-bottom: 1px solid var(--rule); }
-    header.hero .eyebrow { margin-bottom: 14px; }
+    header.hero { padding: 56px 0 38px; border-bottom: 1px solid var(--rule); }
     header.hero h1 { margin-bottom: 14px; }
+    .jump-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+    .jump-links a {
+      font-family: var(--mono); font-size: .73rem; color: var(--ink-2);
+      background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 5px 10px;
+    }
+    .jump-links a:hover { border-color: var(--brand); color: var(--brand); }
 
-    section { padding: 52px 0; border-bottom: 1px solid var(--rule); }
+    section { padding: 50px 0; border-bottom: 1px solid var(--rule); }
     section:last-of-type { border-bottom: none; }
-    .section-head { max-width: 62ch; margin-bottom: 28px; }
+    .section-head { max-width: 72ch; margin-bottom: 24px; }
 
+    .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
     .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
     .grid2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
-    @media (max-width: 760px) { .grid3, .grid2 { grid-template-columns: 1fr; } }
+    @media (max-width: 900px) { .grid4 { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 760px) { .grid3, .grid2, .grid4 { grid-template-columns: 1fr; } }
 
     .card { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 20px 22px; }
-    .client-card .client-name { font-weight: 700; font-size: 1.02rem; margin-bottom: 2px; }
-    .client-card .client-tag { font-family: var(--mono); font-size: .72rem; color: var(--ink-3); margin-bottom: 16px; }
-    .stat-row { display: flex; align-items: baseline; justify-content: space-between; padding: 7px 0; border-top: 1px solid var(--rule-soft); }
-    .stat-row:first-of-type { border-top: none; }
-    .stat-label { font-size: .82rem; color: var(--ink-2); }
-    .stat-value { font-family: var(--mono); font-weight: 600; font-size: .92rem; }
-    .stat-value.big { font-size: 1.3rem; color: var(--brand); }
+    .kpi-num { font-family: var(--mono); font-size: 1.7rem; font-weight: 700; color: var(--brand); line-height: 1.15; }
+    .kpi-num.good { color: var(--good); }
+    .kpi-lbl { font-family: var(--mono); font-size: .68rem; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); margin-bottom: 8px; }
+    .kpi-sub { font-size: .82rem; color: var(--ink-2); margin-top: 6px; }
 
-    table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+    .stat-row { display: flex; align-items: baseline; justify-content: space-between; padding: 7px 0; border-top: 1px solid var(--rule-soft); gap: 12px; }
+    .stat-row:first-of-type { border-top: none; }
+    .stat-label { font-size: .83rem; color: var(--ink-2); }
+    .stat-value { font-family: var(--mono); font-weight: 600; font-size: .9rem; }
+    .stat-value.big { font-size: 1.2rem; color: var(--brand); }
+
+    .chart-frame {
+      margin: 22px 0; border: 1px solid var(--rule); border-radius: 10px;
+      overflow: hidden; background: var(--surface);
+    }
+    .chart-frame img { display: block; width: 100%; height: auto; }
+
+    table { width: 100%; border-collapse: collapse; font-size: .85rem; }
     th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--rule-soft); }
-    th { font-family: var(--mono); font-size: .68rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); font-weight: 600; }
+    th { font-family: var(--mono); font-size: .67rem; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-3); font-weight: 600; }
     td.num, th.num { text-align: right; font-family: var(--mono); }
     tr:last-child td { border-bottom: none; }
-    .table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); }
-    .table-wrap table { min-width: 560px; }
+    tr.total-row td { background: var(--surface-2); font-weight: 700; border-top: 1px solid var(--rule); }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); margin-top: 16px; }
+    .table-wrap table { min-width: 620px; }
 
-    .callout { background: var(--surface-2); border: 1px solid var(--rule); border-radius: 10px; padding: 18px 20px; font-size: .88rem; color: var(--ink-2); }
+    .pill { display: inline-block; font-family: var(--mono); font-size: .68rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+    .pill-good { background: var(--good-soft); color: var(--good); }
+    .pill-warn { background: var(--warn-soft); color: var(--warn); }
+    .pill-bad { background: var(--bad-soft); color: var(--bad); }
+
+    .callout { background: var(--surface-2); border: 1px solid var(--rule); border-radius: 10px; padding: 18px 20px; font-size: .88rem; color: var(--ink-2); margin-top: 18px; }
     .callout strong { color: var(--ink); }
-    .callout code { background: var(--surface); padding: 1px 5px; border-radius: 4px; font-size: .84em; }
+    .callout code { background: var(--surface); padding: 1px 5px; border-radius: 4px; font-size: .84em; color: var(--ink); }
+    .callout.honest { border-left: 3px solid var(--warn); }
+    .callout.good { border-left: 3px solid var(--good); }
 
-    .methodology li { margin-bottom: 10px; color: var(--ink-2); font-size: .92rem; }
+    .methodology li { margin-bottom: 9px; color: var(--ink-2); font-size: .9rem; }
     .methodology { padding-left: 20px; }
 
-    footer.foot { padding: 34px 0 46px; }
+    footer.foot { padding: 34px 0 46px; border-top: 1px solid var(--rule); }
     .foot-in { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
     .foot-id { display: flex; align-items: center; gap: 9px; font-family: var(--mono); font-size: .78rem; color: var(--ink-3); }
-    .foot-id svg { width: 18px; height: 18px; color: var(--ink-3); }
+    .foot-id svg { width: 18px; height: 18px; color: var(--brand); }
     .foot-links { display: flex; gap: 18px; flex-wrap: wrap; font-size: .82rem; color: var(--ink-2); }
     .foot-links a:hover { color: var(--ink); }
+  
+    /* Unified nav & live GitHub star badge */
+    .nav-links { display: flex; align-items: center; gap: 22px; list-style: none; }
+    .nav-links a[aria-current="page"] { color: var(--ink); font-weight: 600; }
+    .gh-star {
+      display: inline-flex; align-items: center; gap: 7px;
+      font-family: var(--mono); font-size: .76rem; font-weight: 600;
+      color: var(--ink) !important; background: var(--surface);
+      border: 1px solid var(--rule); border-radius: 999px;
+      padding: 5px 11px; line-height: 1;
+      transition: border-color .14s ease, color .14s ease;
+    }
+    .gh-star:hover { border-color: var(--brand); color: var(--brand) !important; }
+    .gh-star-count {
+      display: inline-flex; align-items: center; gap: 3px;
+      padding-left: 7px; border-left: 1px solid var(--rule);
+      color: var(--ink-2); font-variant-numeric: tabular-nums;
+    }
+    .gh-star-count:empty { display: none; }
+    @media (max-width: 760px) { .nav-hide { display: none; } .nav-links { gap: 14px; } }
+
+  
+    /* Chart reader's guide / explanation block */
+    .chart-explain {
+      margin: -6px 0 22px;
+      padding: 16px 20px;
+      background: var(--paper, #FCFCFA);
+      border: 1px solid var(--rule, #E5E4DE);
+      border-left: 3px solid var(--brand, #C4633F);
+      border-radius: 10px;
+      font-size: .9rem;
+      line-height: 1.58;
+      color: var(--ink-2, #55555F);
+    }
+    .chart-explain .ex-title {
+      font-family: var(--mono);
+      font-size: .72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      color: var(--ink, #14141A);
+      margin-bottom: 8px;
+    }
+    .chart-explain ul { list-style: none; display: grid; gap: 6px; margin: 0; padding: 0; }
+    .chart-explain li { position: relative; padding-left: 16px; }
+    .chart-explain li::before {
+      content: ""; position: absolute; left: 0; top: .68em;
+      width: 7px; height: 1.5px; background: var(--brand, #C4633F);
+    }
+    .chart-explain strong { color: var(--ink, #14141A); font-weight: 650; }
+
   </style>
 </head>
 <body>
 
-<nav class="nav">
+<nav class="nav" aria-label="Primary">
   <div class="nav-in">
-    <a class="brandmark" href="./" aria-label="GitCortex home">
-      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <line x1="18" y1="18" x2="46" y2="32" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-        <line x1="18" y1="18" x2="32" y2="50" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-        <line x1="46" y1="32" x2="32" y2="50" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity=".55"/>
-        <circle cx="18" cy="18" r="7" fill="currentColor"/>
-        <circle cx="46" cy="32" r="5.5" fill="currentColor" opacity=".72"/>
-        <circle cx="32" cy="50" r="5.5" fill="currentColor" opacity=".72"/>
-      </svg>
-      GitCortex
-    </a>
+    <a class="brandmark" href="./" aria-label="GitCortex home"><svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" width="22" height="22" aria-hidden="true"><line x1="18" y1="18" x2="46" y2="32" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><line x1="18" y1="18" x2="32" y2="50" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><line x1="46" y1="32" x2="32" y2="50" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity=".55"/><circle cx="18" cy="18" r="7" fill="currentColor"/><circle cx="46" cy="32" r="5.5" fill="currentColor" opacity=".72"/><circle cx="32" cy="50" r="5.5" fill="currentColor" opacity=".72"/></svg> GitCortex</a>
     <ul class="nav-links">
-      <li><a href="./#how">How it works</a></li>
-      <li><a href="./#install">Install</a></li>
-      <li><a href="benchmarks.html">Benchmarks</a></li>
+      <li class="nav-hide"><a href="./#walkthrough">Workflow</a></li>
+      <li class="nav-hide"><a href="./#install">Install</a></li>
+      <li><a href="benchmarks.html" aria-current="page">Benchmarks</a></li>
       <li><a href="compare.html">Compare</a></li>
-      <li><a class="nav-cta" href="https://github.com/bharath03-a/GitCortex">GitHub</a></li>
+      <li><a href="releases.html">Releases</a></li>
+      <li><a class="gh-star" href="https://github.com/bharath03-a/GitCortex" aria-label="GitCortex on GitHub" target="_blank" rel="noopener"><svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span class="gh-star-count" data-gh-stars></span></a></li>
     </ul>
   </div>
 </nav>
 
 <header class="hero">
   <div class="wrap">
-    <span class="eyebrow">Benchmarks · measured, not estimated</span>
-    <h1>What GitCortex actually saves your assistant, per question.</h1>
+    <span class="eyebrow">Benchmarks &middot; v0.8.0 pre-release validation</span>
+    <h1>What GitCortex actually delivers &mdash; and where it stays at parity or costs more.</h1>
     <p class="lede">
-      Every number on this page comes from a real client (Codex, Claude Code, or Agy) answering
-      the same question twice against a pinned open-source repo: once with ordinary grep/read
-      exploration, once with one GitCortex MCP call. Token counts are the client's own reported
-      usage. Nothing here is simulated or hand-picked after the fact — the harness and raw logs
-      ship in <code>tools/agent-bench/</code>.
+      Every figure on this page comes from pinned open-source repositories, real CLI/MCP runs,
+      and self-reported client token accounting (Codex CLI <code>gpt-6.1-sol</code>). We measure
+      retrieval correctness, agent token efficiency, cold indexing, incremental git hooks,
+      multi-branch storage reclaim, unforced adoption, and competitor head-to-heads &mdash; keeping
+      dated historical runs strictly separate.
     </p>
+    <nav class="jump-links" aria-label="Benchmark sections">
+      <a href="#retrieval">45/45 Retrieval</a>
+      <a href="#codex-35">35-Task Codex Suite</a>
+      <a href="#ops-speed">10-Repo Cold Indexing</a>
+      <a href="#lifecycle">Hooks &amp; Storage GC</a>
+      <a href="#competitors">Competitors</a>
+      <a href="#adoption">Unforced Adoption &amp; Episodes</a>
+      <a href="#historical">Historical v0.7.6</a>
+      <a href="#honesty">Bugs Found &amp; Limits</a>
+    </nav>
   </div>
 </header>
 
-<section id="clients">
+<!-- ── Executive KPI Strip ───────────────────────────────────────────────── -->
+<section>
   <div class="wrap">
-    <div class="section-head">
-      <h2>Three clients, one suite</h2>
-      <p class="note">15 harder tasks — deep blast-radius, cross-file architecture, refactor-safety — across 5 pinned repos (ripgrep, requests, hono, cobra, gson), each client run twice per task (baseline vs. GitCortex), one round.</p>
-    </div>
-    <div class="grid3">
-      <div class="card client-card">
-        <div class="client-name">Codex</div>
-        <div class="client-tag">gpt-5.4-mini · graph-CLI lane</div>
-        <div class="stat-row"><span class="stat-label">Token savings (geomean)</span><span class="stat-value big">3.27×</span></div>
-        <div class="stat-row"><span class="stat-label">Uncached savings</span><span class="stat-value">3.73×</span></div>
-        <div class="stat-row"><span class="stat-label">Valid samples</span><span class="stat-value">13 / 15</span></div>
-        <div class="stat-row"><span class="stat-label">Quality held or improved</span><span class="stat-value">14 / 15</span></div>
+    <div class="grid4">
+      <div class="card">
+        <div class="kpi-lbl">Deterministic retrieval</div>
+        <div class="kpi-num good">45 / 45</div>
+        <div class="kpi-sub">1.00 MRR &amp; 1.00 file recall across 10 pinned repos (35 core + 10 big).</div>
       </div>
-      <div class="card client-card">
-        <div class="client-name">Claude Code</div>
-        <div class="client-tag">Haiku · compact MCP dispatch</div>
-        <div class="stat-row"><span class="stat-label">Token savings (geomean)</span><span class="stat-value big">3.26×</span></div>
-        <div class="stat-row"><span class="stat-label">Uncached savings</span><span class="stat-value">1.79×</span></div>
-        <div class="stat-row"><span class="stat-label">Valid samples</span><span class="stat-value">12 / 15</span></div>
-        <div class="stat-row"><span class="stat-label">Quality held or improved</span><span class="stat-value">12 / 15</span></div>
+      <div class="card">
+        <div class="kpi-lbl">35-task Codex uncached</div>
+        <div class="kpi-num">&minus;27.7%</div>
+        <div class="kpi-sub">1.38&times; geomean; quality 0.943 &rarr; 0.986; 35/35 non-inferior.</div>
       </div>
-      <div class="card client-card">
-        <div class="client-name">Agy <span class="note">(Antigravity CLI)</span></div>
-        <div class="client-tag">Gemini 3.6 Flash · compact MCP dispatch</div>
-        <div class="stat-row"><span class="stat-label">Token savings (geomean)</span><span class="stat-value big">1.89×</span></div>
-        <div class="stat-row"><span class="stat-label">Uncached savings</span><span class="stat-value">1.33×</span></div>
-        <div class="stat-row"><span class="stat-label">Valid samples</span><span class="stat-value">14 / 15</span></div>
-        <div class="stat-row"><span class="stat-label">Quality held or improved</span><span class="stat-value">14 / 15</span></div>
+      <div class="card">
+        <div class="kpi-lbl">1-file commit hook</div>
+        <div class="kpi-num good">423 ms</div>
+        <div class="kpi-sub"><code>ripgrep</code> (9.9&times; faster). <code>tokio</code> 821 ms; <code>django</code> hub 6.9 s.</div>
+      </div>
+      <div class="card">
+        <div class="kpi-lbl">5-branch disk reclaim</div>
+        <div class="kpi-num">&minus;84.5%</div>
+        <div class="kpi-sub"><code>storage gc --apply</code> + <code>compact</code> returns stores to base size.</div>
       </div>
     </div>
   </div>
 </section>
 
-<section id="task-types">
-  <div class="wrap">
-    <div class="section-head">
-      <h2>What the harder questions actually test</h2>
-      <p class="note">Beyond simple "where is X" search, the release suite adds three question types that mirror real pre-edit workflows.</p>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr><th>Task type</th><th>Question shape</th><th>GitCortex path</th></tr>
-        </thead>
-        <tbody>
-          <tr><td><strong>Impact</strong></td><td>"Before I change this function, what's the full blast radius?"</td><td><code>find-callers --depth 2</code> / <code>pre_edit_impact</code></td></tr>
-          <tr><td><strong>Architecture</strong></td><td>"How does this fit into the codebase — what's it connected to, both directions?"</td><td><code>get-subgraph --depth 2 --direction both</code></td></tr>
-          <tr><td><strong>Refactor</strong></td><td>"Is it safe to refactor this? What's the full surface area?"</td><td><code>symbol-context</code></td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-</section>
-
+<!-- ── 1. Deterministic Retrieval ────────────────────────────────────────── -->
 <section id="retrieval">
   <div class="wrap">
     <div class="section-head">
-      <h2>Retrieval correctness (model-free)</h2>
-      <p class="note">Before any paid client run, the same 35-task suite runs against the <code>gcx</code> CLI directly — no LLM in the loop — checking evidence contracts, ranking, and response budgets.</p>
+      <span class="eyebrow">01 &middot; Model-free retrieval gate</span>
+      <h2>45 / 45 deterministic tasks passing across 10 repositories</h2>
+      <p class="note">No LLM in the loop: runs directly against <code>gcx query</code> checking required <code>file:line</code> evidence, forbidden-evidence exclusion, ranking quality, and response payload budgets.</p>
+    </div>
+    <div class="chart-frame">
+      <img src="assets/charts/chart-retrieval-accuracy.svg" alt="Code retrieval ranking accuracy across 10 repositories showing Hit@1 100%, MRR 1.000, NDCG@5 0.925, NDCG@10 0.971, MAP@5 0.897, and 45/45 contract pass" loading="lazy" width="960" height="520">
+    </div>
+    <div class="chart-explain">
+      <div class="ex-title">How to read this chart &amp; IR metrics</div>
+      <ul>
+        <li><strong>Top-10 Rank Map (green numbered tiles):</strong> Each row shows the first 10 symbols returned by <code>gcx query search</code>. A green tile means that rank matched the pinned ground-truth file or symbol; gray tiles are other returned symbols; dashed tiles mean fewer than 10 hits existed in the token budget.</li>
+        <li><strong>Hit@1 (100%) &amp; MRR (1.000):</strong> Every single repository placed a ground-truth match at <strong>rank #1</strong> (Mean Reciprocal Rank = 1.000), meaning an assistant sees the right definition immediately without scrolling.</li>
+        <li><strong>NDCG@5 (0.925) &amp; NDCG@10 (0.971):</strong> Normalized Discounted Cumulative Gain measures how tightly relevant results cluster near the top of the list (1.000 = ideal ordering). <strong>MAP@5 (0.897)</strong> is Mean Average Precision over the top 5 slots, and <strong>File Recall (1.000)</strong> confirms every target file appeared within the returned budget.</li>
+        <li><strong>Why P@5 is 0.640 even when NDCG@5 is 0.925:</strong> Narrow queries like <code>django</code>&rsquo;s <code>QuerySet</code> or <code>hono</code>&rsquo;s <code>dispatch</code> have only 1&ndash;2 ground-truth symbols in the entire repo, so Precision@5 (relevant hits &divide; 5) is naturally capped below 1.0 even under perfect ranking.</li>
+      </ul>
     </div>
     <div class="grid2">
       <div class="card">
-        <h3>Original 20-task suite</h3>
-        <div class="stat-row"><span class="stat-label">Valid</span><span class="stat-value">20 / 20</span></div>
-        <div class="stat-row"><span class="stat-label">Quality mean</span><span class="stat-value">1.00</span></div>
-        <div class="stat-row"><span class="stat-label">MRR</span><span class="stat-value">1.00</span></div>
-        <div class="stat-row"><span class="stat-label">Precision@5</span><span class="stat-value">0.68</span></div>
-        <div class="stat-row"><span class="stat-label">File recall</span><span class="stat-value">1.00</span></div>
-        <div class="stat-row"><span class="stat-label">Median latency</span><span class="stat-value">87 ms</span></div>
+        <h3>Core Suite &mdash; 35 tasks (5 repos)</h3>
+        <p class="note" style="margin-bottom:12px;">ripgrep (Rust), requests (Python), hono (TypeScript), cobra (Go), gson (Java)</p>
+        <div class="stat-row"><span class="stat-label">Valid / total</span><span class="stat-value"><span class="pill pill-good">35 / 35</span></span></div>
+        <div class="stat-row"><span class="stat-label">Hit@1 / MRR@10 / File Recall</span><span class="stat-value">100% / 1.00 / 1.00</span></div>
+        <div class="stat-row"><span class="stat-label">NDCG@5 / NDCG@10</span><span class="stat-value">0.897 / 0.957</span></div>
+        <div class="stat-row"><span class="stat-label">MAP@5 / Precision@5</span><span class="stat-value">0.860 / 0.680</span></div>
+        <div class="stat-row"><span class="stat-label">Median latency / payload</span><span class="stat-value">241 ms / 2,328 B</span></div>
       </div>
       <div class="card">
-        <h3>New 15-task suite (impact / architecture / refactor)</h3>
-        <div class="stat-row"><span class="stat-label">Valid</span><span class="stat-value">15 / 15</span></div>
-        <div class="stat-row"><span class="stat-label">Quality mean</span><span class="stat-value">1.00</span></div>
-        <div class="stat-row"><span class="stat-label">Median payload</span><span class="stat-value">3.0 KB</span></div>
-        <div class="stat-row"><span class="stat-label">Median latency</span><span class="stat-value">138 ms</span></div>
+        <h3>Big-Repo Suite &mdash; 10 tasks (5 large repos)</h3>
+        <p class="note" style="margin-bottom:12px;">tokio (Rust), django (Python), next.js (TS), moby (Go), spring-boot (Java)</p>
+        <div class="stat-row"><span class="stat-label">Valid / total</span><span class="stat-value"><span class="pill pill-good">10 / 10</span></span></div>
+        <div class="stat-row"><span class="stat-label">Hit@1 / MRR@10 / File Recall</span><span class="stat-value">100% / 1.00 / 1.00</span></div>
+        <div class="stat-row"><span class="stat-label">NDCG@5 / NDCG@10</span><span class="stat-value">0.953 / 0.984</span></div>
+        <div class="stat-row"><span class="stat-label">MAP@5 / Precision@5</span><span class="stat-value">0.933 / 0.600</span></div>
+        <div class="stat-row"><span class="stat-label">Median latency / payload</span><span class="stat-value">650 ms / 2,314 B</span></div>
       </div>
     </div>
   </div>
 </section>
 
+<!-- ── 2. 35-Task Codex CLI Suite ────────────────────────────────────────── -->
+<section id="codex-35">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">02 &middot; Agent benchmark (Codex CLI &middot; gpt-6.1-sol &middot; low)</span>
+      <h2>Savings concentrate on relationship traversal; plain search stays near grep parity</h2>
+      <p class="note">All 35 core tasks across 5 languages, comparing ordinary grep/read exploration against GitCortex v0.8.0. All 35/35 samples are valid and quality non-inferior (0 invalid, 0 regressions).</p>
+    </div>
+
+    <div class="chart-frame">
+      <img src="assets/charts/chart-codex-actions.svg" alt="35-task Codex agent benchmark showing uncached token deltas by action category" loading="lazy" width="960" height="455">
+    </div>
+    <div class="chart-explain">
+      <div class="ex-title">How to read this chart &amp; key takeaways</div>
+      <ul>
+        <li><strong>Left of 0% = fewer tokens than grep:</strong> Each horizontal bar shows the percent change in <strong>uncached input tokens</strong> (the expensive, newly-read context an LLM processes) compared to an identical Codex CLI session using ordinary grep and file reads. The right column lists the corresponding change in <strong>total tokens</strong> (cached + uncached).</li>
+        <li><strong>Where graph traversal wins biggest:</strong> Multi-hop relationship questions&mdash;<code>subgraph</code> (&minus;43.0%), <code>impact</code> (&minus;41.3%), <code>refactor</code> (&minus;37.7%), and <code>callers</code> (&minus;36.0%, while lifting accuracy from 0.80 &rarr; 1.00)&mdash;avoid repeated grep-and-read loops across dozens of files.</li>
+        <li><strong>Honest boundary (<code>search</code> &amp; <code>tour</code>):</strong> Single-hop lexical lookup stays near grep parity (&minus;3.8% uncached, +9.8% total tokens). GitCortex is designed to complement source search and tests, not replace plain grep on trivial lookups.</li>
+      </ul>
+    </div>
+
+    <div class="grid2">
+      <div class="table-wrap">
+        <table style="min-width: 440px;">
+          <thead>
+            <tr><th>Action (n=5 each)</th><th class="num">Quality</th><th class="num">Total &Delta;</th><th class="num">Uncached &Delta;</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>subgraph</strong></td><td class="num">1.00 &rarr; 1.00</td><td class="num">&minus;22.9%</td><td class="num"><span class="pill pill-good">&minus;43.0%</span></td></tr>
+            <tr><td><strong>impact</strong></td><td class="num">1.00 &rarr; 1.00</td><td class="num">&minus;25.7%</td><td class="num"><span class="pill pill-good">&minus;41.3%</span></td></tr>
+            <tr><td><strong>refactor</strong></td><td class="num">1.00 &rarr; 1.00</td><td class="num">&minus;24.8%</td><td class="num"><span class="pill pill-good">&minus;37.7%</span></td></tr>
+            <tr><td><strong>callers</strong></td><td class="num">0.80 &rarr; 1.00</td><td class="num">&minus;14.2%</td><td class="num"><span class="pill pill-good">&minus;36.0%</span></td></tr>
+            <tr><td><strong>architecture</strong></td><td class="num">0.90 &rarr; 1.00</td><td class="num">&minus;24.3%</td><td class="num"><span class="pill pill-good">&minus;14.4%</span></td></tr>
+            <tr><td><strong>search</strong></td><td class="num">1.00 &rarr; 1.00</td><td class="num">+9.8%</td><td class="num"><span class="pill pill-warn">&minus;3.8%</span></td></tr>
+            <tr><td><strong>tour</strong></td><td class="num">0.90 &rarr; 0.90</td><td class="num">&minus;15.9%</td><td class="num"><span class="pill pill-warn">0.0%</span></td></tr>
+            <tr class="total-row"><td>All 35 tasks</td><td class="num">0.943 &rarr; 0.986</td><td class="num">&minus;19.4%</td><td class="num">&minus;27.7%</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-wrap">
+        <table style="min-width: 440px;">
+          <thead>
+            <tr><th>Repository (n=7 each)</th><th class="num">Quality</th><th class="num">Total &Delta;</th><th class="num">Uncached &Delta;</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>gson</strong> (Java)</td><td class="num">1.00 &rarr; 1.00</td><td class="num">&minus;22.5%</td><td class="num"><span class="pill pill-good">&minus;46.7%</span></td></tr>
+            <tr><td><strong>hono</strong> (TypeScript)</td><td class="num">0.93 &rarr; 1.00</td><td class="num">&minus;30.0%</td><td class="num"><span class="pill pill-good">&minus;32.7%</span></td></tr>
+            <tr><td><strong>cobra</strong> (Go)</td><td class="num">0.93 &rarr; 0.93</td><td class="num">&minus;29.3%</td><td class="num"><span class="pill pill-good">&minus;28.4%</span></td></tr>
+            <tr><td><strong>ripgrep</strong> (Rust)</td><td class="num">0.86 &rarr; 1.00</td><td class="num">&minus;5.1%</td><td class="num"><span class="pill pill-good">&minus;24.4%</span></td></tr>
+            <tr><td><strong>requests</strong> (Python)</td><td class="num">1.00 &rarr; 1.00</td><td class="num">&minus;11.2%</td><td class="num"><span class="pill pill-warn">&minus;3.1%</span></td></tr>
+            <tr class="total-row"><td>Aggregate (3.88M &rarr; 3.12M)</td><td class="num">0.943 &rarr; 0.986</td><td class="num">1.22&times; geo</td><td class="num">1.38&times; geo</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── 3. Cold Full-Index Speed & Disk ───────────────────────────────────── -->
+<section id="ops-speed">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">03 &middot; Indexing speed &amp; disk footprint</span>
+      <h2>10-repository cold indexing vs Graphify 0.9.44 and CodeGraph 1.5.0</h2>
+      <p class="note">Full-index bulk reconciliation (in-memory edge reconciliation + KuzuDB <code>COPY FROM</code>) cuts cold-index time dramatically. All measurements are local Apple Silicon runs on identical pinned commits with zero LLM calls.</p>
+    </div>
+
+    <div class="chart-frame">
+      <img src="assets/charts/chart-cold-index.svg" alt="Cold full-index time and disk footprint across 10 real repositories" loading="lazy" width="960" height="505">
+    </div>
+    <div class="chart-explain">
+      <div class="ex-title">How to read this chart &amp; key takeaways</div>
+      <ul>
+        <li><strong>Shorter bars &amp; smaller MiB are better:</strong> Left panel compares cold full-index wall time and store size against <strong>Graphify 0.9.44</strong> on 5 core repos (<code>3.13 s</code> vs <code>15.08 s</code>, <strong>4.8&times; faster</strong>). Right panel compares against <strong>CodeGraph 1.5.0</strong> on 5 large repos (<code>50.9 s</code> vs <code>206.2 s</code>, <strong>4.1&times; faster</strong> and <strong>52% smaller disk</strong>).</li>
+        <li><strong>Why the right panel uses a power-0.55 axis:</strong> Repo times span two orders of magnitude&mdash;from <code>tokio</code> (1.63 s) to CodeGraph on <code>nextjs</code> (158.45 s). A gentle power axis keeps small repos readable while preserving exact measured labels on every bar.</li>
+        <li><strong>Honest trade-off on <code>moby</code>:</strong> CodeGraph finishes faster (6.68 s / 109.6 MiB) because it skips vendored Go directories (36.8k nodes), whereas GitCortex indexed the entire tree including vendored packages (269.4k nodes / 1.07M edges).</li>
+      </ul>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Repository</th><th class="num">GCX Nodes</th><th class="num">GCX Edges</th><th class="num">GCX Time</th><th class="num">GCX Disk</th><th class="num">Competitor</th><th class="num">Comp. Time</th><th class="num">Comp. Disk</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>ripgrep</strong></td><td class="num">3,800</td><td class="num">19,655</td><td class="num"><strong>0.92 s</strong></td><td class="num">14.2 MiB</td><td class="num">Graphify 0.9.44</td><td class="num">3.00 s</td><td class="num">14.9 MiB</td></tr>
+          <tr><td><strong>requests</strong></td><td class="num">1,099</td><td class="num">4,067</td><td class="num"><strong>0.40 s</strong></td><td class="num">10.1 MiB</td><td class="num">Graphify 0.9.44</td><td class="num">1.45 s</td><td class="num">4.7 MiB</td></tr>
+          <tr><td><strong>hono</strong></td><td class="num">4,197</td><td class="num">13,093</td><td class="num"><strong>0.58 s</strong></td><td class="num">11.5 MiB</td><td class="num">Graphify 0.9.44</td><td class="num">4.82 s</td><td class="num">7.5 MiB</td></tr>
+          <tr><td><strong>cobra</strong></td><td class="num">888</td><td class="num">3,343</td><td class="num"><strong>0.39 s</strong></td><td class="num">10.2 MiB</td><td class="num">Graphify 0.9.44</td><td class="num">0.98 s</td><td class="num">3.9 MiB</td></tr>
+          <tr><td><strong>gson</strong></td><td class="num">4,707</td><td class="num">26,249</td><td class="num"><strong>0.84 s</strong></td><td class="num">17.0 MiB</td><td class="num">Graphify 0.9.44</td><td class="num">4.83 s</td><td class="num">23.0 MiB</td></tr>
+          <tr class="total-row"><td colspan="3">5 Core Repos Total (4.8&times; faster than Graphify)</td><td class="num">3.13 s</td><td class="num">63.0 MiB</td><td class="num">Graphify total</td><td class="num">15.08 s</td><td class="num">54.0 MiB</td></tr>
+          <tr><td><strong>tokio</strong></td><td class="num">11,236</td><td class="num">76,163</td><td class="num"><strong>1.63 s</strong></td><td class="num">28.7 MiB</td><td class="num">CodeGraph 1.5.0</td><td class="num">3.56 s</td><td class="num">41.3 MiB</td></tr>
+          <tr><td><strong>django</strong></td><td class="num">48,548</td><td class="num">267,527</td><td class="num"><strong>5.28 s</strong></td><td class="num">104.7 MiB</td><td class="num">CodeGraph 1.5.0</td><td class="num">8.15 s</td><td class="num">155.3 MiB</td></tr>
+          <tr><td><strong>spring-boot</strong></td><td class="num">93,461</td><td class="num">377,799</td><td class="num"><strong>9.43 s</strong></td><td class="num">152.3 MiB</td><td class="num">CodeGraph 1.5.0</td><td class="num">29.34 s</td><td class="num">559.5 MiB</td></tr>
+          <tr><td><strong>nextjs</strong></td><td class="num">120,735</td><td class="num">414,340</td><td class="num"><strong>10.70 s</strong></td><td class="num">137.4 MiB</td><td class="num">CodeGraph 1.5.0</td><td class="num">158.45 s</td><td class="num">635.1 MiB</td></tr>
+          <tr><td><strong>moby</strong> *</td><td class="num">269,433</td><td class="num">1,072,083</td><td class="num">23.84 s</td><td class="num">297.7 MiB</td><td class="num">CodeGraph 1.5.0</td><td class="num"><strong>6.68 s</strong></td><td class="num"><strong>109.6 MiB</strong></td></tr>
+          <tr class="total-row"><td colspan="3">5 Big Repos Total (4.1&times; faster, 52% smaller disk)</td><td class="num">50.88 s</td><td class="num">720.8 MiB</td><td class="num">CodeGraph total</td><td class="num">206.18 s</td><td class="num">1,500.8 MiB</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note" style="margin-top: 10px;">* On <code>moby</code>, CodeGraph finishes faster (6.68 s / 109.6 MiB) because it skips vendored Go directories and indexes 36,837 nodes / 120,384 edges, whereas GitCortex indexed the full repository tree (269,433 nodes / 1,072,083 edges).</p>
+  </div>
+</section>
+
+<!-- ── 4. Operational Lifecycle: Hooks & Storage Reclaim ─────────────────── -->
+<section id="lifecycle">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">04 &middot; Operational lifecycle</span>
+      <h2>Incremental commit hooks &amp; multi-branch storage reclaim</h2>
+      <p class="note">Two real user pain points measured end-to-end on isolated git clones: 1-file edit + commit + <code>gcx hook</code> (plus revert verification), followed by creating &amp; deleting 5 feature branches and running <code>gcx storage gc --apply</code> + <code>gcx storage compact --apply</code>.</p>
+    </div>
+
+    <div class="chart-frame">
+      <img src="assets/charts/chart-lifecycle.svg" alt="Operational lifecycle chart comparing pre-fix vs v0.8.0 incremental hook latency and 5-branch storage reclaim" loading="lazy" width="960" height="445">
+    </div>
+    <div class="chart-explain">
+      <div class="ex-title">How to read this chart &amp; key takeaways</div>
+      <ul>
+        <li><strong>Left panel &mdash; 1-file commit hook latency:</strong> Compares pre-fix global reference re-reconciliation against v0.8.0&rsquo;s diff-scoped, PK-bounded incremental hook. Updating a 1-file edit drops from <code>4.17 s</code> &rarr; <strong>423 ms</strong> on <code>ripgrep</code>, <code>&gt;60 s</code> timeout &rarr; <strong>821 ms</strong> on <code>tokio</code>, and <code>&gt;60 s</code> dense-hub crash &rarr; <strong>6.87 s</strong> on <code>django</code> (15,217 incoming edges on <code>query.py</code>).</li>
+        <li><strong>Right panel &mdash; 5-branch churn &amp; disk reclaim:</strong> After creating and deleting 5 feature branches, running dry-run-first <code>gcx storage gc --apply</code> + <code>compact --apply</code> reclaims <strong>84.1&ndash;84.9%</strong> of disk space in 0.76&ndash;3.71 s, returning each store to its clean base footprint.</li>
+        <li><strong>Verified correctness:</strong> Every run asserted that the newly added symbol appeared in <code>lookup-symbol</code> immediately after commit and disappeared completely after revert.</li>
+      </ul>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Repository (edited file)</th><th class="num">Pre-fix hook</th><th class="num">v0.8.0 add / del</th><th class="num">Branch switch</th><th class="num">5-branch churn</th><th class="num">After gc + compact</th><th class="num">Reclaimed</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>ripgrep</strong> (<code>crates/core/main.rs</code>)</td><td class="num">4,170 ms</td><td class="num"><strong>423 ms</strong> / 422 ms</td><td class="num">701 ms</td><td class="num">89.1 MiB</td><td class="num"><strong>14.2 MiB</strong> (0.76 s)</td><td class="num"><span class="pill pill-good">&minus;84.1%</span></td></tr>
+          <tr><td><strong>tokio</strong> (<code>tokio/src/sync/notify.rs</code>)</td><td class="num">&gt;60 s timeout</td><td class="num"><strong>821 ms</strong> / 845 ms</td><td class="num">1.80 s</td><td class="num">189.7 MiB</td><td class="num"><strong>28.7 MiB</strong> (1.87 s)</td><td class="num"><span class="pill pill-good">&minus;84.9%</span></td></tr>
+          <tr><td><strong>django</strong> (<code>django/db/models/query.py</code>, 15k in-edges)</td><td class="num">&gt;60 s / crash</td><td class="num"><strong>6.87 s</strong> / 6.56 s</td><td class="num">6.63 s</td><td class="num">676.2 MiB</td><td class="num"><strong>104.1 MiB</strong> (3.71 s)</td><td class="num"><span class="pill pill-good">&minus;84.6%</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note" style="margin-top:10px;">Every repo verified both symbol addition (<code>lookup-symbol</code> found the new probe symbol) and symbol removal after revert (<code>lookup-symbol</code> returned zero results).</p>
+  </div>
+</section>
+
+<!-- ── 5. Competitors ────────────────────────────────────────────────────── -->
+<section id="competitors">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">05 &middot; Competitor head-to-head (Codex CLI &middot; gpt-6.1-sol &middot; low)</span>
+      <h2>GitCortex v0.8.0 vs Graphify 0.9.44 &amp; CodeGraph 1.5.0</h2>
+      <p class="note">Same model, same pinned commits, same evidence contracts. Detailed per-task tables and honest competitor wins live on <a href="compare-graphify.html" style="color:var(--brand); text-decoration:underline;">vs Graphify</a> and <a href="compare-codegraph.html" style="color:var(--brand); text-decoration:underline;">vs CodeGraph</a>.</p>
+    </div>
+
+    <div class="chart-frame">
+      <img src="assets/charts/chart-competitors.svg" alt="Head-to-head evidence accuracy and uncached tokens vs Graphify 0.9.44 and CodeGraph 1.5.0" loading="lazy" width="960" height="440">
+    </div>
+    <div class="chart-explain">
+      <div class="ex-title">How to read this chart &amp; key takeaways</div>
+      <ul>
+        <li><strong>Top rows = Evidence Accuracy (higher is better, max 1.000):</strong> Measures whether the assistant returned every required <code>file:line</code> citation with zero forbidden/wrong hits. GitCortex achieves <strong>1.000</strong> on both the 15-task core suite (15/15) and 10-task big-repo suite (10/10).</li>
+        <li><strong>Bottom rows = Uncached Tokens (lower is better):</strong> Shows total newly-read tokens spent across the full suite compared to the grep baseline. GitCortex cuts uncached tokens by <strong>&minus;32.9%</strong> vs Graphify&rsquo;s core baseline and <strong>&minus;23.5%</strong> on the 5 big repos.</li>
+        <li><strong>Reading competitor numbers fairly:</strong> Graphify&rsquo;s lower aggregate token bar reflects 5 early exits on ambiguous symbol errors and 9 incomplete/failed tasks (0.533 accuracy); on the 6 tasks where Graphify scored 1.00, it did use fewer tokens (77k vs GitCortex&rsquo;s 91k). CodeGraph scored 9/10 (missing <code>nextjs-callers-normalize-page-path</code>) and used slightly fewer total tokens overall (&minus;20.3% vs &minus;16.8%) while GitCortex led on uncached tokens (&minus;23.5% vs &minus;20.7%).</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ── 6. Unforced Adoption & Continuous Episodes ────────────────────────── -->
+<section id="adoption">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">06 &middot; Unforced adoption &amp; continuous coding episodes</span>
+      <h2>Does an agent choose GitCortex voluntarily &mdash; and stay restrained on non-graph tasks?</h2>
+      <p class="note">48 runs (16 tasks = 10 graph + 6 restraint &times; 3 arms: <code>baseline</code>, <code>gcx-bare</code>, <code>gcx-guide</code>) plus 2 continuous multi-step coding episodes with hidden behavioral tests (Codex <code>gpt-6.1-sol</code>, medium reasoning).</p>
+    </div>
+
+    <div class="chart-frame">
+      <img src="assets/charts/chart-adoption.svg" alt="48-run unforced adoption and restraint study comparing baseline, gcx-bare, and gcx-guide" loading="lazy" width="960" height="400">
+    </div>
+    <div class="chart-explain">
+      <div class="ex-title">How to read this chart &amp; key takeaways</div>
+      <ul>
+        <li><strong>Three independent questions across 48 runs:</strong> Unlike forced tool benchmarks, here the agent was <em>never told</em> to use GitCortex. We measured whether it passes more tasks (left), voluntarily adopts <code>gcx</code> on 10 relationship tasks (middle), and shows restraint on 6 non-graph tasks where grep/reading is better (right).</li>
+        <li><strong>Why the shared Agent Guide matters:</strong> A bare CLI binary on PATH (<code>gcx-bare</code>) was only discovered on 4/10 graph tasks. Installing the concise guide via <code>gcx init</code> lifted voluntary adoption to <strong>10/10 (100%)</strong>, lifted overall pass rate from <strong>14/16 &rarr; 16/16</strong>, and kept false graph calls on restraint tasks at <strong>0/6</strong>.</li>
+        <li><strong>Honest token caveat:</strong> Without explicit per-call <code>--budget-tokens</code> caps in the unforced harness, the guided agent made 55 thorough CLI calls and spent more uncached tokens (321k vs 196k). Always pair the guide with budgeted queries in cost-sensitive workflows.</li>
+      </ul>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Episode (hidden test suite)</th><th>Arm</th><th>Result</th><th class="num">Adopted</th><th class="num">GCX calls (err)</th><th class="num">Repeat cmds</th><th class="num">Total / Uncached tokens</th><th class="num">Wall</th></tr>
+        </thead>
+        <tbody>
+          <tr><td rowspan="3"><strong>requests-auth-redirect</strong></td><td>baseline</td><td><span class="pill pill-good">2/2 pass</span></td><td class="num">no</td><td class="num">0</td><td class="num">1</td><td class="num">731.6k / 74.7k</td><td class="num">92.0 s</td></tr>
+          <tr><td>gcx-bare</td><td><span class="pill pill-good">2/2 pass</span></td><td class="num">no</td><td class="num">0</td><td class="num">1</td><td class="num">660.7k / 79.4k</td><td class="num">97.7 s</td></tr>
+          <tr><td><strong>gcx-guide</strong></td><td><span class="pill pill-good">2/2 pass</span></td><td class="num"><strong>yes</strong></td><td class="num">3 (2)</td><td class="num"><strong>0</strong></td><td class="num">1,154.2k / 117.5k</td><td class="num">133.0 s</td></tr>
+          <tr><td rowspan="3"><strong>cobra-find-flags</strong></td><td>baseline</td><td><span class="pill pill-good">2/2 pass</span></td><td class="num">no</td><td class="num">0</td><td class="num">1</td><td class="num">914.1k / 69.1k</td><td class="num">103.2 s</td></tr>
+          <tr><td>gcx-bare</td><td><span class="pill pill-good">2/2 pass</span></td><td class="num">no</td><td class="num">0</td><td class="num">0</td><td class="num">830.8k / 85.1k</td><td class="num">96.5 s</td></tr>
+          <tr><td><strong>gcx-guide</strong></td><td><span class="pill pill-good">2/2 pass</span></td><td class="num"><strong>yes</strong></td><td class="num">6 (1)</td><td class="num"><strong>0</strong></td><td class="num">1,036.0k / 168.2k</td><td class="num">106.6 s</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout honest">
+      <strong>Honest trade-off on unbudgeted agent adoption:</strong> adding the shared agent guide raised 16-task pass rate from 14/16 &rarr; 16/16 (100% adoption on graph tasks, 0/6 false calls on restraint tasks) and eliminated repeated shell commands on both continuous episodes, but unbudgeted exploratory CLI calls used more tokens than baseline (321k vs 196k uncached across 16 tasks; 118k/168k vs 75k/69k on the two episodes). Tightening guide budgeting is an explicit post-0.8.0 focus.
+    </div>
+  </div>
+</section>
+
+<!-- ── 7. Historical Multi-Client Record ─────────────────────────────────── -->
+<section id="historical">
+  <div class="wrap">
+    <div class="section-head">
+      <span class="eyebrow">07 &middot; Dated historical record (v0.7.6 &middot; pre-0.8.0)</span>
+      <h2>Earlier 3-client sweep (preserved for continuity, not merged with v0.8.0)</h2>
+      <p class="note">Captured prior to v0.8.0 on the 15-task impact/architecture/refactor suite across Codex (<code>gpt-5.4-mini</code>), Claude Code (Haiku), and Agy (Gemini 3.6 Flash).</p>
+    </div>
+    <div class="grid3">
+      <div class="card">
+        <h3>Codex (historical v0.7.6)</h3>
+        <div class="stat-row"><span class="stat-label">Geomean total / uncached</span><span class="stat-value big">3.27&times; / 3.73&times;</span></div>
+        <div class="stat-row"><span class="stat-label">Valid / non-inferior</span><span class="stat-value">13/15 &middot; 14/15</span></div>
+      </div>
+      <div class="card">
+        <h3>Claude Code (historical v0.7.6)</h3>
+        <div class="stat-row"><span class="stat-label">Geomean total / uncached</span><span class="stat-value big">3.26&times; / 1.79&times;</span></div>
+        <div class="stat-row"><span class="stat-label">Valid / non-inferior</span><span class="stat-value">12/15 &middot; 12/15</span></div>
+      </div>
+      <div class="card">
+        <h3>Agy (historical v0.7.6)</h3>
+        <div class="stat-row"><span class="stat-label">Geomean total / uncached</span><span class="stat-value big">1.89&times; / 1.33&times;</span></div>
+        <div class="stat-row"><span class="stat-label">Valid / non-inferior</span><span class="stat-value">14/15 &middot; 14/15</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── 8. Bugs Found & Honest Limits ─────────────────────────────────────── -->
 <section id="honesty">
   <div class="wrap">
     <div class="section-head">
-      <h2>What didn't pass, and why</h2>
+      <span class="eyebrow">08 &middot; What didn't pass, bugs caught, and limits</span>
+      <h2>Real bugs this benchmark round caught and fixed before v0.8.0</h2>
     </div>
-    <div class="callout">
-      <p style="margin-bottom: 12px;"><strong>Real bugs, found and fixed before this suite's final numbers above:</strong></p>
+    <div class="callout good">
       <ul class="methodology">
-        <li><code>symbol_context</code> had no ambiguity handling and could silently resolve a common short name (e.g. <code>beginArray</code>, which matches 4 methods in gson) to the wrong one. It now goes through the same candidate-surfacing resolver as <code>find_callers</code>.</li>
-        <li>The benchmark harness let one slow or hung client call abort an entire 15-task run. A single arm now fails in isolation and the run continues.</li>
-        <li>Claude Code's deferred MCP tool loading (<code>ToolSearch</code>) wasn't accounted for in the harness prompt, so the agent reported GitCortex as "unavailable" on one task. Fixed and re-verified.</li>
+        <li><strong><code>find_callers</code> cross-file diversity (PR #146):</strong> on dense hubs like <code>django/db/models/query.py</code> (<code>QuerySet.filter</code>), a single file could fill the entire caller budget and hide cross-file callers. Stratified file-diverse ranking brought the big-repo deterministic gate from 9/10 to <strong>10/10</strong>.</li>
+        <li><strong>Incremental hook performance &amp; KuzuDB dense-hub crash (PR #147):</strong> editing a hub file with 15,217 incoming edges hit a KuzuDB 0.11.3 <code>DETACH DELETE</code> assertion crash/hang and O(N&times;M) Cypher name joins. Updating surviving nodes in place, bounding batch lookups by primary key, and threading uncommitted <code>Imports</code> in memory cut <code>ripgrep</code> hooks from 4,170 ms &rarr; <strong>423 ms</strong>, <code>tokio</code> from &gt;60 s &rarr; <strong>821 ms</strong>, and eliminated the <code>django</code> crash/hang (<strong>6.9 s</strong>).</li>
+        <li><strong>Full-index bulk reconciliation (PR #145):</strong> resolving initial full-index edges in Rust memory and loading via KuzuDB <code>COPY FROM</code> brought <code>django</code> cold indexing down to 5.3 s and <code>nextjs</code> (120k nodes) to 10.7 s.</li>
       </ul>
-      <p style="margin: 14px 0 12px;"><strong>Remaining misses are scoring strictness, not product bugs:</strong> a few samples cite the correct symbol (e.g. <code>ArrayTypeAdapter.read</code>) without repeating the full file path our automated grader string-matches on. The underlying evidence was correct in every case we checked.</p>
     </div>
-  </div>
-</section>
-
-<section id="methodology">
-  <div class="wrap">
-    <div class="section-head">
-      <h2>Methodology</h2>
+    <div class="callout honest">
+      <p style="margin-bottom: 10px;"><strong>Remaining known trade-offs (not hidden):</strong></p>
+      <ul class="methodology">
+        <li><strong>Plain lexical search</strong> stays near grep parity on Codex (&minus;3.8% uncached, +9.8% total tokens); GitCortex's clear token wins are on relationship queries (<code>subgraph</code>, <code>impact</code>, <code>refactor</code>, <code>callers</code>).</li>
+        <li><strong><code>moby</code> cold indexing:</strong> GitCortex indexes vendored Go directories by default (269k nodes, 23.8 s, 298 MiB), whereas CodeGraph skips vendor dirs (36.8k nodes, 6.7 s, 110 MiB).</li>
+        <li><strong>Unbudgeted adoption overhead:</strong> when unconstrained, agents equipped with the guide ran 55 CLI calls across 16 tasks (improving accuracy to 16/16 at higher total token usage).</li>
+        <li><strong>Static analysis scope:</strong> dynamic dispatch, reflection, and generated code can be missed; risk labels are investigation signals, not a guarantee of safe changes.</li>
+      </ul>
     </div>
-    <ol class="methodology">
-      <li>Five real open-source repos, pinned to an exact commit: ripgrep, requests, hono, cobra, gson.</li>
-      <li>Each task runs twice per client — once with ordinary grep/read exploration, once with exactly one GitCortex MCP call — arm order randomized per task to avoid ordering bias.</li>
-      <li>Token counts are the client's own self-reported usage from its structured output (Codex JSON events, Claude Code stream-json, Agy stream-json), not estimated.</li>
-      <li>A sample only counts as valid if the GitCortex arm's answer quality is equal to or better than the baseline's — token savings never count against a quality regression.</li>
-      <li>Full harness, task definitions, and raw per-task logs: <a href="https://github.com/bharath03-a/GitCortex/tree/main/tools/agent-bench">tools/agent-bench/</a> in the repo.</li>
-    </ol>
   </div>
 </section>
 
@@ -300,17 +594,41 @@
         <circle cx="46" cy="32" r="5.5" fill="currentColor" opacity=".7"/>
         <circle cx="32" cy="50" r="5.5" fill="currentColor" opacity=".7"/>
       </svg>
-      GitCortex · MIT
+      GitCortex v0.8.0 &middot; MIT
     </div>
     <div class="foot-links">
       <a href="./">Home</a>
       <a href="compare.html">Compare</a>
-      <a href="https://github.com/bharath03-a/GitCortex">GitHub</a>
+      <a href="releases.html">Releases</a>
       <a href="https://github.com/bharath03-a/GitCortex/tree/main/tools/agent-bench">Benchmark harness</a>
-      <a href="https://github.com/bharath03-a/GitCortex/blob/main/docs/REFERENCE.md">Reference</a>
+      <a href="https://github.com/bharath03-a/GitCortex">GitHub</a>
     </div>
   </div>
 </footer>
 
+<script>
+(function() {
+  var el = document.querySelector("[data-gh-stars]");
+  if (!el) return;
+  var key = "gcx_gh_stars_v1";
+  var fmt = function(n) { return n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n); };
+  var render = function(n) { el.textContent = "\u2605 " + fmt(n); };
+  try {
+    var cached = JSON.parse(sessionStorage.getItem(key) || "null");
+    if (cached && Date.now() - cached.ts < 900000 && typeof cached.n === "number") {
+      render(cached.n);
+      return;
+    }
+  } catch (_) {}
+  fetch("https://api.github.com/repos/bharath03-a/GitCortex", { headers: { Accept: "application/vnd.github+json" } })
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(d) {
+      if (d && typeof d.stargazers_count === "number") {
+        render(d.stargazers_count);
+        try { sessionStorage.setItem(key, JSON.stringify({ n: d.stargazers_count, ts: Date.now() })); } catch (_) {}
+      }
+    }).catch(function() {});
+})();
+</script>
 </body>
 </html>

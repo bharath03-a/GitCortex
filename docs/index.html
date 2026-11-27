@@ -3,18 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="GitCortex builds a branch-aware code knowledge graph of your repository, locally, on every commit, with zero LLM calls. MCP-native. Git-hook-driven.">
-  <title>GitCortex: A local code knowledge graph for AI assistants</title>
+  <meta name="description" content="Explore callers, understand change impact, and query a branch-aware local code graph with explicit freshness and source evidence. MCP-native, CLI-ready, MIT.">
+  <title>GitCortex: Code relationships that stay useful while you code</title>
 
   <meta property="og:type"        content="website">
   <meta property="og:url"         content="https://bharath03-a.github.io/GitCortex/">
-  <meta property="og:title"       content="GitCortex: A local code knowledge graph for AI assistants">
-  <meta property="og:description" content="Branch-aware knowledge graph of your repo. Zero LLM calls. Git-hook-driven incremental indexing. MCP-native. pip install gitcortex.">
+  <meta property="og:title"       content="GitCortex: Code relationships that stay useful while you code">
+  <meta property="og:description" content="Explore callers, understand change impact, and query a branch-aware local graph with explicit freshness and source evidence. MCP-native. MIT.">
   <meta property="og:image"       content="https://raw.githubusercontent.com/bharath03-a/GitCortex/main/assets/icon.svg">
 
   <meta name="twitter:card"        content="summary">
-  <meta name="twitter:title"       content="GitCortex: A local code knowledge graph for AI assistants">
-  <meta name="twitter:description" content="Branch-aware knowledge graph of your repo. Zero LLM calls. Git-hook-driven. MCP-native. pip install gitcortex.">
+  <meta name="twitter:title"       content="GitCortex: Code relationships that stay useful while you code">
+  <meta name="twitter:description" content="Branch-aware local code knowledge graph with explicit readiness, incremental git hooks, and MCP/CLI access.">
   <meta name="twitter:image"       content="https://raw.githubusercontent.com/bharath03-a/GitCortex/main/assets/icon.svg">
 
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
@@ -23,54 +23,32 @@
   <link rel="canonical" href="https://bharath03-a.github.io/GitCortex/">
   <style>
     /* ─────────────────────────────────────────────────────────────────────────
-       GitCortex: technical datasheet.
-
-       Typefaces are self-hosted (docs/assets/fonts/), never a font CDN: a tool
-       whose premise is that nothing leaves your machine should not call out to
-       one from its own marketing page. Space Grotesk and IBM Plex Mono are the
-       same two families the product's own graph explorer ships, so the page
-       and the tool it describes read as one thing.
-       ───────────────────────────────────────────────────────────────────── */
+       GitCortex: technical datasheet (v0.8.0).
+       Self-hosted typefaces (docs/assets/fonts/) and self-hosted SVG charts
+       (docs/assets/charts/) — zero external font or chart CDNs.
+       ───────────────────────────────────────────────────────────────────────── */
     @font-face {
-      font-family: "Space Grotesk";
-      font-style: normal;
-      font-weight: 400;
-      font-display: swap;
+      font-family: "Space Grotesk"; font-style: normal; font-weight: 400; font-display: swap;
       src: url("assets/fonts/space-grotesk-latin-400-normal.woff2") format("woff2");
     }
     @font-face {
-      font-family: "Space Grotesk";
-      font-style: normal;
-      font-weight: 500;
-      font-display: swap;
+      font-family: "Space Grotesk"; font-style: normal; font-weight: 500; font-display: swap;
       src: url("assets/fonts/space-grotesk-latin-500-normal.woff2") format("woff2");
     }
     @font-face {
-      font-family: "Space Grotesk";
-      font-style: normal;
-      font-weight: 600 800;
-      font-display: swap;
+      font-family: "Space Grotesk"; font-style: normal; font-weight: 600 800; font-display: swap;
       src: url("assets/fonts/space-grotesk-latin-600-normal.woff2") format("woff2");
     }
     @font-face {
-      font-family: "IBM Plex Mono";
-      font-style: normal;
-      font-weight: 400;
-      font-display: swap;
+      font-family: "IBM Plex Mono"; font-style: normal; font-weight: 400; font-display: swap;
       src: url("assets/fonts/ibm-plex-mono-latin-400-normal.woff2") format("woff2");
     }
     @font-face {
-      font-family: "IBM Plex Mono";
-      font-style: normal;
-      font-weight: 500;
-      font-display: swap;
+      font-family: "IBM Plex Mono"; font-style: normal; font-weight: 500; font-display: swap;
       src: url("assets/fonts/ibm-plex-mono-latin-500-normal.woff2") format("woff2");
     }
     @font-face {
-      font-family: "IBM Plex Mono";
-      font-style: normal;
-      font-weight: 600;
-      font-display: swap;
+      font-family: "IBM Plex Mono"; font-style: normal; font-weight: 600; font-display: swap;
       src: url("assets/fonts/ibm-plex-mono-latin-600-normal.woff2") format("woff2");
     }
 
@@ -85,9 +63,11 @@
       --ink-3:      #8A8A94;
       --brand:      #C4633F;
       --brand-soft: #FBEFE9;
+      --good:       #2F6F5E;
+      --good-soft:  #EAF3EF;
+      --warn:       #8A6D28;
+      --warn-soft:  #FBF3E1;
 
-      /* Functional palette: one hue per NodeKind, used as the page's
-         structural language rather than as decoration. */
       --k-type:     #2F6F5E;
       --k-fn:       #2B5CA8;
       --k-trait:    #6B4CA8;
@@ -99,10 +79,8 @@
 
       --gut: 28px;
       --max: 1120px;
+      color-scheme: light;
     }
-
-    /* Light only, deliberately: one palette, tuned once, printed accurately. */
-    :root { color-scheme: light; }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html { font-size: 16px; scroll-behavior: smooth; }
@@ -122,49 +100,31 @@
 
     a { color: inherit; text-decoration: none; }
     :focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; border-radius: 2px; }
-
     code, pre, .mono { font-family: var(--mono); }
-
     .wrap { max-width: var(--max); margin: 0 auto; padding: 0 var(--gut); }
 
-    /* ── Type ─────────────────────────────────────────────────────────────── */
+    /* ── Type ──────────────────────────────────────────────────────────────── */
     .eyebrow {
-      font-family: var(--mono);
-      font-size: .69rem;
-      text-transform: uppercase;
-      letter-spacing: .145em;
-      font-weight: 600;
-      color: var(--ink-3);
+      font-family: var(--mono); font-size: .69rem; text-transform: uppercase;
+      letter-spacing: .145em; font-weight: 600; color: var(--ink-3);
     }
     h1 {
-      font-size: clamp(2.15rem, 4.4vw, 3.15rem);
-      line-height: 1.06;
-      letter-spacing: -.032em;
-      font-weight: 800;
-      max-width: 19ch;
-      text-wrap: balance;
+      font-size: clamp(2.15rem, 4.3vw, 3.1rem); line-height: 1.06;
+      letter-spacing: -.032em; font-weight: 800; max-width: 19ch; text-wrap: balance;
     }
     h2 {
-      font-size: clamp(1.45rem, 2.9vw, 2.05rem);
-      line-height: 1.14;
-      letter-spacing: -.024em;
-      font-weight: 780;
-      max-width: 22ch;
+      font-size: clamp(1.45rem, 2.9vw, 2.05rem); line-height: 1.14;
+      letter-spacing: -.024em; font-weight: 780; max-width: 24ch;
     }
-    h3 {
-      font-size: 1rem;
-      letter-spacing: -.008em;
-      font-weight: 660;
-    }
-    .lede { color: var(--ink-2); font-size: 1.06rem; max-width: 58ch; }
+    h3 { font-size: 1rem; letter-spacing: -.008em; font-weight: 660; }
+    .lede { color: var(--ink-2); font-size: 1.05rem; max-width: 60ch; }
     .note { color: var(--ink-2); font-size: .9rem; }
 
-    /* ── Nav ──────────────────────────────────────────────────────────────── */
+    /* ── Nav ───────────────────────────────────────────────────────────────── */
     .nav {
       position: sticky; top: 0; z-index: 50;
       background: color-mix(in srgb, var(--paper) 88%, transparent);
-      backdrop-filter: blur(10px);
-      border-bottom: 1px solid var(--rule);
+      backdrop-filter: blur(10px); border-bottom: 1px solid var(--rule);
     }
     .nav-in {
       max-width: var(--max); margin: 0 auto; padding: 0 var(--gut);
@@ -172,7 +132,7 @@
     }
     .brandmark { display: flex; align-items: center; gap: 9px; font-weight: 700; letter-spacing: -.02em; }
     .brandmark svg { width: 22px; height: 22px; display: block; color: var(--brand); }
-    .nav-links { display: flex; align-items: center; gap: 26px; list-style: none; }
+    .nav-links { display: flex; align-items: center; gap: 24px; list-style: none; }
     .nav-links a { font-size: .875rem; color: var(--ink-2); }
     .nav-links a:hover { color: var(--ink); }
     .nav-cta {
@@ -180,69 +140,55 @@
       border: 1px solid var(--rule); border-radius: 6px; padding: 6px 12px; color: var(--ink);
     }
     .nav-cta:hover { border-color: var(--brand); color: var(--brand); }
-    @media (max-width: 860px) { .nav-hide { display: none; } }
+    @media (max-width: 900px) { .nav-hide { display: none; } }
     @media (max-width: 560px) {
-      /* .nav-links had no wrap/overflow handling, so once the remaining
-         links (Benchmarks/Compare/Releases/GitHub) couldn't fit one row
-         they forced the whole page's layout viewport wider instead of
-         wrapping — every section below then inherited that overflow.
-         min-width: 0 lets a flex item shrink past its content size so
-         overflow-x: auto actually gets to scroll instead of the item
-         just refusing to shrink. */
       .nav-in { gap: 12px; }
-      .nav-links { gap: 18px; overflow-x: auto; min-width: 0; flex: 1 1 auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+      .nav-links { gap: 16px; overflow-x: auto; min-width: 0; flex: 1 1 auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
       .nav-links::-webkit-scrollbar { display: none; }
       .brandmark { flex: none; }
     }
 
-    /* ── Section rhythm ───────────────────────────────────────────────────── */
-    .band { padding: 92px 0; border-top: 1px solid var(--rule); }
+    /* ── Section rhythm ────────────────────────────────────────────────────── */
+    .band { padding: 88px 0; border-top: 1px solid var(--rule); }
     .band--tint { background: var(--surface-2); }
-    .band-head { margin-bottom: 44px; }
+    .band-head { margin-bottom: 40px; }
     .band-head .eyebrow { display: block; margin-bottom: 14px; }
-    .band-head .lede { margin-top: 16px; }
+    .band-head .lede { margin-top: 14px; }
 
-    /* ── Hero ─────────────────────────────────────────────────────────────── */
-    .hero { padding: 84px 0 76px; }
-    .hero-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 56px; align-items: center; }
-    /* Grid items default to min-width: auto, i.e. their content's min-content
-       size — which the .kv rows' white-space: nowrap makes wide even though
-       .exchange-body has overflow-x: auto. overflow:auto on a *descendant*
-       doesn't stop that min-content from being used to size the grid track;
-       only min-width: 0 on the item itself does, letting the demo box's
-       internal scrollbar actually do its job instead of widening the page. */
+    /* ── Hero ──────────────────────────────────────────────────────────────── */
+    .hero { padding: 80px 0 72px; }
+    .hero-grid { display: grid; grid-template-columns: 1fr 1.04fr; gap: 52px; align-items: center; }
     .hero-grid > .rise { min-width: 0; }
-    @media (max-width: 940px) { .hero-grid { grid-template-columns: 1fr; gap: 44px; } h1 { max-width: 20ch; } }
+    @media (max-width: 940px) { .hero-grid { grid-template-columns: 1fr; gap: 40px; } h1 { max-width: 20ch; } }
 
     .version-tag {
       display: inline-flex; align-items: center; gap: 9px;
       font-family: var(--mono); font-size: .72rem; font-weight: 600;
       letter-spacing: .04em; color: var(--brand);
       background: var(--brand-soft); border-radius: 999px; padding: 5px 12px;
-      margin-bottom: 26px;
+      margin-bottom: 24px;
     }
     .version-tag::before {
-      content: ""; width: 5px; height: 5px; border-radius: 50%;
-      background: var(--brand); flex: none;
+      content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--brand); flex: none;
     }
-    .hero h1 { margin-bottom: 22px; }
-    .hero .lede { margin-bottom: 32px; }
+    .hero h1 { margin-bottom: 20px; }
+    .hero .lede { margin-bottom: 28px; }
 
     .cmdline {
       display: flex; align-items: center; gap: 10px;
       background: var(--surface); border: 1px solid var(--rule); border-radius: 8px;
-      padding: 11px 12px 11px 14px; font-family: var(--mono); font-size: .88rem;
-      max-width: 340px;
+      padding: 11px 12px 11px 14px; font-family: var(--mono); font-size: .86rem;
+      max-width: 390px;
     }
     .cmdline .sigil { color: var(--ink-3); user-select: none; }
-    .cmdline code { flex: 1; color: var(--ink); }
+    .cmdline code { flex: 1; color: var(--ink); overflow-x: auto; white-space: nowrap; }
     .copy {
       border: 0; background: transparent; cursor: pointer; color: var(--ink-3);
       font-family: var(--mono); font-size: .72rem; padding: 3px 7px; border-radius: 4px;
     }
     .copy:hover { color: var(--ink); background: var(--surface-2); }
 
-    .actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 16px; }
+    .actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
     .btn {
       display: inline-flex; align-items: center; gap: 8px;
       font-size: .9rem; font-weight: 600; border-radius: 7px; padding: 10px 18px;
@@ -253,25 +199,32 @@
     .btn--line { border-color: var(--rule); color: var(--ink); }
     .btn--line:hover { border-color: var(--ink-3); }
 
-    /* ── Hero exchange panel (the signature) ──────────────────────────────── */
+    /* ── Exchange panel ────────────────────────────────────────────────────── */
     .exchange {
       background: var(--surface); border: 1px solid var(--rule); border-radius: 11px;
       overflow: hidden; box-shadow: 0 1px 2px rgba(20,20,26,.04), 0 12px 32px -14px rgba(20,20,26,.13);
     }
     .exchange-bar {
-      display: flex; align-items: center; gap: 9px;
+      display: flex; align-items: center; justify-content: space-between; gap: 9px;
       padding: 10px 14px; border-bottom: 1px solid var(--rule); background: var(--surface-2);
       font-family: var(--mono); font-size: .7rem; color: var(--ink-3); letter-spacing: .03em;
     }
-    .exchange-bar .tick { width: 7px; height: 7px; border-radius: 50%; background: var(--rule); flex: none; }
+    .exchange-bar-l { display: flex; align-items: center; gap: 9px; }
+    .exchange-bar .tick { width: 7px; height: 7px; border-radius: 50%; background: var(--good); flex: none; }
+    .state-pill {
+      font-family: var(--mono); font-size: .66rem; font-weight: 600;
+      padding: 2px 8px; border-radius: 999px; background: var(--good-soft); color: var(--good);
+    }
+    .state-pill--warn { background: var(--warn-soft); color: var(--warn); }
     .exchange-body { padding: 16px 18px 18px; font-family: var(--mono); font-size: .77rem; line-height: 1.72; overflow-x: auto; }
     .exchange-body .ask { color: var(--ink-3); }
     .exchange-body .ask b { color: var(--ink); font-weight: 600; }
-    .exchange-rule { height: 1px; background: var(--rule-soft); margin: 13px 0; }
+    .exchange-rule { height: 1px; background: var(--rule-soft); margin: 12px 0; }
     .kv { color: var(--ink-2); white-space: nowrap; }
     .kv .k { color: var(--ink-3); }
     .kv .s { color: var(--k-type); }
     .kv .n { color: var(--k-fn); }
+    .kv .b { color: var(--brand); font-weight: 600; }
     .loc { color: var(--ink-3); }
     .exchange-foot {
       border-top: 1px solid var(--rule); padding: 10px 18px;
@@ -279,7 +232,50 @@
       display: flex; gap: 16px; flex-wrap: wrap;
     }
 
-    /* ── Schema legend ────────────────────────────────────────────────────── */
+    /* ── Latest strip ──────────────────────────────────────────────────────── */
+    .latest-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    @media (max-width: 820px) { .latest-grid { grid-template-columns: 1fr; } }
+    .latest-card {
+      display: block; border: 1px solid var(--rule); border-radius: 10px;
+      padding: 18px 20px; background: var(--surface); transition: border-color .15s;
+    }
+    .latest-card:hover { border-color: var(--brand); }
+    .latest-card .tag {
+      font-family: var(--mono); font-size: .68rem; text-transform: uppercase;
+      letter-spacing: .08em; color: var(--brand); margin-bottom: 8px;
+    }
+    .latest-card .title { font-weight: 660; margin-bottom: 6px; }
+    .latest-card .desc { font-size: .86rem; color: var(--ink-2); line-height: 1.5; }
+    .latest-card code { font-size: .84em; background: var(--surface-2); padding: 1px 4px; border-radius: 3px; color: var(--ink); }
+
+    /* ── Interactive 4-stage workflow walkthrough ──────────────────────────── */
+    .wf-grid { display: grid; grid-template-columns: .86fr 1.14fr; gap: 28px; align-items: start; }
+    @media (max-width: 880px) { .wf-grid { grid-template-columns: 1fr; } }
+    .wf-steps { display: flex; flex-direction: column; gap: 10px; }
+    .wf-step {
+      text-align: left; width: 100%; cursor: pointer;
+      background: var(--surface); border: 1px solid var(--rule); border-radius: 10px;
+      padding: 15px 18px; transition: border-color .15s, background .15s;
+    }
+    .wf-step:hover { border-color: var(--ink-3); }
+    .wf-step[aria-selected="true"] {
+      border-color: var(--brand); background: var(--brand-soft);
+    }
+    .wf-step .num {
+      font-family: var(--mono); font-size: .68rem; text-transform: uppercase;
+      letter-spacing: .1em; color: var(--brand); font-weight: 600; display: block; margin-bottom: 4px;
+    }
+    .wf-step .stitle { font-weight: 700; font-size: .96rem; color: var(--ink); display: block; margin-bottom: 4px; }
+    .wf-step .sdesc { font-size: .84rem; color: var(--ink-2); display: block; line-height: 1.45; }
+    .wf-panel[hidden] { display: none; }
+    .wf-meta {
+      margin-top: 12px; font-size: .84rem; color: var(--ink-2);
+      background: var(--surface); border: 1px solid var(--rule); border-radius: 9px; padding: 13px 16px;
+    }
+    .wf-meta strong { color: var(--ink); }
+    .wf-meta code { font-size: .84em; background: var(--surface-2); padding: 1px 5px; border-radius: 3px; color: var(--ink); }
+
+    /* ── Schema legend ─────────────────────────────────────────────────────── */
     .schema { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px; }
     @media (max-width: 820px) { .schema { grid-template-columns: 1fr; gap: 30px; } }
     .schema h3 { margin-bottom: 16px; }
@@ -298,7 +294,7 @@
     .kind[data-k="doc"]    { color: var(--k-doc); }
     .kind span { color: var(--ink-2); }
 
-    /* ── Product screenshots ──────────────────────────────────────────────── */
+    /* ── Product screenshots & charts ──────────────────────────────────────── */
     .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
     @media (max-width: 820px) { .shots { grid-template-columns: 1fr; } }
     .shot {
@@ -312,8 +308,13 @@
     }
     .shot-bar .tick { width: 7px; height: 7px; border-radius: 50%; background: var(--rule); flex: none; }
     .shot img { display: block; width: 100%; height: auto; }
+    .chart-frame {
+      margin-top: 20px; border: 1px solid var(--rule); border-radius: 10px;
+      overflow: hidden; background: var(--surface);
+    }
+    .chart-frame img { display: block; width: 100%; height: auto; }
 
-    /* ── Principles ───────────────────────────────────────────────────────── */
+    /* ── Principles ────────────────────────────────────────────────────────── */
     .principles { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--rule); }
     @media (max-width: 940px) { .principles { grid-template-columns: repeat(2, 1fr); } }
     @media (max-width: 560px) { .principles { grid-template-columns: 1fr; } }
@@ -322,15 +323,15 @@
     @media (max-width: 940px) { .principle:nth-child(2n) { border-right: 0; } }
     @media (max-width: 560px) { .principle { border-right: 0; } }
     .principle h3 { margin: 12px 0 8px; }
-    .principle p { font-size: .89rem; color: var(--ink-2); }
+    .principle p { font-size: .88rem; color: var(--ink-2); }
     .principle code { font-size: .82em; color: var(--ink); background: var(--surface-2); padding: 1px 5px; border-radius: 3px; }
 
-    /* ── Feature list ─────────────────────────────────────────────────────── */
+    /* ── Feature list ──────────────────────────────────────────────────────── */
     .features { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
     @media (max-width: 820px) { .features { grid-template-columns: 1fr; } }
     .feature { background: var(--paper); padding: 26px 26px 24px; }
     .feature h3 { margin-bottom: 9px; }
-    .feature p { font-size: .9rem; color: var(--ink-2); margin-bottom: 16px; }
+    .feature p { font-size: .89rem; color: var(--ink-2); margin-bottom: 14px; }
     .feature code { font-size: .84em; color: var(--ink); }
     .chips { display: flex; flex-wrap: wrap; gap: 6px; }
     .chip {
@@ -338,8 +339,8 @@
       color: var(--ink-3); border: 1px solid var(--rule); border-radius: 4px; padding: 3px 7px;
     }
 
-    /* ── Install ──────────────────────────────────────────────────────────── */
-    .install-wrap { max-width: 760px; }
+    /* ── Tabs & Install ────────────────────────────────────────────────────── */
+    .install-wrap { max-width: 960px; }
     .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--rule); margin-bottom: -1px; flex-wrap: wrap; }
     .tab {
       font-family: var(--mono); font-size: .78rem; font-weight: 600;
@@ -358,12 +359,19 @@
     .panel .kw  { color: var(--brand); font-weight: 600; }
     .install-note { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--rule-soft); font-size: .83rem; color: var(--ink-2); }
     .install-note a { color: var(--brand); text-decoration: underline; text-underline-offset: 2px; }
+    .upgrade-box {
+      margin-top: 20px; background: var(--warn-soft); border: 1px solid var(--rule);
+      border-left: 3px solid var(--warn); border-radius: 9px; padding: 15px 18px;
+      font-size: .86rem; color: var(--ink-2); max-width: 760px;
+    }
+    .upgrade-box strong { color: var(--ink); }
+    .upgrade-box code { background: var(--surface); padding: 1px 5px; border-radius: 3px; color: var(--ink); font-size: .85em; }
 
-    /* ── MCP ──────────────────────────────────────────────────────────────── */
+    /* ── MCP ───────────────────────────────────────────────────────────────── */
     .mcp { display: grid; grid-template-columns: 1.15fr .85fr; gap: 40px; align-items: start; }
     @media (max-width: 900px) { .mcp { grid-template-columns: 1fr; gap: 30px; } }
     .tools { list-style: none; border-top: 1px solid var(--rule); }
-    .tool { display: grid; grid-template-columns: minmax(0, 15rem) 1fr; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--rule-soft); align-items: baseline; }
+    .tool { display: grid; grid-template-columns: minmax(0, 15.5rem) 1fr; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--rule-soft); align-items: baseline; }
     @media (max-width: 620px) { .tool { grid-template-columns: 1fr; gap: 3px; } }
     .tool code { font-family: var(--mono); font-size: .8rem; color: var(--ink); }
     .tool span { font-size: .87rem; color: var(--ink-2); }
@@ -374,30 +382,29 @@
     .config .str { color: var(--k-type); }
     .config .note { margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--rule-soft); font-size: .82rem; }
 
-    /* ── Latest ───────────────────────────────────────────────────────────── */
-    .latest-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-    @media (max-width: 820px) { .latest-grid { grid-template-columns: 1fr; } }
-
-    /* ── Evidence ─────────────────────────────────────────────────────────── */
-    .metrics { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; background: var(--surface); }
-    @media (max-width: 760px) { .metrics { grid-template-columns: 1fr; } }
-    .metric { padding: 24px 26px; border-right: 1px solid var(--rule); }
+    /* ── Evidence ──────────────────────────────────────────────────────────── */
+    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; background: var(--surface); }
+    @media (max-width: 860px) { .metrics { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 560px) { .metrics { grid-template-columns: 1fr; } }
+    .metric { padding: 22px 22px; border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
     .metric:last-child { border-right: 0; }
-    @media (max-width: 760px) { .metric { border-right: 0; border-bottom: 1px solid var(--rule); } .metric:last-child { border-bottom: 0; } }
-    .metric .figure { font-size: 2rem; font-weight: 780; letter-spacing: -.03em; line-height: 1.1; }
-    .metric .cap { font-family: var(--mono); font-size: .71rem; text-transform: uppercase; letter-spacing: .12em; color: var(--ink-3); margin: 9px 0 7px; }
-    .metric p { font-size: .85rem; color: var(--ink-2); }
-    .method { margin-top: 20px; font-size: .85rem; color: var(--ink-2); max-width: 68ch; }
+    @media (min-width: 861px) { .metric { border-bottom: 0; } }
+    @media (max-width: 860px) { .metric:nth-child(2n) { border-right: 0; } }
+    @media (max-width: 560px) { .metric { border-right: 0; } .metric:last-child { border-bottom: 0; } }
+    .metric .figure { font-size: 1.8rem; font-weight: 780; letter-spacing: -.03em; line-height: 1.1; }
+    .metric .cap { font-family: var(--mono); font-size: .69rem; text-transform: uppercase; letter-spacing: .12em; color: var(--ink-3); margin: 8px 0 6px; }
+    .metric p { font-size: .83rem; color: var(--ink-2); }
+    .method { margin-top: 18px; font-size: .85rem; color: var(--ink-2); max-width: 78ch; }
     .method a { color: var(--brand); text-decoration: underline; text-underline-offset: 2px; }
-    .panel > .note { margin-bottom: 16px; max-width: 68ch; }
+    .panel > .note { margin-bottom: 16px; max-width: 74ch; }
 
-    /* ── Close ────────────────────────────────────────────────────────────── */
-    .close { padding: 84px 0; border-top: 1px solid var(--rule); }
-    .close h2 { margin-bottom: 16px; }
-    .close .lede { margin-bottom: 30px; }
+    /* ── Close ─────────────────────────────────────────────────────────────── */
+    .close { padding: 80px 0; border-top: 1px solid var(--rule); }
+    .close h2 { margin-bottom: 14px; }
+    .close .lede { margin-bottom: 26px; }
     .close code { font-family: var(--mono); font-size: .88em; color: var(--ink); background: var(--surface-2); padding: 1px 5px; border-radius: 3px; }
 
-    /* ── Footer ───────────────────────────────────────────────────────────── */
+    /* ── Footer ────────────────────────────────────────────────────────────── */
     .foot { border-top: 1px solid var(--rule); padding: 34px 0 44px; }
     .foot-in { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; align-items: center; }
     .foot-id { display: flex; align-items: center; gap: 9px; font-family: var(--mono); font-size: .78rem; color: var(--ink-3); }
@@ -406,40 +413,77 @@
     .foot-links a { font-size: .85rem; color: var(--ink-2); }
     .foot-links a:hover { color: var(--ink); }
 
-    /* ── Entrance: one staged reveal, not scattered effects ───────────────── */
     @media (prefers-reduced-motion: no-preference) {
       .rise { animation: rise .62s cubic-bezier(.22,.61,.36,1) backwards; }
       .rise:nth-child(1) { animation-delay: .02s; }
       .rise:nth-child(2) { animation-delay: .1s; }
       @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
     }
+  
+    /* Unified nav & live GitHub star badge */
+    .nav-links { display: flex; align-items: center; gap: 22px; list-style: none; }
+    .nav-links a[aria-current="page"] { color: var(--ink); font-weight: 600; }
+    .gh-star {
+      display: inline-flex; align-items: center; gap: 7px;
+      font-family: var(--mono); font-size: .76rem; font-weight: 600;
+      color: var(--ink) !important; background: var(--surface);
+      border: 1px solid var(--rule); border-radius: 999px;
+      padding: 5px 11px; line-height: 1;
+      transition: border-color .14s ease, color .14s ease;
+    }
+    .gh-star:hover { border-color: var(--brand); color: var(--brand) !important; }
+    .gh-star-count {
+      display: inline-flex; align-items: center; gap: 3px;
+      padding-left: 7px; border-left: 1px solid var(--rule);
+      color: var(--ink-2); font-variant-numeric: tabular-nums;
+    }
+    .gh-star-count:empty { display: none; }
+    @media (max-width: 760px) { .nav-hide { display: none; } .nav-links { gap: 14px; } }
+
+  
+    /* Chart reader's guide / explanation block */
+    .chart-explain {
+      margin: -6px 0 22px;
+      padding: 16px 20px;
+      background: var(--paper, #FCFCFA);
+      border: 1px solid var(--rule, #E5E4DE);
+      border-left: 3px solid var(--brand, #C4633F);
+      border-radius: 10px;
+      font-size: .9rem;
+      line-height: 1.58;
+      color: var(--ink-2, #55555F);
+    }
+    .chart-explain .ex-title {
+      font-family: var(--mono);
+      font-size: .72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      color: var(--ink, #14141A);
+      margin-bottom: 8px;
+    }
+    .chart-explain ul { list-style: none; display: grid; gap: 6px; margin: 0; padding: 0; }
+    .chart-explain li { position: relative; padding-left: 16px; }
+    .chart-explain li::before {
+      content: ""; position: absolute; left: 0; top: .68em;
+      width: 7px; height: 1.5px; background: var(--brand, #C4633F);
+    }
+    .chart-explain strong { color: var(--ink, #14141A); font-weight: 650; }
+
   </style>
 </head>
 <body>
 
-<nav class="nav">
+<nav class="nav" aria-label="Primary">
   <div class="nav-in">
-    <a class="brandmark" href="./" aria-label="GitCortex home">
-      <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <line x1="18" y1="18" x2="46" y2="32" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-        <line x1="18" y1="18" x2="32" y2="50" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-        <line x1="46" y1="32" x2="32" y2="50" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity=".55"/>
-        <circle cx="18" cy="18" r="7" fill="currentColor"/>
-        <circle cx="46" cy="32" r="5.5" fill="currentColor" opacity=".72"/>
-        <circle cx="32" cy="50" r="5.5" fill="currentColor" opacity=".72"/>
-      </svg>
-      GitCortex
-    </a>
+    <a class="brandmark" href="./" aria-label="GitCortex home"><svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" width="22" height="22" aria-hidden="true"><line x1="18" y1="18" x2="46" y2="32" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><line x1="18" y1="18" x2="32" y2="50" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><line x1="46" y1="32" x2="32" y2="50" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity=".55"/><circle cx="18" cy="18" r="7" fill="currentColor"/><circle cx="46" cy="32" r="5.5" fill="currentColor" opacity=".72"/><circle cx="32" cy="50" r="5.5" fill="currentColor" opacity=".72"/></svg> GitCortex</a>
     <ul class="nav-links">
-      <li class="nav-hide"><a href="#how">How it works</a></li>
-      <li class="nav-hide"><a href="#explorer">Explorer</a></li>
-      <li class="nav-hide"><a href="#features">Features</a></li>
-      <li class="nav-hide"><a href="#install">Install</a></li>
-      <li class="nav-hide"><a href="#mcp">MCP</a></li>
+      <li class="nav-hide"><a href="./#walkthrough">Workflow</a></li>
+      <li class="nav-hide"><a href="./#install">Install</a></li>
       <li><a href="benchmarks.html">Benchmarks</a></li>
       <li><a href="compare.html">Compare</a></li>
       <li><a href="releases.html">Releases</a></li>
-      <li><a class="nav-cta" href="https://github.com/bharath03-a/GitCortex">GitHub</a></li>
+      <li><a class="gh-star" href="https://github.com/bharath03-a/GitCortex" aria-label="GitCortex on GitHub" target="_blank" rel="noopener"><svg viewBox="0 0 16 16" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span class="gh-star-count" data-gh-stars></span></a></li>
     </ul>
   </div>
 </nav>
@@ -448,12 +492,13 @@
 <header class="hero">
   <div class="wrap hero-grid">
     <div class="rise">
-      <span class="version-tag">v0.7.6 · MIT</span>
-      <h1>Your assistant stops grepping and starts reading the graph.</h1>
+      <span class="version-tag">v0.8.0 &middot; MIT</span>
+      <h1>Code relationships that stay useful while you code.</h1>
       <p class="lede">
-        GitCortex indexes your repository into a branch-aware knowledge graph on every
-        commit, then serves it to AI coding assistants over MCP. It runs entirely on your
-        machine: no cloud, no API keys, no LLM calls, no source code leaving disk.
+        Explore callers, understand change impact, and query a branch-aware local graph
+        with explicit freshness and source evidence &mdash; alongside your ordinary source
+        search and tests. Indexing and graph queries run locally in Rust and embedded KuzuDB
+        with zero LLM calls.
       </p>
       <div class="cmdline">
         <span class="sigil">$</span>
@@ -462,25 +507,29 @@
       </div>
       <div class="actions">
         <a class="btn btn--solid" href="#install">Get started</a>
-        <a class="btn btn--line" href="https://github.com/bharath03-a/GitCortex">View source</a>
+        <a class="btn btn--line" href="benchmarks.html">Read v0.8.0 benchmarks</a>
       </div>
     </div>
 
     <div class="rise">
       <figure class="exchange">
-        <figcaption class="exchange-bar"><span class="tick"></span> gcx · find_callers · branch main</figcaption>
+        <figcaption class="exchange-bar">
+          <span class="exchange-bar-l"><span class="tick"></span> gcx &middot; find_callers &middot; branch main</span>
+          <span class="state-pill">index.state: ready</span>
+        </figcaption>
         <div class="exchange-body">
           <div class="ask">// an assistant asks: <b>what breaks if I change Session.send?</b></div>
           <div class="exchange-rule"></div>
-          <div class="kv"><span class="k">answer</span> &nbsp;3 production callers; change risk is medium.</div>
+          <div class="kv"><span class="k">index</span> &nbsp;&nbsp;&nbsp;<span class="s">ready</span> &middot; branch <span class="n">main</span> &middot; head <span class="loc">a4f91c2</span></div>
+          <div class="kv"><span class="k">answer</span> &nbsp;&nbsp;3 production callers; risk signal is medium (verify in source &amp; tests).</div>
           <div class="kv"><span class="k">evidence</span></div>
-          <div class="kv">&nbsp;&nbsp;<span class="s">Session.request</span> <span class="loc">sessions.py:589</span> <span class="k">calls</span></div>
-          <div class="kv">&nbsp;&nbsp;<span class="s">Session.get</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="loc">sessions.py:602</span> <span class="k">calls</span></div>
-          <div class="kv">&nbsp;&nbsp;<span class="s">Session.post</span> &nbsp;&nbsp;&nbsp;&nbsp;<span class="loc">sessions.py:637</span> <span class="k">calls</span></div>
-          <div class="kv"><span class="k">coverage</span> <span class="n">3</span> of <span class="n">3</span> · not truncated</div>
+          <div class="kv">&nbsp;&nbsp;<span class="s">Session.request</span> <span class="loc">src/requests/sessions.py:589</span> <span class="k">calls</span></div>
+          <div class="kv">&nbsp;&nbsp;<span class="s">Session.get</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="loc">src/requests/sessions.py:602</span> <span class="k">calls</span></div>
+          <div class="kv">&nbsp;&nbsp;<span class="s">Session.post</span> &nbsp;&nbsp;&nbsp;&nbsp;<span class="loc">src/requests/sessions.py:637</span> <span class="k">calls</span></div>
+          <div class="kv"><span class="k">coverage</span> <span class="n">3</span> of <span class="n">3</span> &middot; not truncated</div>
         </div>
         <div class="exchange-foot">
-          <span>typed result</span><span>file:line evidence</span><span>one call, no follow-up</span>
+          <span>explicit readiness</span><span>file:line evidence</span><span>bounded payload</span>
         </div>
       </figure>
     </div>
@@ -491,38 +540,190 @@
 <section class="band" id="latest" style="padding: 56px 0;">
   <div class="wrap">
     <div style="display:flex; align-items:baseline; justify-content:space-between; gap:16px; margin-bottom:20px; flex-wrap:wrap;">
-      <h2 style="font-size:1.3rem; letter-spacing:-.02em;">Latest</h2>
+      <h2 style="font-size:1.3rem; letter-spacing:-.02em;">What's new in v0.8.0</h2>
     </div>
     <div class="latest-grid">
-      <a href="https://github.com/bharath03-a/GitCortex/blob/main/CHANGELOG.md" style="display:block; border:1px solid var(--rule); border-radius:10px; padding:18px 20px; background:var(--surface); transition:border-color .15s;">
-        <div style="font-family:var(--mono); font-size:.68rem; text-transform:uppercase; letter-spacing:.08em; color:var(--brand); margin-bottom:8px;">Release</div>
-        <div style="font-weight:660; margin-bottom:6px;">v0.7.6 is out</div>
-        <div style="font-size:.86rem; color:var(--ink-2); line-height:1.5;">Antigravity's MCP server now registers project-locally by default (previously needed a manual global flag), the interactive editor setup only asks once per repo and supports picking several assistants at once, and <code>gcx init</code> gets a proper banner and progress spinner.</div>
+      <a class="latest-card" href="releases.html">
+        <div class="tag">Indexing &amp; Storage</div>
+        <div class="title">Fast bulk + incremental hooks &amp; disk reclaim</div>
+        <div class="desc">Cold-indexes <code>django</code> (48.5k nodes, 267.5k edges) in 5.3 s and <code>ripgrep</code> in 0.9 s. 1-file <code>gcx hook</code> runs in 423 ms on <code>ripgrep</code> and 821 ms on <code>tokio</code>. <code>gcx storage gc</code> &amp; <code>compact</code> reclaim 84%+ disk after 5-branch churn.</div>
       </a>
-      <a href="benchmarks.html" style="display:block; border:1px solid var(--rule); border-radius:10px; padding:18px 20px; background:var(--surface); transition:border-color .15s;">
-        <div style="font-family:var(--mono); font-size:.68rem; text-transform:uppercase; letter-spacing:.08em; color:var(--brand); margin-bottom:8px;">Benchmarks</div>
-        <div style="font-weight:660; margin-bottom:6px;">Measured across 3 real AI clients</div>
-        <div style="font-size:.86rem; color:var(--ink-2); line-height:1.5;">Codex, Claude Code, and Agy — real token counts, not estimates, on deep blast-radius and refactor-safety questions.</div>
+      <a class="latest-card" href="benchmarks.html">
+        <div class="tag">Benchmarks</div>
+        <div class="title">45/45 retrieval &amp; 35/35 Codex CLI validation</div>
+        <div class="desc">1.00 MRR across 10 pinned repositories, &minus;27.7% uncached tokens (0.943 &rarr; 0.986 quality) on the 35-task Codex suite, plus a 48-run unforced adoption study with trade-offs disclosed.</div>
       </a>
-      <a href="compare-codegraph.html" style="display:block; border:1px solid var(--rule); border-radius:10px; padding:18px 20px; background:var(--surface); transition:border-color .15s;">
-        <div style="font-family:var(--mono); font-size:.68rem; text-transform:uppercase; letter-spacing:.08em; color:var(--brand); margin-bottom:8px;">Compare</div>
-        <div style="font-weight:660; margin-bottom:6px;">How GitCortex compares to CodeGraph</div>
-        <div style="font-size:.86rem; color:var(--ink-2); line-height:1.5;">10 questions, 3 real AI clients, fresh baselines each time — including where CodeGraph wins.</div>
+      <a class="latest-card" href="compare.html">
+        <div class="tag">Compare</div>
+        <div class="title">v0.8.0 vs Graphify 0.9.44 &amp; CodeGraph 1.5.0</div>
+        <div class="desc">Head-to-head evidence accuracy, uncached tokens, cold-index speed, and disk footprint across 10 real repos &mdash; including where each competitor wins.</div>
       </a>
     </div>
   </div>
 </section>
 
+<!-- ── Interactive 4-stage live workflow walkthrough ─────────────────────── -->
+<section class="band" id="demo" style="padding: 44px 0 56px; border-top: 1px solid var(--rule-soft);">
+  <div class="wrap">
+    <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:20px; flex-wrap:wrap;">
+      <div>
+        <span class="eyebrow">30-Second Light-Theme Walkthrough</span>
+        <h2 style="margin-top:6px;">Before vs After: Grep exploration vs GitCortex v0.8.0</h2>
+      </div>
+      <a href="benchmarks.html" style="font-family:var(--mono); font-size:.78rem; color:var(--brand); border-bottom:1px solid var(--brand); padding-bottom:2px;">Inspect all 6 benchmark charts &rarr;</a>
+    </div>
+    <div style="border:1px solid var(--rule); border-radius:14px; overflow:hidden; background:#F7F5EF; box-shadow:0 14px 36px rgba(20,20,26,.07);">
+      <video src="assets/demo-v080.mp4" controls autoplay muted loop playsinline preload="metadata" width="1920" height="1080" style="display:block; width:100%; height:auto;">
+        Your browser does not support HTML5 video. <a href="assets/demo-v080.mp4">Download the v0.8.0 Before vs After demo (MP4)</a>.
+      </video>
+    </div>
+  </div>
+</section>
+
+<section class="band band--tint" id="walkthrough">
+  <div class="wrap">
+    <div class="band-head">
+      <span class="eyebrow">Live coding workflow</span>
+      <h2>Edit, query, switch branches, recover &mdash; without guessing whether the graph is stale.</h2>
+      <p class="lede">
+        Static graphs only stay trustworthy when updates are fast, branches stay isolated,
+        and degraded states say so explicitly instead of returning an empty caller list.
+        Step through the four moments that matter in a real coding session.
+      </p>
+    </div>
+
+    <div class="wf-grid">
+      <div class="wf-steps" role="tablist" aria-label="Workflow stages">
+        <button class="wf-step" role="tab" id="wf-tab-1" aria-controls="wf-panel-1" aria-selected="true" type="button">
+          <span class="num">01 &middot; Edit &amp; commit</span>
+          <span class="stitle">Incremental hook updates only changed files</span>
+          <span class="sdesc">Diffs from the last indexed SHA, updates surviving symbols in place, and reconciles affected callers.</span>
+        </button>
+        <button class="wf-step" role="tab" id="wf-tab-2" aria-controls="wf-panel-2" aria-selected="false" type="button">
+          <span class="num">02 &middot; Follow-up query</span>
+          <span class="stitle">Structured answer with explicit freshness receipt</span>
+          <span class="sdesc">Every CLI and MCP envelope carries <code>index.state</code>, branch, and coverage alongside <code>file:line</code> evidence.</span>
+        </button>
+        <button class="wf-step" role="tab" id="wf-tab-3" aria-controls="wf-panel-3" aria-selected="false" type="button">
+          <span class="num">03 &middot; Branch switch &amp; GC</span>
+          <span class="stitle">Branch-isolated tables, reclaimable storage</span>
+          <span class="sdesc">Each branch keeps its own graph namespace; deleted branches are swept and compacted on demand.</span>
+        </button>
+        <button class="wf-step" role="tab" id="wf-tab-4" aria-controls="wf-panel-4" aria-selected="false" type="button">
+          <span class="num">04 &middot; Degraded recovery</span>
+          <span class="stitle">Never mistakes a missing index for "no callers"</span>
+          <span class="sdesc">Stale, missing, or schema-mismatched stores report their exact state and recovery command.</span>
+        </button>
+      </div>
+
+      <div>
+        <div class="wf-panel" role="tabpanel" id="wf-panel-1" aria-labelledby="wf-tab-1">
+          <figure class="exchange">
+            <figcaption class="exchange-bar">
+              <span class="exchange-bar-l"><span class="tick"></span> post-commit &middot; gcx hook</span>
+              <span class="state-pill">423 ms on ripgrep</span>
+            </figcaption>
+            <div class="exchange-body">
+              <div class="ask">$ <b>git commit -m "refactor: extract retry helper"</b></div>
+              <div class="exchange-rule"></div>
+              <div class="kv"><span class="k">gcx</span> &nbsp;[<span class="s">main</span>] &nbsp;diff <span class="loc">a4f91c2..c8d20e1</span> &middot; 1 file changed</div>
+              <div class="kv">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;surviving symbols updated in place (incoming edges preserved)</div>
+              <div class="kv">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+1 symbol &nbsp;+2 call edges &nbsp;(423 ms)</div>
+            </div>
+            <div class="exchange-foot">
+              <span>ripgrep: 423 ms</span><span>tokio: 821 ms</span><span>django dense hub: 6.9 s</span>
+            </div>
+          </figure>
+          <div class="wf-meta">
+            <strong>Supported update paths:</strong> git hooks (<code>post-commit</code>, <code>post-merge</code>, <code>post-rewrite</code>, <code>post-checkout</code>), manual refresh (<code>gcx hook</code> / <code>gcx index</code>), and optional file watching with persistent dirty-state tracking.
+          </div>
+        </div>
+
+        <div class="wf-panel" role="tabpanel" id="wf-panel-2" aria-labelledby="wf-tab-2" hidden>
+          <figure class="exchange">
+            <figcaption class="exchange-bar">
+              <span class="exchange-bar-l"><span class="tick"></span> gcx query find-callers --depth 2 --format agent-json</span>
+              <span class="state-pill">index.state: ready</span>
+            </figcaption>
+            <div class="exchange-body">
+              <div class="kv"><span class="k">{</span></div>
+              <div class="kv">&nbsp;&nbsp;<span class="k">"index":</span> { <span class="k">"state":</span> <span class="s">"ready"</span>, <span class="k">"branch":</span> <span class="s">"main"</span>, <span class="k">"head_sha":</span> <span class="s">"c8d20e1"</span> },</div>
+              <div class="kv">&nbsp;&nbsp;<span class="k">"target":</span> <span class="s">"Notify::notify_waiters"</span>,</div>
+              <div class="kv">&nbsp;&nbsp;<span class="k">"coverage":</span> { <span class="k">"returned":</span> <span class="n">8</span>, <span class="k">"total":</span> <span class="n">14</span>, <span class="k">"truncated":</span> <span class="b">true</span> },</div>
+              <div class="kv">&nbsp;&nbsp;<span class="k">"items":</span> [ { <span class="k">"name":</span> <span class="s">"CancellationToken::cancel"</span>, <span class="k">"file":</span> <span class="loc">"tokio-util/src/sync/cancellation_token.rs:194"</span> } ]</div>
+              <div class="kv"><span class="k">}</span></div>
+            </div>
+            <div class="exchange-foot">
+              <span>cross-file diversified evidence</span><span>explicit truncation flag</span><span>confirm in source &amp; tests</span>
+            </div>
+          </figure>
+          <div class="wf-meta">
+            <strong>Complementary workflow:</strong> use graph evidence to map callers and cross-file impact quickly, then inspect the cited lines in source and run your test suite before shipping. Static analysis can miss dynamic dispatch or generated code.
+          </div>
+        </div>
+
+        <div class="wf-panel" role="tabpanel" id="wf-panel-3" aria-labelledby="wf-tab-3" hidden>
+          <figure class="exchange">
+            <figcaption class="exchange-bar">
+              <span class="exchange-bar-l"><span class="tick"></span> branch switch &amp; storage reclaim</span>
+              <span class="state-pill">&minus;84.1% disk reclaimed</span>
+            </figcaption>
+            <div class="exchange-body">
+              <div class="ask">$ <b>git checkout feat/retry-budget</b> &nbsp;<span class="loc"># post-checkout switches branch key</span></div>
+              <div class="kv"><span class="k">gcx</span> &nbsp;[<span class="s">feat/retry-budget</span>] &nbsp;branch namespace ready (701 ms on ripgrep)</div>
+              <div class="exchange-rule"></div>
+              <div class="ask">$ <b>gcx storage gc</b> &nbsp;<span class="loc"># dry-run by default: lists 5 deleted branches</span></div>
+              <div class="ask">$ <b>gcx storage gc --apply &amp;&amp; gcx storage compact --apply</b></div>
+              <div class="kv"><span class="k">reclaimed</span> &nbsp;<span class="b">89.1 MiB &rarr; 14.2 MiB (&minus;84.1%)</span> in 760 ms</div>
+            </div>
+            <div class="exchange-foot">
+              <span>dry-run default</span><span>django 5-branch churn: 676 &rarr; 104 MiB (&minus;84.6%)</span>
+            </div>
+          </figure>
+          <div class="wf-meta">
+            <strong>No unbounded store growth:</strong> <code>gcx storage list</code>, <code>prune</code>, <code>gc</code>, and <code>compact</code> preview everything before deleting, and safely drop stale branch tables and compact KuzuDB files back to single-branch size.
+          </div>
+        </div>
+
+        <div class="wf-panel" role="tabpanel" id="wf-panel-4" aria-labelledby="wf-tab-4" hidden>
+          <figure class="exchange">
+            <figcaption class="exchange-bar">
+              <span class="exchange-bar-l"><span class="tick" style="background: var(--warn);"></span> gcx doctor &middot; explicit readiness</span>
+              <span class="state-pill state-pill--warn">index.state: stale</span>
+            </figcaption>
+            <div class="exchange-body">
+              <div class="kv"><span class="k">index.state</span> &nbsp;<span class="b">stale</span> (HEAD moved 3 commits without hook; or schema &lt; v15)</div>
+              <div class="kv"><span class="k">next_action</span> &nbsp;Run <b>gcx hook</b> (or <b>gcx clean &amp;&amp; gcx init</b> on schema upgrade)</div>
+              <div class="exchange-rule"></div>
+              <div class="ask">$ <b>gcx doctor</b></div>
+              <div class="kv">&nbsp;&nbsp;<span class="s">[ok]</span> &nbsp;git hooks installed &amp; executable</div>
+              <div class="kv">&nbsp;&nbsp;<span class="s">[ok]</span> &nbsp;editor MCP &amp; agent guide registered</div>
+              <div class="kv">&nbsp;&nbsp;<span class="b">[warn]</span> branch 'main' behind HEAD &rarr; run <b>gcx hook</b></div>
+            </div>
+            <div class="exchange-foot">
+              <span>never fakes empty callers</span><span>explicit recovery command</span><span>explicit exit codes &amp; readiness</span>
+            </div>
+          </figure>
+          <div class="wf-meta">
+            <strong>Honest failure modes:</strong> missing, stale, or degraded indexes return explicit readiness metadata rather than pretending a symbol has zero callers. Run <code>gcx doctor</code> or <code>gcx status</code> at any time to verify hooks, store health, and editor wiring.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ── How it works / schema ─────────────────────────────────────────────── -->
-<section class="band band--tint" id="how">
+<section class="band" id="how">
   <div class="wrap">
     <div class="band-head">
       <span class="eyebrow">How it works</span>
-      <h2>A typed graph, rebuilt incrementally by git itself.</h2>
+      <h2>A typed graph, updated incrementally from your git history.</h2>
       <p class="lede">
-        Four git hooks keep the graph honest: <code>post-commit</code>, <code>post-merge</code>,
-        <code>post-rewrite</code>, <code>post-checkout</code>. Each run diffs from the last indexed
-        SHA rather than <code>HEAD~1</code>, so rebases and amends never leave the graph stale.
+        Four git hooks (<code>post-commit</code>, <code>post-merge</code>, <code>post-rewrite</code>,
+        <code>post-checkout</code>) diff from the last indexed SHA rather than <code>HEAD~1</code>,
+        so rebases, amends, and branch switches keep each branch's table synchronized &mdash; and
+        manual <code>gcx hook</code> or <code>gcx index</code> recovers immediately whenever hooks are skipped.
       </p>
     </div>
 
@@ -530,12 +731,12 @@
       <div>
         <h3>Everything nameable is a node</h3>
         <div class="kinds">
-          <span class="kind" data-k="type">Struct <span>·</span> Enum</span>
-          <span class="kind" data-k="trait">Trait <span>·</span> Interface</span>
-          <span class="kind" data-k="fn">Function <span>·</span> Method</span>
-          <span class="kind" data-k="module">Module <span>·</span> File</span>
+          <span class="kind" data-k="type">Struct <span>&middot;</span> Enum</span>
+          <span class="kind" data-k="trait">Trait <span>&middot;</span> Interface</span>
+          <span class="kind" data-k="fn">Function <span>&middot;</span> Method</span>
+          <span class="kind" data-k="module">Module <span>&middot;</span> File</span>
           <span class="kind" data-k="type">TypeAlias</span>
-          <span class="kind" data-k="fn">Constant <span>·</span> Macro</span>
+          <span class="kind" data-k="fn">Constant <span>&middot;</span> Macro</span>
           <span class="kind" data-k="doc">Section</span>
         </div>
       </div>
@@ -554,7 +755,7 @@
   </div>
 </section>
 
-<!-- ── Product screenshots ───────────────────────────────────────────────── -->
+<!-- ── Explorer screenshots ──────────────────────────────────────────────── -->
 <section class="band band--tint" id="explorer">
   <div class="wrap">
     <div class="band-head">
@@ -580,87 +781,75 @@
   </div>
 </section>
 
-<!-- ── Principles ────────────────────────────────────────────────────────── -->
+<!-- ── Design decisions ──────────────────────────────────────────────────── -->
 <section class="band">
   <div class="wrap">
     <div class="band-head">
       <span class="eyebrow">Design decisions</span>
-      <h2>Built for repositories that cannot leave the building.</h2>
+      <h2>Local analysis, bounded evidence, honest operational limits.</h2>
     </div>
     <div class="principles">
       <div class="principle">
-        <span class="eyebrow">Local</span>
-        <h3>No network path</h3>
-        <p>KuzuDB runs embedded and the embedding weights are local. There is no server to
-          call, so the tool works air-gapped and cannot leak source by design.</p>
+        <span class="eyebrow">Local analysis</span>
+        <h3>Embedded Rust + KuzuDB</h3>
+        <p>Parsing, graph storage, and MCP/CLI queries run locally on your machine with no GitCortex cloud backend or LLM calls. Setup downloads packages/binaries as usual, and your AI assistant's own model requests follow its configured network path.</p>
       </div>
       <div class="principle">
         <span class="eyebrow">Incremental</span>
-        <h3>Hook-speed indexing</h3>
-        <p>Only changed files are re-parsed, diffed from the last indexed SHA. Re-running is
-          idempotent, so a hook that fires twice costs nothing.</p>
+        <h3>Fast hooks + explicit readiness</h3>
+        <p>Only changed files are re-parsed and reconciled from the last indexed SHA. Every response surfaces <code>index.state</code> (<code>ready</code>, <code>stale</code>, <code>missing</code>, or <code>degraded</code>) with recovery guidance.</p>
       </div>
       <div class="principle">
         <span class="eyebrow">Branch-aware</span>
-        <h3>One graph per branch</h3>
-        <p>Each branch gets its own namespace, so switching branches switches context.
-          <code>branch_diff</code> reports what changed structurally between any two.</p>
+        <h3>Isolated &amp; reclaimable</h3>
+        <p>Each branch gets its own isolated storage namespace and supports structural <code>branch_diff</code>. Dry-run-first <code>gcx storage gc</code> and <code>compact</code> reclaim disk from deleted branches.</p>
       </div>
       <div class="principle">
-        <span class="eyebrow">Interoperable</span>
-        <h3>MCP over bespoke APIs</h3>
-        <p><code>gcx serve</code> speaks the Model Context Protocol, so any compatible
-          assistant queries the graph through structured tools instead of grep.</p>
+        <span class="eyebrow">Complementary</span>
+        <h3>Graph + source + tests</h3>
+        <p><code>gcx serve</code> (MCP) and <code>gcx query</code> (CLI) accelerate caller, impact, and neighbourhood lookup while working alongside ordinary grep, file reads, and your test suite.</p>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ── Features ──────────────────────────────────────────────────────────── -->
+<!-- ── Capabilities ──────────────────────────────────────────────────────── -->
 <section class="band band--tint" id="features">
   <div class="wrap">
     <div class="band-head">
       <span class="eyebrow">Capabilities</span>
-      <h2>Parsing, retrieval, and analysis, all on your machine.</h2>
+      <h2>Parsing, progressive search, storage lifecycle, and visualization.</h2>
     </div>
     <div class="features">
       <div class="feature">
         <h3>Multi-language AST parsing</h3>
-        <p>A tree-sitter backend gives one parsing API across every supported language.
-          Types, functions, methods, traits, calls, and imports are extracted structurally.</p>
+        <p>A tree-sitter backend provides one structural extraction pipeline across every supported language: definitions, calls, imports, type usages, and Markdown references.</p>
         <div class="chips"><span class="chip">Rust</span><span class="chip">Go</span><span class="chip">Python</span><span class="chip">TypeScript</span><span class="chip">Java</span><span class="chip">Markdown</span></div>
       </div>
       <div class="feature">
-        <h3>Ranked symbol search</h3>
-        <p>Hybrid lexical and local-embedding search over names and qualified paths.
-          Definitions rank above containers, test helpers, and documentation headings.</p>
-        <div class="chips"><span class="chip">fastembed-rs</span><span class="chip">BAAI/bge-small</span><span class="chip">local weights</span></div>
+        <h3>Progressive deterministic lexical search</h3>
+        <p>Ranked lexical search over symbol names and qualified paths with filters, compact/full modes, and pagination so assistants narrow candidates before reading files. Optional local semantic search (<code>fastembed-rs</code>) is separately configurable and downloads local model weights on first enable.</p>
+        <div class="chips"><span class="chip">deterministic lexical</span><span class="chip">compact &amp; full</span><span class="chip">pagination</span><span class="chip">optional semantic</span></div>
       </div>
       <div class="feature">
-        <h3>Clustering and hub detection</h3>
-        <p>Deterministic label propagation over <code>Contains</code> and <code>Calls</code> edges.
-          <code>find_clusters</code> surfaces module groupings; <code>find_god_nodes</code> finds
-          high-fan-in bottlenecks.</p>
-        <div class="chips"><span class="chip">label propagation</span><span class="chip">in-degree centrality</span><span class="chip">deterministic</span></div>
+        <h3>Typed question planning &amp; impact</h3>
+        <p>Read-only planning maps supported codebase questions to bounded relationship queries (<code>find_callers</code>, <code>symbol_context</code>, <code>get_subgraph</code>, <code>pre_edit_impact</code>) and asks for clarification when a question falls outside supported graph actions.</p>
+        <div class="chips"><span class="chip">cross-file diversity</span><span class="chip">production-first</span><span class="chip">exact-revision PR impact</span></div>
       </div>
       <div class="feature">
-        <h3>Interactive graph explorer</h3>
-        <p>An Axum-served React and Cosmograph front end, colour-coded by node kind,
-          filterable and keyboard-navigable. Exports to HTML, SVG, DOT, and GraphML.</p>
-        <div class="chips"><span class="chip">WebGL</span><span class="chip">ARIA roles</span><span class="chip">keyboard nav</span></div>
+        <h3>Storage lifecycle &amp; diagnostics</h3>
+        <p>Inspect and reclaim multi-branch disk usage with dry-run-first <code>gcx storage list / prune / gc / compact</code>. Verify hooks, store health, and editor wiring via <code>gcx doctor</code> and <code>gcx status</code>.</p>
+        <div class="chips"><span class="chip">dry-run default</span><span class="chip">84%+ reclaim</span><span class="chip">gcx doctor</span></div>
       </div>
       <div class="feature">
-        <h3>Markdown ingestion</h3>
-        <p>Headings become <code>Section</code> nodes and code-span mentions resolve to
-          <code>References</code> edges, so documentation links are tracked in the same graph
-          as the code they describe.</p>
-        <div class="chips"><span class="chip">pulldown-cmark</span><span class="chip">NodeKind::Section</span><span class="chip">EdgeKind::References</span></div>
+        <h3>Explorer &amp; graph export</h3>
+        <p><code>gcx viz</code> renders the local graph with Cosmograph WebGL; <code>gcx export</code> emits Mermaid, DOT, JSON, HTML, SVG, and GraphML. Opt-in local diagnostic MCP call metadata is bounded to 2 MiB and excludes raw arguments and contents (usage insights and an Activity UI remain future work).</p>
+        <div class="chips"><span class="chip">gcx viz</span><span class="chip">Mermaid / DOT / JSON</span><span class="chip">opt-in diagnostics</span></div>
       </div>
       <div class="feature">
-        <h3>Blast-radius reporting</h3>
-        <p>Transitive caller analysis against a base branch, ranked production-first with
-          tests reported separately, usable from the CLI or as a pull-request comment.</p>
-        <div class="chips"><span class="chip">git2</span><span class="chip">rayon</span><span class="chip">KuzuDB embedded</span></div>
+        <h3>Cross-editor setup &amp; shared agent guide</h3>
+        <p><code>gcx init</code> indexes the repo, installs git hooks, registers MCP, and writes concise guidance so Claude Code, Codex CLI, Cursor, Windsurf, Copilot, and Antigravity know when to reach for graph tools &mdash; and when to stick to grep.</p>
+        <div class="chips"><span class="chip">Claude Code</span><span class="chip">Codex CLI</span><span class="chip">Cursor</span><span class="chip">Windsurf</span><span class="chip">Antigravity</span></div>
       </div>
     </div>
   </div>
@@ -670,84 +859,82 @@
 <section class="band" id="install">
   <div class="wrap">
     <div class="band-head">
-      <span class="eyebrow">Install</span>
+      <span class="eyebrow">Install &middot; v0.8.0</span>
       <h2>Five ways in. All of them ship a binary.</h2>
       <p class="lede">
-        Pre-built binaries cover macOS on arm64 and x86_64, and Linux on x86_64 and arm64.
-        On Windows, use WSL2. Every path ends the same way: <code>gcx init</code> &mdash;
-        in a real terminal it indexes the repo, installs the git hooks, and asks which AI
-        assistant to wire in (Claude Code, Cursor, Windsurf, Copilot, Antigravity, Codex).
+        Pre-built binaries cover macOS (arm64, x86_64) and Linux (x86_64, arm64). On Windows,
+        use WSL2. Run <code>gcx init</code> in a repo to index, install git hooks, and wire in
+        your AI assistant (or <code>gcx init --editor none</code> for CLI-only setup).
       </p>
     </div>
 
-    <div class="install-wrap">
+    <div class="install-wrap" style="max-width: 760px;">
       <div class="tabs" role="tablist" aria-label="Installation method">
-        <button class="tab" role="tab" id="tab-brew"   aria-controls="panel-brew"   aria-selected="true">Homebrew</button>
-        <button class="tab" role="tab" id="tab-pip"    aria-controls="panel-pip"    aria-selected="false">pip / pipx</button>
-        <button class="tab" role="tab" id="tab-cargo"  aria-controls="panel-cargo"  aria-selected="false">cargo</button>
-        <button class="tab" role="tab" id="tab-npm"    aria-controls="panel-npm"    aria-selected="false">npm</button>
-        <button class="tab" role="tab" id="tab-binary" aria-controls="panel-binary" aria-selected="false">binary</button>
+        <button class="tab" role="tab" id="tab-brew"   aria-controls="panel-brew"   aria-selected="true"  type="button">Homebrew</button>
+        <button class="tab" role="tab" id="tab-pip"    aria-controls="panel-pip"    aria-selected="false" type="button">pip / pipx</button>
+        <button class="tab" role="tab" id="tab-cargo"  aria-controls="panel-cargo"  aria-selected="false" type="button">cargo</button>
+        <button class="tab" role="tab" id="tab-npm"    aria-controls="panel-npm"    aria-selected="false" type="button">npm</button>
+        <button class="tab" role="tab" id="tab-binary" aria-controls="panel-binary" aria-selected="false" type="button">binary</button>
       </div>
 
       <div class="panel" role="tabpanel" id="panel-brew" aria-labelledby="tab-brew">
-<pre><code><span class="cmt"># macOS or Linux</span>
+<pre><code><span class="cmt"># macOS or Linux (v0.8.0)</span>
 <span class="kw">brew</span> install bharath03-a/tap/gitcortex
-
-<span class="cmt"># Index the repo, install git hooks, and interactively wire in your AI assistant</span>
-<span class="kw">gcx</span> init</code></pre>
-        <p class="install-note">The official tap installs the matching pre-built binary. No Rust, Python, or Node.js runtime required.</p>
-      </div>
-
-      <div class="panel" role="tabpanel" id="panel-pip" aria-labelledby="tab-pip" hidden>
-<pre><code><span class="cmt"># Recommended: any Python 3.8+ environment</span>
-<span class="kw">pip</span> install gitcortex
-
-<span class="cmt"># Isolated install</span>
-<span class="kw">pipx</span> install gitcortex
-<span class="kw">uv</span> tool install gitcortex
-
-<span class="cmt"># Index, install git hooks, and interactively wire in your AI assistant</span>
-<span class="kw">gcx</span> init</code></pre>
-        <p class="install-note">Wheels bundle pre-built binaries for macOS arm64 and x86_64 and Linux x86_64 and arm64. No Rust toolchain required.</p>
-      </div>
-
-      <div class="panel" role="tabpanel" id="panel-cargo" aria-labelledby="tab-cargo" hidden>
-<pre><code><span class="cmt"># Install from crates.io</span>
-<span class="kw">cargo</span> install gitcortex --locked
 
 <span class="cmt"># Index, install git hooks, and interactively wire in your AI assistant</span>
 <span class="kw">gcx</span> init
+<span class="kw">gcx</span> doctor</code></pre>
+        <p class="install-note">Installs the pre-built <code>gcx</code> binary. No Rust, Python, or Node.js runtime required.</p>
+      </div>
 
-<span class="cmt"># Start the MCP server</span>
-<span class="kw">gcx</span> serve</code></pre>
-        <p class="install-note">Requires Rust 1.80 or newer. KuzuDB is built from source, so the first build takes roughly five minutes.</p>
+      <div class="panel" role="tabpanel" id="panel-pip" aria-labelledby="tab-pip" hidden>
+<pre><code><span class="cmt"># Python 3.8+ wheel (bundles pre-built v0.8.0 binary)</span>
+<span class="kw">pip</span> install gitcortex==0.8.0
+
+<span class="cmt"># Or isolated</span>
+<span class="kw">pipx</span> install gitcortex==0.8.0
+<span class="kw">uv</span> tool install gitcortex==0.8.0
+
+<span class="kw">gcx</span> init &amp;&amp; <span class="kw">gcx</span> doctor</code></pre>
+        <p class="install-note">Wheels bundle pre-built binaries for macOS arm64/x86_64 and Linux x86_64/arm64. No Rust toolchain required.</p>
+      </div>
+
+      <div class="panel" role="tabpanel" id="panel-cargo" aria-labelledby="tab-cargo" hidden>
+<pre><code><span class="cmt"># Build from crates.io (Rust 1.80+)</span>
+<span class="kw">cargo</span> install gitcortex --version 0.8.0 --locked
+
+<span class="kw">gcx</span> init &amp;&amp; <span class="kw">gcx</span> doctor</code></pre>
+        <p class="install-note">KuzuDB builds from source under Cargo, so the first compilation takes roughly five minutes.</p>
       </div>
 
       <div class="panel" role="tabpanel" id="panel-npm" aria-labelledby="tab-npm" hidden>
-<pre><code><span class="cmt"># Install globally</span>
-<span class="kw">npm</span> install -g gitcortex
+<pre><code><span class="cmt"># Global install (bundles pre-built v0.8.0 binary)</span>
+<span class="kw">npm</span> install -g gitcortex@0.8.0
 
-<span class="cmt"># Or with pnpm / bun</span>
-<span class="kw">pnpm</span> add -g gitcortex
-<span class="kw">bun</span> add -g gitcortex
+<span class="cmt"># Or pnpm / bun</span>
+<span class="kw">pnpm</span> add -g gitcortex@0.8.0
+<span class="kw">bun</span> add -g gitcortex@0.8.0
 
-<span class="cmt"># Index, install git hooks, and interactively wire in your AI assistant</span>
-<span class="kw">gcx</span> init</code></pre>
-        <p class="install-note">The npm package bundles the same pre-built binaries as the Python wheel.</p>
+<span class="kw">gcx</span> init &amp;&amp; <span class="kw">gcx</span> doctor</code></pre>
+        <p class="install-note">Bundles the same pre-built binaries as the Python wheel.</p>
       </div>
 
       <div class="panel" role="tabpanel" id="panel-binary" aria-labelledby="tab-binary" hidden>
-<pre><code><span class="cmt"># macOS arm64</span>
-<span class="kw">curl</span> -LO https://github.com/bharath03-a/GitCortex/releases/latest/download/gitcortex-aarch64-apple-darwin.tar.xz
+<pre><code><span class="cmt"># macOS arm64 (v0.8.0)</span>
+<span class="kw">curl</span> -LO https://github.com/bharath03-a/GitCortex/releases/download/v0.8.0/gitcortex-aarch64-apple-darwin.tar.xz
 <span class="kw">tar</span> -xf gitcortex-aarch64-apple-darwin.tar.xz
 <span class="kw">sudo</span> mv gcx /usr/local/bin/
 
-<span class="cmt"># Linux x86_64</span>
-<span class="kw">curl</span> -LO https://github.com/bharath03-a/GitCortex/releases/latest/download/gitcortex-x86_64-unknown-linux-gnu.tar.xz
+<span class="cmt"># Linux x86_64 (v0.8.0)</span>
+<span class="kw">curl</span> -LO https://github.com/bharath03-a/GitCortex/releases/download/v0.8.0/gitcortex-x86_64-unknown-linux-gnu.tar.xz
 <span class="kw">tar</span> -xf gitcortex-x86_64-unknown-linux-gnu.tar.xz
 <span class="kw">sudo</span> mv gcx /usr/local/bin/</code></pre>
-        <p class="install-note">Every target is listed on the <a href="https://github.com/bharath03-a/GitCortex/releases">releases page</a>.</p>
+        <p class="install-note">All platform archives and checksums are published on the <a href="https://github.com/bharath03-a/GitCortex/releases">releases page</a>.</p>
       </div>
+    </div>
+
+    <div class="upgrade-box">
+      <strong>Upgrading from v0.7.x (Graph Schema v15):</strong> v0.8.0 advances the embedded graph schema to v15 for fast incremental reconciliation and storage lifecycle metadata. After upgrading the binary, rebuild existing local indexes cleanly with <code>gcx clean &amp;&amp; gcx init</code> (or run <code>gcx init</code> when prompted on schema mismatch), then verify with <code>gcx doctor</code>.
     </div>
   </div>
 </section>
@@ -756,24 +943,23 @@
 <section class="band band--tint" id="mcp">
   <div class="wrap">
     <div class="band-head">
-      <span class="eyebrow">MCP server</span>
-      <h2>Structured tools, not a chat box.</h2>
+      <span class="eyebrow">MCP server &amp; CLI</span>
+      <h2>Structured envelopes, not a chat box.</h2>
       <p class="lede">
-        Add <code>gcx serve</code> to your <code>.mcp.json</code> and any MCP-compatible
-        assistant gains typed access to the graph.
+        Add <code>gcx serve</code> to your MCP configuration (or call <code>gcx query ...</code> directly from CLI agents). Every response uses an object envelope carrying explicit readiness and coverage metadata.
       </p>
     </div>
 
     <div class="mcp">
       <ul class="tools">
-        <li class="tool"><code>lookup_symbol(name)</code><span>Every definition matching a name, across the graph</span></li>
-        <li class="tool"><code>find_callers(name)</code><span>Ranked callers with file and line evidence</span></li>
+        <li class="tool"><code>lookup_symbol(name)</code><span>Every definition matching a symbol name across the active branch</span></li>
+        <li class="tool"><code>find_callers(name, depth?)</code><span>Cross-file diversified callers with <code>file:line</code> evidence</span></li>
+        <li class="tool"><code>symbol_context(name)</code><span>360&deg; view: definition, callers, callees, and type usages</span></li>
         <li class="tool"><code>get_subgraph(name, depth)</code><span>Bounded neighbourhood: callers, callees, implementations</span></li>
-        <li class="tool"><code>search_code(query)</code><span>Ranked hybrid search over names and qualified paths</span></li>
-        <li class="tool"><code>find_god_nodes(min_in_degree)</code><span>High-fan-in symbols: bottlenecks and hot modules</span></li>
-        <li class="tool"><code>find_clusters(min_size)</code><span>Label-propagation clusters over the call graph</span></li>
-        <li class="tool"><code>branch_diff(from, to)</code><span>Structural difference between two branches</span></li>
-        <li class="tool"><code>start_tour(seed?)</code><span>Guided walkthrough, centrality-ranked or seeded</span></li>
+        <li class="tool"><code>search_code(query)</code><span>Progressive lexical search with filters, compact/full modes, and pagination</span></li>
+        <li class="tool"><code>pre_edit_impact(name)</code><span>Production-first transitive caller impact with separate test counts</span></li>
+        <li class="tool"><code>branch_diff(from, to)</code><span>Structural symbol &amp; edge difference between two indexed branches</span></li>
+        <li class="tool"><code>find_god_nodes / find_clusters</code><span>In-degree hub detection and deterministic label-propagation clusters</span></li>
       </ul>
 
       <div class="config">
@@ -787,7 +973,7 @@
     }
   }
 }</code></pre>
-        <p class="note">Works with Claude Code, Cursor, Windsurf, Continue.dev, and any other MCP host.</p>
+        <p class="note">Works with Claude Code, Codex CLI, Cursor, Windsurf, Copilot, Antigravity, and any other MCP host.</p>
       </div>
     </div>
   </div>
@@ -798,56 +984,64 @@
   <div class="wrap">
     <div class="band-head">
       <span class="eyebrow">Measured</span>
-      <h2>Claims you can reproduce, tracked release over release.</h2>
+      <h2>Claims you can reproduce, kept separate from historical runs.</h2>
       <p class="lede">
-        Every run below is reproducible from the scripts named in its methodology line.
-        Numbers are not smoothed across runs: methodology changed between them, and each
-        panel says how.
+        Current v0.8.0 validation runs are kept strictly separate from older dated panels.
+        Methodology, failures, and trade-offs are published alongside the wins on the
+        <a href="benchmarks.html" style="color:var(--brand); text-decoration:underline; text-underline-offset:2px;">full benchmarks page</a>.
       </p>
     </div>
 
     <div class="install-wrap">
       <div class="tabs" role="tablist" aria-label="Benchmark run">
-        <button class="tab" role="tab" id="tab-bench-latest" aria-controls="panel-bench-latest" aria-selected="true">Latest (retrieval gate)</button>
-        <button class="tab" role="tab" id="tab-bench-0717" aria-controls="panel-bench-0717" aria-selected="false">2026-07-17</button>
-        <button class="tab" role="tab" id="tab-bench-0712" aria-controls="panel-bench-0712" aria-selected="false">2026-07-12</button>
+        <button class="tab" role="tab" id="tab-bench-v080" aria-controls="panel-bench-v080" aria-selected="true"  type="button">v0.8.0 validation</button>
+        <button class="tab" role="tab" id="tab-bench-0717" aria-controls="panel-bench-0717" aria-selected="false" type="button">2026-07-17 (historical)</button>
+        <button class="tab" role="tab" id="tab-bench-0712" aria-controls="panel-bench-0712" aria-selected="false" type="button">2026-07-12 (historical)</button>
       </div>
 
-      <div class="panel" role="tabpanel" id="panel-bench-latest" aria-labelledby="tab-bench-latest">
-        <p class="note">Deterministic, model-free retrieval gate over five pinned repositories (Rust, Python, TypeScript, Go, Java), plus one native Codex CLI smoke run.</p>
+      <div class="panel" role="tabpanel" id="panel-bench-v080" aria-labelledby="tab-bench-v080">
+        <p class="note">Full v0.8.0 pre-release validation across 10 pinned repositories: 45/45 model-free retrieval gate, 35-task Codex CLI (<code>gpt-6.1-sol</code>, low reasoning) agent suite, 10-repo cold indexing, and 3-repo incremental hook + 5-branch storage reclaim.</p>
         <div class="metrics">
           <div class="metric">
-            <div class="figure">1.00</div>
-            <div class="cap">Search MRR</div>
-            <p>Mean reciprocal rank on the pinned suite: every query returns a relevant
-              definition in first position.</p>
+            <div class="figure">45 / 45</div>
+            <div class="cap">Deterministic retrieval</div>
+            <p>1.00 MRR and 1.00 file recall across 5 core repos (35 tasks) and 5 large repos (10 tasks).</p>
           </div>
           <div class="metric">
-            <div class="figure">20 / 20</div>
-            <div class="cap">Tasks valid</div>
-            <p>Every task returns the required evidence, omits forbidden evidence, and stays
-              inside its payload budget.</p>
-          </div>
-          <div class="metric">
-            <div class="figure">1.82&times;</div>
+            <div class="figure">&minus;27.7%</div>
             <div class="cap">Codex uncached tokens</div>
-            <p>Native <code>codex exec</code> graph-CLI lane on cobra, one round: uncached
-              token geomean against a grep baseline.</p>
+            <p>35/35 valid, 35/35 quality non-inferior (0.943 &rarr; 0.986); 36&ndash;43% saved on relationship tasks.</p>
+          </div>
+          <div class="metric">
+            <div class="figure">423 ms</div>
+            <div class="cap">1-file commit hook</div>
+            <p>Measured on <code>ripgrep</code> (down from 4,170 ms). <code>tokio</code>: 821 ms; <code>django</code> hub: 6.9 s.</p>
+          </div>
+          <div class="metric">
+            <div class="figure">&minus;84.5%</div>
+            <div class="cap">5-branch disk reclaim</div>
+            <p>Dry-run-first <code>storage gc</code> + <code>compact</code> reclaims 84.1&ndash;84.9% across ripgrep, tokio, django.</p>
           </div>
         </div>
+        <div class="chart-frame">
+          <img src="assets/charts/chart-codex-actions.svg" alt="35-task Codex agent benchmark showing 36 to 43 percent uncached token savings on subgraph, impact, refactor, and callers questions, while plain search stays near grep parity" loading="lazy" width="960" height="455">
+        </div>
+    <div class="chart-explain">
+      <div class="ex-title">How to read this chart &amp; key takeaways</div>
+      <ul>
+        <li><strong>Left of 0% = fewer tokens than grep:</strong> Each horizontal bar shows the percent change in <strong>uncached input tokens</strong> (the expensive, newly-read context an LLM processes) compared to an identical Codex CLI session using ordinary grep and file reads. The right column lists the corresponding change in <strong>total tokens</strong> (cached + uncached).</li>
+        <li><strong>Where graph traversal wins biggest:</strong> Multi-hop relationship questions&mdash;<code>subgraph</code> (&minus;43.0%), <code>impact</code> (&minus;41.3%), <code>refactor</code> (&minus;37.7%), and <code>callers</code> (&minus;36.0%, while lifting accuracy from 0.80 &rarr; 1.00)&mdash;avoid repeated grep-and-read loops across dozens of files.</li>
+        <li><strong>Honest boundary (<code>search</code> &amp; <code>tour</code>):</strong> Single-hop lexical lookup stays near grep parity (&minus;3.8% uncached, +9.8% total tokens). GitCortex is designed to complement source search and tests, not replace plain grep on trivial lookups.</li>
+      </ul>
+    </div>
         <p class="method">
-          This lane is model-free by design, so it is gated on every commit rather than run
-          on a schedule. See
-          <a href="https://github.com/bharath03-a/GitCortex/blob/main/docs/benchmarks/agent-retrieval-v1.md">the retrieval gate write-up</a>
-          and
-          <a href="https://github.com/bharath03-a/GitCortex/blob/main/docs/benchmarks/AGENT-BENCHMARK-PLAN.md">the full benchmark plan</a>.
-          Reproduce: <code>python3 tools/agent-bench/bench.py run</code>.
+          Plain lexical search stays near grep parity (&minus;3.8% uncached, +9.8% total tokens); unbudgeted unforced adoption improved pass rate from 14/16 to 16/16 (10/10 adoption, 0/6 false restraint calls) at higher total token spend. See all 6 graphs, competitor head-to-heads, and exact tables on <a href="benchmarks.html">benchmarks.html</a> and <a href="compare.html">compare.html</a>.
         </p>
       </div>
 
       <div class="panel" role="tabpanel" id="panel-bench-0717" aria-labelledby="tab-bench-0717" hidden>
-        <p class="note">Median of 3 runs against Claude haiku-4.5, errored and rate-limited sessions excluded. Measured Claude token usage: once with ordinary file search, once through the compact MCP.</p>
-        <div class="metrics">
+        <p class="note"><strong>Historical evidence (2026-07-17):</strong> Median of 3 runs against Claude haiku-4.5 (pre-0.8.0), errored and rate-limited sessions excluded. Kept dated and separate from current 35-task v0.8.0 results.</p>
+        <div class="metrics" style="grid-template-columns: repeat(3, 1fr);">
           <div class="metric">
             <div class="figure">1.35&times;</div>
             <div class="cap">Geomean token ratio</div>
@@ -856,34 +1050,32 @@
           <div class="metric">
             <div class="figure">+23.3%</div>
             <div class="cap">Aggregate tokens saved</div>
-            <p>Summed across all questions and repositories in this run.</p>
+            <p>Summed across all valid questions and repositories in that 2026-07-17 run.</p>
           </div>
           <div class="metric">
             <div class="figure">1.44&times;</div>
             <div class="cap">Search ratio</div>
-            <p>The most consistent win: roughly half the turns to the same answer.</p>
+            <p>Roughly half the turns to the same answer under that client and harness.</p>
           </div>
         </div>
         <p class="method">
-          Java (gson) remained the weakest repository; large, idiomatic repositories
-          benefited most. Full report:
+          Java (gson) was the weakest repository in this earlier run. Full historical report:
           <a href="https://github.com/bharath03-a/GitCortex/blob/main/docs/benchmarks/final-report-2026-07-17.html">final-report-2026-07-17.html</a>.
-          Reproduce: <code>bash docs/benchmarks/stable-sweep.sh</code>.
         </p>
       </div>
 
       <div class="panel" role="tabpanel" id="panel-bench-0712" aria-labelledby="tab-bench-0712" hidden>
-        <p class="note">Single-round v0.6.2 data, superseded by the 2026-07-17 median-of-3 run above. Kept here for the historical record.</p>
-        <div class="metrics">
+        <p class="note"><strong>Historical evidence (2026-07-12):</strong> Single-round v0.6.2 baseline, superseded by 2026-07-17 and v0.8.0 validation. Kept for the historical record.</p>
+        <div class="metrics" style="grid-template-columns: repeat(3, 1fr);">
           <div class="metric">
             <div class="figure">1.67&times;</div>
             <div class="cap">Refactor impact</div>
-            <p>New question type this run; one 13.5&times; outlier on ripgrep.</p>
+            <p>First refactor-impact run; included one 13.5&times; outlier on ripgrep.</p>
           </div>
           <div class="metric">
             <div class="figure">1.08&times;</div>
             <div class="cap">Search</div>
-            <p>The most stable signal across every release measured so far.</p>
+            <p>Early single-round signal across the 5 pinned repositories.</p>
           </div>
           <div class="metric">
             <div class="figure">1.09&times;</div>
@@ -892,10 +1084,8 @@
           </div>
         </div>
         <p class="method">
-          gson and hono were the consistent weak spots in this run: Java parser coverage
-          and TypeScript dynamic patterns were still open work at this point. Full report:
+          gson and hono were weak spots at v0.6.2 (both resolved by v0.8.0). Full historical report:
           <a href="https://github.com/bharath03-a/GitCortex/blob/main/docs/benchmarks/final-report-2026-07-12.html">final-report-2026-07-12.html</a>.
-          Reproduce: <code>bash docs/benchmarks/real-harness.sh</code>.
         </p>
       </div>
     </div>
@@ -905,14 +1095,15 @@
 <!-- ── Close ─────────────────────────────────────────────────────────────── -->
 <section class="close">
   <div class="wrap">
-    <h2>Index your first repository in about a minute.</h2>
+    <h2>Start in two commands. Verify with <code>gcx doctor</code>.</h2>
     <p class="lede">
-      Install the binary, run <code>gcx init</code>, pick your AI assistant when asked,
-      and the graph maintains itself from then on.
+      Index your repository locally, verify hook &amp; editor readiness with <code>gcx doctor</code>,
+      and keep ordinary source inspection and tests right next to the graph.
     </p>
     <div class="actions">
-      <a class="btn btn--solid" href="#install">Install GitCortex</a>
-      <a class="btn btn--line" href="https://github.com/bharath03-a/GitCortex/blob/main/docs/REFERENCE.md">Read the reference</a>
+      <a class="btn btn--solid" href="#install">Install v0.8.0</a>
+      <a class="btn btn--line" href="benchmarks.html">Full benchmarks</a>
+      <a class="btn btn--line" href="compare.html">Compare tools</a>
     </div>
   </div>
 </section>
@@ -927,65 +1118,83 @@
         <circle cx="46" cy="32" r="5.5" fill="currentColor" opacity=".7"/>
         <circle cx="32" cy="50" r="5.5" fill="currentColor" opacity=".7"/>
       </svg>
-      GitCortex v0.7.6 · MIT
+      GitCortex v0.8.0 &middot; MIT
     </div>
     <div class="foot-links">
-      <a href="https://github.com/bharath03-a/GitCortex">GitHub</a>
       <a href="benchmarks.html">Benchmarks</a>
+      <a href="compare.html">Compare</a>
       <a href="releases.html">Releases</a>
-      <a href="https://github.com/bharath03-a/GitCortex/releases">Downloads</a>
-      <a href="https://github.com/bharath03-a/GitCortex/blob/main/docs/REFERENCE.md">Reference</a>
-      <a href="https://crates.io/crates/gitcortex">crates.io</a>
-      <a href="https://pypi.org/project/gitcortex/">PyPI</a>
+      <a href="https://github.com/bharath03-a/GitCortex/blob/main/docs/QUICKSTART.md">Quickstart</a>
+      <a href="https://github.com/bharath03-a/GitCortex">GitHub</a>
     </div>
   </div>
 </footer>
 
 <script>
-  // Tab groups (install methods, benchmark history): each [role=tablist]
-  // manages its own roving selection, independently of any other group on
-  // the page, and is keyboard navigable with the arrow keys.
   (function () {
-    var groups = Array.prototype.slice.call(document.querySelectorAll('[role="tablist"]'));
-    groups.forEach(function (group) {
-      var tabs = Array.prototype.slice.call(group.querySelectorAll('.tab'));
-      function select(tab) {
-        tabs.forEach(function (candidate) {
-          var panel = document.getElementById(candidate.getAttribute('aria-controls'));
-          var on = candidate === tab;
-          candidate.setAttribute('aria-selected', String(on));
-          candidate.tabIndex = on ? 0 : -1;
-          if (panel) { panel.hidden = !on; }
+    const copyBtn = document.getElementById("copy-btn");
+    const cmd = document.getElementById("install-cmd");
+    if (copyBtn && cmd) {
+      copyBtn.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(cmd.textContent.trim());
+          copyBtn.textContent = "copied";
+          setTimeout(() => { copyBtn.textContent = "copy"; }, 1600);
+        } catch (_) {}
+      });
+    }
+
+    document.querySelectorAll('[role="tablist"]').forEach((list) => {
+      const tabs = Array.from(list.querySelectorAll('[role="tab"]'));
+      function activate(tab) {
+        tabs.forEach((t) => {
+          const on = t === tab;
+          t.setAttribute("aria-selected", on ? "true" : "false");
+          const panel = document.getElementById(t.getAttribute("aria-controls"));
+          if (panel) panel.hidden = !on;
         });
       }
-      tabs.forEach(function (tab, index) {
-        tab.tabIndex = tab.getAttribute('aria-selected') === 'true' ? 0 : -1;
-        tab.addEventListener('click', function () { select(tab); });
-        tab.addEventListener('keydown', function (event) {
-          var step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
-          if (!step) { return; }
-          event.preventDefault();
-          var next = tabs[(index + step + tabs.length) % tabs.length];
-          select(next);
-          next.focus();
+      tabs.forEach((tab, idx) => {
+        tab.addEventListener("click", () => activate(tab));
+        tab.addEventListener("keydown", (e) => {
+          if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+            e.preventDefault();
+            const next = tabs[(idx + 1) % tabs.length];
+            next.focus(); activate(next);
+          } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+            e.preventDefault();
+            const prev = tabs[(idx - 1 + tabs.length) % tabs.length];
+            prev.focus(); activate(prev);
+          }
         });
-      });
-    });
-  })();
-
-  // Copy the install command.
-  (function () {
-    var button = document.getElementById('copy-btn');
-    var source = document.getElementById('install-cmd');
-    if (!button || !source || !navigator.clipboard) { return; }
-    button.addEventListener('click', function () {
-      navigator.clipboard.writeText(source.textContent.trim()).then(function () {
-        button.textContent = 'copied';
-        setTimeout(function () { button.textContent = 'copy'; }, 1600);
       });
     });
   })();
 </script>
 
+<script>
+(function() {
+  var el = document.querySelector("[data-gh-stars]");
+  if (!el) return;
+  var key = "gcx_gh_stars_v1";
+  var fmt = function(n) { return n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n); };
+  var render = function(n) { el.textContent = "\u2605 " + fmt(n); };
+  try {
+    var cached = JSON.parse(sessionStorage.getItem(key) || "null");
+    if (cached && Date.now() - cached.ts < 900000 && typeof cached.n === "number") {
+      render(cached.n);
+      return;
+    }
+  } catch (_) {}
+  fetch("https://api.github.com/repos/bharath03-a/GitCortex", { headers: { Accept: "application/vnd.github+json" } })
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(d) {
+      if (d && typeof d.stargazers_count === "number") {
+        render(d.stargazers_count);
+        try { sessionStorage.setItem(key, JSON.stringify({ n: d.stargazers_count, ts: Date.now() })); } catch (_) {}
+      }
+    }).catch(function() {});
+})();
+</script>
 </body>
 </html>

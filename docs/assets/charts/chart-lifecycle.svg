@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 445" width="960" height="445" role="img" aria-label="Operational Lifecycle: Incremental Hooks &amp; Multi-Branch Storage Reclaim">
+  <defs>
+    <clipPath id="clip-lifecycle">
+      <rect x="0.5" y="0.5" width="959" height="444" rx="12"/>
+    </clipPath>
+  </defs>
+  <style>
+    .t-title { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 17.5px; font-weight: 700; fill: #14141A; letter-spacing: -0.02em; }
+    .t-sub { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 11.5px; fill: #52525E; }
+    .t-pill { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; font-weight: 600; fill: #A84A27; letter-spacing: 0.08em; }
+    .t-sec { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 700; fill: #4E4E58; letter-spacing: 0.07em; text-transform: uppercase; }
+    .t-sec-sub { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 11px; fill: #73737F; }
+    .t-lbl { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 12px; font-weight: 600; fill: #14141A; }
+    .t-lbl2 { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; fill: #4E4E58; }
+    .t-val { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 600; fill: #14141A; }
+    .t-val-b { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 700; fill: #C4633F; }
+    .t-val-g { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 700; fill: #266B59; }
+    .t-axis { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; fill: #73737F; }
+    .t-foot { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 9.8px; fill: #73737F; }
+    .t-chip { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 9.5px; font-weight: 600; }
+  </style>
+  <g clip-path="url(#clip-lifecycle)">
+    <rect x="0" y="0" width="960" height="445" fill="#FFFFFF"/>
+    <rect x="0" y="0" width="960" height="78" fill="#F7F5EF"/>
+    <rect x="0" y="0" width="960" height="3.5" fill="#C4633F"/>
+    <line x1="0" y1="78" x2="960" y2="78" stroke="#E5E2D9" stroke-width="1"/>
+    <text x="28" y="34" class="t-title">Operational Lifecycle: Incremental Hooks &amp; Multi-Branch Storage Reclaim</text>
+    <text x="28" y="56" class="t-sub">Isolated git clones: 1-file edit + revert via gcx hook, plus 5-branch churn reclaimed via storage gc &amp; compact.</text>
+    <rect x="778.4" y="22" width="153.6" height="24" rx="12" fill="#FBEFE9" stroke="#E8C2B0" stroke-width="1"/>
+    <text x="855.2" y="37.5" text-anchor="middle" class="t-pill">LIFECYCLE · v0.8.0</text>
+    <text x="28" y="108" class="t-sec">1-File Commit Hook Latency (gcx hook)</text>
+    <rect x="335.2" y="95" width="124.8" height="18" rx="9" fill="#E9F4F0"/><text x="397.6" y="107" text-anchor="middle" class="t-chip" fill="#266B59">Up to &gt;73× faster</text>
+    <rect x="28" y="121.5" width="10" height="10" rx="2.5" fill="#C97D63"/><text x="43" y="130" class="t-lbl2">Pre-fix (global re-reconcile)</text>
+    <rect x="28" y="139.5" width="10" height="10" rx="2.5" fill="#266B59"/><text x="43" y="148" class="t-lbl2">v0.8.0 (incremental diff + PK-bounded batch)</text>
+    <line x1="114" y1="168" x2="114" y2="386" stroke="#E2E0D8" stroke-width="1"/>
+    <line x1="147.3" y1="168" x2="147.3" y2="386" stroke="#ECEAE2" stroke-width="1"/>
+    <text x="147.3" y="399" text-anchor="middle" class="t-axis">1s</text>
+    <line x1="207.8" y1="168" x2="207.8" y2="386" stroke="#ECEAE2" stroke-width="1"/>
+    <text x="207.8" y="399" text-anchor="middle" class="t-axis">10s</text>
+    <line x1="324.0" y1="168" x2="324.0" y2="386" stroke="#ECEAE2" stroke-width="1"/>
+    <text x="324.0" y="399" text-anchor="middle" class="t-axis">60s</text>
+    <text x="102" y="191" text-anchor="end" class="t-lbl">ripgrep</text>
+    <text x="102" y="207" text-anchor="end" class="t-axis">del 422 ms</text>
+    <rect x="114" y="176" width="63.3" height="16" rx="3" fill="#C97D63"/>
+    <text x="185.3" y="188" class="t-val">4.17 s</text>
+    <rect x="114" y="198" width="22.6" height="16" rx="3" fill="#266B59"/>
+    <text x="144.6" y="210" class="t-val-g">423 ms (9.9×)</text>
+    <text x="102" y="261" text-anchor="end" class="t-lbl">tokio</text>
+    <text x="102" y="277" text-anchor="end" class="t-axis">del 845 ms</text>
+    <rect x="114" y="246" width="210.0" height="16" rx="3" fill="#C97D63"/>
+    <text x="332.0" y="258" class="t-val">&gt;60 s timeout</text>
+    <rect x="114" y="268" width="30.4" height="16" rx="3" fill="#266B59"/>
+    <text x="152.4" y="280" class="t-val-g">820 ms (>73×)</text>
+    <text x="102" y="331" text-anchor="end" class="t-lbl">django</text>
+    <text x="102" y="347" text-anchor="end" class="t-axis">del 6.56 s</text>
+    <rect x="114" y="316" width="210.0" height="16" rx="3" fill="#C97D63"/>
+    <text x="332.0" y="328" class="t-val">&gt;60 s timeout</text>
+    <rect x="114" y="338" width="79.2" height="16" rx="3" fill="#266B59"/>
+    <text x="201.2" y="350" class="t-val-g">6.87 s (>9×)</text>
+    <line x1="480" y1="94" x2="480" y2="398" stroke="#E2E0D8" stroke-width="1"/>
+    <text x="504" y="108" class="t-sec">5-Branch Churn &amp; Storage Reclaim</text>
+    <rect x="813.6" y="95" width="118.4" height="18" rx="9" fill="#FBF0EB"/><text x="872.8" y="107" text-anchor="middle" class="t-chip" fill="#C4633F">84–85% reclaimed</text>
+    <rect x="504" y="121.5" width="10" height="10" rx="2.5" fill="#947123"/><text x="519" y="130" class="t-lbl2">After 5 feature branches (unpruned)</text>
+    <rect x="504" y="139.5" width="10" height="10" rx="2.5" fill="#C4633F"/><text x="519" y="148" class="t-lbl2">After storage gc --apply + compact</text>
+    <line x1="594" y1="168" x2="594" y2="386" stroke="#E2E0D8" stroke-width="1"/>
+    <line x1="653.2" y1="168" x2="653.2" y2="386" stroke="#ECEAE2" stroke-width="1"/>
+    <text x="653.2" y="399" text-anchor="middle" class="t-axis">200M</text>
+    <line x1="712.3" y1="168" x2="712.3" y2="386" stroke="#ECEAE2" stroke-width="1"/>
+    <text x="712.3" y="399" text-anchor="middle" class="t-axis">400M</text>
+    <line x1="771.5" y1="168" x2="771.5" y2="386" stroke="#ECEAE2" stroke-width="1"/>
+    <text x="771.5" y="399" text-anchor="middle" class="t-axis">600M</text>
+    <text x="582" y="191" text-anchor="end" class="t-lbl">ripgrep</text>
+    <text x="582" y="207" text-anchor="end" class="t-axis">0.76 s</text>
+    <rect x="594" y="176" width="26.4" height="16" rx="3" fill="#947123" opacity="0.82"/>
+    <text x="628.4" y="188" class="t-val">89.1 MiB</text>
+    <rect x="594" y="198" width="8.0" height="16" rx="3" fill="#C4633F"/>
+    <text x="610.0" y="210" class="t-val-b">14.2 MiB (-84.1%)</text>
+    <text x="582" y="261" text-anchor="end" class="t-lbl">tokio</text>
+    <text x="582" y="277" text-anchor="end" class="t-axis">1.87 s</text>
+    <rect x="594" y="246" width="56.1" height="16" rx="3" fill="#947123" opacity="0.82"/>
+    <text x="658.1" y="258" class="t-val">189.7 MiB</text>
+    <rect x="594" y="268" width="8.5" height="16" rx="3" fill="#C4633F"/>
+    <text x="610.5" y="280" class="t-val-b">28.7 MiB (-84.9%)</text>
+    <text x="582" y="331" text-anchor="end" class="t-lbl">django</text>
+    <text x="582" y="347" text-anchor="end" class="t-axis">3.71 s</text>
+    <rect x="594" y="316" width="200.0" height="16" rx="3" fill="#947123" opacity="0.82"/>
+    <text x="802.0" y="328" class="t-val">676.1 MiB</text>
+    <rect x="594" y="338" width="30.8" height="16" rx="3" fill="#C4633F"/>
+    <text x="632.8" y="350" class="t-val-b">104.1 MiB (-84.6%)</text>
+    <rect x="0" y="411" width="960" height="34" fill="#FAF9F5"/>
+    <line x1="0" y1="411" x2="960" y2="411" stroke="#ECEAE2" stroke-width="1"/>
+    <text x="28" y="432" class="t-foot">All 3 repos passed symbol add/delete verification and dry-run zero-deletion safety checks before --apply.</text>
+  </g>
+  <rect x="0.5" y="0.5" width="959" height="444" rx="12" fill="none" stroke="#E2E0D8" stroke-width="1"/>
+</svg>

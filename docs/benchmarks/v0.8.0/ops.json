@@ -1,0 +1,331 @@
+{
+  "gcx_cold_index": {
+    "ripgrep": {
+      "repo": "ripgrep",
+      "returncode": 0,
+      "elapsed_s": 0.915,
+      "size_bytes": 14885327,
+      "size_mib": 14.2,
+      "nodes": 3800,
+      "edges": 19655,
+      "files": null,
+      "status_raw": {},
+      "stderr_tail": []
+    },
+    "requests": {
+      "repo": "requests",
+      "returncode": 0,
+      "elapsed_s": 0.395,
+      "size_bytes": 10572241,
+      "size_mib": 10.08,
+      "nodes": 1099,
+      "edges": 4067,
+      "files": null,
+      "status_raw": {},
+      "stderr_tail": []
+    },
+    "hono": {
+      "repo": "hono",
+      "returncode": 0,
+      "elapsed_s": 0.581,
+      "size_bytes": 12030409,
+      "size_mib": 11.47,
+      "nodes": 4197,
+      "edges": 13093,
+      "files": null,
+      "status_raw": {},
+      "stderr_tail": []
+    },
+    "cobra": {
+      "repo": "cobra",
+      "returncode": 0,
+      "elapsed_s": 0.388,
+      "size_bytes": 10711499,
+      "size_mib": 10.22,
+      "nodes": 888,
+      "edges": 3343,
+      "files": null,
+      "status_raw": {},
+      "stderr_tail": []
+    },
+    "gson": {
+      "repo": "gson",
+      "returncode": 0,
+      "elapsed_s": 0.836,
+      "size_bytes": 17863113,
+      "size_mib": 17.04,
+      "nodes": 4707,
+      "edges": 26249,
+      "files": null,
+      "status_raw": {},
+      "stderr_tail": []
+    },
+    "tokio": {
+      "repo": "tokio",
+      "returncode": 0,
+      "elapsed_s": 1.629,
+      "size_bytes": 30110163,
+      "size_mib": 28.72,
+      "nodes": 11236,
+      "edges": 76163,
+      "files": null,
+      "status_raw": {},
+      "stderr_tail": []
+    },
+    "django": {
+      "repo": "django",
+      "returncode": 0,
+      "elapsed_s": 5.281,
+      "size_bytes": 109765077,
+      "size_mib": 104.68,
+      "nodes": 48548,
+      "edges": 267527,
+      "files": null,
+      "status_raw": {},
+      "stderr_tail": []
+    },
+    "nextjs": {
+      "repo": "nextjs",
+      "returncode": 0,
+      "elapsed_s": 10.7,
+      "size_bytes": 144114133,
+      "size_mib": 137.44,
+      "nodes": 120735,
+      "edges": 414340,
+      "files": null,
+      "status_raw": {},
+      "stderr_tail": []
+    },
+    "moby": {
+      "repo": "moby",
+      "returncode": 0,
+      "elapsed_s": 23.843,
+      "size_bytes": 312144337,
+      "size_mib": 297.68,
+      "nodes": 269433,
+      "edges": 1072083,
+      "files": null,
+      "status_raw": {},
+      "stderr_tail": []
+    },
+    "spring-boot": {
+      "repo": "spring-boot",
+      "returncode": 0,
+      "elapsed_s": 9.432,
+      "size_bytes": 159678943,
+      "size_mib": 152.28,
+      "nodes": 93461,
+      "edges": 377799,
+      "files": null,
+      "status_raw": {},
+      "stderr_tail": []
+    }
+  },
+  "graphify_cold_index": {
+    "ripgrep": {
+      "repo": "ripgrep",
+      "returncode": 0,
+      "elapsed_s": 3.005,
+      "size_bytes": 15570216,
+      "size_mib": 14.85,
+      "nodes": 4798,
+      "edges": 10628,
+      "stderr_tail": [
+        "warning: 144 source file(s) produced zero nodes and are absent from the graph: .graphify_labels.json, 04cbb0f61a00a8c5492c15209f47a247e3f87f76736b577b6a883a821c43bf35.json, 068d82a83c76fac9d2132977f950643f0eb0e56f5280bfe1655cc43ab4af909b.json, 06ebff60f4d3ea89067615855f9187f48232a12ae2315b7573fb9cfa59feae78.json, 0724451b9b7ac02bbf7abac8863236df96ff51c247067aa612296c817dac81ae.json (+139 more). A re-run will retry them (empties are no longer cached); if it persists, please report the file(s) (#1666)."
+      ]
+    },
+    "requests": {
+      "repo": "requests",
+      "returncode": 0,
+      "elapsed_s": 1.451,
+      "size_bytes": 4891050,
+      "size_mib": 4.66,
+      "nodes": 1699,
+      "edges": 2881,
+      "stderr_tail": [
+        "warning: 53 source file(s) produced zero nodes and are absent from the graph: .graphify_labels.json, 05a26730c67cfbab5455c89afbbd696d7a60067a84c6e2455683f1da10332ebd.json, 083ad8d234ad992c38db890ee9a987bf280284029ba4997f8b657fd1c0727a35.json, 0c58f43bff756224d581fd0f145d3946bb888aab9ac36eb2ed677aae26414725.json, 0c9d8df04ac72bd8c1c6b51c5cdbb513e6833cd9e53f1cacf9ba203e9300b607.json (+48 more). A re-run will retry them (empties are no longer cached); if it persists, please report the file(s) (#1666)."
+      ]
+    },
+    "hono": {
+      "repo": "hono",
+      "returncode": 0,
+      "elapsed_s": 4.82,
+      "size_bytes": 7836319,
+      "size_mib": 7.47,
+      "nodes": 3686,
+      "edges": 6730,
+      "stderr_tail": [
+        "warning: 45 source file(s) produced zero nodes and are absent from the graph: .graphify_labels.json, 0a0e001f1eec88c2efbe009052e019c92d0e2361cde5df0a1e8930d97f902494.json, 0cb9664ae3c4e2d3fab9053c96cb3011b36f4ead94cd6221d21dc544a476dc39.json, 0fc4ba483f85037fdda0770e372b4be853be64eadab14436e6def6722b46279b.json, 1db58828fdc7e29327ffb17ce59503bbf5f9274867ae2e4789e4383c059afb44.json (+40 more). A re-run will retry them (empties are no longer cached); if it persists, please report the file(s) (#1666).",
+        "  warning: 7 file(s) had syntax errors and may be partially extracted: src/context.ts (first error at line 96), src/helper/factory/index.ts (first error at line 25), src/helper/ssg/middleware.ts (first error at line 32), src/jsx/hooks/index.ts (first error at line 179), src/jsx/index.ts (first error at line 112) (+2 more) (#2551)"
+      ]
+    },
+    "cobra": {
+      "repo": "cobra",
+      "returncode": 0,
+      "elapsed_s": 0.978,
+      "size_bytes": 4077363,
+      "size_mib": 3.89,
+      "nodes": 1181,
+      "edges": 2528,
+      "stderr_tail": [
+        "warning: 57 source file(s) produced zero nodes and are absent from the graph: .graphify_labels.json, 00c9dbedc62b02dc4dad002be69430195d112af56fd23a9a102a92a09aa390e3.json, 0caef0514c85e608d66941269834d7cd1e8604a42177796d94fcbfdb9000980a.json, 133e74c54b0e3e3e90e377824b2640344160fd8a1ada6a83d6d1a5ec7d09b86d.json, 160ad671fc9d7b94370bb417167f61f791e2875fbb6c018913a48262963f9a74.json (+52 more). A re-run will retry them (empties are no longer cached); if it persists, please report the file(s) (#1666)."
+      ]
+    },
+    "gson": {
+      "repo": "gson",
+      "returncode": 0,
+      "elapsed_s": 4.83,
+      "size_bytes": 24075454,
+      "size_mib": 22.96,
+      "nodes": 5097,
+      "edges": 15635,
+      "stderr_tail": [
+        "warning: 289 source file(s) produced zero nodes and are absent from the graph: .graphify_labels.json, 00fd57f346ced761971b50f4029311409056cc7a7fe3b647ceed92614d6a10f2.json, 016822923360adf1c198616da85749c5808a898fc7238ca0c8fba86a08431ce4.json, 01bbd2e1d279fbde040c409cfae3415c531f9361d92fc8ecc5229871dd34ab67.json, 01e8ca3ee3e84d149758fba1154cb2badda13efbb81bd2436e56a827db865eca.json (+284 more). A re-run will retry them (empties are no longer cached); if it persists, please report the file(s) (#1666)."
+      ]
+    }
+  },
+  "codegraph_cold_index": {
+    "tokio": {
+      "returncode": 0,
+      "elapsed_s": 3.563,
+      "size_bytes": 43327717,
+      "stdout_tail": [
+        "\u25c6  Indexed 804 files",
+        "\u2502",
+        "\u25cf  13,606 nodes, 43,710 edges in 955ms",
+        "\u2502",
+        "\u2514  Done"
+      ],
+      "stderr_tail": []
+    },
+    "django": {
+      "returncode": 0,
+      "elapsed_s": 8.148,
+      "size_bytes": 162848997,
+      "stdout_tail": [
+        "\u25c6  Indexed 3,016 files",
+        "\u2502",
+        "\u25cf  62,114 nodes, 195,802 edges in 2.1s",
+        "\u2502",
+        "\u2514  Done"
+      ],
+      "stderr_tail": []
+    },
+    "nextjs": {
+      "returncode": 0,
+      "elapsed_s": 158.445,
+      "size_bytes": 665919717,
+      "stdout_tail": [
+        "\u25c6  Indexed 23,894 files",
+        "\u2502",
+        "\u25cf  168,609 nodes, 639,624 edges in 1m 58s",
+        "\u2502",
+        "\u2514  Done"
+      ],
+      "stderr_tail": []
+    },
+    "moby": {
+      "returncode": 0,
+      "elapsed_s": 6.681,
+      "size_bytes": 114901221,
+      "stdout_tail": [
+        "\u25c6  Indexed 2,275 files",
+        "\u2502",
+        "\u25cf  36,837 nodes, 120,384 edges in 1.9s",
+        "\u2502",
+        "\u2514  Done"
+      ],
+      "stderr_tail": []
+    },
+    "spring-boot": {
+      "returncode": 0,
+      "elapsed_s": 29.335,
+      "size_bytes": 586694885,
+      "stdout_tail": [
+        "\u25c6  Indexed 9,753 files",
+        "\u2502",
+        "\u25cf  184,301 nodes, 424,855 edges in 7.6s",
+        "\u2502",
+        "\u2514  Done"
+      ],
+      "stderr_tail": []
+    }
+  },
+  "lifecycle": {
+    "ripgrep": {
+      "repo": "ripgrep",
+      "full_index_rc": 0,
+      "full_index_s": 0.699,
+      "base_size_mib": 14.2,
+      "incremental_add_rc": 0,
+      "incremental_add_ms": 423.1,
+      "added_symbol_found": true,
+      "query_after_add_ms": 191.9,
+      "incremental_delete_rc": 0,
+      "incremental_delete_ms": 421.5,
+      "deleted_symbol_absent": true,
+      "branch_switch_median_ms": 701.3,
+      "churn_branches": 5,
+      "size_after_churn_mib": 89.13,
+      "gc_dry_preserved_size": false,
+      "gc_apply_rc": 0,
+      "gc_apply_ms": 231.3,
+      "size_after_gc_mib": 89.31,
+      "compact_apply_rc": 0,
+      "compact_apply_ms": 529.1,
+      "size_after_compact_mib": 14.21,
+      "reclaimed_mib": 74.92,
+      "reclaimed_pct": 84.1
+    },
+    "tokio": {
+      "repo": "tokio",
+      "full_index_rc": 0,
+      "full_index_s": 1.764,
+      "base_size_mib": 28.72,
+      "incremental_add_rc": 0,
+      "incremental_add_ms": 820.5,
+      "added_symbol_found": true,
+      "query_after_add_ms": 219.2,
+      "incremental_delete_rc": 0,
+      "incremental_delete_ms": 844.9,
+      "deleted_symbol_absent": true,
+      "branch_switch_median_ms": 1799.1,
+      "churn_branches": 5,
+      "size_after_churn_mib": 189.66,
+      "gc_dry_preserved_size": false,
+      "gc_apply_rc": 0,
+      "gc_apply_ms": 453.8,
+      "size_after_gc_mib": 189.93,
+      "compact_apply_rc": 0,
+      "compact_apply_ms": 1414.5,
+      "size_after_compact_mib": 28.72,
+      "reclaimed_mib": 160.94,
+      "reclaimed_pct": 84.9
+    },
+    "django": {
+      "repo": "django",
+      "full_index_rc": 0,
+      "full_index_s": 6.203,
+      "base_size_mib": 104.69,
+      "incremental_add_rc": 0,
+      "incremental_add_ms": 6871.6,
+      "added_symbol_found": true,
+      "query_after_add_ms": 356.7,
+      "incremental_delete_rc": 0,
+      "incremental_delete_ms": 6555.8,
+      "deleted_symbol_absent": true,
+      "branch_switch_median_ms": 6634.0,
+      "churn_branches": 5,
+      "size_after_churn_mib": 676.15,
+      "gc_dry_preserved_size": false,
+      "gc_apply_rc": 0,
+      "gc_apply_ms": 282.5,
+      "size_after_gc_mib": 676.64,
+      "compact_apply_rc": 0,
+      "compact_apply_ms": 3422.7,
+      "size_after_compact_mib": 104.12,
+      "reclaimed_mib": 572.03,
+      "reclaimed_pct": 84.6
+    }
+  }
+}

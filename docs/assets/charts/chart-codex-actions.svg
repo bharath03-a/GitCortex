@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 455" width="960" height="455" role="img" aria-label="35-Task Codex Benchmark: Savings Concentrate on Relationship Questions">
+  <defs>
+    <clipPath id="clip-codex-actions">
+      <rect x="0.5" y="0.5" width="959" height="454" rx="12"/>
+    </clipPath>
+  </defs>
+  <style>
+    .t-title { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 17.5px; font-weight: 700; fill: #14141A; letter-spacing: -0.02em; }
+    .t-sub { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 11.5px; fill: #52525E; }
+    .t-pill { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; font-weight: 600; fill: #A84A27; letter-spacing: 0.08em; }
+    .t-sec { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 700; fill: #4E4E58; letter-spacing: 0.07em; text-transform: uppercase; }
+    .t-sec-sub { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 11px; fill: #73737F; }
+    .t-lbl { font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 12px; font-weight: 600; fill: #14141A; }
+    .t-lbl2 { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; fill: #4E4E58; }
+    .t-val { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 600; fill: #14141A; }
+    .t-val-b { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 700; fill: #C4633F; }
+    .t-val-g { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 700; fill: #266B59; }
+    .t-axis { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; fill: #73737F; }
+    .t-foot { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 9.8px; fill: #73737F; }
+    .t-chip { font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 9.5px; font-weight: 600; }
+  </style>
+  <g clip-path="url(#clip-codex-actions)">
+    <rect x="0" y="0" width="960" height="455" fill="#FFFFFF"/>
+    <rect x="0" y="0" width="960" height="78" fill="#F7F5EF"/>
+    <rect x="0" y="0" width="960" height="3.5" fill="#C4633F"/>
+    <line x1="0" y1="78" x2="960" y2="78" stroke="#E5E2D9" stroke-width="1"/>
+    <text x="28" y="34" class="t-title">35-Task Codex Benchmark: Savings Concentrate on Relationship Questions</text>
+    <text x="28" y="56" class="t-sub">Graph traversal (subgraph, impact, refactor, callers) saves 36–43% uncached tokens; plain search stays near grep parity.</text>
+    <rect x="749.6" y="22" width="182.4" height="24" rx="12" fill="#FBEFE9" stroke="#E8C2B0" stroke-width="1"/>
+    <text x="840.8" y="37.5" text-anchor="middle" class="t-pill">AGENT BENCH · 35 TASKS</text>
+    <rect x="28" y="94" width="214" height="64" rx="8" fill="#FAF9F5" stroke="#E2E0D8"/>
+    <text x="42" y="113" class="t-sec">Tasks Valid</text>
+    <text x="42" y="135" font-family="'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="16" font-weight="700" fill="#266B59">35 / 35</text>
+    <text x="42" y="150" class="t-axis">100% quality non-inferior</text>
+    <rect x="258" y="94" width="214" height="64" rx="8" fill="#FAF9F5" stroke="#E2E0D8"/>
+    <text x="272" y="113" class="t-sec">Answer Quality</text>
+    <text x="272" y="135" font-family="'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="16" font-weight="700" fill="#266B59">0.943 → 0.986</text>
+    <text x="272" y="150" class="t-axis">+4.3 pts mean accuracy</text>
+    <rect x="488" y="94" width="214" height="64" rx="8" fill="#FAF9F5" stroke="#E2E0D8"/>
+    <text x="502" y="113" class="t-sec">Uncached Tokens</text>
+    <text x="502" y="135" font-family="'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="16" font-weight="700" fill="#C4633F">-27.7%</text>
+    <text x="502" y="150" class="t-axis">1.38× geomean saved</text>
+    <rect x="718" y="94" width="214" height="64" rx="8" fill="#FAF9F5" stroke="#E2E0D8"/>
+    <text x="732" y="113" class="t-sec">Total Tokens</text>
+    <text x="732" y="135" font-family="'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="16" font-weight="700" fill="#C4633F">-19.4%</text>
+    <text x="732" y="150" class="t-axis">1.22× geomean saved</text>
+    <text x="28" y="186" class="t-sec">Uncached Token Change vs Grep Baseline, by Question Category</text>
+    <text x="932" y="186" text-anchor="end" class="t-axis">Right column: Total token delta</text>
+    <line x1="418.0" y1="198" x2="418.0" y2="392" stroke="#ECEAE2" stroke-width="1.0"/>
+    <text x="418.0" y="407" text-anchor="middle" class="t-axis">-40%</text>
+    <line x1="496.0" y1="198" x2="496.0" y2="392" stroke="#ECEAE2" stroke-width="1.0"/>
+    <text x="496.0" y="407" text-anchor="middle" class="t-axis">-30%</text>
+    <line x1="574.0" y1="198" x2="574.0" y2="392" stroke="#ECEAE2" stroke-width="1.0"/>
+    <text x="574.0" y="407" text-anchor="middle" class="t-axis">-20%</text>
+    <line x1="652.0" y1="198" x2="652.0" y2="392" stroke="#ECEAE2" stroke-width="1.0"/>
+    <text x="652.0" y="407" text-anchor="middle" class="t-axis">-10%</text>
+    <line x1="730.0" y1="198" x2="730.0" y2="392" stroke="#4E4E58" stroke-width="1.25"/>
+    <text x="730.0" y="407" text-anchor="middle" class="t-axis">+0%</text>
+    <line x1="808.0" y1="198" x2="808.0" y2="392" stroke="#ECEAE2" stroke-width="1.0"/>
+    <text x="808.0" y="407" text-anchor="middle" class="t-axis">+10%</text>
+    <text x="28" y="218" class="t-lbl">subgraph</text>
+    <text x="128" y="218" class="t-axis">n=5 · q 1.00→1.00</text>
+    <rect x="394.6" y="206" width="335.4" height="16" rx="3" fill="#266B59"/>
+    <text x="386.6" y="218" text-anchor="end" class="t-val-g">-43.0%</text>
+    <text x="932" y="218" text-anchor="end" class="t-axis">tot -22.9%</text>
+    <text x="28" y="245" class="t-lbl">impact</text>
+    <text x="128" y="245" class="t-axis">n=5 · q 1.00→1.00</text>
+    <rect x="407.9" y="233" width="322.1" height="16" rx="3" fill="#266B59"/>
+    <text x="399.9" y="245" text-anchor="end" class="t-val-g">-41.3%</text>
+    <text x="932" y="245" text-anchor="end" class="t-axis">tot -25.7%</text>
+    <text x="28" y="272" class="t-lbl">refactor</text>
+    <text x="128" y="272" class="t-axis">n=5 · q 1.00→1.00</text>
+    <rect x="435.9" y="260" width="294.1" height="16" rx="3" fill="#266B59"/>
+    <text x="427.9" y="272" text-anchor="end" class="t-val-g">-37.7%</text>
+    <text x="932" y="272" text-anchor="end" class="t-axis">tot -24.8%</text>
+    <text x="28" y="299" class="t-lbl">callers</text>
+    <text x="128" y="299" class="t-axis">n=5 · q 0.80→1.00</text>
+    <rect x="449.2" y="287" width="280.8" height="16" rx="3" fill="#266B59"/>
+    <text x="441.2" y="299" text-anchor="end" class="t-val-g">-36.0%</text>
+    <text x="932" y="299" text-anchor="end" class="t-axis">tot -14.2%</text>
+    <text x="28" y="326" class="t-lbl">architecture</text>
+    <text x="128" y="326" class="t-axis">n=5 · q 0.90→1.00</text>
+    <rect x="617.7" y="314" width="112.3" height="16" rx="3" fill="#C4633F"/>
+    <text x="609.7" y="326" text-anchor="end" class="t-val-g">-14.4%</text>
+    <text x="932" y="326" text-anchor="end" class="t-axis">tot -24.3%</text>
+    <text x="28" y="353" class="t-lbl">search</text>
+    <text x="128" y="353" class="t-axis">n=5 · q 1.00→1.00</text>
+    <rect x="700.4" y="341" width="29.6" height="16" rx="3" fill="#8E8E9A"/>
+    <text x="692.4" y="353" text-anchor="end" class="t-val-g">-3.8%</text>
+    <text x="932" y="353" text-anchor="end" class="t-axis">tot +9.8%</text>
+    <text x="28" y="380" class="t-lbl">tour</text>
+    <text x="128" y="380" class="t-axis">n=5 · q 0.90→0.90</text>
+    <rect x="728.0" y="368" width="4" height="16" rx="2" fill="#73737F"/>
+    <text x="738.0" y="380" class="t-axis">0.0%</text>
+    <text x="932" y="380" text-anchor="end" class="t-axis">tot -15.9%</text>
+    <rect x="0" y="421" width="960" height="34" fill="#FAF9F5"/>
+    <line x1="0" y1="421" x2="960" y2="421" stroke="#ECEAE2" stroke-width="1"/>
+    <text x="28" y="442" class="t-foot">Codex gpt-6.1-sol (low) · 5 pinned repos (ripgrep, requests, hono, cobra, gson) · 35/35 valid, 0 invalid</text>
+  </g>
+  <rect x="0.5" y="0.5" width="959" height="454" rx="12" fill="none" stroke="#E2E0D8" stroke-width="1"/>
+</svg>
