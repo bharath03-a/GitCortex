@@ -110,7 +110,7 @@ mod tests {
                 is_unsafe: false,
                 definition: DefinitionText {
                     signature: format!("pub async fn {name}()"),
-                    body: "SECRET_BODY_TOKEN_MUST_NOT_LEAK".into(),
+                    hash: "SECRET_HASH_TOKEN_MUST_NOT_LEAK".into(),
                     doc_comment: Some("SECRET_DOC_COMMENT".into()),
                     start_byte: 0,
                     end_byte: 42,
@@ -260,7 +260,7 @@ mod tests {
         let g = ScopedGraph::from_explicit("main".into(), vec![n], vec![]).unwrap();
         let serialized =
             to_graph_json(&g, &sample_meta("ready", ExportScope::default())).to_string();
-        assert!(!serialized.contains("SECRET_BODY_TOKEN_MUST_NOT_LEAK"));
+        assert!(!serialized.contains("SECRET_HASH_TOKEN_MUST_NOT_LEAK"));
         assert!(!serialized.contains("SECRET_DOC_COMMENT"));
         assert!(!serialized.contains("pub async fn alpha"));
     }

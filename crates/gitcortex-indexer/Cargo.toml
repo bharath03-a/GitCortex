@@ -10,6 +10,7 @@ keywords = ["tree-sitter", "ast", "code-index", "git", "static-analysis"]
 categories = ["development-tools", "parser-implementations"]
 
 [dependencies]
+blake3.workspace = true
 git2.workspace = true
 gitcortex-core.workspace = true
 ignore.workspace = true

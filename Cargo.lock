@@ -1353,6 +1353,7 @@ dependencies = [
 name = "gitcortex-indexer"
 version = "0.8.0"
 dependencies = [
+ "blake3",
  "git2",
  "gitcortex-core",
  "ignore",

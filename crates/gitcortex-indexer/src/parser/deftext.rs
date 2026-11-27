@@ -1,5 +1,5 @@
-//! Language-agnostic capture of a node's source text — signature, body,
-//! preceding doc-comment, and byte range. Filled during pass 1 from the
+//! Language-agnostic capture of a node's source text — signature, content
+//! hash, preceding doc-comment, and byte range. Filled during pass 1 from the
 //! tree-sitter node's byte range; no extra parsing work.
 //!
 //! Powers wiki rendering, tour narration, and downstream search.
@@ -7,20 +7,17 @@
 use gitcortex_core::graph::DefinitionText;
 use tree_sitter::Node as TsNode;
 
-/// Maximum bytes captured per node body. The body is stored per node and
-/// re-serialised on every insert, so an oversized cap bloats both the store
-/// and full-index write time (a 2k-method repo at 16 KB each = ~30 MB of body
-/// text shovelled through Cypher). Queries surface the signature + doc, not
-/// the full body, so 2 KB keeps enough head-of-function context for future
-/// semantic use without the I/O tax.
+/// Maximum bytes of the node's source scanned for the signature and inline
+/// docstring. Bounds the scan on huge single-line nodes (minified code); the
+/// content hash always covers the full source range.
 const MAX_BODY_BYTES: usize = 2 * 1024;
 
 /// Capture `DefinitionText` for `ts_node` from `source`.
 ///
 /// - `signature`: the slice up to the first `{`, `:` (Python), or end-of-line
 ///   if no body delimiter is found. Trimmed.
-/// - `body`: full slice of the node (signature + body), truncated to
-///   `MAX_BODY_BYTES`.
+/// - `hash`: [`content_hash`] of the node's full source range, so node
+///   comparison (branch diff, blast radius) sees edits anywhere in the body.
 /// - `doc_comment`: contiguous comment nodes immediately preceding `ts_node`
 ///   at the same parent level. Returns `None` when no such comments exist.
 /// - `start_byte` / `end_byte`: byte offsets into the file.
@@ -29,22 +26,32 @@ pub(crate) fn capture(source: &[u8], ts_node: TsNode<'_>) -> DefinitionText {
     let end = ts_node.end_byte();
     let raw = source.get(start..end).unwrap_or(&[]);
     let body_full = std::str::from_utf8(raw).unwrap_or("");
-    let body = truncate_to_char_boundary(body_full, MAX_BODY_BYTES).to_owned();
+    let head = truncate_to_char_boundary(body_full, MAX_BODY_BYTES);
 
-    let signature = extract_signature(&body).to_owned();
+    let signature = extract_signature(head).to_owned();
     let doc_comment = preceding_doc_comment(source, ts_node)
         // Fallback: many languages (Python, Ruby) place the doc inside the
         // body as the first statement (`"""..."""` / `'''...'''`). Check the
         // body slice when no preceding-sibling comment was found.
-        .or_else(|| inline_docstring(&body));
+        .or_else(|| inline_docstring(head));
 
     DefinitionText {
         signature,
-        body,
+        hash: content_hash(raw),
         doc_comment,
         start_byte: start as u32,
         end_byte: end as u32,
     }
+}
+
+/// First 16 hex chars of blake3 over `raw`; empty for an empty range, matching
+/// the "not captured" default. 64 bits is plenty: hashes are only compared
+/// pairwise for the same node id.
+fn content_hash(raw: &[u8]) -> String {
+    if raw.is_empty() {
+        return String::new();
+    }
+    blake3::hash(raw).to_hex()[..16].to_owned()
 }
 
 /// Signature = lines from the start up to (and including) the line that opens
@@ -224,5 +231,72 @@ mod tests {
         let out = truncate_to_char_boundary(s, 2);
         assert!(s.starts_with(out));
         assert!(out.is_char_boundary(out.len()));
+    }
+
+    #[test]
+    fn capture_keeps_signature_and_range() {
+        let src = "/// Adds one.\nfn foo(a: u32) -> u32 {\n    a + 1\n}\n";
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_rust::LANGUAGE.into())
+            .expect("rust grammar");
+        let tree = parser.parse(src, None).expect("parse");
+        let root = tree.root_node();
+        let mut cursor = root.walk();
+        let func = root
+            .named_children(&mut cursor)
+            .find(|n| n.kind() == "function_item")
+            .expect("function_item");
+
+        let def = capture(src.as_bytes(), func);
+
+        assert_eq!(def.signature, "fn foo(a: u32) -> u32");
+        assert_eq!(def.hash.len(), 16);
+        assert_eq!(
+            &src[def.start_byte as usize..def.end_byte as usize],
+            "fn foo(a: u32) -> u32 {\n    a + 1\n}"
+        );
+    }
+
+    /// Parse Python `src` and return `name -> content hash`.
+    fn python_hashes(src: &str) -> std::collections::HashMap<String, String> {
+        use crate::parser::LanguageParser;
+        crate::parser::python::PythonParser::new()
+            .parse(std::path::Path::new("m.py"), src)
+            .expect("parse")
+            .nodes
+            .into_iter()
+            .filter(|n| !n.metadata.definition.hash.is_empty())
+            .map(|n| (n.name, n.metadata.definition.hash))
+            .collect()
+    }
+
+    const CLASS_SRC: &str = "class User:\n    def save(self):\n        return 41\n\n    def load(self):\n        return 1\n";
+
+    #[test]
+    fn hash_is_deterministic() {
+        let hashes = python_hashes(CLASS_SRC);
+        assert_eq!(hashes["save"].len(), 16);
+        assert_eq!(hashes, python_hashes(CLASS_SRC));
+    }
+
+    #[test]
+    fn same_length_body_edit_changes_hash() {
+        // `41` -> `42` keeps every span and byte offset identical, so the
+        // hash is the only field that can tell the two versions apart.
+        let before = python_hashes(CLASS_SRC);
+        let after = python_hashes(&CLASS_SRC.replace("41", "42"));
+        assert_ne!(before["save"], after["save"]);
+        assert_ne!(before["User"], after["User"], "full range includes methods");
+        assert_eq!(before["load"], after["load"]);
+    }
+
+    #[test]
+    fn edit_past_scan_window_is_detected() {
+        let filler = "    x = 1\n".repeat(MAX_BODY_BYTES / 4);
+        let src = format!("def long():\n{filler}    return 41\n");
+        let before = python_hashes(&src);
+        let after = python_hashes(&src.replace("41", "42"));
+        assert_ne!(before["long"], after["long"]);
     }
 }

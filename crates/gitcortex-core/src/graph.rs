@@ -73,9 +73,9 @@ pub struct LldLabels {
     pub complexity: Option<u32>,
 }
 
-/// Source-text capture for a node — signature, body slice, preceding doc-comment,
-/// and byte range into the original file. Filled during pass 1 from the
-/// tree-sitter node's byte range; cheap (no extra parsing).
+/// Source-text capture for a node — signature, content hash, preceding
+/// doc-comment, and byte range into the original file. Filled during pass 1
+/// from the tree-sitter node's byte range; cheap (no extra parsing).
 ///
 /// Powers wiki rendering, tour narration, and future semantic search.
 /// Empty default means "not captured" — legacy rows return all-empty.
@@ -84,8 +84,11 @@ pub struct DefinitionText {
     /// First line(s) of the definition up to (and excluding) the body block.
     /// E.g. `pub fn apply_diff(&mut self, branch: &str, diff: &GraphDiff) -> Result<()>`.
     pub signature: String,
-    /// Full source slice of the node, including signature and body.
-    pub body: String,
+    /// Fingerprint of the node's full source range (16 hex chars of blake3).
+    /// Lets node comparison detect body edits without storing source; slice
+    /// the file with `start_byte`/`end_byte` when the text is needed. Empty
+    /// when not captured.
+    pub hash: String,
     /// Doc-comment immediately preceding the node (`///`, `//!`, `/** */`, `"""`).
     /// `None` when absent.
     pub doc_comment: Option<String>,
